@@ -42,4 +42,30 @@ def evalKernelRfl : Tactic := fun _ => withMainContext do
   g.assign (mkAppN (mkConst name (levels.map Level.param)) fvars)
   replaceMainGoal []
 
+/-- Close a decidable goal `p` by kernel evaluation of `decide p`, abstracting the local
+context: like `decide +kernel`, but the goal may mention local variables (which the
+evaluation must not inspect). Prefer it to `kernel_rfl` when the two sides are only equal
+after evaluating to literals (e.g. arithmetic on gas), since the kernel then compares
+values instead of unfolding both sides lazily. -/
+syntax (name := kernelDecide) "kernel_decide" : tactic
+
+@[tactic kernelDecide, inherit_doc kernelDecide]
+def evalKernelDecide : Tactic := fun _ => withMainContext do
+  let g ← getMainGoal
+  let t ← instantiateMVars (← g.getType)
+  if t.hasMVar then throwError "kernel_decide: goal contains metavariables{indentExpr t}"
+  let fvars := (← getLCtx).foldl (init := #[]) fun acc d =>
+    if d.isAuxDecl || d.isImplementationDetail then acc else acc.push d.toExpr
+  let inst ← synthInstance (mkApp (mkConst ``Decidable) t)
+  let dec := mkApp2 (mkConst ``Decidable.decide) t inst
+  let rflTrue := mkApp2 (mkConst ``Eq.refl [1]) (mkConst ``Bool) (mkConst ``Bool.true)
+  let body := mkApp3 (mkConst ``of_decide_eq_true) t inst
+    (mkExpectedPropHint rflTrue (← mkEq dec (mkConst ``Bool.true)))
+  let ty ← mkForallFVars fvars t
+  let pf ← mkLambdaFVars fvars body
+  let levels := (collectLevelParams {} ty).params.toList
+  let name ← withOptions (Elab.async.set · false) <| mkAuxLemma levels ty pf
+  g.assign (mkAppN (mkConst name (levels.map Level.param)) fvars)
+  replaceMainGoal []
+
 end EvmLean.Tactic
