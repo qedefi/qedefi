@@ -303,6 +303,7 @@ def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) 
   let s : Session := { cfg, rpc, fam, world0, snap, stats }
   let mut found := 0
   for seq in [0:cfg.sequences] do
+    (← IO.getStdout).flush
     let seed : UInt64 := (cfg.seed * 1_000_003 + famIdx * 7_919 + seq).toUInt64
     match ← s.fuzz seed with
     | none => pure ()

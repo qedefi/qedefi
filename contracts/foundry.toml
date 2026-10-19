@@ -22,3 +22,19 @@ remappings = [
   "solmate/=lib/solmate/src/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
+
+# The a16z ERC-4626 property suite (contracts/run-a16z.sh). Inherits the default profile.
+[profile.a16z]
+test = "a16z"
+libs = ["lib", "ext"]
+offline = false
+remappings = [
+  "solmate/=lib/solmate/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=ext/forge-std/src/",
+  "erc4626-tests/=ext/erc4626-tests/",
+]
+
+[profile.a16z.fuzz]
+runs = 1000
+seed = "0x4626"
