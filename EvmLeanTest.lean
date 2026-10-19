@@ -17,3 +17,6 @@ import EvmLeanTest.Interpreter
 import EvmLeanTest.InterpreterCall
 import EvmLeanTest.AddressReal
 import EvmLeanTest.TxIntegration
+import EvmLeanTest.Delegation
+import EvmLeanTest.Bls12381Precompile
+import EvmLeanTest.P256

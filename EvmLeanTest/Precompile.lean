@@ -69,6 +69,14 @@ def testCrypto : Crypto where
   bn254Mul := Bn254.mul
   bn254Pairing := Bn254.pairingCheck
   kzgVerify := stubKzg
+  bls12G1Add := fun _ => none
+  bls12G1Msm := fun _ => none
+  bls12G2Add := fun _ => none
+  bls12G2Msm := fun _ => none
+  bls12Pairing := fun _ => none
+  bls12MapFpToG1 := fun _ => none
+  bls12MapFp2ToG2 := fun _ => none
+  p256Verify := fun _ _ _ _ _ => false
 
 /-- Run precompile `addr`. -/
 def runAt (fork : Fork) (addr : Nat) (input : ByteArray) (gas : Nat) : Precompile.Result :=

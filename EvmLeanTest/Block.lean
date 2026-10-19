@@ -130,6 +130,62 @@ def okReceipt : Receipt := { succeeded := true, cumulativeGasUsed := 21000,
 #guard withdrawalEncode { index := 0, validatorIndex := 1, address := 2, amount := 3 } ==
   (Rlp.list [.nat 0, .nat 1, .bytes (Bytes.ofAddress 2), .nat 3]).encode
 
+/-! ## Prague headers, EIP-7918, requests -/
+
+/-- A Prague header (21 fields). -/
+def pragueHeader : Header := { genesisBlock.header with requestsHash := some 0x1234 }
+
+#guard (Block.decodeHeader (Block.headerRlp pragueHeader)).toOption = some pragueHeader
+#guard (Block.decodeHeader (Block.headerRlp genesisBlock.header)).toOption = some genesisBlock.header
+#guard (Block.decodeHeader (.list (List.replicate 22 (.bytes .empty)))).toOption.isNone
+
+-- EIP-7918 (Osaka): with a blob base fee below the execution cost of a blob, the excess grows
+-- by `used · 3 / 9` instead of `used − target` (parent base fee 900, blob base fee 1).
+#guard calcExcessBlobGas .prague (withBlobs 0 917504) = 131072
+#guard calcExcessBlobGas .osaka (withBlobs 0 917504) = 917504 * 3 / 9
+#guard calcExcessBlobGas .osaka { withBlobs 0 917504 with baseFeePerGas := 0 } = 131072
+#guard calcExcessBlobGas .osaka (withBlobs 0 786431) = 0
+
+/-- A 32-byte big-endian word. -/
+def w32 (n : Nat) : ByteArray := Bytes.ofNatBE 32 n
+
+/-- `b` right-padded with zeros to `n` bytes (Solidity ABI). -/
+def rpad (b : ByteArray) (n : Nat) : ByteArray := b ++ Bytes.zeros (n - b.size)
+
+/-- An ABI-encoded `DepositEvent` payload. -/
+def depositData (pk wc amount sig index : ByteArray) : ByteArray :=
+  w32 160 ++ w32 256 ++ w32 320 ++ w32 384 ++ w32 512 ++ w32 48 ++ rpad pk 64 ++ w32 32 ++ wc
+    ++ w32 8 ++ rpad amount 32 ++ w32 96 ++ sig ++ w32 8 ++ rpad index 32
+
+/-- Sample deposit fields. -/
+def pk : ByteArray := Bytes.ofNatBE 48 1
+/-- Sample withdrawal credentials. -/
+def wc : ByteArray := Bytes.ofNatBE 32 2
+/-- Sample amount (little-endian gwei in the real contract; opaque here). -/
+def amt : ByteArray := Bytes.ofNatBE 8 3
+/-- Sample signature. -/
+def sig : ByteArray := Bytes.ofNatBE 96 4
+/-- Sample index. -/
+def idx : ByteArray := Bytes.ofNatBE 8 5
+
+#guard (depositData pk wc amt sig idx).size = 576
+#guard extractDepositData (depositData pk wc amt sig idx) = some (pk ++ wc ++ amt ++ sig ++ idx)
+#guard extractDepositData ((depositData pk wc amt sig idx).extract 0 575) = none
+#guard extractDepositData (w32 161 ++ (depositData pk wc amt sig idx).extract 32 576) = none
+
+/-- A deposit-contract log. -/
+def depositLog (data : ByteArray) (topic : Word := depositEventSignatureHash) : Log :=
+  { address := depositContractAddress, topics := #[topic], data }
+
+#guard (parseDepositRequests #[depositLog (depositData pk wc amt sig idx)]).toOption =
+  some (pk ++ wc ++ amt ++ sig ++ idx)
+-- Other events of the deposit contract are ignored; a malformed deposit invalidates the block.
+#guard (parseDepositRequests #[depositLog .empty (topic := 1)]).toOption = some .empty
+#guard (parseDepositRequests #[depositLog .empty]).toOption.isNone
+-- `sha256` of nothing: the requests hash of a block without requests.
+#guard computeRequestsHash Crypto.real.sha256 [] =
+  hw "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
 /-! ## Withdrawals (gwei → wei, EIP-161 clean-up) -/
 
 #guard (applyWithdrawals ∅ [{ index := 0, validatorIndex := 0, address := 7, amount := 2 }]).account 7

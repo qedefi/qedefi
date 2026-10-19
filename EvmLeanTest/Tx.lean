@@ -214,6 +214,41 @@ def price (r : Except InvalidTx Checked) : Option Nat := r.toOption.map (·.effe
 #guard chk (worldWith (100000 * 1000 + 131072 * 10 - 1)) (blobTx [vh]) =
   .error (.insufficientBalance (100000 * 1000 + 131072 * 10 - 1) (100000 * 1000 + 131072 * 10))
 
+/-! ## Prague and Osaka checks -/
+
+/-- An authorization tuple (only its count matters to the checks below). -/
+def someAuth : Authorization :=
+  { chainId := 1, address := 0xbb, nonce := 0, yParity := 0, r := 1, s := 1 }
+
+/-- An EIP-7702 transaction template. -/
+def setCodeTx (auths : List Authorization) (gas := 100000) : Transaction :=
+  .eip7702 { chainId := 1, nonce := 0, maxPriorityFeePerGas := 1, maxFeePerGas := 1000, gas,
+             to := 0xaa, value := 0, data := .empty, accessList := [], authorizations := auths,
+             yParity := 0, r := 1, s := 1 }
+
+/-- `check` at `fork` with the hint `alice`. -/
+def chkAt (fork : Fork) (w : World) (tx : Transaction) : Except InvalidTx Checked :=
+  check fakeCrypto fork env 30000000 1179648 w tx (some alice)
+
+-- 25000 per authorization; set-code transactions only from Prague.
+#guard (intrinsicGas (setCodeTx [someAuth, someAuth])).regular = 21000 + 2 * 25000
+#guard validate .cancun (setCodeTx [someAuth]) = .error (.unsupportedType 4)
+#guard (validate .prague (setCodeTx [someAuth])).isOk
+#guard chkAt .prague (worldWith (10 ^ 18)) (setCodeTx []) = .error .emptyAuthorizationList
+#guard (chkAt .prague (worldWith (10 ^ 18)) (setCodeTx [someAuth])).isOk
+-- Codec round trip (`0x04 ‖ rlp(fields)`).
+#guard (Transaction.decode (setCodeTx [someAuth]).encode).toOption = some (setCodeTx [someAuth])
+#guard (setCodeTx [someAuth]).encode[0]? = some 4
+-- EIP-3607 as amended by EIP-7702: a delegated sender is still an EOA.
+#guard (chkAt .prague (worldWith (10 ^ 18) (code := Interpreter.delegationCode 0xbb))
+  (legacyTx)).isOk
+#guard chkAt .cancun (worldWith (10 ^ 18) (code := Interpreter.delegationCode 0xbb)) (legacyTx) =
+  .error .senderNotEOA
+-- Osaka: at most six blobs per transaction.
+#guard chkAt .osaka (worldWith (10 ^ 18)) (blobTx (List.replicate 7 vh)) =
+  .error (.blobCountExceeded 7)
+#guard (chkAt .prague (worldWith (10 ^ 18)) (blobTx (List.replicate 7 vh))).isOk
+
 /-! ## Blob gas price (`calculate_blob_gas_price`), values from the reference algorithm -/
 
 #guard Gas.blobGasPrice .cancun 0 = 1
