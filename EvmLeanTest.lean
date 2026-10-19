@@ -8,3 +8,7 @@ import EvmLeanTest.Secp256k1
 import EvmLeanTest.Bn254
 import EvmLeanTest.Precompile
 import EvmLeanTest.PrecompileReal
+import EvmLeanTest.Gas
+import EvmLeanTest.InterpreterUtil
+import EvmLeanTest.Interpreter
+import EvmLeanTest.InterpreterCall

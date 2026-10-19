@@ -53,3 +53,6 @@ private def sample (n : Nat) : ByteArray := ⟨Array.ofFn (n := n) fun i => (i.v
 #guard Bytes.ofNatBE 1 0x1234 = ⟨#[0x34]⟩
 #guard Bytes.ofNatMinimal 0 = .empty
 #guard Bytes.ofNatMinimal 256 = ⟨#[1, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ (2 ^ 255) 2 = ⟨#[0, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ 1 4 = ⟨#[2, 3, 0, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ 0 0 = .empty

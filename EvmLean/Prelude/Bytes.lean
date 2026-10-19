@@ -16,8 +16,12 @@ def zeros (n : Nat) : ByteArray := ⟨Array.replicate n 0⟩
 /-- Read `len` bytes of `b` starting at `off`, reading zeros past the end of `b`.
 This is how the EVM reads calldata, code and return data. -/
 def readPadded (b : ByteArray) (off len : Nat) : ByteArray :=
-  let chunk := b.extract off (off + len)
-  chunk ++ zeros (len - chunk.size)
+  -- `ByteArray.extract` panics at runtime for offsets ≥ 2⁶⁴ even on empty ranges, so
+  -- offsets past the end (which may be arbitrary stack words) never reach it.
+  if off < b.size then
+    let chunk := b.extract off (min (off + len) b.size)
+    chunk ++ zeros (len - chunk.size)
+  else zeros len
 
 /-- Byte `i` of `b`, or zero past the end. -/
 def getD (b : ByteArray) (i : Nat) : UInt8 := if h : i < b.size then b[i] else 0
