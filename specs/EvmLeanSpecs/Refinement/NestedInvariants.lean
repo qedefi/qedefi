@@ -123,6 +123,41 @@ theorem DangerStart.gasLt {Good : World → Prop} {G : Nat} {m : Machine}
   have : m.frame.gasLeft = m.frame.msg.gas := by rw [hf]; rfl
   rw [this]; exact Nat.lt_of_le_of_lt h.gas hG
 
+/-! ## Direct transactions -/
+
+/-- **A direct transaction to the vault or the asset is covered** when its own frame is:
+the only frame of the vault or the asset started outside a running frame of theirs is the
+transaction's own (any later fresh frame has the transaction's frame, which is dangerous,
+below it). -/
+theorem txOk_direct {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hdel : delegatedAddress? msg.code = none) (hprot : Prot vault asset msg.currentTarget)
+    (hstatic : msg.isStatic = false)
+    (hcov : ∀ m : Machine, m.frame.msg = msg → m.frame.gasLeft = msg.gas →
+      Covered vault asset minGas m ∧ ∀ c, Executes vault asset m c → Admitted Act K c) :
+    TxOk vault asset minGas Act K ctx w tr msg := by
+  intro m hm hv hp
+  have hb := hm.bottom
+  rw [EvmLean.Interpreter.applyTopLevelDelegation_eq hdeleg hdel] at hb
+  cases hpar : m.parents with
+  | nil =>
+    have hmsg : m.frame.msg = msg := by
+      have : bottom m = m.frame := by simp [bottom, hpar]
+      rw [← this]; exact hb
+    obtain ⟨-, -, -, -, -, hg, -⟩ := hv.fresh.frame
+    exact hcov m hmsg (by rw [hg, hmsg])
+  | cons f fs =>
+    exfalso
+    have hmem : bottom m ∈ m.parents := by
+      rw [hpar]
+      simp only [bottom, hpar]
+      cases h' : (f :: fs).getLast? with
+      | none => simp at h'
+      | some l => exact List.mem_of_getLast? h'
+    refine hp _ hmem ⟨?_, ?_⟩
+    · rw [hb]; exact hprot
+    · rw [hb]; exact hstatic
+
 /-! ## One transaction -/
 
 /-- **One transaction, with the pending obligations as hypotheses.** From a world following
