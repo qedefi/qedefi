@@ -59,3 +59,7 @@ Abstract specifications (Mathlib-based) for contracts verified against evm-lean.
 import EvmLeanSpecs.Refinement.SharesFrame
 import EvmLeanSpecs.Refinement.SharesFrameSpec
 import EvmLeanSpecs.Refinement.SharesFrameViews
+import EvmLeanSpecs.Refinement.NestedSystem
+import EvmLeanSpecs.Refinement.NestedCalls
+import EvmLeanSpecs.Refinement.NestedViews
+import EvmLeanSpecs.Refinement.NestedInvariants

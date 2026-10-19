@@ -428,6 +428,38 @@ theorem initMachine_out (S : GoodOk P Good) {G : Nat} {ctx : Context} {w : World
       · refine .inr ⟨_, rfl, .inl ⟨S.transferValue hw _, ⟨hw, hd, fun h => by cases h⟩,
           by simp, by simp [gasSum, Frame.init]; exact hG, rfl⟩⟩
 
+/-- `stepN` keeps the context and the precompiles. -/
+theorem stepN_consts {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
+    m'.ctx = m.ctx ∧ m'.precompiles = m.precompiles
+  | 0, h => by cases h; exact ⟨rfl, rfl⟩
+  | n + 1, h => by
+    simp only [stepN] at h
+    split at h
+    · cases h
+    · rename_i m₁ h₁
+      have h2 := step_consts h₁
+      have h3 := stepN_consts h
+      exact ⟨h3.1.trans h2.1, h3.2.trans h2.2⟩
+
+/-- The machines a top-level message call reaches run in its context. -/
+theorem Reaches.ctx {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    {m : Machine} (h : Reaches ctx w tr msg m) : m.ctx = ctx := by
+  obtain ⟨m₀, n, hs, hn⟩ := h
+  rw [(stepN_consts hn).1]
+  unfold StartsAt initMachine at hs
+  dsimp only at hs
+  split at hs
+  · cases hs
+  split at hs
+  · cases hs
+  split at hs
+  · split at hs
+    · cases hs
+    · cases hs; rfl
+  · split at hs
+    · cases hs
+    · cases hs; rfl
+
 /-- **The simulation, for a top-level message call.** From a `Good` world, a top-level message
 (`TopOk`: any unprotected caller, any target and code, at most `G` gas), before Prague or
 without EIP-7702 authorizations, ends in a `Good` world — provided every dangerous frame the
