@@ -28,3 +28,11 @@ name = "Conformance"
 name = "conform"
 root = "Conformance.Main"
 supportInterpreter = false
+
+# Differential testing of compiled contracts: evm-lean vs. Foundry (`lake exe difftest`).
+[[lean_lib]]
+name = "Differential"
+
+[[lean_exe]]
+name = "difftest"
+root = "Differential.Main"
