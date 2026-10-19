@@ -1,0 +1,29 @@
+[
+  {
+    "name": "INITIAL_CHAIN_ID",
+    "astId": 5862,
+    "offsets": [
+      1063
+    ],
+    "length": 32,
+    "value": "0x0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  {
+    "name": "INITIAL_DOMAIN_SEPARATOR",
+    "astId": 5864,
+    "offsets": [
+      1116
+    ],
+    "length": 32,
+    "value": "0x3172591bdb0a6077c200f18f682cdc5fd61225ba8f0a1cb3607ab99e9e484321"
+  },
+  {
+    "name": "decimals",
+    "astId": 5848,
+    "offsets": [
+      345
+    ],
+    "length": 32,
+    "value": "0x0000000000000000000000000000000000000000000000000000000000000012"
+  }
+]

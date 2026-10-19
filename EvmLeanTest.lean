@@ -20,3 +20,4 @@ import EvmLeanTest.TxIntegration
 import EvmLeanTest.Delegation
 import EvmLeanTest.Bls12381Precompile
 import EvmLeanTest.P256
+import EvmLeanTest.Contracts
