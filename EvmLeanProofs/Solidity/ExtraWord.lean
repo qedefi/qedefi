@@ -197,6 +197,12 @@ theorem iszero_of_ne {x : Word} (h : x ≠ 0#256) : Word.iszero x = 0#256 := by
   simp only [Word.iszero, Word.ofBool, hb]
   rfl
 
+/-- `EQ x y = 0` for `x ≠ y`. -/
+theorem eq_of_ne {x y : Word} (h : x ≠ y) : Word.eq x y = 0#256 := by
+  have hb : (x == y) = false := by simpa using h
+  simp only [Word.eq, Word.ofBool, hb]
+  rfl
+
 /-- A word is the `ofNat` of its value. -/
 theorem ofNat_toNat_word (x : Word) : BitVec.ofNat 256 x.toNat = x := by
   apply BitVec.eq_of_toNat_eq; simp

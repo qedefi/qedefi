@@ -39,7 +39,8 @@ def Reverts (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
 set_option maxHeartbeats 0 in
 /-- **`transfer(to, amount)` of the asset, success**, in any non-static frame: when the
 caller's balance covers `amount`. -/
-theorem transfer_halts_ok (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m)
+theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {to : Address}
     {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
@@ -53,13 +54,14 @@ theorem transfer_halts_ok (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m)
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
       = 1 := iszero_slt_calldatasize hsize (by omega)
   simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
   fresh_intro
-  wp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
   simp only [gt_sub_self_of_le hbal, iszero_zero]
-  wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
-  wp_codecopy
-  wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_codecopy
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
   refine ⟨rfl, by simp only [outputMachine, transferWorld, balanceSlot_solmate], rfl, rfl, ?_⟩
   dsimp only [outputMachine]
   evm_gas
@@ -67,7 +69,8 @@ theorem transfer_halts_ok (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m)
 set_option maxHeartbeats 0 in
 /-- **`transfer(to, amount)` of the asset, insufficient balance**, in any frame: the checked
 subtraction panics (`Panic(0x11)`). -/
-theorem transfer_halts_revert (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m)
+theorem transfer_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) {to : Address}
     {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 10000 ≤ m.frame.gasLeft)
@@ -82,11 +85,12 @@ theorem transfer_halts_revert (m : Machine) (hf : Fresh SolmateAsset.runtimeCode
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
       = 1 := iszero_slt_calldatasize hsize (by omega)
   simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
   fresh_intro
-  wp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
   simp only [gt_sub_self_of_lt hbal, iszero_one]
-  wp_steps
+  pwp_steps
   refine ⟨⟨_, rfl⟩, ?_⟩
   dsimp only [outputMachine]
   evm_gas

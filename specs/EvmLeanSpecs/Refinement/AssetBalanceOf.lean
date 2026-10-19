@@ -5,12 +5,15 @@ import EvmLeanProofs.Solidity.Tactic
 import EvmLeanProofs.Solidity.Dispatch
 import EvmLeanProofs.Solidity.ExtraWord
 import EvmLeanProofs.Contracts.SolmateAsset
+import EvmLeanProofs.Solidity.ExtraPatchedWP
+import EvmLeanProofs.KernelRfl
 
 /-!
 # The asset's `balanceOf` as a callee summary
 
 `balanceOf_halts`: `balanceOf(address)` of the deployed asset (`Contracts.SolmateAsset`,
-Solmate `MockERC20`) run in **any** fresh frame — a top-level call or a frame pushed by
+Solmate `MockERC20`, deployed with arbitrary immutables `ia`: chain id, domain separator,
+decimals; `SolmateAsset.runtimeCodeWith ia`) run in **any** fresh frame — a top-level call or a frame pushed by
 `CALL`/`STATICCALL` from another contract, at any depth, with any parents — returns the word
 in the balance slot of the argument and changes nothing. It is stated as `Halts`, the form the
 callee-summary rules `WP.call` / `WP.staticcall` consume.
@@ -52,6 +55,12 @@ macro "fresh_intro" : tactic => `(tactic| (
   wp_hide_jump_tables
   subst hs hpc hc hmem))
 
+/-- The asset's immutables only patch `PUSH32` immediates: its jump table is the canonical one,
+for all immutables (kernel evaluation of the `JUMPDEST` scan). -/
+theorem assetJumpDestsAgree (ia : SolmateAsset.Immutables) :
+    JumpDestsAgree (SolmateAsset.runtimeCodeWith ia) SolmateAsset.runtimeCode := by
+  unfold JumpDestsAgree; kernel_decide
+
 /-- The dispatcher's `CALLDATASIZE < 4` test fails for calldata holding a selector. -/
 theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by
@@ -65,7 +74,8 @@ theorem balanceSlot_solmate (crypto : Crypto) (a : Address) :
 
 set_option maxHeartbeats 0 in
 /-- **`balanceOf(a)` of the asset, in any frame.** -/
-theorem balanceOf_halts (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m) (a : Address)
+theorem balanceOf_halts {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (a : Address)
     (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = balanceOfSelector)
     (hsize : 36 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 64)
@@ -73,14 +83,13 @@ theorem balanceOf_halts (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m) (a
     (hg : 3000 ≤ m.frame.gasLeft) :
     Halts m (BalanceOfPost a m) := by
   apply WP.halts_of_false
-  obtain ⟨hc, hj, hpc, hs, hmem, -, -⟩ := hf.frame
-  clear hf
   have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
   have hsel' := Dispatch.selector_eq hsel
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 32))
       = 1 := iszero_slt_calldatasize hsize (by omega)
-  wp_intro m
-  wp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg,
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg,
     ofAddress_and_addressMask, Solidity.eq_self, Memory.read_64, balanceOfSelector]
   refine ⟨rfl, rfl, rfl, rfl, rfl, ?_⟩
   dsimp only [outputMachine]
