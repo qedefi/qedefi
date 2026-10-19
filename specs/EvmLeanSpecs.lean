@@ -12,3 +12,4 @@ import EvmLeanSpecs.Refinement.SharesTransfer
 import EvmLeanSpecs.Refinement.SharesApprove
 import EvmLeanSpecs.Refinement.SharesTransferFrom
 import EvmLeanSpecs.Refinement.SharesTransferFromRevert
+import EvmLeanSpecs.Refinement.SharesViews
