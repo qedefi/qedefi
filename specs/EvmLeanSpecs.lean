@@ -25,6 +25,7 @@ import EvmLeanSpecs.Refinement.DepositConvert
 import EvmLeanSpecs.Refinement.DepositModel
 import EvmLeanSpecs.Refinement.Deposit
 import EvmLeanSpecs.Refinement.Mint
+import EvmLeanSpecs.Refinement.DepositCall
 import EvmLeanSpecs.Refinement.AssetApprove
 import EvmLeanSpecs.Refinement.AssetMint
 import EvmLeanSpecs.Refinement.AssetBurn
@@ -46,6 +47,7 @@ import EvmLeanSpecs.Refinement.Withdraw
 import EvmLeanSpecs.Refinement.Redeem
 import EvmLeanSpecs.Refinement.WithdrawRefines
 import EvmLeanSpecs.Refinement.InvariantsWithdrawRedeem
+import EvmLeanSpecs.Refinement.InvariantsDepositMint
 
 /-!
 # EvmLeanSpecs

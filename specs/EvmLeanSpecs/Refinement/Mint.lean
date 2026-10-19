@@ -1,11 +1,22 @@
 import EvmLeanSpecs.Refinement.Deposit
 
+/-!
+# `mint(shares, receiver)` refines the model, in any frame
+
+`mint_refines`: as `deposit_refines`, for `mint(shares, receiver)`: `previewMint_wp_gas`
+(rounding up; no zero check), `safeTransferFrom_wp` of the previewed assets, `mintShares_wp` of
+`shares`, the `Deposit` event, `afterDeposit_wp`. On the model's `some (s', assets)` the call
+returns the ABI word of `assets`, the world is `depositWorld` and represents `s'`; on `none`
+it reverts. Same hypotheses as `deposit_refines`.
+-/
+
 namespace EvmLeanSpecs.Refinement
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open Vault Shares
 
 set_option maxHeartbeats 0 in
+/-- **`mint(shares, receiver)` refines `Solmate.mint`**, in any frame. -/
 theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {shares : Word} {receiver : Address}

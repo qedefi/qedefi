@@ -2,6 +2,24 @@ import EvmLeanSpecs.Refinement.AssetCallIn
 import EvmLeanSpecs.Refinement.AssetMint
 import EvmLeanProofs.Solidity.InExtraWord
 
+/-!
+# The vault's `_mint` and `afterDeposit` as internal functions
+
+After pulling the assets (`safeTransferFrom_wp`), `deposit` and `mint` jump to two internal
+functions of the compiled vault (immutables `i`), summarised here once for both:
+
+* `mintShares_wp`: Solmate `ERC20._mint(to, amount)` (entry `0x0fdc`, stack
+  `amount :: to :: r :: rest`): `totalSupply += amount` (checked: on overflow `Panic(0x11)`),
+  `balanceOf[to] += amount` (unchecked), `emit Transfer(0, to, amount)` (the topic is
+  `CODECOPY`d); the world is `mintWorld` (shared with the asset's `mint`, `AssetMint`);
+* `afterDeposit_wp`: `MockERC4626.afterDeposit` (entry `0x1033`): the checked
+  `afterDepositHookCalledCounter++` (slot 7); the world is `bumpWorld`.
+
+Both work on memory in the shape `FmpAfterTransfer` (free pointer `0x80` / `0xa0`) and keep it.
+`readBytes_code_asset2014` / `readBytes_code_asset2169` read the `asset` immutable at the
+`PUSH32`s of `deposit` and `mint`.
+-/
+
 namespace EvmLeanSpecs.Refinement
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
@@ -30,6 +48,8 @@ theorem readBytes_code_asset2169 (i : SolmateVault.Immutables) :
     (by simp)
 
 set_option maxHeartbeats 0 in
+/-- **`_mint(to, amount)` (internal, entry `0x0fdc`)**: without supply overflow it returns to
+`r` with the world `mintWorld` (at most 55000 gas); on overflow it reverts. -/
 theorem mintShares_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {dst : Address} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -77,6 +97,9 @@ def bumpWorld (w : World) (vault : Address) : World :=
   w.sstore vault 7#256 (1#256 + w.sload vault 7#256)
 
 set_option maxHeartbeats 0 in
+/-- **`afterDeposit(assets, shares)` (internal, entry `0x1033`)**: without counter overflow it
+returns to `r` with the world `bumpWorld` (at most 30000 gas); at `type(uint256).max` it
+reverts. -/
 theorem afterDeposit_wp {i : SolmateVault.Immutables} (m : Machine) {x y r : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)

@@ -1,4 +1,5 @@
 import EvmLeanSpecs.Refinement.DepositInternal
+import EvmLeanSpecs.Refinement.WithdrawSteps
 
 /-!
 # `deposit` / `mint`: the world they produce, seen through the abstraction
@@ -12,10 +13,10 @@ Both entry points do the same three writes, in this order (Solmate `ERC4626` wit
    `totalSupply += shares` (checked), `balanceOf[receiver] += shares`;
 3. `afterDepositHookCalledCounter++` (slot 7, checked; `bumpWorld`, `afterDeposit_wp`).
 
-`depositWorld` is that world. `refinesAllow_depositWorld` relates it to the model: when the
+`depositWorld` is that world. `refinesOn_depositWorld` relates it to the model: when the
 model's `Token.transferFrom` of the asset ledger, `Token.mint` of the share ledger and `bump`
 of the counter all succeed, the world after the three writes represents the model's new state
-(`RefinesAllow`: both ledgers as `Shares.RepOn`, the two counters exactly).
+(`Out.RefinesOn`: both ledgers as `Shares.RepOn`, the two counters exactly).
 
 ## Hypotheses (all on the hash, all of the "fresh slot" kind)
 
@@ -180,28 +181,6 @@ def depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Ad
   bumpWorld (mintWorld crypto (Erc20.transferFromWorld crypto w asset vault caller vault assets)
     vault receiver shares) vault
 
-/-- The model state is represented by the storage, with the allowances of the shares known on
-`P` and those of the asset on `Q` (the `Refines` relation weakened to `Shares.RepOn`, as after
-writes). -/
-structure RefinesAllow (P Q : Address → Address → Prop) (crypto : Crypto) (w : World)
-    (vault asset : Address) (s : Solmate.State Address) : Prop where
-  /-- The vault's address. -/
-  self : s.self = vault
-  /-- The share ledger, allowances on `P`. -/
-  shares : RepOn P (Erc20.view crypto Erc20.Layout.solmate w vault) s.shares
-  /-- The asset ledger, allowances on `Q`. -/
-  asset : RepOn Q (Erc20.view crypto Erc20.Layout.solmate w asset) s.asset
-  /-- `afterDepositHookCalledCounter` (slot 7). -/
-  afterDeposit : (w.sload vault 7#256).toNat = s.afterDepositCount
-  /-- `beforeWithdrawHookCalledCounter` (slot 6). -/
-  beforeWithdraw : (w.sload vault 6#256).toNat = s.beforeWithdrawCount
-
-/-- `Refines` is `RefinesAllow` with all allowances. -/
-theorem RefinesAllow.of_refines {crypto : Crypto} {w : World} {vault asset : Address}
-    {s : Solmate.State Address} (h : Refines crypto w vault asset s) :
-    RefinesAllow (fun _ _ => True) (fun _ _ => True) crypto w vault asset s :=
-  ⟨h.self, h.shares, h.asset, h.afterDeposit, h.beforeWithdraw⟩
-
 /-- The share allowances known after `deposit` / `mint` for `receiver`: those whose slot is
 none of the written slots (2, the receiver's balance slot, 7). -/
 def DepositAllowances (crypto : Crypto) (receiver : Address) (o sp : Address) : Prop :=
@@ -251,7 +230,7 @@ theorem code_depositWorld (crypto : Crypto) (w : World) (vault asset caller rece
   split <;> simp
 
 /-- **The world after `deposit` / `mint` represents the model's new state.** -/
-theorem refinesAllow_depositWorld {crypto : Crypto} {w : World} {vault asset caller receiver : Address}
+theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller receiver : Address}
     (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
@@ -263,7 +242,7 @@ theorem refinesAllow_depositWorld {crypto : Crypto} {w : World} {vault asset cal
     (ht : (abs crypto w vault asset).asset.transferFrom vault caller vault assets.toNat = some t')
     (hm : (abs crypto w vault asset).shares.mint receiver shares.toNat = some sh)
     (hc : Solmate.bump (abs crypto w vault asset).afterDepositCount = some c) :
-    RefinesAllow (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
+    Out.RefinesOn (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
       crypto (depositWorld crypto w vault asset caller receiver assets shares) vault asset
       { abs crypto w vault asset with asset := t', shares := sh, afterDepositCount := c } := by
   obtain ⟨h2, h6, h7⟩ := balanceSlot_ne_fixed hk receiver
@@ -359,14 +338,14 @@ theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ 
     (hov : (w.sload vault 2#256).toNat + v < 2 ^ 256)
     (hov7 : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
     ∃ s', Solmate.deposit (abs crypto w vault asset) caller assets.toNat receiver = some (s', v) ∧
-      RefinesAllow (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
+      Out.RefinesOn (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
         crypto (depositWorld crypto w vault asset caller receiver assets (BitVec.ofNat 256 v))
         vault asset s' := by
   obtain ⟨sh, hm⟩ := shares_mint_some (asset := asset) (receiver := receiver) hov
   have hb := bump_some (crypto := crypto) (asset := asset) hov7
   refine ⟨_, deposit_some hpv hv0 hT hm hb, ?_⟩
   have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
-  exact refinesAllow_depositWorld hne hk hbc hbv hbr ha hinv hT (by rw [hvn]; exact hm) hb
+  exact refinesOn_depositWorld hne hk hbc hbv hbr ha hinv hT (by rw [hvn]; exact hm) hb
 
 /-- **Successful `mint`, model side**: when every step of the bytecode succeeded, the model
 succeeds with the same assets, and `depositWorld` represents its result. -/
@@ -382,13 +361,13 @@ theorem mint_post_some {shares : Word} {t' : Token Address} (hne : vault ≠ ass
     (hov : (w.sload vault 2#256).toNat + shares.toNat < 2 ^ 256)
     (hov7 : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
     ∃ s', Solmate.mint (abs crypto w vault asset) caller shares.toNat receiver = some (s', v) ∧
-      RefinesAllow (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
+      Out.RefinesOn (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
         crypto (depositWorld crypto w vault asset caller receiver (BitVec.ofNat 256 v) shares)
         vault asset s' := by
   obtain ⟨sh, hm⟩ := shares_mint_some (asset := asset) (receiver := receiver) hov
   have hb := bump_some (crypto := crypto) (asset := asset) hov7
   refine ⟨_, mint_some hpv hT hm hb, ?_⟩
   have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
-  exact refinesAllow_depositWorld hne hk hbc hbv hbr ha hinv (by rw [hvn]; exact hT) hm hb
+  exact refinesOn_depositWorld hne hk hbc hbv hbr ha hinv (by rw [hvn]; exact hT) hm hb
 
 end EvmLeanSpecs.Refinement

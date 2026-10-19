@@ -2,6 +2,28 @@ import EvmLeanSpecs.Refinement.DepositModel
 import EvmLeanSpecs.Refinement.DepositConvert
 import EvmLeanSpecs.Refinement.VaultViewsSpec
 
+/-!
+# `deposit(assets, receiver)` refines the model, in any frame
+
+`deposit_refines`: the compiled vault (any immutables `i`), run in any frame satisfying
+`ViewPre i` that is non-static and has at least 250000 gas (top level or called by another
+contract), on calldata `deposit(assets, receiver)` (`TwoWordCall`, so also calldata assembled
+by a calling contract), ends as the model's `Solmate.deposit` of `absOf i.asset m` says
+(`EntryPost`): on `some (s', shares)` it returns the ABI word of `shares`, the world is
+`depositWorld` and represents `s'`; on `none` it reverts (and the frame's rollback restores
+the world).
+
+The proof composes, by `WP.bind_mono`, the dispatcher and ABI decoder (symbolic execution),
+`convertToShares_wp_gas` (`previewDeposit`), the `ZERO_SHARES` check, `safeTransferFrom_wp`
+(the `CALL` into the asset), `mintShares_wp`, the `Deposit` event, `afterDeposit_wp` and the
+return encoder; each revert point is matched with the model step that fails
+(`deposit_none_*`), and the success case with `deposit_post_some`.
+
+Hypotheses beyond `ViewPre`: the vault is not the asset; the hash hypotheses of
+`DepositModel` (fresh balance slots of caller, vault, receiver; fresh `allowance[caller][vault]`
+of the asset; no balance slot is 2, 6 or 7); `Solmate.Inv` of the model state.
+-/
+
 namespace EvmLeanSpecs.Refinement
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
@@ -15,10 +37,11 @@ def EntryPost (m : Machine) (asset : Address) (P Q : Address → Address → Pro
     Prop :=
   match r with
   | some (s', v) => o = .success (Bytes.ofWord (BitVec.ofNat 256 v)) ∧ mf.world = W v ∧
-      RefinesAllow P Q m.ctx.crypto mf.world m.frame.msg.currentTarget asset s'
+      Out.RefinesOn P Q m.ctx.crypto mf.world m.frame.msg.currentTarget asset s'
   | none => ∃ out, o = .revert out
 
 set_option maxHeartbeats 0 in
+/-- **`deposit(assets, receiver)` refines `Solmate.deposit`**, in any frame. -/
 theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {assets : Word} {receiver : Address}
