@@ -135,8 +135,88 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     pwp_steps [hM64, hMs, permit_norm, Memory.read_160]
     apply WP.ret
     refine ⟨_, _, _, rfl, .inr ⟨?_, ?_⟩, by omega⟩
-    · simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint,
-        Memory.loadWord_storeWord]
+    · simp only [Memory.loadWord_expand, Memory.loadWord_storeWord]
     · simp only [permit_norm, hMs]
+
+end EvmLeanSpecs.Refinement.Permit
+
+namespace EvmLeanSpecs.Refinement.Permit
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+
+set_option maxHeartbeats 0 in
+/-- **`DOMAIN_SEPARATOR()` of the asset**, in any fresh frame: returns
+`Permit.domainSeparator …` (the immutable on the deployment chain, else recomputed from the
+short name in slot 0) as one word; the world is unchanged. -/
+theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0)
+    (hsel : Abi.selectorOf m.frame.msg.data = 0x3644e515)
+    (hsize : 4 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 64)
+    (hcase : DomainCase ia.initialChainId (ofNat m.ctx.block.chainId)
+      (m.world.sload m.frame.msg.currentTarget 0#256))
+    (hg : 20000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
+    Halts m (fun mf o =>
+      o = .success (Bytes.ofWord (dsOf ia.initialChainId ia.initialDomainSeparator m)) ∧
+      mf.world = m.world ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + 10000) := by
+  apply WP.halts_of_false
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_run_to 1060 [hval, hsel', hlt, Abi.shr_calldataload_zero]
+  refine WP.bind_mono (asset_ds_wp _ rfl hj rfl rfl (by simp) (by pjumpdest_disch)
+    (Memory.loadWord_storeWord _ _ _) (by simp [Memory.size_storeWord, Memory.size_expand,
+      Memory.wordsAfter, Memory.words]) hcase (by dsimp only; omega) (by dsimp only; omega))
+    (fun _ _ _ h => h.elim) ?_
+  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb⟩
+  dsimp only [Machine.resumeWith] at hgb ⊢
+  simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  simp only [dsOf]
+  rcases hmem with ⟨h64, hs⟩ | ⟨h64, hs⟩
+  · pwp_steps [h64, hs, permit_norm]
+    refine ⟨by first | trivial | rfl, by dsimp only [outputMachine], ?_⟩
+    dsimp only [outputMachine]; evm_gas
+  · pwp_steps [h64, hs, permit_norm]
+    refine ⟨by first | trivial | rfl, by dsimp only [outputMachine], ?_⟩
+    dsimp only [outputMachine]; evm_gas
+
+end EvmLeanSpecs.Refinement.Permit
+
+namespace EvmLeanSpecs.Refinement.Permit
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+
+/-- `nonceSlot` as symbolic execution computes it (`keccak256(owner ‖ 5)`). -/
+theorem nonceSlot_eq (crypto : Crypto) (a : Address) :
+    nonceSlot crypto a = crypto.keccak256 (Bytes.ofWord (Word.ofAddress a) ++ Bytes.ofWord 5#256) :=
+  rfl
+
+set_option maxHeartbeats 0 in
+/-- **`nonces(owner)` of the asset**, in any fresh frame: returns the word in `nonces[owner]`
+(slot `keccak(owner ‖ 5)`); the world is unchanged. -/
+theorem asset_nonces_halts {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (owner : Address)
+    (hval : m.frame.msg.value = 0)
+    (hsel : Abi.selectorOf m.frame.msg.data = 0x7ecebe00)
+    (hsize : 36 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 64)
+    (harg : Bytes.toWord (readBytes m.frame.msg.data 4 32) = Word.ofAddress owner)
+    (hg : 3000 ≤ m.frame.gasLeft) :
+    Halts m (fun mf o =>
+      o = .success (Bytes.ofWord (m.world.sload m.frame.msg.currentTarget
+        (nonceSlot m.ctx.crypto owner))) ∧
+      mf.world = m.world ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + 3000) := by
+  apply WP.halts_of_false
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 32))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg,
+    ofAddress_and_addressMask, Solidity.eq_self, Memory.read_64]
+  refine ⟨rfl, by dsimp only [outputMachine], ?_⟩
+  dsimp only [outputMachine]
+  evm_gas
 
 end EvmLeanSpecs.Refinement.Permit
