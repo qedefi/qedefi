@@ -65,7 +65,7 @@ byte string for typed ones. -/
 def bodyRlp (tx : Transaction) : Rlp :=
   match tx with
   | .legacy _ => tx.fieldsRlp
-  | _ => .bytes tx.encode
+  | .eip2930 _ | .eip1559 _ | .eip4844 _ => .bytes tx.encode
 
 /-- The EIP-155 chain id encoded in a legacy `v ≥ 35`. -/
 def legacyChainId (v : Nat) : Nat := (v - 35) / 2
