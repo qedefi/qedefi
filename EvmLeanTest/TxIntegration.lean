@@ -3,8 +3,7 @@ import EvmLeanTest.TxSupport
 /-!
 Integration tests for the transaction layer, blocks and tries that need the real
 primitives (`Crypto.real`: Keccak, secp256k1) and, for the end-to-end block, the
-interpreter. They are deliberately **not** imported from `EvmLeanTest.lean` until those
-are implemented: build them explicitly with `lake build EvmLeanTest.TxIntegration`.
+interpreter.
 
 Vectors: `TrieTests/trieanyorder.json` and `trieanyorder_secureTrie.json` from
 `ethereum/tests`, the execution-specs constants `EMPTY_TRIE_ROOT` / `EMPTY_OMMER_HASH`, and

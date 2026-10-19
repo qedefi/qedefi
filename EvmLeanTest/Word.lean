@@ -1,4 +1,4 @@
-import EvmLean.Prelude.Word
+import EvmLean.Prelude.Bytes
 
 /-! Unit tests for `EvmLean.Prelude.Word`. -/
 
@@ -41,3 +41,18 @@ open EvmLean
 #guard Word.sar (BitVec.intMin 256) 1 = 0
 #guard Word.exp 3 (-1) = BitVec.ofNat 256 (Nat.powMod 3 (2^256 - 1) (2^256))
 #guard Word.exp 7 3 = 343
+
+/-! `Bytes` conversions (chunked fast paths agree with the bytewise definition). -/
+
+private def slowToNat (b : ByteArray) : Nat := b.foldl (fun acc x => acc * 256 + x.toNat) 0
+private def sample (n : Nat) : ByteArray := ⟨Array.ofFn (n := n) fun i => (i.val * 37 + 11).toUInt8⟩
+#guard (List.range 70).all fun n => Bytes.toNat (sample n) = slowToNat (sample n)
+#guard Bytes.toWord (Bytes.ofWord (-1)) = -1
+#guard Bytes.toWord (Bytes.ofWord 0x1234) = 0x1234
+#guard Bytes.ofNatBE 2 0x1234 = ⟨#[0x12, 0x34]⟩
+#guard Bytes.ofNatBE 1 0x1234 = ⟨#[0x34]⟩
+#guard Bytes.ofNatMinimal 0 = .empty
+#guard Bytes.ofNatMinimal 256 = ⟨#[1, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ (2 ^ 255) 2 = ⟨#[0, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ 1 4 = ⟨#[2, 3, 0, 0]⟩
+#guard Bytes.readPadded ⟨#[1, 2, 3]⟩ 0 0 = .empty

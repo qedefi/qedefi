@@ -17,12 +17,11 @@ Validation, intrinsic gas and execution of a single transaction, following
 | `resolveSender`      | `recover_sender` (`transactions.py`)                 |
 | `check`              | `check_transaction` (`fork.py`)                      |
 | `process`            | `process_transaction` + `prepare_message` (`fork.py`, `utils/message.py`) |
-| `blobGasPrice`       | `calculate_blob_gas_price` (`vm/gas.py`)             |
 
 Every rejection is a constructor of `InvalidTx`; fee arithmetic is in `Nat`, so a huge
 `gas * maxFeePerGas` is simply a large number that fails the balance check, never a
-wrapped-around one. EIP-161 clean-up follows the reference's `modify_state`: an account that
-is empty after a balance change made here is deleted.
+wrapped-around one. State changes use the interpreter's `modify_state` helpers
+(`Interpreter.modifyState` …), so an account left empty by a change is deleted (EIP-161).
 -/
 
 namespace EvmLean.Tx
@@ -35,48 +34,29 @@ def txBase : Nat := 21000
 def txDataPerZero : Nat := 4
 /-- `TX_DATA_PER_NON_ZERO`. -/
 def txDataPerNonZero : Nat := 16
-/-- `TX_CREATE`: extra cost of a contract-creation transaction. -/
-def txCreate : Nat := 32000
 /-- `TX_ACCESS_LIST_ADDRESS`. -/
 def txAccessListAddress : Nat := 2400
 /-- `TX_ACCESS_LIST_STORAGE_KEY`. -/
 def txAccessListStorageKey : Nat := 1900
-/-- `CODE_INIT_PER_WORD` (EIP-3860). -/
-def codeInitPerWord : Nat := 2
-/-- `MAX_INIT_CODE_SIZE = 2 * MAX_CODE_SIZE` (EIP-3860, `vm/interpreter.py`). -/
-def maxInitCodeSize : Nat := 2 * 0x6000
 /-- `GasCosts.PER_BLOB`: blob gas per blob (EIP-4844). -/
 def gasPerBlob : Nat := 2 ^ 17
-/-- `BLOB_MIN_GASPRICE`. -/
-def minBlobGasPrice : Nat := 1
 /-- `VERSIONED_HASH_VERSION_KZG`: required first byte of a blob versioned hash. -/
 def versionedHashVersionKzg : Nat := 0x01
-/-- The EIP-2681 nonce limit: transaction nonces must be below `2⁶⁴ - 1`. -/
-def maxNonce : Nat := 2 ^ 64 - 1
-
 /-- Per-fork blob parameters (EIP-4844; EIP-7691 raised them in Prague). -/
 structure BlobParams where
   /-- `BLOB_TARGET_GAS_PER_BLOCK`. -/
   targetGasPerBlock : Nat
   /-- `MAX_BLOB_GAS_PER_BLOCK`. -/
   maxGasPerBlock : Nat
-  /-- `BLOB_BASE_FEE_UPDATE_FRACTION`. -/
-  baseFeeUpdateFraction : Nat
 
 /-- Blob parameters of `fork`. Cancun: target 3 blobs, max 6 (`cancun/vm/gas.py`,
 `cancun/fork.py`). Prague and Osaka: target 6, max 9 (EIP-7691). -/
 def blobParams : Fork → BlobParams
-  | .cancun => { targetGasPerBlock := 393216, maxGasPerBlock := 786432,
-                 baseFeeUpdateFraction := 3338477 }
-  | .prague => { targetGasPerBlock := 786432, maxGasPerBlock := 1179648,
-                 baseFeeUpdateFraction := 5007716 }
-  | .osaka => { targetGasPerBlock := 786432, maxGasPerBlock := 1179648,
-                baseFeeUpdateFraction := 5007716 }
+  | .cancun => { targetGasPerBlock := 393216, maxGasPerBlock := 786432 }
+  | .prague => { targetGasPerBlock := 786432, maxGasPerBlock := 1179648 }
+  | .osaka => { targetGasPerBlock := 786432, maxGasPerBlock := 1179648 }
 
 /-! ## Intrinsic gas and blob fees -/
-
-/-- `init_code_cost`: EIP-3860 charge of 2 gas per 32-byte word of init code. -/
-def initCodeCost (len : Nat) : Nat := codeInitPerWord * ((len + 31) / 32)
 
 /-- Number of zero bytes in `b`. -/
 def zeroBytes (b : ByteArray) : Nat := b.foldl (fun n x => if x = 0 then n + 1 else n) 0
@@ -87,30 +67,10 @@ init-code charge) and access list (2400 per address, 1900 per storage key). -/
 def intrinsicGas (tx : Transaction) : Nat :=
   let zeros := zeroBytes tx.data
   let dataCost := zeros * txDataPerZero + (tx.data.size - zeros) * txDataPerNonZero
-  let createCost := if tx.isCreate then txCreate + initCodeCost tx.data.size else 0
+  let createCost := if tx.isCreate then Gas.createCost tx.data.size else 0
   let accessListCost := tx.accessList.foldl
     (fun c i => c + txAccessListAddress + i.storageKeys.length * txAccessListStorageKey) 0
   txBase + dataCost + createCost + accessListCost
-
-/-- `taylor_exponential` with explicit fuel: approximates `factor * e ^ (num / denom)` by
-summing Taylor terms until a term rounds to zero. -/
-def taylorLoop (num denom : Nat) : Nat → Nat → Nat → Nat → Nat
-  | 0, _, output, _ => output
-  | fuel + 1, i, output, acc =>
-    if acc = 0 then output
-    else taylorLoop num denom fuel (i + 1) (output + acc) ((acc * num) / (denom * i))
-
-/-- `taylor_exponential(factor, num, denom) = (Σᵢ termᵢ) / denom`. The terms halve once
-`i > 2·num/denom` and never exceed `factor·denom·e^(num/denom)`, so the fuel below always
-lets the sum reach a zero term. -/
-def taylorExponential (factor num denom : Nat) : Nat :=
-  let acc := factor * denom
-  let fuel := 4 * (num / denom + 1) + acc.log2 + 8
-  taylorLoop num denom fuel 1 0 acc / denom
-
-/-- `calculate_blob_gas_price`: the blob base fee for a block with `excessBlobGas`. -/
-def blobGasPrice (fork : Fork) (excessBlobGas : Nat) : Nat :=
-  taylorExponential minBlobGasPrice excessBlobGas (blobParams fork).baseFeeUpdateFraction
 
 /-- `calculate_total_blob_gas`: blob gas consumed by `tx`. -/
 def totalBlobGas (tx : Transaction) : Nat := gasPerBlob * tx.blobVersionedHashes.length
@@ -204,12 +164,12 @@ def feeCaps? : Transaction → Option (Nat × Nat)
   | .eip4844 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
 
 /-- Stateless validity; returns the intrinsic gas. Mirrors `validate_transaction`. -/
-def validate (tx : Transaction) : Except InvalidTx Nat := do
+def validate (fork : Fork) (tx : Transaction) : Except InvalidTx Nat := do
   let intrinsic := intrinsicGas tx
   if intrinsic > tx.gas then throw (.intrinsicGasTooLow intrinsic tx.gas)
-  if tx.isCreate && tx.data.size > maxInitCodeSize then
+  if tx.isCreate && tx.data.size > Gas.maxInitCodeSize fork then
     throw (.initCodeSizeExceeded tx.data.size)
-  if tx.nonce ≥ maxNonce then throw (.nonceOverflow tx.nonce)
+  if tx.nonce ≥ Gas.maxNonce then throw (.nonceOverflow tx.nonce)
   match feeCaps? tx with
   | some (maxFee, maxPrio) =>
     if maxFee < maxPrio then throw (.priorityFeeGreaterThanMaxFee maxPrio maxFee)
@@ -309,7 +269,7 @@ def blobChecks (fork : Fork) (env : BlockEnv) : Transaction → Except InvalidTx
     if t.blobVersionedHashes.isEmpty then throw .noBlobData
     if t.blobVersionedHashes.any (versionByte · ≠ versionedHashVersionKzg) then
       throw .invalidBlobVersionedHash
-    let price := blobGasPrice fork env.excessBlobGas
+    let price := Gas.blobGasPrice fork env.excessBlobGas
     if t.maxFeePerBlobGas < price then
       throw (.insufficientMaxFeePerBlobGas t.maxFeePerBlobGas price)
     return totalBlobGas (.eip4844 t) * t.maxFeePerBlobGas
@@ -342,16 +302,11 @@ def check (crypto : Crypto) (fork : Fork) (env : BlockEnv) (gasAvailable blobGas
 
 /-! ## Execution -/
 
-/-- Apply `f` to the account at `a`, then delete it if it is empty. Mirrors `modify_state`
-in `cancun/state_tracker.py` (EIP-161: an account left empty by a change is removed). -/
-def modifyClean (w : World) (a : Address) (f : Account → Account) : World :=
-  let w := w.modify a f
-  if (w.account a).isEmpty then w.erase a else w
-
-/-- Credit `amount` wei to `a` (`create_ether`). The sum is reduced modulo 2²⁵⁶, which
+/-- Credit `amount` wei to `a` (`create_ether`); an account left empty is deleted
+(`modify_state`, EIP-161). The sum is reduced modulo 2²⁵⁶, which
 cannot happen for real ether amounts. -/
 def creditBalance (w : World) (a : Address) (amount : Nat) : World :=
-  modifyClean w a fun acc => { acc with balance := BitVec.ofNat 256 (acc.balance.toNat + amount) }
+  Interpreter.modifyState w a fun acc => { acc with balance := BitVec.ofNat 256 (acc.balance.toNat + amount) }
 
 /-- Delete every touched account that exists and is empty (EIP-161,
 `destroy_touched_empty_accounts`). -/
@@ -431,16 +386,16 @@ afterwards (EIP-1153). `fuel` bounds interpreter steps. -/
 def process (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (gasAvailable blobGasAvailable : Nat) (world : World) (tx : Transaction)
     (senderHint : Option Address) : Except TxError TxOutput := do
-  let intrinsic ← (validate tx).mapError .invalid
+  let intrinsic ← (validate fork tx).mapError .invalid
   let c ← (check crypto fork env gasAvailable blobGasAvailable world tx senderHint).mapError
     .invalid
   let sender := c.sender
   let senderAccount := world.account sender
-  let blobGasFee := c.blobGasUsed * blobGasPrice fork env.excessBlobGas
+  let blobGasFee := c.blobGasUsed * Gas.blobGasPrice fork env.excessBlobGas
   let effectiveGasFee := tx.gas * c.effectiveGasPrice
-  let w := modifyClean world sender fun acc => { acc with nonce := acc.nonce + 1 }
-  let w := modifyClean w sender fun acc => { acc with
-    balance := BitVec.ofNat 256 (senderAccount.balance.toNat - effectiveGasFee - blobGasFee) }
+  let w := Interpreter.incrementNonce world sender
+  let w := Interpreter.setAccountBalance w sender
+    (BitVec.ofNat 256 (senderAccount.balance.toNat - effectiveGasFee - blobGasFee))
   let msg := prepareMessage crypto fork env w tx sender senderAccount.nonce (tx.gas - intrinsic)
   let ctx : Context := {
     crypto, fork, block := env,

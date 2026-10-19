@@ -60,7 +60,8 @@ LNSym, and checked against Lean v4.35.0.
 - `@[grind]` annotations sparingly.
 
 ## Tests
-- `#guard` for executable checks, `example … := by decide` for kernel checks,
+- `#guard` for executable checks, `example … := by decide +kernel` (or `rfl`) for kernel
+  checks. Plain `decide` uses the elaborator's reducer and can hang on `ByteArray` code,
   `#guard_msgs in #eval` for printed output. One test file per module in `EvmLeanTest/`.
 - Use official vectors: NIST/FIPS, EIP test cases, go-ethereum precompile JSONs, c-kzg vectors.
 

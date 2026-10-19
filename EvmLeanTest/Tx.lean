@@ -104,23 +104,23 @@ def vh : Word := hw "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e32400
 -- Access list: 2400 per address, 1900 per key.
 #guard intrinsicGas (feeTx 10 1 (accessList := [⟨0xbb, [1, 2]⟩, ⟨0xcc, []⟩])) =
   21000 + 2 * 2400 + 2 * 1900
-#guard initCodeCost 0 = 0
-#guard initCodeCost 1 = 2
-#guard initCodeCost 32 = 2
-#guard initCodeCost 33 = 4
+#guard Gas.initCodeCost 0 = 0
+#guard Gas.initCodeCost 1 = 2
+#guard Gas.initCodeCost 32 = 2
+#guard Gas.initCodeCost 33 = 4
 
 /-! ## `validate_transaction` -/
 
-#guard (validate (legacyTx (gas := 21000))).toOption = some 21000
-#guard validate (legacyTx (gas := 20999)) = .error (.intrinsicGasTooLow 21000 20999)
-#guard validate (legacyTx (nonce := 2 ^ 64 - 1)) = .error (.nonceOverflow (2 ^ 64 - 1))
-#guard (validate (legacyTx (nonce := 2 ^ 64 - 2))).toOption = some 21000
-#guard validate (feeTx 10 11) = .error (.priorityFeeGreaterThanMaxFee 11 10)
-#guard (validate (feeTx 10 10)).toOption = some 21000
+#guard (validate .cancun (legacyTx (gas := 21000))).toOption = some 21000
+#guard validate .cancun (legacyTx (gas := 20999)) = .error (.intrinsicGasTooLow 21000 20999)
+#guard validate .cancun (legacyTx (nonce := 2 ^ 64 - 1)) = .error (.nonceOverflow (2 ^ 64 - 1))
+#guard (validate .cancun (legacyTx (nonce := 2 ^ 64 - 2))).toOption = some 21000
+#guard validate .cancun (feeTx 10 11) = .error (.priorityFeeGreaterThanMaxFee 11 10)
+#guard (validate .cancun (feeTx 10 10)).toOption = some 21000
 -- EIP-3860: init code above 49152 bytes is invalid (gas is checked first).
-#guard validate (legacyTx (to := none) (data := Bytes.zeros 49153) (gas := 10000000)) =
+#guard validate .cancun (legacyTx (to := none) (data := Bytes.zeros 49153) (gas := 10000000)) =
   .error (.initCodeSizeExceeded 49153)
-#guard (validate (legacyTx (to := none) (data := Bytes.zeros 49152) (gas := 10000000))).isOk
+#guard (validate .cancun (legacyTx (to := none) (data := Bytes.zeros 49152) (gas := 10000000))).isOk
 
 /-! ## Signature fields and chain id -/
 
@@ -207,12 +207,12 @@ def price (r : Except InvalidTx Checked) : Option Nat := r.toOption.map (·.effe
 
 /-! ## Blob gas price (`calculate_blob_gas_price`), values from the reference algorithm -/
 
-#guard blobGasPrice .cancun 0 = 1
-#guard blobGasPrice .cancun 2314057 = 1
-#guard blobGasPrice .cancun 2314058 = 2
-#guard blobGasPrice .cancun 3932160 = 3
-#guard blobGasPrice .cancun 16692385 = 148
-#guard blobGasPrice .cancun 100000000 = 10203769476395
+#guard Gas.blobGasPrice .cancun 0 = 1
+#guard Gas.blobGasPrice .cancun 2314057 = 1
+#guard Gas.blobGasPrice .cancun 2314058 = 2
+#guard Gas.blobGasPrice .cancun 3932160 = 3
+#guard Gas.blobGasPrice .cancun 16692385 = 148
+#guard Gas.blobGasPrice .cancun 100000000 = 10203769476395
 #guard totalBlobGas (blobTx [vh, vh]) = 262144
 
 /-! ## EIP-161 helpers -/
