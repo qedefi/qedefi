@@ -119,6 +119,10 @@ def elasticityMultiplier : Nat := 2
 def limitAdjustmentFactor : Nat := 1024
 /-- `LIMIT_MINIMUM`. -/
 def limitMinimum : Nat := 5000
+/-- Maximum block gas limit `2⁶³ - 1` (EIP-1985; geth's `MaxGasLimit`). Not checked by
+execution-specs' `validate_header`, but every client rejects larger limits and the
+conformance suite expects it (`GasLimitHigherThan2p63m1`). -/
+def maxGasLimit : Nat := 2 ^ 63 - 1
 /-- `SYSTEM_ADDRESS` (`0xff…fe`): caller of system transactions. -/
 def systemAddress : Address := 0xfffffffffffffffffffffffffffffffffffffffe
 /-- `BEACON_ROOTS_ADDRESS` (EIP-4788). -/
@@ -275,6 +279,8 @@ inductive HeaderError where
   | gasUsedAboveLimit
   /-- Gas limit outside the bounds of `check_gas_limit`. -/
   | invalidGasLimit (gasLimit parentGasLimit : Nat)
+  /-- Gas limit above `maxGasLimit` (EIP-1985). -/
+  | gasLimitTooBig (gasLimit : Nat)
   /-- Base fee differs from `calculate_base_fee_per_gas`. -/
   | baseFeeMismatch (expected actual : Nat)
   /-- Timestamp not after the parent's. -/
@@ -296,13 +302,15 @@ inductive HeaderError where
 /-- `EMPTY_OMMER_HASH = keccak256(rlp([]))`. -/
 def emptyOmmerHash (keccak256 : ByteArray → Word) : Word := keccak256 (Rlp.list []).encode
 
-/-- `validate_header`, given the parent header and its hash, in the reference's order. -/
+/-- `validate_header`, given the parent header and its hash, in the reference's order, plus
+the EIP-1985 gas-limit cap. -/
 def validateHeader (keccak256 : ByteArray → Word) (fork : Fork) (parent : Header)
     (parentHash : Word) (h : Header) : Except HeaderError Unit := do
   if h.number < 1 then throw .numberZero
   let excess := calcExcessBlobGas fork parent
   if h.excessBlobGas ≠ excess then throw (.excessBlobGasMismatch excess h.excessBlobGas)
   if h.gasUsed > h.gasLimit then throw .gasUsedAboveLimit
+  if h.gasLimit > maxGasLimit then throw (.gasLimitTooBig h.gasLimit)
   if !checkGasLimit h.gasLimit parent.gasLimit then
     throw (.invalidGasLimit h.gasLimit parent.gasLimit)
   let baseFee := calcBaseFeePerGas parent.gasLimit parent.gasUsed parent.baseFeePerGas

@@ -4,11 +4,11 @@ import Conformance.Runner
 # `lake exe conform`
 
 ```
-lake exe conform <dir-or-file> [--threads N] [--filter SUBSTRING] [--fork Cancun]
+lake exe conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork Cancun]
                                [--parse-only] [--results FILE] [--fuel N]
 ```
 
-Walks `<dir>` for `*.json` BlockchainTests fixtures, runs them on `--threads` worker
+Walks each `<dir>` (default `tests/fixtures/BlockchainTests`) for `*.json` BlockchainTests fixtures, runs them on `--threads` worker
 threads with `Crypto.real`, prints a summary (PASSED / FAILED / SKIPPED / UNPARSEABLE, with
 the names of unparseable tests and the first failures) and writes every test's status and
 reason to the results file (default `conformance-results.txt`). The exit code is non-zero
@@ -24,8 +24,8 @@ open EvmLean Lean
 
 /-- Command-line configuration. -/
 structure Config where
-  /-- Fixture directory or file. -/
-  root : System.FilePath := "tests/fixtures/BlockchainTests"
+  /-- Fixture directories or files (default `tests/fixtures/BlockchainTests`). -/
+  roots : Array System.FilePath := #[]
   /-- Worker threads. -/
   threads : Nat := 8
   /-- Substring filter on `file::name`. -/
@@ -37,7 +37,7 @@ structure Config where
 
 /-- Usage text. -/
 def usage : String :=
-  "usage: conform <dir-or-file> [--threads N] [--filter SUBSTRING] [--fork NAME] " ++
+  "usage: conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork NAME] " ++
   "[--parse-only] [--results FILE] [--fuel N]"
 
 /-- Parse the command line. -/
@@ -57,7 +57,7 @@ def parseArgs : List String → Config → Except String Config
     | none => .error s!"--fuel: not a number: {n}"
   | arg :: rest, c =>
     if arg.startsWith "--" then .error s!"unknown option {arg}"
-    else parseArgs rest { c with root := arg }
+    else parseArgs rest { c with roots := c.roots.push arg }
 
 /-- Does `needle` occur in `haystack`? -/
 def containsSubstr (haystack needle : String) : Bool :=
@@ -119,12 +119,13 @@ def runMain (args : List String) : IO UInt32 := do
   let cfg ← match parseArgs args {} with
     | .ok c => pure c
     | .error e => IO.eprintln e; IO.eprintln usage; return 2
-  let files ← jsonFiles cfg.root
+  let roots := if cfg.roots.isEmpty then #[⟨"tests/fixtures/BlockchainTests"⟩] else cfg.roots
+  let files ← roots.foldlM (fun acc r => return acc ++ (← jsonFiles r)) #[]
   if files.isEmpty then
-    IO.eprintln s!"no JSON fixtures found under {cfg.root}"
+    IO.eprintln s!"no JSON fixtures found under {roots}"
     return 2
   let mode := if cfg.opts.parseOnly then "parse-only" else "execute"
-  IO.println s!"conform: {files.size} files under {cfg.root}, {cfg.threads} threads, fork {cfg.opts.fork.name}, mode {mode}"
+  IO.println s!"conform: {files.size} files under {roots}, {cfg.threads} threads, fork {cfg.opts.fork.name}, mode {mode}"
   let start ← IO.monoMsNow
   let results ← runPool files cfg.threads (runFile cfg)
   let results := results.qsort fun a b => a.file < b.file || (a.file == b.file && a.name < b.name)
