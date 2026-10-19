@@ -78,3 +78,10 @@ abstraction is defined through the same slots. Freshness would only matter for *
 * Memory costs with symbolic sizes are not handled by `evm_gas`; the proofs state each
   expansion as `Gas.memoryCost new - Gas.memoryCost old` (`Gas.extendMemory_one/_two`),
   generalize the `Gas.memoryCost` atoms and let `omega` telescope them.
+
+## Build
+
+`cd specs && lake build`. Times (M-series laptop): `StringsVault` 63 s, `StringsVaultLong` 55 s,
+`StringsAsset` 50 s, `StringsAssetLong` 44 s, `StringsVaultSpec` 42 s, `StringsAssetSpec` 15 s,
+`StringsCanonical` 4 s; about 3 min wall clock in parallel. Root files (`EvmLeanProofs/Solidity/Strings*`,
+`EvmLeanTest/Strings`) build in a few seconds each.
