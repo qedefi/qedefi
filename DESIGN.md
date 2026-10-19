@@ -41,7 +41,14 @@ audit found there.
 | Stack | `List Word`, head = top | Structural lemmas |
 | Memory | `ByteArray`, size = 32·words | `MSIZE = bytes.size` |
 
-## Module map and ownership
+## Status (2026-10-19)
+
+Cancun complete: 22,332 / 22,332 BlockchainTests pass (626 other-fork tests skipped). Not yet
+implemented: Prague (EIP-7702 delegation, EIP-2537 BLS precompiles, EIP-2935, EIP-7623) and
+Osaka beyond `CLZ` and the MODEXP changes. Theorems about execution currently instantiate
+`Crypto.real`; a `step` simp set is needed to state them for arbitrary `Crypto`.
+
+## Module map and ownership (initial build)
 
 | Module | Contents | Owner |
 |---|---|---|
