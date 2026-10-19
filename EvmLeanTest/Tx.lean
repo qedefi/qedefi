@@ -95,15 +95,24 @@ def blobTx (hashes : List Word) (maxFeePerBlobGas := 10) (gas := 100000) : Trans
 /-- A valid versioned hash (version byte `0x01`). -/
 def vh : Word := hw "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"
 
-#guard intrinsicGas (legacyTx) = 21000
-#guard intrinsicGas (legacyTx (data := hx "0x0001")) = 21000 + 4 + 16
-#guard intrinsicGas (legacyTx (data := hx "0x00000000ff")) = 21000 + 4 * 4 + 16
+#guard (intrinsicGas (legacyTx)).regular = 21000
+#guard (intrinsicGas (legacyTx (data := hx "0x0001"))).regular = 21000 + 4 + 16
+#guard (intrinsicGas (legacyTx (data := hx "0x00000000ff"))).regular = 21000 + 4 * 4 + 16
 -- Creation: 32000 plus 2 gas per init-code word (EIP-3860); 33 bytes = 2 words.
-#guard intrinsicGas (legacyTx (to := none) (data := Bytes.zeros 33)) = 21000 + 33 * 4 + 32000 + 4
-#guard intrinsicGas (legacyTx (to := none)) = 53000
+#guard (intrinsicGas (legacyTx (to := none) (data := Bytes.zeros 33))).regular = 21000 + 33 * 4 + 32000 + 4
+#guard (intrinsicGas (legacyTx (to := none))).regular = 53000
 -- Access list: 2400 per address, 1900 per key.
-#guard intrinsicGas (feeTx 10 1 (accessList := [⟨0xbb, [1, 2]⟩, ⟨0xcc, []⟩])) =
+#guard (intrinsicGas (feeTx 10 1 (accessList := [⟨0xbb, [1, 2]⟩, ⟨0xcc, []⟩]))).regular =
   21000 + 2 * 2400 + 2 * 1900
+-- EIP-7623 floor: 21000 + 10 per token (4 tokens per non-zero byte).
+#guard (intrinsicGas (legacyTx (data := hx "0x0001"))).calldataFloor = 21000 + 10 * 5
+#guard validate .prague (legacyTx (data := Bytes.zeros 100 ++ hx "0xff") (gas := 21000 + 416)) =
+  .error (.intrinsicGasTooLow (21000 + 10 * 104) (21000 + 416))
+#guard (validate .cancun (legacyTx (data := Bytes.zeros 100 ++ hx "0xff") (gas := 21000 + 416))).isOk
+-- EIP-7825 (Osaka): gas limit cap 2^24.
+#guard validate .osaka (legacyTx (gas := 2 ^ 24 + 1)) = .error (.gasLimitAboveCap (2 ^ 24 + 1))
+#guard (validate .osaka (legacyTx (gas := 2 ^ 24))).isOk
+#guard (validate .prague (legacyTx (gas := 2 ^ 24 + 1))).isOk
 #guard Gas.initCodeCost 0 = 0
 #guard Gas.initCodeCost 1 = 2
 #guard Gas.initCodeCost 32 = 2
@@ -111,12 +120,12 @@ def vh : Word := hw "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e32400
 
 /-! ## `validate_transaction` -/
 
-#guard (validate .cancun (legacyTx (gas := 21000))).toOption = some 21000
+#guard (validate .cancun (legacyTx (gas := 21000))).toOption.map (·.regular) = some 21000
 #guard validate .cancun (legacyTx (gas := 20999)) = .error (.intrinsicGasTooLow 21000 20999)
 #guard validate .cancun (legacyTx (nonce := 2 ^ 64 - 1)) = .error (.nonceOverflow (2 ^ 64 - 1))
-#guard (validate .cancun (legacyTx (nonce := 2 ^ 64 - 2))).toOption = some 21000
+#guard (validate .cancun (legacyTx (nonce := 2 ^ 64 - 2))).toOption.map (·.regular) = some 21000
 #guard validate .cancun (feeTx 10 11) = .error (.priorityFeeGreaterThanMaxFee 11 10)
-#guard (validate .cancun (feeTx 10 10)).toOption = some 21000
+#guard (validate .cancun (feeTx 10 10)).toOption.map (·.regular) = some 21000
 -- EIP-3860: init code above 49152 bytes is invalid (gas is checked first).
 #guard validate .cancun (legacyTx (to := none) (data := Bytes.zeros 49153) (gas := 10000000)) =
   .error (.initCodeSizeExceeded 49153)
@@ -204,6 +213,41 @@ def price (r : Except InvalidTx Checked) : Option Nat := r.toOption.map (·.effe
 -- The blob fee counts towards the balance requirement: 100000 * 1000 + 131072 * 10.
 #guard chk (worldWith (100000 * 1000 + 131072 * 10 - 1)) (blobTx [vh]) =
   .error (.insufficientBalance (100000 * 1000 + 131072 * 10 - 1) (100000 * 1000 + 131072 * 10))
+
+/-! ## Prague and Osaka checks -/
+
+/-- An authorization tuple (only its count matters to the checks below). -/
+def someAuth : Authorization :=
+  { chainId := 1, address := 0xbb, nonce := 0, yParity := 0, r := 1, s := 1 }
+
+/-- An EIP-7702 transaction template. -/
+def setCodeTx (auths : List Authorization) (gas := 100000) : Transaction :=
+  .eip7702 { chainId := 1, nonce := 0, maxPriorityFeePerGas := 1, maxFeePerGas := 1000, gas,
+             to := 0xaa, value := 0, data := .empty, accessList := [], authorizations := auths,
+             yParity := 0, r := 1, s := 1 }
+
+/-- `check` at `fork` with the hint `alice`. -/
+def chkAt (fork : Fork) (w : World) (tx : Transaction) : Except InvalidTx Checked :=
+  check fakeCrypto fork env 30000000 1179648 w tx (some alice)
+
+-- 25000 per authorization; set-code transactions only from Prague.
+#guard (intrinsicGas (setCodeTx [someAuth, someAuth])).regular = 21000 + 2 * 25000
+#guard validate .cancun (setCodeTx [someAuth]) = .error (.unsupportedType 4)
+#guard (validate .prague (setCodeTx [someAuth])).isOk
+#guard chkAt .prague (worldWith (10 ^ 18)) (setCodeTx []) = .error .emptyAuthorizationList
+#guard (chkAt .prague (worldWith (10 ^ 18)) (setCodeTx [someAuth])).isOk
+-- Codec round trip (`0x04 ‖ rlp(fields)`).
+#guard (Transaction.decode (setCodeTx [someAuth]).encode).toOption = some (setCodeTx [someAuth])
+#guard (setCodeTx [someAuth]).encode[0]? = some 4
+-- EIP-3607 as amended by EIP-7702: a delegated sender is still an EOA.
+#guard (chkAt .prague (worldWith (10 ^ 18) (code := Interpreter.delegationCode 0xbb))
+  (legacyTx)).isOk
+#guard chkAt .cancun (worldWith (10 ^ 18) (code := Interpreter.delegationCode 0xbb)) (legacyTx) =
+  .error .senderNotEOA
+-- Osaka: at most six blobs per transaction.
+#guard chkAt .osaka (worldWith (10 ^ 18)) (blobTx (List.replicate 7 vh)) =
+  .error (.blobCountExceeded 7)
+#guard (chkAt .prague (worldWith (10 ^ 18)) (blobTx (List.replicate 7 vh))).isOk
 
 /-! ## Blob gas price (`calculate_blob_gas_price`), values from the reference algorithm -/
 

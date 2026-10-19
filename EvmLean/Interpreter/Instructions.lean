@@ -1,5 +1,6 @@
 import EvmLean.Opcode
 import EvmLean.Interpreter.Monad
+import EvmLean.Interpreter.Delegation
 
 /-!
 # Instruction semantics
@@ -58,16 +59,6 @@ def pushValue (cost : Nat) (v : Machine → Word) : M Action := do
 /-- A natural number as a word (modulo `2²⁵⁶`). -/
 def ofNat (n : Nat) : Word := BitVec.ofNat 256 n
 
-/-! ## Prague hook -/
-
-/-- The code run when a `CALL*` targets `codeAddress`. In Cancun this is the account's
-code. EIP-7702 (Prague) will resolve delegation designators (`0xef0100 ‖ address`) here;
-the extra delegated-account access cost belongs with it. Mirrors the `get_code` call in
-`generic_call`. -/
-def resolveCallCode (fork : Fork) (w : World) (codeAddress : Address) : ByteArray :=
-  match fork with
-  | .cancun | .prague | .osaka => w.code codeAddress
-
 /-! ## Copy-style instructions -/
 
 /-- Shared shape of `CALLDATACOPY`/`CODECOPY`: pop `(memOffset, srcOffset, size)`, charge
@@ -95,8 +86,12 @@ structure CallParams where
   caller : Address
   /-- The callee's `ADDRESS`. -/
   to : Address
-  /-- Whose code runs. -/
+  /-- Whose code runs (the delegate, for a call to an EIP-7702 delegated account). -/
   codeAddress : Address
+  /-- The code to run (`GenericCall.code`, resolved by `accessDelegation`). -/
+  code : ByteArray
+  /-- Reached through a delegation designator: do not run a precompile (EIP-7702). -/
+  disablePrecompiles : Bool
   /-- Whether `value` moves from `caller` to `to`. -/
   shouldTransferValue : Bool
   /-- `STATICCALL`? -/
@@ -122,7 +117,6 @@ def genericCall (p : CallParams) : M Action := do
     advance
     return .next
   let callData ← readMemory p.inOffset p.inSize
-  let m ← get
   let msg : Message := {
     caller := p.caller
     target := some p.to
@@ -131,12 +125,13 @@ def genericCall (p : CallParams) : M Action := do
     value := p.value
     data := callData
     codeAddress := some p.codeAddress
-    code := resolveCallCode m.ctx.fork m.world p.codeAddress
+    code := p.code
     depth := fr.msg.depth + 1
     shouldTransferValue := p.shouldTransferValue
     isStatic := p.isStaticcall || fr.msg.isStatic
     accessedAddresses := fr.sub.accessedAddresses
-    accessedStorageKeys := fr.sub.accessedStorageKeys }
+    accessedStorageKeys := fr.sub.accessedStorageKeys
+    disablePrecompiles := p.disablePrecompiles }
   return .call { msg, retOffset := p.outOffset, retSize := p.outSize }
 
 /-- Which member of the `CALL*` family. -/
@@ -152,7 +147,10 @@ inductive CallKind where
   deriving DecidableEq
 
 /-- `CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`. Mirrors `call`, `callcode`,
-`delegatecall` and `staticcall` in `instructions/system.py`. -/
+`delegatecall` and `staticcall` in `instructions/system.py`. From Prague the code address
+goes through `accessDelegation` right after the target is warmed (EIP-7702): a delegated
+account runs its delegate's code and the delegate's access cost is added to the call's
+access cost. -/
 def execCall (kind : CallKind) : M Action := do
   let gas ← popNat
   let target ← popAddress
@@ -166,6 +164,7 @@ def execCall (kind : CallKind) : M Action := do
   let exts := [(inOff, inSize), (outOff, outSize)]
   let ext ← memoryExpansion exts
   let warm ← accessAddress target
+  let (disablePrecompiles, codeAddress, code, delegationCost) ← accessDelegation target
   let m ← get
   let fr := m.frame
   let createCost :=
@@ -174,7 +173,7 @@ def execCall (kind : CallKind) : M Action := do
     | .callcode | .delegatecall | .staticcall => 0
   let transferCost := if value = 0 then 0 else Gas.callValue
   let mcg := Gas.messageCallGas value.toNat gas fr.gasLeft ext.cost
-    (Gas.accessCost warm + createCost + transferCost)
+    (Gas.accessCost warm + delegationCost + createCost + transferCost)
   charge (mcg.cost + ext.cost)
   if kind = .call && fr.msg.isStatic && value ≠ 0 then throw .writeInStaticContext
   expandMemory exts
@@ -182,20 +181,20 @@ def execCall (kind : CallKind) : M Action := do
   let params : CallParams :=
     match kind with
     | .call =>
-      { gas := mcg.subCall, value, caller := self, to := target, codeAddress := target,
-        shouldTransferValue := true, isStaticcall := false,
+      { gas := mcg.subCall, value, caller := self, to := target, codeAddress, code,
+        disablePrecompiles, shouldTransferValue := true, isStaticcall := false,
         inOffset := inOff, inSize, outOffset := outOff, outSize }
     | .callcode =>
-      { gas := mcg.subCall, value, caller := self, to := self, codeAddress := target,
-        shouldTransferValue := true, isStaticcall := false,
+      { gas := mcg.subCall, value, caller := self, to := self, codeAddress, code,
+        disablePrecompiles, shouldTransferValue := true, isStaticcall := false,
         inOffset := inOff, inSize, outOffset := outOff, outSize }
     | .delegatecall =>
       { gas := mcg.subCall, value := fr.msg.value, caller := fr.msg.caller, to := self,
-        codeAddress := target, shouldTransferValue := false, isStaticcall := false,
-        inOffset := inOff, inSize, outOffset := outOff, outSize }
+        codeAddress, code, disablePrecompiles, shouldTransferValue := false,
+        isStaticcall := false, inOffset := inOff, inSize, outOffset := outOff, outSize }
     | .staticcall =>
-      { gas := mcg.subCall, value := 0, caller := self, to := target, codeAddress := target,
-        shouldTransferValue := true, isStaticcall := true,
+      { gas := mcg.subCall, value := 0, caller := self, to := target, codeAddress, code,
+        disablePrecompiles, shouldTransferValue := true, isStaticcall := true,
         inOffset := inOff, inSize, outOffset := outOff, outSize }
   match kind with
   | .call | .callcode =>

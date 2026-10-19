@@ -36,6 +36,24 @@ structure BlockEnv where
   parentBeaconBlockRoot : Word := 0
   deriving Inhabited
 
+/-- An EIP-7702 authorization tuple: the signer (the *authority*) allows its account to
+delegate to the code at `address`. Mirrors `Authorization` in `prague/fork_types.py`; the
+integer widths (`U256` chain id, `U64` nonce, `U8` y-parity) are enforced when decoding. -/
+structure Authorization where
+  /-- Chain id the authorization is valid on (`0` for every chain). -/
+  chainId : Nat
+  /-- The delegation target (the zero address clears the delegation). -/
+  address : Address
+  /-- The authority's nonce the authorization is valid for. -/
+  nonce : Nat
+  /-- Signature y-parity. -/
+  yParity : Nat
+  /-- Signature `r`. -/
+  r : Nat
+  /-- Signature `s`. -/
+  s : Nat
+  deriving DecidableEq, Inhabited
+
 /-- Transaction-level environment, constant during a transaction. -/
 structure TxEnv where
   /-- Transaction sender (`ORIGIN`). -/
@@ -44,6 +62,9 @@ structure TxEnv where
   gasPrice : Nat := 0
   /-- EIP-4844 blob versioned hashes (`BLOBHASH`). -/
   blobVersionedHashes : Array Word := #[]
+  /-- EIP-7702 authorizations of a set-code transaction (Prague), processed by
+  `process_message_call` before the top-level message runs. -/
+  authorizations : List Authorization := []
   deriving Inhabited
 
 /-- The cryptographic primitives the EVM depends on. The semantics is parameterised by
@@ -69,6 +90,23 @@ structure Crypto where
   bn254Pairing : ByteArray → Option Bool
   /-- KZG proof verification `(commitment, z, y, proof)` (EIP-4844). -/
   kzgVerify : ByteArray → ByteArray → ByteArray → ByteArray → Option Bool
+  /-- BLS12-381 `G1` addition on two 128-byte points (EIP-2537); `none` if invalid. -/
+  bls12G1Add : ByteArray → Option ByteArray
+  /-- BLS12-381 `G1` multi-scalar multiplication on `k · 160` bytes (EIP-2537). -/
+  bls12G1Msm : ByteArray → Option ByteArray
+  /-- BLS12-381 `G2` addition on two 256-byte points (EIP-2537). -/
+  bls12G2Add : ByteArray → Option ByteArray
+  /-- BLS12-381 `G2` multi-scalar multiplication on `k · 288` bytes (EIP-2537). -/
+  bls12G2Msm : ByteArray → Option ByteArray
+  /-- BLS12-381 pairing check on `k · 384` bytes of `(G1, G2)` pairs (EIP-2537). -/
+  bls12Pairing : ByteArray → Option Bool
+  /-- Map a 64-byte `𝔽ₚ` element to `G1` (EIP-2537, RFC 9380 SSWU + cofactor clearing). -/
+  bls12MapFpToG1 : ByteArray → Option ByteArray
+  /-- Map a 128-byte `𝔽ₚ²` element to `G2` (EIP-2537). -/
+  bls12MapFp2ToG2 : ByteArray → Option ByteArray
+  /-- secp256r1 (P-256) ECDSA verification `(hash, r, s, qx, qy)` with the bounds and
+  on-curve checks of EIP-7951. -/
+  p256Verify : ByteArray → Nat → Nat → Nat → Nat → Bool
 
 /-- Everything constant during a transaction. -/
 structure Context where
@@ -129,6 +167,9 @@ structure Message where
   accessedAddresses : AddressSet
   /-- Warm storage keys at message start. -/
   accessedStorageKeys : StorageKeySet
+  /-- EIP-7702 (Prague): the code was reached through a delegation designator, so a
+  precompile at `codeAddress` is *not* run (`Message.disable_precompiles`). -/
+  disablePrecompiles : Bool := false
   deriving Inhabited
 
 set_option linter.missingDocs false in

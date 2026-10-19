@@ -4,7 +4,8 @@ import Conformance.Hex
 /-!
 # BlockchainTests fixtures
 
-Parsing of `ethereum/tests` BlockchainTests JSON into Lean values:
+Parsing of BlockchainTests JSON (`ethereum/tests`, and the `blockchain_tests` fixtures of
+`ethereum/execution-spec-tests`) into Lean values:
 
 * `pre` / `postState` become `World`s (zero storage values dropped, matching the canonical
   storage representation);
@@ -90,9 +91,14 @@ def parseWorld (j : Json) : Except String World := do
     let acc ← (parseAccount acc).mapError (s!"account {addr}: " ++ ·)
     pure (w.insert a acc)
 
-/-- Parse a JSON block header into a `Header` (used to cross-check decoded RLP). -/
+/-- Parse a JSON block header into a `Header` (used to cross-check decoded RLP).
+`requestsHash` is present from Prague. -/
 def parseHeader (j : Json) : Except String Header := do
+  let requestsHash ← match field? j "requestsHash" with
+    | some _ => pure (some (← wordField j "requestsHash"))
+    | none => pure none
   return {
+    requestsHash,
     parentHash := ← wordField j "parentHash", ommersHash := ← wordField j "uncleHash",
     coinbase := ← addressField j "coinbase", stateRoot := ← wordField j "stateRoot",
     transactionsRoot := ← wordField j "transactionsTrie",
@@ -114,6 +120,16 @@ def parseAccessList (j : Json) : Except String (List AccessListItem) := do
       | .ok s => parseWord s
       | .error _ => .error "storage key is not a string"
     return { address := ← addressField e "address", storageKeys := keys }
+
+/-- Parse a JSON EIP-7702 authorization list. The y-parity is `yParity` (or `v`). -/
+def parseAuthorizations (j : Json) : Except String (List Authorization) := do
+  (← arrElems j).toList.mapM fun e => do
+    let yParity ← match field? e "yParity" with
+      | some _ => natField e "yParity"
+      | none => natField e "v"
+    return { chainId := ← natField e "chainId", address := ← addressField e "address",
+             nonce := ← natField e "nonce", yParity, r := ← natField e "r",
+             s := ← natField e "s" }
 
 /-- Parse the `to` field: empty for a contract creation. -/
 def parseTo (j : Json) : Except String (Option Address) := do
@@ -166,6 +182,18 @@ def parseTransaction (j : Json) : Except String Transaction := do
       accessList := ← accessList (), maxFeePerBlobGas := ← natField j "maxFeePerBlobGas",
       blobVersionedHashes := hashes, yParity := ← natField j "v", r := ← natField j "r",
       s := ← natField j "s" }
+  | 4 =>
+    let to ← match ← parseTo j with
+      | some a => pure a
+      | none => throw "set-code transaction without recipient"
+    return .eip7702 {
+      chainId := ← natField j "chainId", nonce := ← natField j "nonce",
+      maxPriorityFeePerGas := ← natField j "maxPriorityFeePerGas",
+      maxFeePerGas := ← natField j "maxFeePerGas", gas := ← natField j "gasLimit",
+      to, value := ← natField j "value", data := ← bytesField j "data",
+      accessList := ← accessList (),
+      authorizations := ← parseAuthorizations (← field j "authorizationList"),
+      yParity := ← natField j "v", r := ← natField j "r", s := ← natField j "s" }
   | n => throw s!"unknown transaction type {n}"
 
 /-- One entry of a fixture's `blocks` array. -/
@@ -209,6 +237,8 @@ structure TestCase where
   post : PostCheck
   /-- Expected hash of the final head. -/
   lastBlockHash : Word
+  /-- Chain id (`config.chainid`; `1` when absent, as in `ethereum/tests`). -/
+  chainId : Nat
 
 /-- Parse one block entry. -/
 def parseBlock (j : Json) : Except String BlockFixture := do
@@ -250,7 +280,13 @@ def parseTestCase (name : String) (j : Json) : Except String TestCase := do
       | .error _ => throw "postStateHash is not a string"
     | none, none => throw "neither postState nor postStateHash"
   let genesisJson ← field j "genesisBlockHeader"
+  let chainId ← match field? j "config" with
+    | some c => match field? c "chainid" with
+      | some _ => natField c "chainid"
+      | none => pure 1
+    | none => pure 1
   return {
+    chainId,
     name, network := ← parseNetwork j,
     pre := ← (parseWorld (← field j "pre")).mapError ("pre: " ++ ·),
     genesisRlp := ← bytesField j "genesisRLP",

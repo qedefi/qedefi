@@ -10,6 +10,9 @@ commitment). A block with `expectException` must be rejected; any other block mu
 accepted. Finally the head must have hash `lastblockhash` and the expected post-state
 (compared exactly, or by state root for `postStateHash`).
 
+The fork of each block follows the test's `network`: a single fork, or a transition network
+such as `CancunToPragueAtTime15k` (the second fork from timestamp 15000 on).
+
 `parseTest` is the `--parse-only` mode: it decodes every RLP in the test and cross-checks
 the decoded headers and transactions against their JSON forms, without executing anything
 (and without any hashing, so it works before the crypto is implemented).
@@ -44,6 +47,8 @@ structure TestResult where
   file : String
   /-- Test name. -/
   name : String
+  /-- The test's `network` (empty if unknown). -/
+  network : String := ""
   /-- Outcome. -/
   status : Status
   /-- Explanation (empty for plain passes). -/
@@ -54,12 +59,44 @@ structure TestResult where
 structure Options where
   /-- Only decode and cross-check, do not execute. -/
   parseOnly : Bool := false
-  /-- The fork to run; tests of other networks are skipped. -/
-  fork : Fork := .cancun
-  /-- Chain id of the fixtures. -/
-  chainId : Nat := 1
+  /-- The fork to run (`none`: every supported network); tests whose network ends in
+  another fork are skipped. -/
+  fork : Option Fork := some .cancun
   /-- Interpreter fuel per message call. -/
   fuel : Nat := 2 ^ 40
+
+/-- The forks of a test network: `first` until the block timestamp reaches `switchAt`, then
+`next`. -/
+structure Schedule where
+  /-- The fork at genesis. -/
+  first : Fork
+  /-- The fork transition, if any: the new fork and its activation timestamp. -/
+  next : Option (Fork × Nat) := none
+
+/-- The fork active at `timestamp`. -/
+def Schedule.forkAt (s : Schedule) (timestamp : Nat) : Fork :=
+  match s.next with
+  | some (f, t) => if timestamp ≥ t then f else s.first
+  | none => s.first
+
+/-- The fork a test network ends in (used for `--fork` selection and reporting). -/
+def Schedule.final (s : Schedule) : Fork :=
+  match s.next with
+  | some (f, _) => f
+  | none => s.first
+
+/-- The schedule of a fixture `network`: a fork name, or a transition network
+`<A>To<B>AtTime15k` between two supported forks. -/
+def parseSchedule (network : String) : Option Schedule :=
+  match Fork.ofName? network with
+  | some f => some { first := f }
+  | none =>
+    match network.splitOn "To" with
+    | [a, rest] =>
+      match rest.splitOn "AtTime15k", Fork.ofName? a with
+      | [b, ""], some fa => (Fork.ofName? b).map fun fb => { first := fa, next := some (fb, 15000) }
+      | _, _ => none
+    | _ => none
 
 /-! ## World comparison -/
 
@@ -126,8 +163,8 @@ def parseTest (t : TestCase) : Status × String :=
 /-! ## Execution -/
 
 /-- Import the blocks of `t` in order. Returns the final head, or the failure reason. -/
-def importBlocks (opts : Options) (crypto : Crypto) (t : TestCase) (genesis : Block.ChainHead) :
-    Except String Block.ChainHead := do
+def importBlocks (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : TestCase)
+    (genesis : Block.ChainHead) : Except String Block.ChainHead := do
   let mut store : Std.TreeMap Word Block.ChainHead compare := Std.TreeMap.empty.insert genesis.hash genesis
   let mut head := genesis
   for h : i in [0:t.blocks.size] do
@@ -140,7 +177,8 @@ def importBlocks (opts : Options) (crypto : Crypto) (t : TestCase) (genesis : Bl
       match store.get? b.header.parentHash with
       | none => if expected.isNone then throw s!"block {i}: unknown parent"
       | some parent =>
-        match Block.stateTransition opts.fuel crypto opts.fork opts.chainId parent b fx.senders with
+        let fork := schedule.forkAt b.header.timestamp
+        match Block.stateTransition opts.fuel crypto fork t.chainId parent b fx.senders with
         | .error (.outOfFuel idx) => throw s!"block {i}: interpreter out of fuel ({idx})"
         | .error e =>
           if expected.isNone then throw s!"block {i} rejected: {e}"
@@ -153,7 +191,8 @@ def importBlocks (opts : Options) (crypto : Crypto) (t : TestCase) (genesis : Bl
   return head
 
 /-- Run one test: import its blocks and compare the outcome with the expectation. -/
-def execTest (opts : Options) (crypto : Crypto) (t : TestCase) : Status × String :=
+def execTest (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : TestCase) :
+    Status × String :=
   match Block.decode t.genesisRlp with
   | .error e => (.unparseable, s!"genesis RLP: {e}")
   | .ok g =>
@@ -163,7 +202,7 @@ def execTest (opts : Options) (crypto : Crypto) (t : TestCase) : Status × Strin
       (.failed, s!"genesis hash {hexOfWord genesis.hash}, expected {hexOfWord t.genesisHash}")
     else if Trie.stateRoot keccak t.pre ≠ g.header.stateRoot then
       (.failed, "genesis state root mismatch")
-    else match importBlocks opts crypto t genesis with
+    else match importBlocks opts crypto schedule t genesis with
       | .error e => (.failed, e)
       | .ok head =>
         if head.hash ≠ t.lastBlockHash then
@@ -187,12 +226,16 @@ def runFileJson (opts : Options) (crypto : Crypto) (file : String) (select : Str
     some <| match parseNetwork tj with
     | .error e => { file, name, status := .unparseable, reason := e }
     | .ok network =>
-      if Fork.ofName? network ≠ some opts.fork then
-        { file, name, status := .skipped, reason := s!"network {network}" }
-      else match parseTestCase name tj with
-        | .error e => { file, name, status := .unparseable, reason := e }
-        | .ok t =>
-          let (status, reason) := if opts.parseOnly then parseTest t else execTest opts crypto t
-          { file, name, status, reason }
+      match parseSchedule network with
+      | none => { file, name, network, status := .skipped, reason := s!"network {network}" }
+      | some schedule =>
+        if opts.fork.any (· ≠ schedule.final) then
+          { file, name, network, status := .skipped, reason := s!"network {network}" }
+        else match parseTestCase name tj with
+          | .error e => { file, name, network, status := .unparseable, reason := e }
+          | .ok t =>
+            let (status, reason) :=
+              if opts.parseOnly then parseTest t else execTest opts crypto schedule t
+            { file, name, network, status, reason }
 
 end Conformance

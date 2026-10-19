@@ -4,9 +4,10 @@ import EvmLean.Crypto.Secp256k1
 /-!
 # Precompiled contracts
 
-Addresses `0x01`–`0x0a` (Cancun). Each precompile charges its gas, then either succeeds
-with output or fails exceptionally, consuming all gas. Mirrors
-`cancun/vm/precompiled_contracts/*.py` in `ethereum/execution-specs`:
+Addresses `0x01`–`0x0a` (Cancun), `0x0b`–`0x11` (Prague) and `0x100` (Osaka). Each
+precompile charges its gas, then either succeeds with output or fails exceptionally,
+consuming all gas. Mirrors `{cancun,prague,osaka}/vm/precompiled_contracts/*.py` in
+`ethereum/execution-specs`:
 
 | Address | Precompile | Gas | Spec |
 |---|---|---|---|
@@ -20,6 +21,14 @@ with output or fails exceptionally, consuming all gas. Mirrors
 | `0x08` | `ECPAIRING` | `45000 + 34000·k` | EIP-197, EIP-1108 |
 | `0x09` | `BLAKE2F` | `rounds` | EIP-152 |
 | `0x0a` | `POINT_EVALUATION` | `50000` | EIP-4844 |
+| `0x0b` | `BLS12_G1ADD` | `375` | EIP-2537 (Prague) |
+| `0x0c` | `BLS12_G1MSM` | `k·12000·discount(k)/1000` | EIP-2537 (Prague) |
+| `0x0d` | `BLS12_G2ADD` | `600` | EIP-2537 (Prague) |
+| `0x0e` | `BLS12_G2MSM` | `k·22500·discount(k)/1000` | EIP-2537 (Prague) |
+| `0x0f` | `BLS12_PAIRING_CHECK` | `37700 + 32600·k` | EIP-2537 (Prague) |
+| `0x10` | `BLS12_MAP_FP_TO_G1` | `5500` | EIP-2537 (Prague) |
+| `0x11` | `BLS12_MAP_FP2_TO_G2` | `23800` | EIP-2537 (Prague) |
+| `0x100` | `P256VERIFY` | `6900` | EIP-7951 (Osaka) |
 
 All cryptography goes through the `Crypto` record (`crypto.*`), never through a concrete
 implementation, so the semantics stays parameterised. `MODEXP` uses plain `Nat` arithmetic
@@ -27,11 +36,10 @@ implementation, so the semantics stays parameterised. `MODEXP` uses plain `Nat` 
 
 ## Forks
 
-`ofAddress` maps `(fork, address)` to a `Kind`, matching exhaustively on `Fork`, so new
-precompiles slot in as new `Kind` constructors. Not yet implemented: Prague's BLS12-381
-precompiles `0x0b`–`0x11` (EIP-2537) and Osaka's `P256VERIFY` at `0x100` (EIP-7951); for
-those forks the Cancun set is returned. Osaka's `MODEXP` changes (EIP-7823 input bounds,
-EIP-7883 repricing) are implemented, following `osaka/vm/precompiled_contracts/modexp.py`.
+`ofAddress` maps `(fork, address)` to a `Kind`, matching exhaustively on `Fork`: Prague adds
+the BLS12-381 precompiles (EIP-2537), Osaka `P256VERIFY` (EIP-7951) and the `MODEXP`
+changes (EIP-7823 input bounds, EIP-7883 repricing, following
+`osaka/vm/precompiled_contracts/modexp.py`).
 -/
 
 namespace EvmLean.Precompile
@@ -68,6 +76,22 @@ inductive Kind where
   | blake2f
   /-- `0x0a`: KZG point evaluation (EIP-4844). -/
   | pointEvaluation
+  /-- `0x0b`: BLS12-381 `G1` addition (EIP-2537, Prague). -/
+  | blsG1Add
+  /-- `0x0c`: BLS12-381 `G1` multi-scalar multiplication (EIP-2537, Prague). -/
+  | blsG1Msm
+  /-- `0x0d`: BLS12-381 `G2` addition (EIP-2537, Prague). -/
+  | blsG2Add
+  /-- `0x0e`: BLS12-381 `G2` multi-scalar multiplication (EIP-2537, Prague). -/
+  | blsG2Msm
+  /-- `0x0f`: BLS12-381 pairing check (EIP-2537, Prague). -/
+  | blsPairing
+  /-- `0x10`: map an `𝔽ₚ` element to `G1` (EIP-2537, Prague). -/
+  | blsMapFpToG1
+  /-- `0x11`: map an `𝔽ₚ²` element to `G2` (EIP-2537, Prague). -/
+  | blsMapFp2ToG2
+  /-- `0x100`: secp256r1 (P-256) signature verification (EIP-7951, Osaka). -/
+  | p256Verify
   deriving DecidableEq, Repr, Inhabited
 
 /-- The precompiles active since Cancun, by address. -/
@@ -84,11 +108,28 @@ def cancunOfNat : Nat → Option Kind
   | 0x0a => some .pointEvaluation
   | _ => none
 
-/-- The precompile at `a` in `fork`, if any. Prague's BLS12-381 precompiles and Osaka's
-`P256VERIFY` are not yet implemented, so later forks currently get the Cancun set. -/
+/-- The precompiles added in Prague (EIP-2537), by address. -/
+def pragueOfNat : Nat → Option Kind
+  | 0x0b => some .blsG1Add
+  | 0x0c => some .blsG1Msm
+  | 0x0d => some .blsG2Add
+  | 0x0e => some .blsG2Msm
+  | 0x0f => some .blsPairing
+  | 0x10 => some .blsMapFpToG1
+  | 0x11 => some .blsMapFp2ToG2
+  | _ => none
+
+/-- The precompiles added in Osaka (EIP-7951), by address. -/
+def osakaOfNat : Nat → Option Kind
+  | 0x100 => some .p256Verify
+  | _ => none
+
+/-- The precompile at `a` in `fork`, if any (`PRE_COMPILED_CONTRACTS` of the fork). -/
 def ofAddress (fork : Fork) (a : Address) : Option Kind :=
   match fork with
-  | .cancun | .prague | .osaka => cancunOfNat a.toNat
+  | .cancun => cancunOfNat a.toNat
+  | .prague => cancunOfNat a.toNat <|> pragueOfNat a.toNat
+  | .osaka => cancunOfNat a.toNat <|> pragueOfNat a.toNat <|> osakaOfNat a.toNat
 
 /-- Is `a` a precompile address in `fork`? -/
 def isPrecompile (fork : Fork) (a : Address) : Bool := (ofAddress fork a).isSome
@@ -314,6 +355,94 @@ def pointEvaluation (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :
           output := Bytes.ofNatBE 32 fieldElementsPerBlob ++ Bytes.ofNatBE 32 blsModulus }
       | some false | none => fail
 
+/-! ## BLS12-381 (EIP-2537, Prague) -/
+
+/-- `G1_K_DISCOUNT`: MSM discount (per mille) for `k = 1 … 128` pairs in `G1`. -/
+def g1KDiscount : Array Nat := #[
+    1000, 949, 848, 797, 764, 750, 738, 728, 719, 712, 705, 698, 692, 687, 682, 677,
+    673, 669, 665, 661, 658, 654, 651, 648, 645, 642, 640, 637, 635, 632, 630, 627,
+    625, 623, 621, 619, 617, 615, 613, 611, 609, 608, 606, 604, 603, 601, 599, 598,
+    596, 595, 593, 592, 591, 589, 588, 586, 585, 584, 582, 581, 580, 579, 577, 576,
+    575, 574, 573, 572, 570, 569, 568, 567, 566, 565, 564, 563, 562, 561, 560, 559,
+    558, 557, 556, 555, 554, 553, 552, 551, 550, 549, 548, 547, 547, 546, 545, 544,
+    543, 542, 541, 540, 540, 539, 538, 537, 536, 536, 535, 534, 533, 532, 532, 531,
+    530, 529, 528, 528, 527, 526, 525, 525, 524, 523, 522, 522, 521, 520, 520, 519]
+
+/-- `G2_K_DISCOUNT`: MSM discount (per mille) for `k = 1 … 128` pairs in `G2`. -/
+def g2KDiscount : Array Nat := #[
+    1000, 1000, 923, 884, 855, 832, 812, 796, 782, 770, 759, 749, 740, 732, 724, 717,
+    711, 704, 699, 693, 688, 683, 679, 674, 670, 666, 663, 659, 655, 652, 649, 646,
+    643, 640, 637, 634, 632, 629, 627, 624, 622, 620, 618, 615, 613, 611, 609, 607,
+    606, 604, 602, 600, 598, 597, 595, 593, 592, 590, 589, 587, 586, 584, 583, 582,
+    580, 579, 578, 576, 575, 574, 573, 571, 570, 569, 568, 567, 566, 565, 563, 562,
+    561, 560, 559, 558, 557, 556, 555, 554, 553, 552, 552, 551, 550, 549, 548, 547,
+    546, 545, 545, 544, 543, 542, 541, 541, 540, 539, 538, 537, 537, 536, 535, 535,
+    534, 533, 532, 532, 531, 530, 530, 529, 528, 528, 527, 526, 526, 525, 524, 524]
+
+/-- `G1_MAX_DISCOUNT`: the discount for more than 128 pairs. -/
+def g1MaxDiscount : Nat := 519
+
+/-- `G2_MAX_DISCOUNT`: the discount for more than 128 pairs. -/
+def g2MaxDiscount : Nat := 524
+
+/-- MSM gas: `k · mulCost · discount(k) / 1000`, the discount taken from `table` for
+`k ≤ 128` and `maxDiscount` above (`bls12_g1_msm`, `bls12_g2_msm`). -/
+def msmGas (table : Array Nat) (maxDiscount mulCost k : Nat) : Nat :=
+  let discount := if k ≤ 128 then table.getD (k - 1) maxDiscount else maxDiscount
+  k * mulCost * discount / 1000
+
+/-- A fixed-gas BLS operation on an input of exactly `len` bytes (`bls12_g1_add`,
+`bls12_g2_add`, `bls12_map_fp_to_g1`, `bls12_map_fp2_to_g2`): the length is checked first,
+then the gas is charged; invalid encodings fail. -/
+def blsFixed (len cost : Nat) (op : ByteArray → Option ByteArray) (input : ByteArray)
+    (gas : Nat) : Result :=
+  if input.size ≠ len then fail
+  else if gas < cost then fail
+  else
+    match op input with
+    | some out => { success := true, gasLeft := gas - cost, output := out }
+    | none => fail
+
+/-- An MSM: the input must be a non-empty multiple of `pairLen` bytes; gas by `msmGas`. -/
+def blsMsm (pairLen : Nat) (table : Array Nat) (maxDiscount mulCost : Nat)
+    (op : ByteArray → Option ByteArray) (input : ByteArray) (gas : Nat) : Result :=
+  if input.size = 0 || input.size % pairLen ≠ 0 then fail
+  else
+    let cost := msmGas table maxDiscount mulCost (input.size / pairLen)
+    if gas < cost then fail
+    else
+      match op input with
+      | some out => { success := true, gasLeft := gas - cost, output := out }
+      | none => fail
+
+/-- `BLS12_PAIRING_CHECK` (`bls12_pairing`): a non-empty multiple of 384 bytes
+(`G1 ‖ G2` pairs), gas `37700 + 32600·k`, output the word `1` or `0`. -/
+def blsPairing (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
+  if input.size = 0 || input.size % 384 ≠ 0 then fail
+  else
+    let cost := 32600 * (input.size / 384) + 37700
+    if gas < cost then fail
+    else
+      match crypto.bls12Pairing input with
+      | some ok =>
+        { success := true, gasLeft := gas - cost, output := Bytes.ofNatBE 32 (if ok then 1 else 0) }
+      | none => fail
+
+/-! ## `P256VERIFY` (EIP-7951, Osaka) -/
+
+/-- `P256VERIFY` (`p256verify.py`): charge 6900; an input that is not exactly 160 bytes
+(`hash ‖ r ‖ s ‖ qx ‖ qy`) or an invalid signature is a *successful* call with empty
+output; a valid one returns the word `1`. -/
+def p256Verify (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
+  if gas < 6900 then fail
+  else
+    let gasLeft := gas - 6900
+    if input.size ≠ 160 then { success := true, gasLeft, output := .empty }
+    else
+      let ok := crypto.p256Verify (input.extract 0 32) (readWord input 32) (readWord input 64)
+        (readWord input 96) (readWord input 128)
+      { success := true, gasLeft, output := if ok then Bytes.ofNatBE 32 1 else .empty }
+
 /-! ## Dispatch -/
 
 /-- Run precompile `k` in `fork`. -/
@@ -329,6 +458,14 @@ def runKind (crypto : Crypto) (fork : Fork) (k : Kind) (input : ByteArray) (gas 
   | .ecPairing => ecPairing crypto input gas
   | .blake2f => blake2f crypto input gas
   | .pointEvaluation => pointEvaluation crypto input gas
+  | .blsG1Add => blsFixed 256 375 crypto.bls12G1Add input gas
+  | .blsG1Msm => blsMsm 160 g1KDiscount g1MaxDiscount 12000 crypto.bls12G1Msm input gas
+  | .blsG2Add => blsFixed 512 600 crypto.bls12G2Add input gas
+  | .blsG2Msm => blsMsm 288 g2KDiscount g2MaxDiscount 22500 crypto.bls12G2Msm input gas
+  | .blsPairing => blsPairing crypto input gas
+  | .blsMapFpToG1 => blsFixed 64 5500 crypto.bls12MapFpToG1 input gas
+  | .blsMapFp2ToG2 => blsFixed 128 23800 crypto.bls12MapFp2ToG2 input gas
+  | .p256Verify => p256Verify crypto input gas
 
 /-- Run the precompile at `a` on `input` with `gas` available. Callers must first check
 `isPrecompile`; a non-precompile address yields `fail`. -/

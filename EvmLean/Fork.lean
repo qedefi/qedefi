@@ -11,9 +11,10 @@ namespace EvmLean
 inductive Fork where
   /-- Cancun (Dencun, March 2024): EIP-1153, 4844, 5656, 6780, 7516, 4788. -/
   | cancun
-  /-- Prague (Pectra, May 2025): EIP-7702, 2537, 2935, 7623, 7691. Not yet implemented. -/
+  /-- Prague (Pectra, May 2025): EIP-7702, 2537, 2935, 6110, 7002, 7251, 7623, 7685, 7691. -/
   | prague
-  /-- Osaka (Fusaka, December 2025): EIP-7939 (`CLZ`), 7823, 7883, 7951. Not yet implemented. -/
+  /-- Osaka (Fusaka, December 2025): EIP-7939 (`CLZ`), 7823, 7825, 7883, 7918, 7934, 7951, and
+  the per-transaction blob limit. -/
   | osaka
   deriving DecidableEq, Repr, Inhabited
 

@@ -155,11 +155,14 @@ def finishFrame (m : Machine) (o : Outcome) : StepResult :=
   | [] => .done (topLevelResult f.msg.target world transient r)
   | p :: ps => .running (resume { m with frame := p, parents := ps, world, transient } r)
 
-/-- The precompile to run for `msg`, if its code address is one. -/
+/-- The precompile to run for `msg`, if its code address is one and precompiles are not
+disabled by an EIP-7702 delegation (`disable_precompiles` in `process_message`). -/
 def precompileOf (pre : PrecompileImpl) (msg : Message) : Option Address :=
-  match msg.codeAddress with
-  | some a => if pre.isPrecompile a then some a else none
-  | none => none
+  if msg.disablePrecompiles then none
+  else
+    match msg.codeAddress with
+    | some a => if pre.isPrecompile a then some a else none
+    | none => none
 
 /-- Run precompile `a` for `msg` in `world` (value already transferred). Returns the child
 result and the world afterwards (`snapshot` restored on failure). Mirrors the precompile

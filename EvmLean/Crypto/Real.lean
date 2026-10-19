@@ -6,6 +6,8 @@ import EvmLean.Crypto.Blake2f
 import EvmLean.Crypto.Secp256k1
 import EvmLean.Crypto.Bn254
 import EvmLean.Crypto.Kzg
+import EvmLean.Crypto.Bls12381.Precompile
+import EvmLean.Crypto.P256
 
 /-!
 # The real cryptography
@@ -28,5 +30,13 @@ def Crypto.real : Crypto where
   bn254Mul := Bn254.mul
   bn254Pairing := Bn254.pairingCheck
   kzgVerify := Kzg.verifyProof
+  bls12G1Add := Bls12381.g1AddBytes
+  bls12G1Msm := Bls12381.g1MsmBytes
+  bls12G2Add := Bls12381.g2AddBytes
+  bls12G2Msm := Bls12381.g2MsmBytes
+  bls12Pairing := Bls12381.pairingCheckBytes
+  bls12MapFpToG1 := Bls12381.mapFpToG1Bytes
+  bls12MapFp2ToG2 := Bls12381.mapFp2ToG2Bytes
+  p256Verify := P256.verify
 
 end EvmLean

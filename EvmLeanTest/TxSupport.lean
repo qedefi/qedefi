@@ -31,6 +31,14 @@ def fakeCrypto : Crypto where
   bn254Mul := fun _ => none
   bn254Pairing := fun _ => none
   kzgVerify := fun _ _ _ _ => none
+  bls12G1Add := fun _ => none
+  bls12G1Msm := fun _ => none
+  bls12G2Add := fun _ => none
+  bls12G2Msm := fun _ => none
+  bls12Pairing := fun _ => none
+  bls12MapFpToG1 := fun _ => none
+  bls12MapFp2ToG2 := fun _ => none
+  p256Verify := fun _ _ _ _ _ => false
 
 /-- Does decoding fail? -/
 def rlpRejects (b : ByteArray) : Bool :=
