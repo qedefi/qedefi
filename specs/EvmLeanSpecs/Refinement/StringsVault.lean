@@ -66,7 +66,7 @@ theorem vaultEncodeShort_wp {i : SolmateVault.Immutables} (m : Machine) {L : Nat
     (hL1 : 1 ≤ L) (hL2 : L ≤ 31) (hsize : m.frame.memory.size = 256)
     (h40 : m.frame.memory.loadWord 64 = 192#256) (hd : m.frame.memory.read 160 L = data)
     (hh : m.frame.memory.read 192 64 = ofWord 32#256 ++ ofWord (BitVec.ofNat 256 L))
-    (hlen : rest.length ≤ 1000) (hg : 200 ≤ m.frame.gasLeft) :
+    (hlen : rest.length ≤ 1005) (hg : 200 ≤ m.frame.gasLeft) :
     WP m (fun _ => False)
       (fun mf o => mf.world = m.world ∧ o = .success (Abi.encodeString data)) := by
   have hagree := Shares.jumpDestsAgree i
@@ -126,5 +126,78 @@ theorem vaultEncodeShort_wp {i : SolmateVault.Immutables} (m : Machine) {L : Nat
   have hround : (L + 31) / 32 * 32 = 32 := by omega
   pwp_steps [hM2s, hM2f, Str.and_notMask31 (show L < 2 ^ 255 by omega), hround, hM2r]
   exact ⟨rfl, trivial⟩
+
+end EvmLeanSpecs.Refinement
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+set_option maxHeartbeats 0 in
+/-- **The vault's string getter, short (even) slot word**, from the entry of
+`extract_byte_array_length` (`0x1339`, called from the getter with return address `0x0514`). -/
+theorem vaultStringShort_wp {i : SolmateVault.Immutables} (m : Machine) {S slot : Word}
+    {rest : List Word}
+    (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
+    (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
+    (hpc : m.frame.pc = 0x1339)
+    (hs : m.frame.stack = S :: 1300#256 :: slot :: 504#256 :: rest)
+    (hS : m.world.sload m.frame.msg.currentTarget slot = S) (hev : S.toNat % 2 = 0)
+    (hmem : m.frame.memory = initMemory)
+    (hlen : rest.length ≤ 1000) (hg : 10000 ≤ m.frame.gasLeft) :
+    WP m (fun _ => False)
+      (StringPost m (Str.decode m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) slot)) := by
+  have hagree := Shares.jumpDestsAgree i
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hs hpc hc hmem
+  have hL := Str.slotLen_lt S
+  by_cases hshort : Str.slotLen S < 32
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot =
+        some ((ofWord S).extract 0 (Str.slotLen S)) := by
+      simp [Str.decode, hS, Str.slotOk, hev, hshort]
+    rw [hdec]
+    by_cases hz : Str.slotLen S = 0
+    · rw [hz]
+      pwp_msteps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev, hz]
+      refine ⟨rfl, ?_⟩
+      simp only
+      rw [Abi.encodeString_of_size_zero (by simp), Memory.read_64]
+      simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand,
+        Memory.read_storeWord]
+    · have hround : (Str.slotLen S + 31) / 32 * 32 = 32 := by omega
+      pwp_steps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev,
+        Str.lt_32_of_lt hshort, Str.iszero_of_ne hz (by omega), Str.div_32_mul_32 hL, hround,
+        Str.lt_31_of_le (show Str.slotLen S ≤ 31 by omega), Str.div_256_mul_256 S]
+      wp_generalize_mem M0 hM0
+      have hM0s : M0.size = 256 := by
+        subst hM0; simp [Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]
+      have hM0f : M0.loadWord 64 = 192#256 := by
+        subst hM0
+        simp (disch := omega) only [Memory.loadWord_storeWord_of_disjoint, Memory.loadWord_expand,
+          Memory.loadWord_storeWord]
+      have hM0d : M0.read 160 (Str.slotLen S) = (ofWord S).extract 0 (Str.slotLen S) := by
+        subst hM0
+        simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand]
+        rw [Memory.read_storeWord_prefix (hn := by omega), extract_ofWord_div256 _ (by omega)]
+      have hM0h : M0.read 192 64 = ofWord 32#256 ++ ofWord (BitVec.ofNat 256 (Str.slotLen S)) := by
+        subst hM0
+        rw [Memory.read_64]
+        simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand,
+          Memory.read_storeWord]
+      refine WP.mono (vaultEncodeShort_wp _ (L := Str.slotLen S) rfl hj rfl rfl (by omega)
+        (by omega) hM0s hM0f hM0d
+        hM0h (by simp only [List.length_cons]; omega) (by dsimp only; evm_gas))
+        (fun _ _ h => h.elim) ?_
+      rintro mf o - ⟨hw, ho⟩
+      exact ⟨hw, ho⟩
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot = none := by
+      simp [Str.decode, hS, Str.slotOk, hev, hshort]
+    rw [hdec]
+    pwp_steps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev,
+      Str.lt_32_of_ge (Nat.le_of_not_lt hshort) (by omega)]
+    exact ⟨rfl, _, rfl⟩
 
 end EvmLeanSpecs.Refinement

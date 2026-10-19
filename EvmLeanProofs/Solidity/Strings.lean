@@ -152,6 +152,14 @@ theorem size_encodeString (s : ByteArray) :
   simp only [encodeString, ByteArray.size_append, size_ofWord, size_zeros]
   omega
 
+/-- The encoding of the empty string: the offset and a zero length. -/
+theorem encodeString_of_size_zero {s : ByteArray} (h : s.size = 0) :
+    encodeString s = ofWord 32#256 ++ ofWord 0#256 := by
+  have hs : s = ByteArray.empty := ByteArray.ext (Array.eq_empty_of_size_eq_zero h)
+  subst hs
+  simp only [encodeString, ByteArray.size_empty, ByteArray.append_empty]
+  rfl
+
 end Abi
 
 end EvmLean.Solidity
