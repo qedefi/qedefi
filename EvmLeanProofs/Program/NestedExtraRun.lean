@@ -273,11 +273,12 @@ theorem run_of_stepN_done {m : Machine} {n fuel : Nat} {r r' : MessageResult}
   cases h2; rfl
 
 /-- **The simulation, for runs.** From a machine satisfying the invariant (reached from `m₀`),
-if every dangerous frame reached from `m₀` ends in a `Good` world (`hsum`), every finished
+if every dangerous frame reached from `m₀` outside dangerous frames (all its parents are not
+dangerous) ends in a `Good` world (`hsum`), every finished
 run ends in a `Good` world. -/
 theorem run_good (S : GoodOk P Good) {G : Nat} {m₀ : Machine}
     (hsum : ∀ n m, stepN n m₀ = .running m → DangerStart P Good G m →
-      Halts m (fun mf o => Good (frameResult mf o).2.1)) :
+      (∀ f ∈ m.parents, ¬ Danger P f) → Halts m (fun mf o => Good (frameResult mf o).2.1)) :
     ∀ fuel k m r, stepN k m₀ = .running m → MInv P Good G m → run fuel m = .ok r →
       Good r.world := by
   intro fuel
@@ -303,7 +304,12 @@ theorem run_good (S : GoodOk P Good) {G : Nat} {m₀ : Machine}
         cases hout with
         | inv hm' => exact ih f (by omega) (k + 1) m' r (hk1 m' rfl) hm' hr
         | danger hd hpar hp hps hgas =>
-          obtain ⟨n, mf, o, hH, hsf, hn⟩ := (hsum (k + 1) m' (hk1 m' rfl) hd).resume hpar
+          have hsafe : ∀ f ∈ m'.parents, ¬ Danger P f := by
+            rw [hpar]; intro f hf
+            rcases List.mem_cons.1 hf with rfl | hf
+            · exact hp.safe
+            · exact (hps f hf).safe
+          obtain ⟨n, mf, o, hH, hsf, hn⟩ := (hsum (k + 1) m' (hk1 m' rfl) hd hsafe).resume hpar
           obtain ⟨hlt, hr'⟩ := run_of_stepN_running hn hr
           have hgas' := stepN_gas (m := m') (by rw [hd.pre]; exact precompilesOk_standard _) n
           rw [hn] at hgas'
@@ -460,17 +466,96 @@ theorem Reaches.ctx {ctx : Context} {w : World} {tr : TransientStorage} {msg : M
     · cases hs
     · cases hs; rfl
 
+/-- The bottom frame of the stack: the frame of the top-level message. -/
+def bottom (m : Machine) : Frame := m.parents.getLast?.getD m.frame
+
+theorem getLast?_cons_getD {α : Type} (a : α) (l : List α) (x : α) :
+    (a :: l).getLast?.getD x = l.getLast?.getD a := by
+  cases l with
+  | nil => rfl
+  | cons b l => simp [List.getLast?_cons]
+
+/-- **The top-level frame stays at the bottom**: a step that does not finish the message
+keeps the message of the bottom frame. -/
+theorem step_bottom {m m' : Machine} (h : step m = .running m') :
+    (bottom m').msg = (bottom m).msg := by
+  rcases step_cases m with ⟨m₁, o, he, hf⟩ | ⟨m₁, he, hf⟩ | ⟨m₁, req, he, hf, -⟩ |
+    ⟨m₁, msg, he, hf, -⟩
+  · rw [he, finishFrame_eq] at h
+    split at h
+    · cases h
+    · rename_i p ps hp
+      cases h
+      have hpar : m.parents = p :: ps := hf.same.parents ▸ hp
+      simp only [bottom, resumeAfter, resume_parents, hpar, getLast?_cons_getD]
+      cases ps with
+      | nil => rfl
+      | cons q qs => rfl
+  · rw [he] at h; cases h
+    simp only [bottom, hf.same.parents]
+    cases m.parents with
+    | nil => exact hf.same.msg
+    | cons q qs => rfl
+  · rw [he] at h; cases h
+    rcases launchCall_cases m₁ req with ⟨r, w, t, hl, -, -⟩ | hl <;> rw [hl]
+    · simp only [bottom, resume_parents, hf.same.parents]
+      cases hq : m.parents with
+      | nil => exact hf.same.msg
+      | cons q qs => rfl
+    · simp only [bottom, pushCall, getLast?_cons_getD, hf.same.parents]
+      cases m.parents with
+      | nil => exact hf.same.msg
+      | cons q qs => rfl
+  · rw [he] at h; cases h
+    simp only [bottom, launchCreate, getLast?_cons_getD, hf.same.parents]
+    cases m.parents with
+    | nil => exact hf.same.msg
+    | cons q qs => rfl
+
+/-- Over any number of steps. -/
+theorem stepN_bottom {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
+    (bottom m').msg = (bottom m).msg
+  | 0, h => by cases h; rfl
+  | n + 1, h => by
+    simp only [stepN] at h
+    split at h
+    · cases h
+    · rename_i m₁ h₁
+      exact (stepN_bottom h).trans (step_bottom h₁)
+
+/-- The bottom frame of a machine a top-level message call reaches runs that message (after
+top-level delegation). -/
+theorem Reaches.bottom {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    {m : Machine} (h : Reaches ctx w tr msg m) :
+    (bottom m).msg =
+      (applyTopLevelDelegation ctx (PrecompileImpl.standard ctx).isPrecompile w msg).2.1 := by
+  obtain ⟨m₀, n, hs, hn⟩ := h
+  rw [stepN_bottom hn]
+  unfold StartsAt initMachine at hs
+  dsimp only at hs
+  split at hs
+  · cases hs
+  split at hs
+  · cases hs
+  split at hs
+  · split at hs
+    · cases hs
+    · cases hs; rfl
+  · split at hs
+    · cases hs
+    · cases hs; rfl
+
 /-- **The simulation, for a top-level message call.** From a `Good` world, a top-level message
 (`TopOk`: any unprotected caller, any target and code, at most `G` gas), before Prague or
 without EIP-7702 authorizations, ends in a `Good` world — provided every dangerous frame the
-run reaches ends in a `Good` world (`hsum`: frame summaries of the protected accounts'
-code). -/
+run reaches outside dangerous frames ends in a `Good` world (`hsum`: frame summaries of the
+protected accounts' code). -/
 theorem processMessageCall_good (S : GoodOk P Good) {G fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult} (hw : Good w)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hmsg : TopOk P w msg)
     (hG : msg.gas ≤ G)
     (hsum : ∀ m, Reaches ctx w tr msg m → DangerStart P Good G m →
-      Halts m (fun mf o => Good (frameResult mf o).2.1))
+      (∀ f ∈ m.parents, ¬ Danger P f) → Halts m (fun mf o => Good (frameResult mf o).2.1))
     (hr : processMessageCall fuel ctx w tr msg = .ok r) : Good r.world := by
   obtain ⟨msg', hd, hcur, hcaller, htarget, hdepth, hstatic, hgas, hsame⟩ :=
     applyTopLevelDelegation_spec (isPre := (PrecompileImpl.standard ctx).isPrecompile) (w := w)
@@ -498,7 +583,8 @@ theorem processMessageCall_good (S : GoodOk P Good) {G fuel : Nat} {ctx : Contex
       cases hr
       show Good r'.world
       rcases hm with hm | ⟨hm, hp⟩
-      · exact run_good S (fun n m hn hd => hsum m ⟨m₀, n, hst, hn⟩ hd) fuel 0 m₀ r' rfl hm hrun
-      · exact run_good_top hp (hsum m₀ ⟨m₀, 0, hst, rfl⟩ hm) hrun
+      · exact run_good S (fun n m hn hd hs => hsum m ⟨m₀, n, hst, hn⟩ hd hs) fuel 0 m₀ r' rfl hm
+          hrun
+      · exact run_good_top hp (hsum m₀ ⟨m₀, 0, hst, rfl⟩ hm (by rw [hp]; simp)) hrun
 
 end EvmLean.Program.Nested

@@ -25,7 +25,7 @@ namespace EvmLeanSpecs.Refinement.Nested
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
 open EvmLeanSpecs.Refinement.Invariants
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart TopOk Reaches)
+open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 

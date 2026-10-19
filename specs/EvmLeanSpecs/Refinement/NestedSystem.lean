@@ -34,7 +34,7 @@ namespace EvmLeanSpecs.Refinement.Nested
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
 open EvmLeanSpecs.Refinement.Invariants
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart TopOk Reaches)
+open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
   {w₀ : World}
@@ -192,7 +192,7 @@ theorem follows_of_frameOk (hs : SlotsOk crypto vault Act)
   | halt e => rw [frameResult_halt, hsnap]; exact hd.snapshot
 
 /-- **Any top-level message call keeps `Follows`**, given frame summaries of every dangerous
-frame it reaches. The message is any `TopOk` message (caller not the vault or the asset, any
+frame it reaches outside dangerous frames (calls made by unprotected code). The message is any `TopOk` message (caller not the vault or the asset, any
 target and code, any value and calldata) with at most `G` gas, before Prague or without
 EIP-7702 authorizations; the context's hash is `crypto`. -/
 theorem processMessageCall_follows (hs : SlotsOk crypto vault Act)
@@ -203,10 +203,10 @@ theorem processMessageCall_follows (hs : SlotsOk crypto vault Act)
     (hmsg : TopOk (Prot vault asset) w msg) (hG : msg.gas ≤ G)
     (hsum : ∀ m, Reaches ctx w tr msg m →
       DangerStart (Prot vault asset) (Follows crypto vault asset Act K w₀) G m →
-      FrameOk crypto vault asset Act K m)
+      (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) → FrameOk crypto vault asset Act K m)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     Follows crypto vault asset Act K w₀ r.world :=
   EvmLean.Program.Nested.processMessageCall_good goodOk hw hdeleg hmsg hG
-    (fun m hm hd => follows_of_frameOk hs hinv hd (hsum m hm hd)) hr
+    (fun m hm hd hp => follows_of_frameOk hs hinv hd (hsum m hm hd hp)) hr
 
 end EvmLeanSpecs.Refinement.Nested
