@@ -97,7 +97,9 @@ inequalities (gas, stack bounds) go to `evm_gas` (`omega`) before `decide`; equa
 def wpDisch : TacticM Unit := withMainContext do
   let t ← whnfR (← instantiateMVars (← getMainTarget))
   let isIneq := t.isAppOf ``LE.le || t.isAppOf ``LT.lt
-  let isJd := t.isAppOf ``Eq && (t.getArg! 1).isAppOf ``isValidJumpDest
+  let isJd := match t.eq? with
+    | some (_, lhs, _) => lhs.isAppOf ``isValidJumpDest
+    | none => false
   let alts : List (TSyntax `tactic) ←
     if isJd then pure [← `(tactic| jumpdest_disch), ← `(tactic| assumption)]
     else if isIneq then
@@ -246,8 +248,22 @@ elab_rules : tactic
     wpRunTo (pcs.getElems.toList.map (·.getNat)) extra
 
 /-- Destructure the machine variable `m` into its fields `m_ctx`, `m_world`, `m_msg`,
-`m_gasLeft`, `m_sub`, … and substitute equations about them from the context. -/
+`m_gasLeft`, `m_sub`, … and substitute equations about them from the context (except the
+jump table, kept as a `JumpTable` hypothesis). -/
 syntax "wp_intro " ident : tactic
+
+/-- Turn every hypothesis `x = validJumpDests c` into `JumpTable x c` (so that `subst` keeps
+it; see `JumpTable`). -/
+elab "wp_hide_jump_tables" : tactic => withMainContext do
+  let mut g ← getMainGoal
+  for decl in ← getLCtx do
+    if decl.isImplementationDetail then continue
+    let ty ← instantiateMVars decl.type
+    let some (_, lhs, rhs) := ty.eq? | continue
+    let some code := rhs.app1? ``validJumpDests | continue
+    unless lhs.isFVar do continue
+    g ← g.replaceLocalDeclDefEq decl.fvarId (mkApp2 (mkConst ``JumpTable) lhs code)
+  replaceMainGoal [g]
 
 macro_rules
   | `(tactic| wp_intro $m) => do
@@ -258,6 +274,7 @@ macro_rules
           $(n "memory"), $(n "gasLeft"), $(n "returnData"), $(n "sub"), $(n "snapshot"),
           $(n "kind")⟩, $(n "parents")⟩ := $m
       dsimp only at *
+      wp_hide_jump_tables
       subst_vars))
 
 end EvmLean.Program

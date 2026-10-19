@@ -1,6 +1,26 @@
 import EvmLeanProofs.Program.Tactic
 import EvmLeanProofs.Program.Call
 
+/-!
+# Demo: a call through a separately proved callee summary
+
+```solidity
+contract B { uint256 x; function get() external view returns (uint256) { return x; } }
+contract A {
+    function f() external view returns (uint256) {
+        return IB(0x000000000000000000000000000000000000bEEF).get();
+    }
+}
+```
+
+* `getSummary : FunctionSummary codeB`: `B.get()` from any fresh frame (dispatcher
+  `get_dispatch` + body `get_body`): returns slot 0 of the executing account, no state change,
+  at most 2400 gas.
+* `f_halts`: `A.f()` symbolically executed up to its `STATICCALL`; `WP.staticcall` with
+  `getSummary.halts` on the child frame replaces executing `B`; the caller resumes from
+  `resumeAfter_success` and runs to `RETURN`. `f_processMessageCall`: the top-level statement.
+-/
+
 namespace EvmLean.Program.Examples.TwoContracts
 
 open Interpreter
@@ -104,6 +124,7 @@ def getSummary : FunctionSummary codeB where
 /-- `B`'s address in `A`. -/
 def addrB : Address := 0xbeef
 
+/-- The address `A` pushes is `addrB`. -/
 theorem toAddress_beef : Word.toAddress 48879#256 = addrB := by decide
 
 /-- `B`'s code is not a delegation designator. -/
@@ -114,6 +135,7 @@ def fPost (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord (m.world.sload addrB 0)) ∧ mf.world = m.world
 
 set_option maxHeartbeats 0 in
+/-- The frame of `A.f()`, with `B` entering only through `getSummary`. -/
 theorem f_halts (m : Machine) (hf : Fresh codeA m) (hval : m.frame.msg.value = 0)
     (hsize : 4 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 256)
     (hsel : selectorOf m.frame.msg.data = 0x26121ff0#256) (hg : 20000 ≤ m.frame.gasLeft)
