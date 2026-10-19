@@ -91,8 +91,15 @@ def writeMemory (off : Nat) (data : ByteArray) : M Unit :=
   if data.size = 0 then pure ()
   else modifyFrame fun fr => { fr with memory := fr.memory.write off data }
 
+/-- `len` bytes of `b` from `off`, zero-padded (`buffer_read`). Equal to
+`Bytes.readPadded b off len`, but offsets at or past the end short-circuit to zeros: offsets
+come from 256-bit words, and the runtime's `ByteArray.extract` aborts (out of memory) on
+offsets that do not fit a machine word, even for empty ranges. -/
+def readBytes (b : ByteArray) (off len : Nat) : ByteArray :=
+  if b.size ≤ off then Bytes.zeros len else Bytes.readPadded b off len
+
 /-- Read `len` bytes of memory at `off` (zero-padded). Mirrors `memory_read_bytes`. -/
-def readMemory (off len : Nat) : M ByteArray := return (← getFrame).memory.read off len
+def readMemory (off len : Nat) : M ByteArray := return readBytes (← getFrame).memory.bytes off len
 
 /-- Mark `a` warm, returning whether it already was (EIP-2929). -/
 def accessAddress (a : Address) : M Bool := do

@@ -79,7 +79,7 @@ def copyToMemory (src : Machine → ByteArray) : M Action := do
   let ext ← memoryExpansion [(memOff, size)]
   charge (Gas.veryLow + Gas.copyCost size + ext.cost)
   expandMemory [(memOff, size)]
-  writeMemory memOff (Bytes.readPadded (src (← get)) srcOff size)
+  writeMemory memOff (readBytes (src (← get)) srcOff size)
   advance
   return .next
 
@@ -337,9 +337,9 @@ def execLog (n : Nat) : M Action := do
   charge (Gas.logCost size n + ext.cost)
   expandMemory [(off, size)]
   requireNonStatic
-  let fr ← getFrame
-  let entry : Log := { address := fr.msg.currentTarget, topics := topics.toArray,
-                       data := fr.memory.read off size }
+  let data ← readMemory off size
+  let entry : Log := { address := (← getFrame).msg.currentTarget, topics := topics.toArray,
+                       data }
   modifySub fun s => { s with logs := s.logs.push entry }
   advance
   return .next
@@ -420,7 +420,7 @@ def exec : Opcode → M Action
   | .calldataload => do
     let off ← popNat
     charge Gas.veryLow
-    push (Bytes.toWord (Bytes.readPadded (← getFrame).msg.data off 32))
+    push (Bytes.toWord (readBytes (← getFrame).msg.data off 32))
     advance
     return .next
   | .calldatasize => pushValue Gas.base fun m => ofNat m.frame.msg.data.size
@@ -444,7 +444,7 @@ def exec : Opcode → M Action
     let warm ← accessAddress a
     charge (Gas.accessCost warm + Gas.copyCost size + ext.cost)
     expandMemory [(memOff, size)]
-    writeMemory memOff (Bytes.readPadded ((← get).world.code a) codeOff size)
+    writeMemory memOff (readBytes ((← get).world.code a) codeOff size)
     advance
     return .next
   | .returndatasize => pushValue Gas.base fun m => ofNat m.frame.returnData.size
@@ -588,7 +588,7 @@ def exec : Opcode → M Action
   | .push n => do
     charge (if n.val = 0 then Gas.base else Gas.veryLow)
     let fr ← getFrame
-    push (Bytes.toWord (Bytes.readPadded fr.code (fr.pc + 1) n.val))
+    push (Bytes.toWord (readBytes fr.code (fr.pc + 1) n.val))
     advance (1 + n.val)
     return .next
   | .dup n => do
