@@ -1,2 +1,8 @@
 import EvmLeanProofs.Basic
 import EvmLeanProofs.Execution
+import EvmLeanProofs.Bytes
+import EvmLeanProofs.StepBasic
+import EvmLeanProofs.StepArith
+import EvmLeanProofs.StepStack
+import EvmLeanProofs.StepEnv
+import EvmLeanProofs.StepFlow
