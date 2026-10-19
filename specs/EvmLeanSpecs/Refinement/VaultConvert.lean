@@ -73,7 +73,7 @@ theorem convertToShares_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
   · simp only [hS, iszero_zero]
     pwp_steps
     refine WP.ret ⟨x.toNat, m_memory, _, m_returnData, _,
-      by simp only [convertToSharesN, hS, BitVec.toNat_ofNat]; rfl,
+      by simp only [convertToSharesN]; rfl,
       by rw [Machine.resumeWith, ofNat_toNat_word], .inl ⟨hfmp, hsize⟩, ?_⟩
     evm_gas
   · have hS' : (m_world.sload m_msg.currentTarget 2#256).toNat ≠ 0 :=
@@ -129,7 +129,7 @@ theorem convertToAssets_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
   · simp only [hS, iszero_zero]
     pwp_steps
     refine WP.ret ⟨x.toNat, m_memory, _, m_returnData, _,
-      by simp only [convertToAssetsN, hS, BitVec.toNat_ofNat]; rfl,
+      by simp only [convertToAssetsN]; rfl,
       by rw [Machine.resumeWith, ofNat_toNat_word], .inl ⟨hfmp, hsize⟩, ?_⟩
     evm_gas
   · have hS' : (m_world.sload m_msg.currentTarget 2#256).toNat ≠ 0 :=
@@ -185,7 +185,7 @@ theorem previewMint_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} 
   · simp only [hS, iszero_zero]
     pwp_steps
     refine WP.ret ⟨x.toNat, m_memory, _, m_returnData, _,
-      by simp only [previewMintN, hS, BitVec.toNat_ofNat]; rfl,
+      by simp only [previewMintN]; rfl,
       by rw [Machine.resumeWith, ofNat_toNat_word], .inl ⟨hfmp, hsize⟩, ?_⟩
     evm_gas
   · have hS' : (m_world.sload m_msg.currentTarget 2#256).toNat ≠ 0 :=
@@ -241,7 +241,7 @@ theorem previewWithdraw_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
   · simp only [hS, iszero_zero]
     pwp_steps
     refine WP.ret ⟨x.toNat, m_memory, _, m_returnData, _,
-      by simp only [previewWithdrawN, hS, BitVec.toNat_ofNat]; rfl,
+      by simp only [previewWithdrawN]; rfl,
       by rw [Machine.resumeWith, ofNat_toNat_word], .inl ⟨hfmp, hsize⟩, ?_⟩
     evm_gas
   · have hS' : (m_world.sload m_msg.currentTarget 2#256).toNat ≠ 0 :=

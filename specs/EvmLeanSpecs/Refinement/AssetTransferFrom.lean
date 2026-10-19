@@ -75,7 +75,7 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
   by_cases hmax : m_world.sload m_msg.currentTarget (m_ctx.crypto.keccak256
       (Bytes.ofWord (Word.ofAddress m_msg.caller) ++ Bytes.ofWord (m_ctx.crypto.keccak256
         (Bytes.ofWord (Word.ofAddress src) ++ Bytes.ofWord 4#256)))) = MAXW
-  · simp only [hmax, eq_self_iff_true, Solidity.eq_self, ↓reduceIte] at hbal ⊢
+  · simp only [hmax, Solidity.eq_self, ↓reduceIte] at hbal ⊢
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     simp only [gt_sub_self_of_le hbal, iszero_zero]
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
@@ -99,7 +99,7 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     refine ⟨rfl, ?_, rfl, rfl, ?_⟩
     · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
         Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
-        allowanceSlot_solmate, hmax, eq_self_iff_true, ↓reduceIte]
+        allowanceSlot_solmate, hmax, ↓reduceIte]
     · dsimp only [outputMachine]
       evm_gas
 
@@ -137,7 +137,7 @@ theorem transferFrom_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
   by_cases hmax : m_world.sload m_msg.currentTarget (m_ctx.crypto.keccak256
       (Bytes.ofWord (Word.ofAddress m_msg.caller) ++ Bytes.ofWord (m_ctx.crypto.keccak256
         (Bytes.ofWord (Word.ofAddress src) ++ Bytes.ofWord 4#256)))) = MAXW
-  · simp only [hmax, eq_self_iff_true, Solidity.eq_self, ↓reduceIte, true_or, true_and,
+  · simp only [hmax, Solidity.eq_self, ↓reduceIte, true_or, true_and,
       Nat.not_le] at hfail ⊢
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     simp only [gt_sub_self_of_lt hfail, iszero_one]
