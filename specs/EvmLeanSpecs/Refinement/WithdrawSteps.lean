@@ -57,7 +57,7 @@ def spendStep (crypto : Crypto) (w : World) (vault owner caller : Address) (amou
 /-- `beforeWithdrawHookCalledCounter++` (slot 6), checked. -/
 def bumpStep (w : World) (vault : Address) : Option World :=
   if w.sload vault 6#256 = MAXW then none
-  else some (w.sstore vault 6#256 (w.sload vault 6#256 + 1#256))
+  else some (w.sstore vault 6#256 (1#256 + w.sload vault 6#256))
 
 /-- Solmate `_burn(src, amount)`: `balanceOf[src] -= amount` (checked), then
 `totalSupply -= amount` (unchecked, read after the first write). -/
@@ -282,12 +282,13 @@ theorem bumpStep_spec {w : World} {vault : Address}
       cases hc
       have hne : w.sload vault 6#256 ≠ MAXW := by
         rw [Ne, eq_MAXW_iff]; unfold MAX at *; omega
-      refine ⟨w.sstore vault 6#256 (w.sload vault 6#256 + 1#256), by simp [bumpStep, hne], ?_,
+      refine ⟨w.sstore vault 6#256 (1#256 + w.sload vault 6#256), by simp [bumpStep, hne], ?_,
         repOn_sstore_fixed hrow (by decide) hr, fun b k hk => sload_sstore_of_ne hk⟩
       rw [World.sload_sstore_self, BitVec.toNat_add]
       simp only [BitVec.toNat_ofNat]
       unfold MAX at hle
       rw [Nat.mod_eq_of_lt (by omega)]
+      omega
   · rename_i hc
     simp only [Solmate.bump, checkedAdd] at hc
     split at hc
