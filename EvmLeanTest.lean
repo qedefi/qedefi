@@ -4,3 +4,6 @@ import EvmLeanTest.Keccak
 import EvmLeanTest.Sha256
 import EvmLeanTest.Ripemd160
 import EvmLeanTest.Blake2f
+import EvmLeanTest.Secp256k1
+import EvmLeanTest.Bn254
+import EvmLeanTest.Precompile
