@@ -2,11 +2,14 @@ import EvmLeanProofs.Program.Tactic
 import EvmLeanProofs.Program.ExtraLogic
 import EvmLeanProofs.Solidity.ExtraWord
 import EvmLeanProofs.Contracts.SolmateVault
+import EvmLeanProofs.Solidity.ExtraPatchedWP
+import EvmLeanSpecs.Refinement.SharesCode
 
 /-!
 # Solmate `FixedPointMathLib.mulDivDown` / `mulDivUp` in the compiled vault
 
-The compiled `MockERC4626` (`Contracts.SolmateVault.runtimeCode`) contains each of Solmate's
+The compiled `MockERC4626`, deployed with any immutables `i`
+(`SolmateVault.runtimeCodeWith i`), contains each of Solmate's
 two assembly `mulDiv` functions once, as an internal function called with
 `JUMP` and stack `denominator :: y :: x :: return :: rest`:
 
@@ -50,58 +53,60 @@ theorem Memory.read_zero_len (mem : Memory) (off : Nat) : mem.read off 0 = .empt
 
 set_option maxHeartbeats 0 in
 /-- **`mulDivDown` summary** (entry `0x0e62`, stack `d :: y :: x :: r :: rest`). -/
-theorem mulDivDown_wp (m : Machine) {d y x r : Word} {rest : List Word}
-    (hc : m.frame.code = SolmateVault.runtimeCode)
-    (hj : JumpTable m.frame.jumpDests SolmateVault.runtimeCode)
+theorem mulDivDown_wp {i : SolmateVault.Immutables} (m : Machine) {d y x r : Word} {rest : List Word}
+    (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
+    (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
     (hpc : m.frame.pc = 0xe62) (hs : m.frame.stack = d :: y :: x :: r :: rest)
     (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hg : 100 ≤ m.frame.gasLeft) :
     WP m (fun m' => ∃ v, mulDivDownN x.toNat y.toNat d.toNat = some v ∧
         m' = m.resumeAt r.toNat (BitVec.ofNat 256 v :: rest) (m.frame.gasLeft - 81))
       (fun mf o => mulDivDownN x.toNat y.toNat d.toNat = none ∧ MulDivRevert m mf o) := by
+  have hagree := Shares.jumpDestsAgree i
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
     ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
       m_snapshot, m_kind⟩, m_parents⟩ := m
   dsimp only at *
   subst hs hpc hc
-  wp_steps
+  pwp_steps
   by_cases hbad : (d.toNat = 0 ∨ (y.toNat ≠ 0 ∧ (2 ^ 256 - 1) / y.toNat < x.toNat))
   · have hz := mulDivGuard_eq_zero hbad
     simp only [hz]
-    wp_steps
+    pwp_steps
     refine ⟨by simp only [mulDivDownN, MAXN, hbad, ↓reduceIte], ?_, rfl⟩
     rw [Memory.read_zero_len]
   · have hz : mulDivGuard x y d ≠ 0#256 := by rw [Ne, mulDivGuard_eq_zero_iff]; exact hbad
-    wp_steps
+    pwp_steps
     refine WP.ret ⟨x.toNat * y.toNat / d.toNat, by simp only [mulDivDownN, MAXN, hbad, ↓reduceIte], ?_⟩
     simp only [Machine.resumeAt]
     rw [mulDivDownWord_eq (by omega)]
 
 set_option maxHeartbeats 0 in
 /-- **`mulDivUp` summary** (entry `0x0e7d`, stack `d :: y :: x :: r :: rest`). -/
-theorem mulDivUp_wp (m : Machine) {d y x r : Word} {rest : List Word}
-    (hc : m.frame.code = SolmateVault.runtimeCode)
-    (hj : JumpTable m.frame.jumpDests SolmateVault.runtimeCode)
+theorem mulDivUp_wp {i : SolmateVault.Immutables} (m : Machine) {d y x r : Word} {rest : List Word}
+    (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
+    (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
     (hpc : m.frame.pc = 0xe7d) (hs : m.frame.stack = d :: y :: x :: r :: rest)
     (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hg : 120 ≤ m.frame.gasLeft) :
     WP m (fun m' => ∃ v, mulDivUpN x.toNat y.toNat d.toNat = some v ∧
         m' = m.resumeAt r.toNat (BitVec.ofNat 256 v :: rest) (m.frame.gasLeft - 107))
       (fun mf o => mulDivUpN x.toNat y.toNat d.toNat = none ∧ MulDivRevert m mf o) := by
+  have hagree := Shares.jumpDestsAgree i
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
     ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
       m_snapshot, m_kind⟩, m_parents⟩ := m
   dsimp only at *
   subst hs hpc hc
-  wp_steps
+  pwp_steps
   by_cases hbad : (d.toNat = 0 ∨ (y.toNat ≠ 0 ∧ (2 ^ 256 - 1) / y.toNat < x.toNat))
   · have hz := mulDivGuard_eq_zero hbad
     simp only [hz]
-    wp_steps
+    pwp_steps
     refine ⟨by simp only [mulDivUpN, MAXN, hbad, ↓reduceIte], ?_, rfl⟩
     rw [Memory.read_zero_len]
   · have hz : mulDivGuard x y d ≠ 0#256 := by rw [Ne, mulDivGuard_eq_zero_iff]; exact hbad
-    wp_steps
+    pwp_steps
     refine WP.ret ⟨ceilDivN (x.toNat * y.toNat) d.toNat, by simp only [mulDivUpN, MAXN, hbad, ↓reduceIte], ?_⟩
     simp only [Machine.resumeAt]
     rw [mulDivUpWord_eq (by omega) (by omega)]

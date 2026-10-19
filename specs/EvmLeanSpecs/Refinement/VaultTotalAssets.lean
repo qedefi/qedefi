@@ -1,5 +1,6 @@
 import EvmLeanSpecs.Refinement.AssetBalanceOf
 import EvmLeanSpecs.Refinement.MulDiv
+import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Program.Call
 import EvmLeanProofs.Program.ExtraTactic
 import EvmLeanProofs.Solidity.Call
@@ -21,9 +22,10 @@ pointer moves from `0x80` to `0xa0` and memory grows to six words (`FmpAfterCall
 
 ## Assumptions
 
-* the frame runs the canonical vault code (`VaultFrame`): the vault's `asset` immutable is
-  `assetAddr`, which holds the asset's runtime code, is not a precompile, and the call depth
-  leaves room for one more frame;
+* the frame runs the vault's code deployed with immutables `i` (`VaultFrame i`): any asset
+  address `i.asset`, chain id, domain separator and decimals; the asset account holds the
+  asset's runtime code (with any immutables), is not a precompile, and the call depth leaves
+  room for one more frame;
 * solc's memory discipline at entry (`FmpInit`: free pointer `0x80`, three words of memory);
 * `20000 ≤ gas < 2⁶⁴`.
 -/
@@ -32,30 +34,56 @@ namespace EvmLeanSpecs.Refinement
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 
-/-- The asset address of the canonical vault deployment (the vault's `asset` immutable in
-`SolmateVault.runtimeCode`). -/
-abbrev assetAddr : Address := SolmateVault.deployment.asset
-
-/-- A frame executing the canonical vault: its code and jump table, the asset's code at
-`assetAddr`, `assetAddr` not a precompile, and room for one more call frame. -/
-structure VaultFrame (m : Machine) : Prop where
+/-- A frame executing the vault deployed with immutables `i`: its code and jump table, the
+asset's code (any immutables) at `i.asset`, `i.asset` not a precompile, and room for one more
+call frame. -/
+structure VaultFrame (i : SolmateVault.Immutables) (m : Machine) : Prop where
   /-- The frame runs the vault's runtime code. -/
-  code : m.frame.code = SolmateVault.runtimeCode
+  code : m.frame.code = SolmateVault.runtimeCodeWith i
   /-- Its jump table. -/
-  jumpTable : JumpTable m.frame.jumpDests SolmateVault.runtimeCode
+  jumpTable : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i)
   /-- The asset is deployed. -/
-  assetCode : m.world.code assetAddr = SolmateAsset.runtimeCode
+  assetCode : ∃ ia, m.world.code i.asset = SolmateAsset.runtimeCodeWith ia
   /-- The asset is not a precompile. -/
-  assetNotPrecompile : m.precompiles.isPrecompile assetAddr = false
+  assetNotPrecompile : m.precompiles.isPrecompile i.asset = false
   /-- A call from this frame does not exceed the depth limit. -/
   depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
+
+/-- The `asset` immutable, as the `PUSH32` at `0x0491` (in `totalAssets()`) reads it. -/
+theorem readBytes_code_asset1170 (i : SolmateVault.Immutables) :
+    readBytes (SolmateVault.runtimeCodeWith i) 1170 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
+  have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
+      (688, Word.ofAddress i.asset)] ++ (1170, Word.ofAddress i.asset) ::
+      [(2014, Word.ofAddress i.asset), (2169, Word.ofAddress i.asset),
+      (2668, Word.ofAddress i.asset), (2995, Word.ofAddress i.asset), (623, i.decimals)] := rfl
+  simp only [SolmateVault.runtimeCodeWith, hp]
+  exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
+    (by simp)
+
+/-- The `asset` immutable, as the `PUSH32` at `0x02af` (in `asset()`) reads it. -/
+theorem readBytes_code_asset688 (i : SolmateVault.Immutables) :
+    readBytes (SolmateVault.runtimeCodeWith i) 688 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
+  have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator)] ++
+      (688, Word.ofAddress i.asset) :: [(1170, Word.ofAddress i.asset),
+      (2014, Word.ofAddress i.asset), (2169, Word.ofAddress i.asset),
+      (2668, Word.ofAddress i.asset), (2995, Word.ofAddress i.asset), (623, i.decimals)] := rfl
+  simp only [SolmateVault.runtimeCodeWith, hp]
+  exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
+    (by simp)
+
+/-- The asset's code is not a delegation designator, whatever its immutables. -/
+theorem delegatedAddress?_assetCode (ia : SolmateAsset.Immutables) :
+    delegatedAddress? (SolmateAsset.runtimeCodeWith ia) = none :=
+  delegatedAddress?_of_size (by
+    rw [SolmateAsset.runtimeCodeWith, size_patchWords, SolmateAsset.size_runtimeCode]; decide)
 
 /-- The vault's `totalSupply` word (slot 2 of the executing account). -/
 def supplyOf (m : Machine) : Word := m.world.sload m.frame.msg.currentTarget (2#256)
 
-/-- The asset balance word of the executing account: what `totalAssets()` returns. -/
-def assetsOf (m : Machine) : Word :=
-  m.world.sload assetAddr (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate
+/-- The balance word of the executing account in the asset at `asset`: what `totalAssets()`
+returns. -/
+def assetsOf (asset : Address) (m : Machine) : Word :=
+  m.world.sload asset (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate
     m.frame.msg.currentTarget)
 
 /-- solc's memory at the start of a function body: free pointer `0x80`, three words. -/
@@ -66,32 +94,33 @@ def FmpAfterCall (mem : Memory) : Prop := mem.loadWord 64 = 160#256 ∧ mem.size
 
 set_option maxHeartbeats 0 in
 /-- **`totalAssets()` (internal, entry `0x047b`, stack `r :: rest`)**: returns to `r` with
-`assetsOf m` on the stack; memory, gas, return data and substate change as described by
+`assetsOf i.asset m` on the stack; memory, gas, return data and substate change as described by
 `FmpAfterCall` and the gas bound, nothing else (in particular not the world). -/
-theorem totalAssets_wp (m : Machine) {r : Word} {rest : List Word} (hv : VaultFrame m)
+theorem totalAssets_wp {i : SolmateVault.Immutables} (m : Machine) {r : Word} {rest : List Word}
+    (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x47b) (hs : m.frame.stack = r :: rest)
     (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hfmp : m.frame.memory.loadWord 64 = 128#256) (hsize : m.frame.memory.size = 96)
     (hg : 20000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
     WP m (fun m' => ∃ mem g rd sub,
-        m' = m.resumeWith r.toNat (assetsOf m :: rest) mem g rd sub ∧
+        m' = m.resumeWith r.toNat (assetsOf i.asset m :: rest) mem g rd sub ∧
         FmpAfterCall mem ∧ m.frame.gasLeft ≤ g + 8000)
       (fun _ _ => False) := by
-  obtain ⟨hc, hj, hcode, hpre, hdepth⟩ := hv
+  obtain ⟨hc, hj, ⟨ia, hcode⟩, hpre, hdepth⟩ := hv
+  have hagree := Shares.jumpDestsAgree i
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
     ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
       m_snapshot, m_kind⟩, m_parents⟩ := m
   dsimp only at *
   subst hs hpc hc
-  wp_run_to 0x4d0 [hfmp, hsize]
-  have hacc := accessCost_le (m_sub.accessedAddresses.contains assetAddr)
+  pwp_run_to 0x4d0 [hfmp, hsize, readBytes_code_asset1170, ofAddress_and_addressMask,
+    addressMask_and_ofAddress]
+  have hacc := accessCost_le (m_sub.accessedAddresses.contains i.asset)
   have hmod : (m_gasLeft - 112) % 2 ^ 256 = m_gasLeft - 112 := Nat.mod_eq_of_lt (by omega)
-  have hto : Word.toAddress (108902904548468084633759432717356981306078134798#256) = assetAddr := by
-    decide
-  have hdel : delegatedAddress? SolmateAsset.runtimeCode = none :=
-    delegatedAddress?_of_size (by rw [SolmateAsset.size_runtimeCode]; decide)
-  refine WP.staticcall (by code_fact) rfl ?_ ?_ ?_ ?_
-    (balanceOf_halts _ ?_ m_msg.currentTarget rfl ?_ ?_ ?_ ?_ ?_) ?_
+  have hto : Word.toAddress (Word.ofAddress i.asset) = i.asset := Word.toAddress_ofAddress _
+  have hdel := delegatedAddress?_assetCode ia
+  refine WP.staticcall (by pcode_fact) rfl ?_ ?_ ?_ ?_
+    (balanceOf_halts (ia := ia) _ ?_ m_msg.currentTarget rfl ?_ ?_ ?_ ?_ ?_) ?_
   · exact .inr (by dsimp only; rw [hto, hcode]; exact hdel)
   · simp only [callCost, callGas, callExt, hto, ofNat, BitVec.toNat_ofNat, hmod,
       Nat.reducePow, Nat.reduceMod]
@@ -141,11 +170,11 @@ theorem totalAssets_wp (m : Machine) {r : Word} {rest : List Word} (hv : VaultFr
     wp_generalize_gas g1 hg1
     have hg1' : m_gasLeft ≤ g1 + 6000 := by
       subst hg1
-      generalize Gas.accessCost (Std.ExtTreeSet.contains m_sub.accessedAddresses assetAddr) = acc
+      generalize Gas.accessCost (Std.ExtTreeSet.contains m_sub.accessedAddresses i.asset) = acc
         at hacc hgasB ⊢
       evm_gas
     clear hg1 hgasB hdel hto hcode hpre
-    wp_steps [hfmp, hsize, Bytes.size_ofWord]
+    pwp_steps [hfmp, hsize, Bytes.size_ofWord]
     apply WP.ret
     refine ⟨_, _, _, _, by simp only [Machine.resumeWith, assetsOf]; rfl, ⟨?_, ?_⟩, ?_⟩
     · simp only [Memory.loadWord_expand, Memory.loadWord_storeWord]
