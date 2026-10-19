@@ -41,8 +41,8 @@ def patched? (e : Expr) : MetaM (Option (Expr × Expr)) := withTransparency .def
   let mut e ← instantiateMVars e
   for _ in [0:16] do
     e := e.consumeMData
-    if e.isAppOfArity ``Contracts.patchWords 2 then
-      return some (e.appFn!.appArg!, e.appArg!)
+    if let some (base, ps) := e.app2? ``Contracts.patchWords then
+      return some (base, ps)
     match ← unfoldDefinition? e with
     | some e' => e := e'
     | none => return none
@@ -58,8 +58,7 @@ def patchOffsets? (ps : Expr) : MetaM (Option (List Nat)) := do
     if c.isAppOfArity ``List.nil 1 then return some out.toList
     let some (_, hd, tl) := c.app3? ``List.cons | return none
     let hd ← whnfD hd
-    unless hd.isAppOfArity ``Prod.mk 4 do return none
-    let o := hd.appFn!.appArg!
+    let some (_, _, o, _) := hd.app4? ``Prod.mk | return none
     let some n ← (evalNat o).run | do
       let some n ← (evalNat (← whnfD o)).run | return none
       out := out.push n
@@ -111,10 +110,9 @@ Fails if the goal is not of this form or `j` lies in a patch. -/
 def dischCodeByte (g : MVarId) : TacticM Unit := g.withContext do
   let t ← instantiateMVars (← g.getType)
   let_expr Eq ty lhs rhs := t | throwError "psol_disch: not an equation"
-  let args := lhs.getAppArgs
-  unless lhs.isAppOfArity ``GetElem?.getElem? 7 do throwError "psol_disch: not a code byte"
-  let code := args[5]!
-  let some j ← (evalNat args[6]!).run | throwError "psol_disch: symbolic code index"
+  let_expr GetElem?.getElem? coll idx elem valid inst code jE := lhs
+    | throwError "psol_disch: not a code byte"
+  let some j ← (evalNat jE).run | throwError "psol_disch: symbolic code index"
   let some (base, ps) ← patched? code | throwError "psol_disch: code is not patched"
   let some offs ← patchOffsets? ps | throwError "psol_disch: unknown patch offsets"
   unless offs.all (fun o => j < o ∨ o + 32 ≤ j) do
@@ -125,13 +123,14 @@ def dischCodeByte (g : MVarId) : TacticM Unit := g.withContext do
     let body ← mkAppM ``Or #[← mkAppM ``LT.lt #[mkNatLit j, o],
       ← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[o, mkNatLit 32], mkNatLit j]]
     mkForallFVars #[o] (← mkArrow mem body))
-  let lhs' := mkAppN lhs.getAppFn (args.set! 5 base)
+  let lhs' := mkAppN lhs.getAppFn #[coll, idx, elem, valid, inst, base, jE]
   let heq := mkAppN (mkConst ``getElem?_patchWords_of_offsets)
     #[base, ps, mkNatLit j, offsE, ← offsetsProof ps offs, hdisj]
   let heq ← mkExpectedTypeHint heq (← mkEq lhs lhs')
   let g' ← mkFreshExprSyntheticOpaqueMVar (mkApp3 (mkConst ``Eq [1]) ty lhs' rhs)
+  let .mvar gid := g' | throwError "psol_disch: internal error"
   g.assign (← mkEqTrans heq g')
-  setGoals [g'.mvarId!]
+  setGoals [gid]
   evalTactic (← `(tactic| decide +kernel))
 
 /-- Close `isValidJumpDest (validJumpDests code) d = true` with a hypothesis

@@ -2,6 +2,7 @@ import EvmLeanProofs.Solidity.SharesExtraTactic
 import EvmLeanProofs.Solidity.SharesExtraCall
 import EvmLeanProofs.Solidity.SharesExtraErc20
 import EvmLeanProofs.Contracts.SolmateVault
+import EvmLeanProofs.Contracts.Deploy
 import EvmLeanProofs.KernelRfl
 
 /-!
@@ -31,6 +32,20 @@ open EvmLean Interpreter Solidity Contracts Dispatch
 
 /-- The runtime code of the vault deployed with immutables `i`. -/
 abbrev code (i : SolmateVault.Immutables) : ByteArray := SolmateVault.runtimeCodeWith i
+
+/-- The canonical deployment is an instance. -/
+theorem code_deployment : code SolmateVault.deployment = SolmateVault.runtimeCode :=
+  SolmateVault.runtimeCodeWith_deployment
+
+/-- `runtimeCodeFor` (a deployment over `asset` at `self`, canonical name) is an instance. -/
+theorem code_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat) (asset self : Address) :
+    code (SolmateVault.immutablesFor keccak256 chainId asset self) =
+      SolmateVault.runtimeCodeFor keccak256 chainId asset self := rfl
+
+/-- `runtimeCodeFor` deploys with 18 decimals. -/
+theorem decimals_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat)
+    (asset self : Address) : (SolmateVault.immutablesFor keccak256 chainId asset self).decimals = 18#256 :=
+  rfl
 
 /-- The patches only touch `PUSH32` immediates: the jump table is the canonical one, for all
 immutables (kernel evaluation of the `JUMPDEST` scan, which skips the patched bytes). -/
