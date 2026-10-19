@@ -1,4 +1,5 @@
 import EvmLeanProofs.Tactic
+import EvmLeanProofs.Call
 
 /-!
 # A verified token transfer
@@ -107,17 +108,20 @@ def start (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : 
   frame := Frame.init msg (.call 0 0) (w, tr)
   parents := []
 
-/-- `processMessageCall` of a transfer starts the interpreter on the token code: the token
-is not a precompile and no value moves. -/
+/-- The token code is not an EIP-7702 delegation designator. -/
+theorem delegatedAddress?_code : delegatedAddress? code = none := by decide
+
+/-- `processMessageCall` of a transfer starts the interpreter on the token code: delegation
+does nothing (before Prague, or without authorizations), the token is not a precompile and
+no value moves. -/
 theorem processMessageCall_transfer {ctx : Context} {w : World} {tr : TransientStorage}
     {token caller to : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
-    {warmKeys : StorageKeySet} (hpre : Precompile.isPrecompile ctx.fork token = false)
-    (fuel : Nat) :
+    {warmKeys : StorageKeySet} (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hpre : Precompile.isPrecompile ctx.fork token = false) (fuel : Nat) :
     processMessageCall fuel ctx w tr (transferCall token caller to amount gas warmAddrs warmKeys) =
-      run fuel (start ctx w tr (transferCall token caller to amount gas warmAddrs warmKeys)) := by
-  simp only [processMessageCall, processMessageCallWith, initMachine, transferCall,
-    precompileOf, PrecompileImpl.standard, hpre, transferValue]
-  simp [Gas.stackDepthLimit, start, PrecompileImpl.standard]
+      run fuel (start ctx w tr (transferCall token caller to amount gas warmAddrs warmKeys)) :=
+  processMessageCall_eq_run hdeleg delegatedAddress?_code
+    (initMachine_call rfl rfl hpre rfl rfl) fuel
 
 /-- `CALLDATALOAD 0` of the transfer calldata is `to`. -/
 theorem calldata_to (to : Address) (amount : Word) :
@@ -146,12 +150,13 @@ def transferWorld (w : World) (token caller to : Address) (amount : Word) : Worl
 /-- **Transfer, success case.** If the caller holds at least `amount`, the call succeeds and
 the resulting world is `transferWorld` (for any fuel ≥ 22, gas ≥ 50 000, any crypto,
 context, world, caller, recipient and warm sets). -/
-theorem transfer_ok (hpre : Precompile.isPrecompile ctx.fork token = false)
+theorem transfer_ok (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hpre : Precompile.isPrecompile ctx.fork token = false)
     (hgas : 50000 ≤ gas) (hbal : amount.toNat ≤ (balanceOf w token caller).toNat) (k : Nat) :
     ∃ r, processMessageCall (k + 22) ctx w tr
         (transferCall token caller to amount gas warmAddrs warmKeys) = .ok r ∧
       r.success = true ∧ r.world = transferWorld w token caller to amount := by
-  rw [processMessageCall_transfer hpre]
+  rw [processMessageCall_transfer hdeleg hpre]
   simp only [start, Frame.init, transferCall]
   evm_steps [calldata_to, calldata_amount]
   have hlt : Word.lt (w.sload token (Word.ofAddress caller)) amount = 0 := by
@@ -166,12 +171,13 @@ theorem transfer_ok (hpre : Precompile.isPrecompile ctx.fork token = false)
 
 /-- **Transfer, failure case.** If the caller holds less than `amount`, the call reverts and
 the world is unchanged. -/
-theorem transfer_revert (hpre : Precompile.isPrecompile ctx.fork token = false)
+theorem transfer_revert (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hpre : Precompile.isPrecompile ctx.fork token = false)
     (hgas : 50000 ≤ gas) (hbal : (balanceOf w token caller).toNat < amount.toNat) (k : Nat) :
     ∃ r, processMessageCall (k + 15) ctx w tr
         (transferCall token caller to amount gas warmAddrs warmKeys) = .ok r ∧
       r.success = false ∧ r.reverted = true ∧ r.world = w := by
-  rw [processMessageCall_transfer hpre]
+  rw [processMessageCall_transfer hdeleg hpre]
   simp only [start, Frame.init, transferCall]
   evm_steps [calldata_to, calldata_amount]
   have hlt : Word.lt (w.sload token (Word.ofAddress caller)) amount = 1 := by
@@ -272,14 +278,15 @@ theorem toNat_balanceOf_transferWorld_caller {w : World} {token caller to : Addr
 
 /-! ## Specification -/
 
-/-- **`transfer` meets its specification** (every `Crypto`, context, world, transient
-storage, caller, recipient `to ≠ caller`, amount, gas ≥ 50 000, warm sets, fuel ≥ 22):
+/-- **`transfer` meets its specification** (every `Crypto`, context without EIP-7702
+authorizations (or before Prague), world, transient storage, caller, recipient `to ≠ caller`, amount, gas ≥ 50 000, warm sets, fuel ≥ 22):
 
 * if `amount ≤ balance[caller]`: the call succeeds, `balance[caller]` decreases by `amount`
   (exactly, as a number), `balance[to]` increases by `amount`, their sum is preserved, and no
   other balance or other account's storage changes;
 * if `amount > balance[caller]`: the call reverts and the world is unchanged. -/
-theorem transfer_spec (hpre : Precompile.isPrecompile ctx.fork token = false)
+theorem transfer_spec (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hpre : Precompile.isPrecompile ctx.fork token = false)
     (hgas : 50000 ≤ gas) (hne : to ≠ caller) (fuel : Nat) (hfuel : 22 ≤ fuel) :
     ∃ r, processMessageCall fuel ctx w tr
         (transferCall token caller to amount gas warmAddrs warmKeys) = .ok r ∧
@@ -299,7 +306,7 @@ theorem transfer_spec (hpre : Precompile.isPrecompile ctx.fork token = false)
   split
   · rename_i hbal
     obtain ⟨r, hr, hs, hw⟩ := transfer_ok (tr := tr) (to := to) (warmAddrs := warmAddrs)
-      (warmKeys := warmKeys) hpre hgas hbal k
+      (warmKeys := warmKeys) hdeleg hpre hgas hbal k
     refine ⟨r, hr, hs, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> rw [hw]
     · exact toNat_balanceOf_transferWorld_caller hne hbal
     · exact balanceOf_transferWorld_caller hne
@@ -309,7 +316,7 @@ theorem transfer_spec (hpre : Precompile.isPrecompile ctx.fork token = false)
     · exact fun b k hb => sload_transferWorld_of_ne hb k
   · rename_i hbal
     obtain ⟨r, hr, h⟩ := transfer_revert (tr := tr) (to := to) (warmAddrs := warmAddrs)
-      (warmKeys := warmKeys) hpre hgas (Nat.lt_of_not_le hbal) (k + 7)
+      (warmKeys := warmKeys) hdeleg hpre hgas (Nat.lt_of_not_le hbal) (k + 7)
     exact ⟨r, hr, h⟩
 
 /-- In Cancun, addresses above `0x0a` are not precompiles. -/
@@ -335,6 +342,7 @@ theorem transfer_spec_cancun (hfork : ctx.fork = .cancun) (htoken : 0x0a < token
         (∀ b k, b ≠ token → r.world.sload b k = w.sload b k)
       else
         r.success = false ∧ r.reverted = true ∧ r.world = w :=
-  transfer_spec (hfork ▸ isPrecompile_cancun_of_lt htoken) hgas hne fuel hfuel
+  transfer_spec (.inl (by rw [hfork]; decide)) (hfork ▸ isPrecompile_cancun_of_lt htoken) hgas
+    hne fuel hfuel
 
 end EvmLean.Examples.Token

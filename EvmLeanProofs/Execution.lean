@@ -1,4 +1,5 @@
 import EvmLeanProofs.Tactic
+import EvmLeanProofs.Call
 
 /-!
 # Executing bytecode, for every `Crypto`
@@ -71,7 +72,8 @@ def initial (crypto : Crypto) : Machine :=
 /-- `processMessageCall` sets up `initial` (the contract is not a precompile, no value moves)
 and runs it. -/
 theorem processMessageCall_eq (crypto : Crypto) :
-    Interpreter.processMessageCall 100 { crypto } world ∅ msg = run 100 (initial crypto) := rfl
+    Interpreter.processMessageCall 100 { crypto } world ∅ msg = run 100 (initial crypto) :=
+  processMessageCall_eq_run (.inl (show Fork.cancun < .prague by decide)) (by decide) (initMachine_call rfl rfl rfl rfl rfl) 100
 
 /-- `addStore_slot0` again, by symbolic execution with the step lemmas. -/
 theorem addStore_slot0' (crypto : Crypto) :
