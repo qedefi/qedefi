@@ -276,7 +276,7 @@ structure Checked where
   blobVersionedHashes : List Word
   /-- Blob gas consumed. -/
   blobGasUsed : Nat
-  deriving Inhabited
+  deriving DecidableEq, Inhabited
 
 /-- Effective gas price and maximum execution-gas fee (`check_transaction`). Fee-market
 transactions pay `min(maxPriorityFee, maxFee - baseFee) + baseFee`; others pay their gas
