@@ -33,13 +33,45 @@ open Vault
 /-- What `withdraw` / `redeem` end with, against the model's result `r` from caller `caller`
 paying `receiver` for `owner`: success with the ABI word and a world refining the model's state,
 or a revert. -/
-def OutRefPost (crypto : Crypto) (vault asset caller receiver owner : Address)
+def OutRefPost (crypto : Crypto) (w₀ : World) (vault asset caller receiver owner : Address)
     (r : Option (Solmate.State Address × ℕ)) (mf : Machine) (o : Outcome) : Prop :=
   match r with
   | some (s', v) => o = .success (Bytes.ofWord (BitVec.ofNat 256 v)) ∧
       RefinesOn (OutAllowances crypto caller owner) (TransferAllowances crypto vault receiver)
-        crypto mf.world vault asset s'
+        crypto mf.world vault asset s' ∧ ∀ b, mf.world.code b = w₀.code b
   | none => ∃ out, o = .revert out
+
+/-- `payStep` keeps every account's code. -/
+theorem code_of_payStep {crypto : Crypto} {w w' : World} {asset vault dst : Address} {v : Word}
+    (h : payStep crypto w asset vault dst v = some w') (b : Address) : w'.code b = w.code b := by
+  unfold payStep at h
+  split at h
+  · cases h
+  · cases h; simp [Examples.SolmateAssetTransfer.transferWorld]
+
+/-- `withdrawWorld?` keeps every account's code. -/
+theorem code_of_withdrawWorld? {crypto : Crypto} {w w' : World}
+    {vault asset caller receiver owner : Address} {assets v : Word}
+    (h : withdrawWorld? crypto w vault asset caller assets receiver owner = some (w', v))
+    (b : Address) : w'.code b = w.code b := by
+  simp only [withdrawWorld?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  obtain ⟨_, -, w₁, h₁, w₂, h₂, w₃, h₃, w₄, h₄, he⟩ := h
+  cases he
+  rw [code_of_payStep h₄, code_of_burnStep h₃, code_of_bumpStep h₂, code_of_spendStep h₁]
+
+/-- `redeemWorld?` keeps every account's code. -/
+theorem code_of_redeemWorld? {crypto : Crypto} {w w' : World}
+    {vault asset caller receiver owner : Address} {shares v : Word}
+    (h : redeemWorld? crypto w vault asset caller shares receiver owner = some (w', v))
+    (b : Address) : w'.code b = w.code b := by
+  simp only [redeemWorld?, Option.bind_eq_some_iff] at h
+  obtain ⟨w₁, h₁, x, -, h⟩ := h
+  split at h
+  · cases h
+  · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨w₂, h₂, w₃, h₃, w₄, h₄, he⟩ := h
+    cases he
+    rw [code_of_payStep h₄, code_of_burnStep h₃, code_of_bumpStep h₂, code_of_spendStep h₁]
 
 /-- From the bytecode-level result to the model-level one. -/
 theorem outRefPost_of {crypto : Crypto} {vault asset caller receiver owner : Address}
@@ -49,13 +81,14 @@ theorem outRefPost_of {crypto : Crypto} {vault asset caller receiver owner : Add
           RefinesOn (OutAllowances crypto caller owner) (TransferAllowances crypto vault receiver)
             crypto w' vault asset s'
       | none => rw = none)
+    {w₀ : World} (hc : ∀ w' v, rw = some (w', v) → ∀ b, w'.code b = w₀.code b)
     {mf : Machine} {o : Outcome} (h : OutPost rw mf o) :
-    OutRefPost crypto vault asset caller receiver owner r mf o := by
+    OutRefPost crypto w₀ vault asset caller receiver owner r mf o := by
   unfold OutRefPost
   split at hW
   · obtain ⟨w', rfl, hR⟩ := hW
     obtain ⟨ho, hw⟩ := h
-    exact ⟨ho, hw ▸ hR⟩
+    exact ⟨ho, hw ▸ hR, hw ▸ hc _ _ rfl⟩
   · subst hW
     exact h
 
@@ -66,11 +99,12 @@ theorem withdraw_refines {i : SolmateVault.Immutables} (m : Machine) (h : OutPre
       (Word.ofAddress owner))
     (hk : OutSlots m.ctx.crypto m.frame.msg.currentTarget m.frame.msg.caller owner receiver)
     (hinv : Solmate.Inv (absOf i.asset m)) :
-    Halts m (OutRefPost m.ctx.crypto m.frame.msg.currentTarget i.asset m.frame.msg.caller
+    Halts m (OutRefPost m.ctx.crypto m.world m.frame.msg.currentTarget i.asset m.frame.msg.caller
       receiver owner (Solmate.withdraw (absOf i.asset m) m.frame.msg.caller assets.toNat
         receiver owner)) :=
   (withdraw_halts m h hd).mono fun _ _ _ hp =>
-    outRefPost_of (withdrawWorld?_refines (refines_iff.2 rfl) hinv h.assetNe hk assets) hp
+    outRefPost_of (withdrawWorld?_refines (refines_iff.2 rfl) hinv h.assetNe hk assets)
+      (fun _ _ he => code_of_withdrawWorld? he) hp
 
 /-- **`redeem(shares, receiver, owner)` refines `Solmate.redeem`**, in any frame. -/
 theorem redeem_refines {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i m)
@@ -79,11 +113,12 @@ theorem redeem_refines {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i
       (Word.ofAddress owner))
     (hk : OutSlots m.ctx.crypto m.frame.msg.currentTarget m.frame.msg.caller owner receiver)
     (hinv : Solmate.Inv (absOf i.asset m)) :
-    Halts m (OutRefPost m.ctx.crypto m.frame.msg.currentTarget i.asset m.frame.msg.caller
+    Halts m (OutRefPost m.ctx.crypto m.world m.frame.msg.currentTarget i.asset m.frame.msg.caller
       receiver owner (Solmate.redeem (absOf i.asset m) m.frame.msg.caller shares.toNat
         receiver owner)) :=
   (redeem_halts m h hd).mono fun _ _ _ hp =>
-    outRefPost_of (redeemWorld?_refines (refines_iff.2 rfl) hinv h.assetNe hk shares) hp
+    outRefPost_of (redeemWorld?_refines (refines_iff.2 rfl) hinv h.assetNe hk shares)
+      (fun _ _ he => code_of_redeemWorld? he) hp
 
 /-! ## Top-level transactions -/
 
@@ -93,7 +128,7 @@ def OutResult (crypto : Crypto) (w : World) (vault asset caller receiver owner :
   match r with
   | some (s', v) => res.success = true ∧ res.output = Bytes.ofWord (BitVec.ofNat 256 v) ∧
       RefinesOn (OutAllowances crypto caller owner) (TransferAllowances crypto vault receiver)
-        crypto res.world vault asset s'
+        crypto res.world vault asset s' ∧ ∀ b, res.world.code b = w.code b
   | none => res.success = false ∧ res.reverted = true ∧ res.world = w
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
@@ -144,7 +179,7 @@ theorem out_call {i : SolmateVault.Immutables} {receiver owner : Address}
     (hpre : Precompile.isPrecompile ctx.fork vault = false)
     (h : Halts (startMachine ctx w tr
         (callMsg (SolmateVault.runtimeCodeWith i) vault caller data gas wa wk))
-      (OutRefPost ctx.crypto vault i.asset caller receiver owner r)) :
+      (OutRefPost ctx.crypto w vault i.asset caller receiver owner r)) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (SolmateVault.runtimeCodeWith i) vault caller data gas wa wk) = .ok res ∧
       OutResult ctx.crypto w vault i.asset caller receiver owner res r := by
@@ -159,12 +194,12 @@ theorem out_call {i : SolmateVault.Immutables} {receiver owner : Address}
   unfold OutRefPost at hH
   unfold OutResult
   split at hH
-  · obtain ⟨ho, hR⟩ := hH
+  · obtain ⟨ho, hR, hC⟩ := hH
     subst ho
     obtain ⟨h1, h2, h3, -⟩ := topLevelResult_success_call (t := (callMsg
       (SolmateVault.runtimeCodeWith i) vault caller data gas wa wk).target)
       (out := Bytes.ofWord _) hk
-    exact ⟨h1, h2, h3 ▸ hR⟩
+    exact ⟨h1, h2, h3 ▸ hR, h3 ▸ hC⟩
   · obtain ⟨out, ho⟩ := hH
     subst ho
     have hsnap : mf.frame.snapshot.1 = w := by rw [hs.snapshot]; rfl
