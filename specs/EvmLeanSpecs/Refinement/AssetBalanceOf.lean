@@ -36,6 +36,22 @@ def BalanceOfPost (a : Address) (m mf : Machine) (o : Outcome) : Prop :=
   mf.world = m.world ∧ mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
   mf.frame.sub.logs = m.frame.sub.logs ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + 3000
 
+set_option hygiene false in
+/-- Open a fresh frame for symbolic execution: from `hf : Fresh code m`, destructure `m` into
+`m_ctx`, `m_world`, `m_msg`, `m_gasLeft`, `m_sub`, … and substitute the frame's start values
+(code, pc, empty stack and memory); the jump table is kept as `hj : JumpTable m_jumpDests code`.
+Unlike `wp_intro` it substitutes nothing else, so hypotheses about other variables (e.g. an
+`amount` that the calldata carries) survive. -/
+macro "fresh_intro" : tactic => `(tactic| (
+  obtain ⟨hc, hj, hpc, hs, hmem, -, -⟩ := hf.frame
+  clear hf
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  wp_hide_jump_tables
+  subst hs hpc hc hmem))
+
 /-- The dispatcher's `CALLDATASIZE < 4` test fails for calldata holding a selector. -/
 theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by

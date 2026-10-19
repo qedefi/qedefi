@@ -44,19 +44,6 @@ def previewWithdrawN (S T x : Nat) : Option Nat := if S = 0 then some x else mul
 after the `totalAssets()` call (`FmpAfterCall`). -/
 def FmpOk (mem : Memory) : Prop := FmpInit mem ∨ FmpAfterCall mem
 
-/-- `ISZERO 0 = 1`. -/
-theorem iszero_zero : Word.iszero 0#256 = 1#256 := by decide
-
-/-- `ISZERO x = 0` for `x ≠ 0`. -/
-theorem iszero_of_ne {x : Word} (h : x ≠ 0#256) : Word.iszero x = 0#256 := by
-  have hb : (x == 0) = false := by simpa using h
-  simp only [Word.iszero, Word.ofBool, hb]
-  rfl
-
-/-- A word is the `ofNat` of its value. -/
-theorem ofNat_toNat_word (x : Word) : BitVec.ofNat 256 x.toNat = x := by
-  apply BitVec.eq_of_toNat_eq; simp
-
 set_option maxHeartbeats 0 in
 /-- **`convertToShares(x)` (internal, entry `0xbda`, stack `x :: r :: rest`)**: returns to `r` with the
 specification's value, or reverts as `mulDiv` does. -/

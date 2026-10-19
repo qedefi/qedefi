@@ -185,4 +185,20 @@ theorem mulDivUpWord_eq {x y d : Word} (hd : d.toNat ≠ 0)
   congr 1
   omega
 
+/-- `ISZERO 0 = 1`. -/
+theorem iszero_zero : Word.iszero 0#256 = 1#256 := by decide
+
+/-- `ISZERO 1 = 0`. -/
+theorem iszero_one : Word.iszero 1#256 = 0#256 := by decide
+
+/-- `ISZERO x = 0` for `x ≠ 0`. -/
+theorem iszero_of_ne {x : Word} (h : x ≠ 0#256) : Word.iszero x = 0#256 := by
+  have hb : (x == 0) = false := by simpa using h
+  simp only [Word.iszero, Word.ofBool, hb]
+  rfl
+
+/-- A word is the `ofNat` of its value. -/
+theorem ofNat_toNat_word (x : Word) : BitVec.ofNat 256 x.toNat = x := by
+  apply BitVec.eq_of_toNat_eq; simp
+
 end EvmLean.Solidity
