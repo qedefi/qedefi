@@ -8,6 +8,8 @@ public import EvmLeanSpecs.Vault.RoundTripAlgebra
 public import EvmLeanSpecs.Vault.SolmateProps
 public import EvmLeanSpecs.Vault.Oz
 public import EvmLeanSpecs.Vault.OzProps
+public import EvmLeanSpecs.Vault.InflationAlgebra
+public import EvmLeanSpecs.Vault.Inflation
 
 /-!
 # `EvmLeanSpecs.Vault`: abstract ERC-4626 vault models

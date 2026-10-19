@@ -48,11 +48,11 @@ theorem toShares_eq_some {s : State A} {a n : ℕ} {up : Bool} :
         n = (if up then ceilDiv (a * s.vS δ) s.vT else a * s.vS δ / s.vT) := by
   unfold State.toShares State.vS State.vT checkedAdd
   by_cases h1 : MAX < s.totalSupply + 10 ^ δ
-  · simp only [h1, ↓reduceIte, Option.bind_none, reduceCtorEq, false_iff, not_and, not_le]
+  · simp only [h1, ↓reduceIte, Option.bind_none, reduceCtorEq, false_iff, not_and]
     omega
   by_cases h2 : MAX < s.totalAssets + 1
   · simp only [h1, h2, ↓reduceIte, Option.bind_some, Option.bind_none, reduceCtorEq,
-      false_iff, not_and, not_le]
+      false_iff, not_and]
     omega
   simp only [h1, h2, ↓reduceIte, Option.bind_some, ozMulDiv_eq_some]
   constructor
@@ -65,11 +65,11 @@ theorem toAssets_eq_some {s : State A} {n a : ℕ} {up : Bool} :
         a = (if up then ceilDiv (n * s.vT) (s.vS δ) else n * s.vT / s.vS δ) := by
   unfold State.toAssets State.vS State.vT checkedAdd
   by_cases h1 : MAX < s.totalAssets + 1
-  · simp only [h1, ↓reduceIte, Option.bind_none, reduceCtorEq, false_iff, not_and, not_le]
+  · simp only [h1, ↓reduceIte, Option.bind_none, reduceCtorEq, false_iff, not_and]
     omega
   by_cases h2 : MAX < s.totalSupply + 10 ^ δ
   · simp only [h1, h2, ↓reduceIte, Option.bind_some, Option.bind_none, reduceCtorEq,
-      false_iff, not_and, not_le]
+      false_iff, not_and]
     omega
   simp only [h1, h2, ↓reduceIte, Option.bind_some, ozMulDiv_eq_some]
   constructor
