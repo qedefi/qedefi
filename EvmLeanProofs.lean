@@ -49,3 +49,6 @@ import EvmLeanProofs.Solidity.Dispatch
 import EvmLeanProofs.Solidity.Call
 import EvmLeanProofs.Solidity.Examples.SolmateAssetTransfer
 import EvmLeanProofs.Solidity.Examples.SolmateAssetTransferSpec
+import EvmLeanProofs.Solidity.SharesExtraPatch
+import EvmLeanProofs.Solidity.SharesExtraTactic
+import EvmLeanProofs.Solidity.SharesExtraErc20
