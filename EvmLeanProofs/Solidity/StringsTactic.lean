@@ -142,7 +142,34 @@ theorem mcopyCost_eq {m : Machine} {x y : Word} {len s t : Nat} (hs : m.frame.me
     mcopyCost m x y len = Gas.memoryCost t - Gas.memoryCost s := by
   rw [mcopyCost, hs, Gas.extendMemory_two hlen hs32, ht]
 
+/-- An access inside memory (whose size is a multiple of 32) costs no expansion. -/
+theorem memoryCost_of_le {m : Machine} {x : Word} {n : Nat} (h32 : m.frame.memory.size % 32 = 0)
+    (h : x.toNat + n ≤ m.frame.memory.size) : memoryCost m x n = 0 := by
+  by_cases hn : n = 0
+  · subst hn; simp [memoryCost, Gas.extendMemory]
+  · rw [memoryCost, Gas.extendMemory_one hn h32,
+      Nat.max_eq_left (by omega), Nat.sub_self]
+
+/-- `RETURN`/`REVERT` of a range inside memory costs no expansion. -/
+theorem outputCost_of_le {m : Machine} {x y : Word} (h32 : m.frame.memory.size % 32 = 0)
+    (h : x.toNat + y.toNat ≤ m.frame.memory.size) : outputCost m x y = 0 := by
+  by_cases hn : y.toNat = 0
+  · simp [outputCost, Gas.extendMemory, hn]
+  · rw [outputCost, Gas.extendMemory_one hn h32, Nat.max_eq_left (by omega), Nat.sub_self]
+
 end EvmLean.Interpreter
+
+namespace EvmLean.Memory
+
+/-- Expanding memory (of a size that is a multiple of 32) over a range it covers changes
+nothing. -/
+theorem expand_eq_self {mem : Memory} {off len : Nat} (h32 : mem.size % 32 = 0)
+    (h : off + len ≤ mem.size) : mem.expand off len = mem := by
+  apply EvmLean.Interpreter.Memory.expand_of_le
+  simp only [wordsAfter, words]
+  split <;> omega
+
+end EvmLean.Memory
 
 namespace EvmLean.Program
 
@@ -226,6 +253,61 @@ elab_rules : tactic
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy [$extraA,*]))) then continue
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*]))) then continue
       return
+
+/-- Discharge an in-bounds side condition `x.toNat + n ≤ size` / `size % 32 = 0` of a memory
+access, with the size and offset facts `hs` (rewrite rules). -/
+syntax "mem_in_disch" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+
+macro_rules
+  | `(tactic| mem_in_disch $[[$hs,*]]?) => do
+    let hs := (hs.map (·.getElems)).getD #[]
+    `(tactic| ((try dsimp only); (try simp only [BitVec.reduceToNat, $hs,*]); omega))
+
+/-- One `MLOAD` inside memory whose size is not a numeral (`memoryCost_of_le`): the facts `hs`
+(memory size, offset values) discharge the bounds; the new machine is normalized with them. -/
+syntax "pwp_mload_in" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+
+macro_rules
+  | `(tactic| pwp_mload_in $[[$hs,*]]?) => do
+    let hs := (hs.map (·.getElems)).getD #[]
+    `(tactic| (
+      apply WP.of_step
+      case h =>
+        apply EvmLean.Interpreter.step_mload
+        case hcode => pcode_fact
+        case hstk => exact rfl
+        case hlen => simp only [List.length_cons]; omega
+        case hgas =>
+          rw [EvmLean.Interpreter.memoryCost_of_le (by mem_in_disch [$hs,*])
+            (by mem_in_disch [$hs,*])]
+          (try dsimp only); simp only [Gas.veryLow]; omega
+      case hs => same_frame
+      try dsimp only
+      rw [EvmLean.Interpreter.memoryCost_of_le (by mem_in_disch [$hs,*])
+        (by mem_in_disch [$hs,*]),
+        EvmLean.Memory.expand_eq_self (by mem_in_disch [$hs,*]) (by mem_in_disch [$hs,*])]
+      simp only [Gas.veryLow, Nat.add_zero, BitVec.reduceToNat, Nat.reduceAdd, Nat.sub_sub, $hs,*]))
+
+/-- One `RETURN` of a range inside memory whose size is not a numeral (`outputCost_of_le`). -/
+syntax "pwp_return_in" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+
+macro_rules
+  | `(tactic| pwp_return_in $[[$hs,*]]?) => do
+    let hs := (hs.map (·.getElems)).getD #[]
+    `(tactic| (
+      apply WP.halt_of_step
+      case h =>
+        apply EvmLean.Interpreter.step_return
+        case hcode => pcode_fact
+        case hstk => exact rfl
+        case hgas =>
+          rw [EvmLean.Interpreter.outputCost_of_le (by mem_in_disch [$hs,*])
+            (by mem_in_disch [$hs,*])]
+          omega
+      case hs => same_frame
+      simp only [outputData, outputMachine]
+      rw [EvmLean.Memory.expand_eq_self (by mem_in_disch [$hs,*]) (by mem_in_disch [$hs,*])]
+      simp only [readBytes_bytes, $hs,*]))
 
 end EvmLean.Program
 
