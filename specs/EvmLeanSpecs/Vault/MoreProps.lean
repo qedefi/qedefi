@@ -95,6 +95,15 @@ theorem previewWithdraw_pos {s : State A} {a n : ℕ} (h : s.previewWithdraw a =
   · rw [lt_ceilDiv_iff _ _ _ (Nat.pos_of_ne_zero hT), Nat.zero_mul]
     exact Nat.mul_pos ha (Nat.pos_of_ne_zero hS)
 
+/-- [EIP-MAX-NOREVERT] **Refuted for Solmate.** EIP-4626 says `maxWithdraw` MUST NOT revert,
+but Solmate computes it as `convertToAssets(balanceOf[owner])`, whose `mulDivDown` reverts
+when `shares · totalAssets` exceeds `2²⁵⁶ - 1`. Found independently by the a16z suite
+against the compiled contract (`contracts/README.md`). -/
+theorem maxWithdraw_reverts_of_overflow (s : State A) (owner : A) (hS : s.totalSupply ≠ 0)
+    (hT : s.totalAssets ≠ 0) (h : MAX / s.totalAssets < s.shares.balanceOf owner) :
+    s.maxWithdraw owner = none := by
+  simp [State.maxWithdraw, State.convertToAssets, hS, mulDivDown, hT, h]
+
 end Solmate
 
 namespace Oz
