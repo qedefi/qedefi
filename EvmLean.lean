@@ -10,3 +10,5 @@ import EvmLean.Precompile
 import EvmLean.Crypto.Real
 import EvmLean.Interpreter
 import EvmLean.Tx
+import EvmLean.Trie
+import EvmLean.Block
