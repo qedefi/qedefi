@@ -60,3 +60,4 @@ import EvmLeanProofs.Solidity.ExtraMemory
 import EvmLeanProofs.Solidity.ExtraPatchedWP
 import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Program.InExtraCall
+import EvmLeanProofs.Solidity.InExtraWord
