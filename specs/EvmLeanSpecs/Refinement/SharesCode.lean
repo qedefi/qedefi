@@ -60,9 +60,9 @@ theorem readBytes_code_decimals (i : SolmateVault.Immutables) :
 
 /-! ## Calldata -/
 
-/-- Calldata of `transfer(to, amount)`. -/
-def transferData (to : Address) (amount : Word) : ByteArray :=
-  Abi.encodeCall 0xa9059cbb [Word.ofAddress to, amount]
+/-- Calldata of `transfer(dst, amount)`. -/
+def transferData (dst : Address) (amount : Word) : ByteArray :=
+  Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]
 
 /-- Calldata of `approve(spender, amount)`. -/
 def approveData (spender : Address) (amount : Word) : ByteArray :=
