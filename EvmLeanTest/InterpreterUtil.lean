@@ -7,8 +7,8 @@ import EvmLean.Interpreter
   cryptography; it exists so that interpreter tests can run while the real hash
   implementations are developed elsewhere (`Crypto.real` cannot be evaluated until then).
   Only `keccak256` is exercised, as a deterministic, injective-enough mixing function.
-* `testPrecompiles`: an identity precompile at `0x04` (the real gas formula) and an
-  always-failing precompile at `0x01`; nothing else.
+* `testPrecompiles`: an identity precompile at `0x04` (the real gas formula) and
+  always-failing precompiles at `0x01` and `0x03`; nothing else.
 * `Asm`: a tiny assembler for hand-written bytecode.
 * World/message builders and runners.
 -/
@@ -33,9 +33,10 @@ def fakeCrypto : Crypto where
   bn254Pairing := fun _ => none
   kzgVerify := fun _ _ _ _ => none
 
-/-- Test precompiles: identity at `0x04` (15 + 3 per word), always-failing at `0x01`. -/
+/-- Test precompiles: identity at `0x04` (15 + 3 per word); always failing at `0x01` and
+`0x03` (the latter to exercise the RIPEMD-160 touched-account quirk). -/
 def testPrecompiles : PrecompileImpl where
-  isPrecompile a := a == 1 || a == 4
+  isPrecompile a := a == 1 || a == 3 || a == 4
   run a input gas :=
     if a == 4 then
       let cost := 15 + 3 * Gas.words input.size
@@ -77,6 +78,9 @@ def retTop : List Asm := [.push 0, .op .mstore, .push 32, .push 0, .op .«return
 
 /-- `SSTORE` the top of the stack into slot `k`. -/
 def storeTop (k : Nat) : List Asm := [.push k, .op .sstore]
+
+/-- `SSTORE` values `vs` into slot 0 in sequence. -/
+def stores (vs : List Nat) : List Asm := vs.flatMap fun v => [.push v, .push 0, .op .sstore]
 
 /-! ## Worlds, messages, runners -/
 

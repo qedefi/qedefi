@@ -174,9 +174,6 @@ def sstoreCase (orig : Nat) (prog : List Asm) : Option (Nat × Int) :=
   let msg := callMsg contract code (warmKeys := addStorageKey ∅ contract 0)
   (runMsg w msg).map fun r => (1000000 - r.gasLeft, r.refundCounter)
 
-/-- `SSTORE` values `vs` into slot 0 in sequence. -/
-def stores (vs : List Nat) : List Asm := vs.flatMap fun v => [.push v, .push 0, .op .sstore]
-
 -- The EIP-3529 test table (slot pre-warmed; `PUSH1` encoding).
 /-- Like `stores`, but always with `PUSH1` (as in the EIP's bytecode). -/
 def stores1 (vs : List Nat) : List Asm := vs.flatMap fun v => [.pushN 1 v, .pushN 1 0, .op .sstore]
