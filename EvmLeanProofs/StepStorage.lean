@@ -94,7 +94,7 @@ def sstoreCostRefund (m : Machine) (x y : Word) : Nat × Int :=
     (storageKeyWarm m.frame.sub.accessedStorageKeys self x)
 
 /-- `SSTORE` costs at most `2100 + 20000`. -/
-theorem Gas.sstoreCostRefund_fst_le (o c n : Nat) (warm : Bool) :
+theorem _root_.EvmLean.Gas.sstoreCostRefund_fst_le (o c n : Nat) (warm : Bool) :
     (Gas.sstoreCostRefund o c n warm).1 ≤ 22100 := by
   simp only [Gas.sstoreCostRefund]
   split <;> split <;> (try split) <;> simp [Gas.coldStorageAccess, Gas.storageSet,

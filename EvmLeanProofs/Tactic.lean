@@ -3,6 +3,7 @@ import EvmLeanProofs.KernelRfl
 import EvmLeanProofs.StepArith
 import EvmLeanProofs.StepEnv
 import EvmLeanProofs.StepFlow
+import EvmLeanProofs.StepLog
 import EvmLeanProofs.StepMemory
 import EvmLeanProofs.StepPush
 import EvmLeanProofs.StepStack
@@ -53,23 +54,22 @@ def byteArrayLit? (c : Expr) : MetaM (Option (List Expr)) := do
 
 /-- Evaluate `c[i]?` and `c[i]` for a literal byte array `c` and a numeral `i`. -/
 dsimproc_decl reduceByteArrayGetElem (_) := fun e => do
-  if e.isAppOfArity ``GetElem?.getElem? 7 then
-    let args := e.getAppArgs
-    unless (← isDefEq args[0]! (mkConst ``ByteArray)) do return .continue
-    let some i ← (evalNat args[6]!).run | return .continue
-    let some bytes ← byteArrayLit? args[5]! | return .continue
-    match bytes[i]? with
+  match_expr e with
+  | GetElem?.getElem? coll _ _ _ _ xs i =>
+    unless (← isDefEq coll (mkConst ``ByteArray)) do return .continue
+    let some n ← (evalNat i).run | return .continue
+    let some bytes ← byteArrayLit? xs | return .continue
+    match bytes[n]? with
     | some b => return .done (mkApp2 (mkConst ``Option.some [0]) (mkConst ``UInt8) b)
     | none => return .done (mkApp (mkConst ``Option.none [0]) (mkConst ``UInt8))
-  else if e.isAppOfArity ``GetElem.getElem 8 then
-    let args := e.getAppArgs
-    unless (← isDefEq args[0]! (mkConst ``ByteArray)) do return .continue
-    let some i ← (evalNat args[6]!).run | return .continue
-    let some bytes ← byteArrayLit? args[5]! | return .continue
-    match bytes[i]? with
+  | GetElem.getElem coll _ _ _ _ xs i _ =>
+    unless (← isDefEq coll (mkConst ``ByteArray)) do return .continue
+    let some n ← (evalNat i).run | return .continue
+    let some bytes ← byteArrayLit? xs | return .continue
+    match bytes[n]? with
     | some b => return .done b
     | none => return .continue
-  else return .continue
+  | _ => return .continue
 
 /-! ## Gas side conditions -/
 
@@ -78,15 +78,16 @@ elab "evm_gas_bounds" : tactic => withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let found ← IO.mkRef (#[] : Array Expr)
   forEachExpr t fun e => do
-    if e.isAppOfArity ``sloadCost 1 then
-      found.modify (·.push (← mkAppM ``sloadCost_le #[e.getArg! 0]))
-    else if e.isAppOfArity ``Prod.fst 3 && (e.getArg! 2).isAppOfArity ``sstoreCostRefund 3 then
-      let s := e.getArg! 2
-      found.modify (·.push (← mkAppM ``sstoreCost_le #[s.getArg! 0, s.getArg! 1, s.getArg! 2]))
-    else if e.isAppOfArity ``Prod.fst 3 && (e.getArg! 2).isAppOfArity ``Gas.sstoreCostRefund 4 then
-      let s := e.getArg! 2
-      found.modify (·.push (← mkAppM ``Gas.sstoreCostRefund_fst_le
-        #[s.getArg! 0, s.getArg! 1, s.getArg! 2, s.getArg! 3]))
+    match_expr e with
+    | sloadCost w => found.modify (·.push (mkApp (mkConst ``sloadCost_le) w))
+    | Prod.fst _ _ p =>
+      match_expr p with
+      | sstoreCostRefund m x y =>
+        found.modify (·.push (mkApp3 (mkConst ``sstoreCost_le) m x y))
+      | Gas.sstoreCostRefund o c n w =>
+        found.modify (·.push (mkApp4 (mkConst ``Gas.sstoreCostRefund_fst_le) o c n w))
+      | _ => pure ()
+    | _ => pure ()
   let mut g ← getMainGoal
   for pf in ← found.get do
     let (_, g') ← (← g.assert `hcost (← inferType pf) pf).intro1
@@ -118,68 +119,85 @@ macro_rules
 
 /-! ## Step lemma search -/
 
+/-- Apply a step lemma whose first hypothesis is the opcode byte (`code[pc]? = some b`):
+check that hypothesis by `rfl` first (cheap, and fails fast for the wrong opcode), then
+discharge the rest with `evm_disch`. -/
+macro "evm_apply " l:ident : tactic =>
+  `(tactic| (apply $l; exact rfl; all_goals evm_disch))
+
 /-- Prove `step m = r` for the next instruction of `m` using a step lemma. Extensible with
 `macro_rules`. -/
 syntax "evm_step_core" : tactic
 
 macro_rules | `(tactic| evm_step_core) => `(tactic| first
-  | (apply step_push0; all_goals evm_disch) | (apply step_push1; all_goals evm_disch)
-  | (apply step_push2; all_goals evm_disch)
-  | (apply step_add; all_goals evm_disch) | (apply step_mul; all_goals evm_disch)
-  | (apply step_sub; all_goals evm_disch) | (apply step_div; all_goals evm_disch)
-  | (apply step_sdiv; all_goals evm_disch) | (apply step_mod; all_goals evm_disch)
-  | (apply step_smod; all_goals evm_disch) | (apply step_addmod; all_goals evm_disch)
-  | (apply step_mulmod; all_goals evm_disch) | (apply step_exp; all_goals evm_disch)
-  | (apply step_signextend; all_goals evm_disch)
-  | (apply step_lt; all_goals evm_disch) | (apply step_gt; all_goals evm_disch)
-  | (apply step_slt; all_goals evm_disch) | (apply step_sgt; all_goals evm_disch)
-  | (apply step_eq; all_goals evm_disch) | (apply step_iszero; all_goals evm_disch)
-  | (apply step_and; all_goals evm_disch) | (apply step_or; all_goals evm_disch)
-  | (apply step_xor; all_goals evm_disch) | (apply step_not; all_goals evm_disch)
-  | (apply step_byte; all_goals evm_disch) | (apply step_shl; all_goals evm_disch)
-  | (apply step_shr; all_goals evm_disch) | (apply step_sar; all_goals evm_disch)
+  | evm_apply step_push0 | evm_apply step_push1
+  | evm_apply step_push2
+  | evm_apply step_add | evm_apply step_mul
+  | evm_apply step_sub | evm_apply step_div
+  | evm_apply step_sdiv | evm_apply step_mod
+  | evm_apply step_smod | evm_apply step_addmod
+  | evm_apply step_mulmod | evm_apply step_exp
+  | evm_apply step_signextend
+  | evm_apply step_lt | evm_apply step_gt
+  | evm_apply step_slt | evm_apply step_sgt
+  | evm_apply step_eq | evm_apply step_iszero
+  | evm_apply step_and | evm_apply step_or
+  | evm_apply step_xor | evm_apply step_not
+  | evm_apply step_byte | evm_apply step_shl
+  | evm_apply step_shr | evm_apply step_sar
   | fail "no arithmetic step lemma applies")
 
 macro_rules | `(tactic| evm_step_core) => `(tactic| first
-  | (apply step_address; all_goals evm_disch) | (apply step_origin; all_goals evm_disch)
-  | (apply step_caller; all_goals evm_disch) | (apply step_callvalue; all_goals evm_disch)
-  | (apply step_calldataload; all_goals evm_disch) | (apply step_calldatasize; all_goals evm_disch)
-  | (apply step_codesize; all_goals evm_disch) | (apply step_gasprice; all_goals evm_disch)
-  | (apply step_returndatasize; all_goals evm_disch) | (apply step_coinbase; all_goals evm_disch)
-  | (apply step_timestamp; all_goals evm_disch) | (apply step_number; all_goals evm_disch)
-  | (apply step_prevrandao; all_goals evm_disch) | (apply step_gaslimit; all_goals evm_disch)
-  | (apply step_chainid; all_goals evm_disch) | (apply step_selfbalance; all_goals evm_disch)
-  | (apply step_basefee; all_goals evm_disch) | (apply step_pc; all_goals evm_disch)
-  | (apply step_msize; all_goals evm_disch) | (apply step_gas; all_goals evm_disch)
+  | evm_apply step_address | evm_apply step_origin
+  | evm_apply step_caller | evm_apply step_callvalue
+  | evm_apply step_calldataload | evm_apply step_calldatasize
+  | evm_apply step_codesize | evm_apply step_gasprice
+  | evm_apply step_returndatasize | evm_apply step_coinbase
+  | evm_apply step_timestamp | evm_apply step_number
+  | evm_apply step_prevrandao | evm_apply step_gaslimit
+  | evm_apply step_chainid | evm_apply step_selfbalance
+  | evm_apply step_basefee | evm_apply step_pc
+  | evm_apply step_msize | evm_apply step_gas
   | fail "no environment step lemma applies")
 
 macro_rules | `(tactic| evm_step_core) => `(tactic| first
-  | (apply step_pop; all_goals evm_disch)
-  | (apply step_dup1; all_goals evm_disch) | (apply step_dup2; all_goals evm_disch)
-  | (apply step_dup3; all_goals evm_disch) | (apply step_dup4; all_goals evm_disch)
-  | (apply step_dup5; all_goals evm_disch) | (apply step_dup6; all_goals evm_disch)
-  | (apply step_dup7; all_goals evm_disch) | (apply step_dup8; all_goals evm_disch)
-  | (apply step_swap1; all_goals evm_disch) | (apply step_swap2; all_goals evm_disch)
-  | (apply step_swap3; all_goals evm_disch) | (apply step_swap4; all_goals evm_disch)
-  | (apply step_swap5; all_goals evm_disch) | (apply step_swap6; all_goals evm_disch)
-  | (apply step_swap7; all_goals evm_disch) | (apply step_swap8; all_goals evm_disch)
+  | evm_apply step_pop
+  | evm_apply step_dup1 | evm_apply step_dup2
+  | evm_apply step_dup3 | evm_apply step_dup4
+  | evm_apply step_dup5 | evm_apply step_dup6
+  | evm_apply step_dup7 | evm_apply step_dup8
+  | evm_apply step_swap1 | evm_apply step_swap2
+  | evm_apply step_swap3 | evm_apply step_swap4
+  | evm_apply step_swap5 | evm_apply step_swap6
+  | evm_apply step_swap7 | evm_apply step_swap8
+  | evm_apply step_dup9 | evm_apply step_dup10
+  | evm_apply step_dup11 | evm_apply step_dup12
+  | evm_apply step_dup13 | evm_apply step_dup14
+  | evm_apply step_dup15 | evm_apply step_dup16
+  | evm_apply step_swap9 | evm_apply step_swap10
+  | evm_apply step_swap11 | evm_apply step_swap12
+  | evm_apply step_swap13 | evm_apply step_swap14
+  | evm_apply step_swap15 | evm_apply step_swap16
   | fail "no stack step lemma applies")
 
 macro_rules | `(tactic| evm_step_core) => `(tactic| first
-  | (apply step_jumpdest; all_goals evm_disch) | (apply step_jump; all_goals evm_disch)
-  | (apply step_jumpi_of_eq_zero; all_goals evm_disch) | (apply step_jumpi_of_ne_zero; all_goals evm_disch)
-  | (apply step_sload; all_goals evm_disch) | (apply step_sstore; all_goals evm_disch)
-  | (apply step_mload; all_goals evm_disch) | (apply step_mstore; all_goals evm_disch)
-  | (apply step_mstore8; all_goals evm_disch)
+  | evm_apply step_jumpdest | evm_apply step_jump
+  | evm_apply step_jumpi_of_eq_zero | evm_apply step_jumpi_of_ne_zero
+  | evm_apply step_sload | evm_apply step_sstore
+  | evm_apply step_mload | evm_apply step_mstore
+  | evm_apply step_mstore8 | evm_apply step_keccak256
+  | evm_apply step_log0 | evm_apply step_log1
+  | evm_apply step_log2 | evm_apply step_log3
+  | evm_apply step_log4
   | fail "no control-flow, storage or memory step lemma applies")
 
 /-- Prove `step m = .done r` for a halting instruction of a top-level call frame. -/
 syntax "evm_halt_core" : tactic
 
 macro_rules | `(tactic| evm_halt_core) => `(tactic| first
-  | (apply step_stop_top; all_goals evm_disch)
-  | (apply step_return_top; all_goals evm_disch)
-  | (apply step_revert_top; all_goals evm_disch)
+  | evm_apply step_stop_top
+  | evm_apply step_return_top
+  | evm_apply step_revert_top
   | fail "no halting step lemma applies")
 
 /-! ## The driver -/

@@ -12,4 +12,7 @@ import EvmLeanProofs.StepStorage
 import EvmLeanProofs.StepMemory
 import EvmLeanProofs.KernelRfl
 import EvmLeanProofs.Tactic
+import EvmLeanProofs.StepLog
+import EvmLeanProofs.Word
+import EvmLeanProofs.Decode
 import EvmLeanProofs.Examples.Token
