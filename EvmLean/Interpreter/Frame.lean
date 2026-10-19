@@ -141,8 +141,7 @@ inductive Outcome where
 structure ChildResult where
   /-- Gas returned to the parent. -/
   gasLeft : Nat
-  /-- `none` on success; on failure, `some e` for an exceptional halt, `none` inside
-  `reverted` for a revert. -/
+  /-- The exceptional halt, if any (`none` on success and on `REVERT`). -/
   error : Option ExceptionalHalt
   /-- Did the child `REVERT`? -/
   reverted : Bool
