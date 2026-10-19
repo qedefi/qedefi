@@ -36,6 +36,8 @@ def sample : Fp12 :=
 #guard (Fp2.sqr ⟨3, 4⟩) = Fp2.mul ⟨3, 4⟩ ⟨3, 4⟩
 #guard sample.mul sample.inv = Fp12.one
 #guard sample.sqr = sample.mul sample
+#guard sample.mulBy ⟨5, ⟨6, 7⟩, ⟨8, p - 9⟩⟩ = sample.mul (Line.toFp12 ⟨5, ⟨6, 7⟩, ⟨8, p - 9⟩⟩)
+#guard sample.mulBy Line.one = sample
 -- `w⁶ = ξ`.
 #guard Fp12.pow ⟨.zero, .one⟩ 6 = ⟨⟨xi, .zero, .zero⟩, .zero⟩
 -- The Frobenius is the `p`-th power, and has order 12.

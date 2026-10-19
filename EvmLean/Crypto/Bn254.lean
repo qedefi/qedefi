@@ -49,14 +49,15 @@ def ateLoopCount : Nat := 29793968203157093288
 
 namespace Fp
 
-/-- Addition modulo `p`. -/
-def add (a b : Nat) : Nat := (a + b) % p
+/-- Addition modulo `p` (arguments reduced; a conditional subtraction is much cheaper than
+a division). -/
+def add (a b : Nat) : Nat := let s := a + b; if s < p then s else s - p
 
 /-- Subtraction modulo `p` (arguments reduced). -/
-def sub (a b : Nat) : Nat := (a + p - b) % p
+def sub (a b : Nat) : Nat := if b ≤ a then a - b else a + p - b
 
 /-- Negation modulo `p` (argument reduced). -/
-def neg (a : Nat) : Nat := (p - a) % p
+def neg (a : Nat) : Nat := if a = 0 then 0 else p - a
 
 /-- Multiplication modulo `p`. -/
 def mul (a b : Nat) : Nat := a * b % p
@@ -100,7 +101,7 @@ def neg (a : Fp2) : Fp2 := ⟨Fp.neg a.c0, Fp.neg a.c1⟩
 def mul (a b : Fp2) : Fp2 :=
   let t0 := a.c0 * b.c0
   let t1 := a.c1 * b.c1
-  ⟨(t0 + p * p - t1) % p, ((a.c0 + a.c1) * (b.c0 + b.c1) + 2 * p * p - t0 - t1) % p⟩
+  ⟨(t0 + p * p - t1) % p, ((a.c0 + a.c1) * (b.c0 + b.c1) - t0 - t1) % p⟩
 
 /-- Squaring: `(a + b)(a − b) + 2ab·i`. -/
 def sqr (a : Fp2) : Fp2 :=
@@ -188,6 +189,15 @@ def mul (a b : Fp6) : Fp6 :=
   let c2 := (((a.c0.add a.c2).mul (b.c0.add b.c2)).sub (t0.add t2)).add t1
   ⟨c0, c1, c2⟩
 
+/-- Multiplication by a sparse element `b + c·v` (5 `𝔽ₚ₂` products):
+`(x₀ + x₁v + x₂v²)(b + cv) = (x₀b + ξx₂c) + (x₀c + x₁b)v + (x₁c + x₂b)v²`. -/
+def mulBC (a : Fp6) (b c : Fp2) : Fp6 :=
+  let t0 := a.c0.mul b
+  let t1 := a.c1.mul c
+  ⟨t0.add (a.c2.mul c).mulXi,
+   ((a.c0.add a.c1).mul (b.add c)).sub (t0.add t1),
+   t1.add (a.c2.mul b)⟩
+
 /-- Multiplication by `v`: `(c0, c1, c2) ↦ (ξc2, c0, c1)`. -/
 def mulV (a : Fp6) : Fp6 := ⟨a.c2.mulXi, a.c0, a.c1⟩
 
@@ -222,6 +232,14 @@ def mul (a b : Fp12) : Fp12 :=
   let t0 := a.g0.mul b.g0
   let t1 := a.g1.mul b.g1
   ⟨t0.add t1.mulV, ((a.g0.add a.g1).mul (b.g0.add b.g1)).sub (t0.add t1)⟩
+
+/-- Multiplication by a line value `a + (b + c·v)·w` with `a ∈ 𝔽ₚ` (as produced by
+`lineValue`), exploiting its sparsity. Equal to `mul` with the full element. -/
+def mulLine (f : Fp12) (a : Nat) (b c : Fp2) : Fp12 :=
+  let t0 : Fp6 := ⟨f.g0.c0.mulFp a, f.g0.c1.mulFp a, f.g0.c2.mulFp a⟩
+  let t1 := f.g1.mulBC b c
+  let s := (f.g0.add f.g1).mulBC (b.add (.ofFp a)) c
+  ⟨t0.add t1.mulV, s.sub (t0.add t1)⟩
 
 /-- Squaring (2 `𝔽ₚ₆` products). -/
 def sqr (a : Fp12) : Fp12 :=
@@ -424,14 +442,37 @@ end G2
 
 /-! ## The optimal ate pairing -/
 
+/-- A line function value `a + b·w + c·w³` with `a ∈ 𝔽ₚ` and `b, c ∈ 𝔽ₚ₂`: the shape of every
+line through points of `ψ(G₂)` evaluated at a point of `G₁`. -/
+structure Line where
+  /-- Coefficient of `1` (in `𝔽ₚ`). -/
+  a : Nat
+  /-- Coefficient of `w`. -/
+  b : Fp2
+  /-- Coefficient of `w³`. -/
+  c : Fp2
+
+namespace Line
+
+/-- The constant line `1` (used for vertical lines, which the final exponentiation kills). -/
+def one : Line := ⟨1, .zero, .zero⟩
+
+/-- The line as a full `𝔽ₚ₁₂` element. -/
+def toFp12 (l : Line) : Fp12 := ⟨⟨.ofFp l.a, .zero, .zero⟩, ⟨l.b, l.c, .zero⟩⟩
+
+end Line
+
+/-- `f · l` using the sparsity of `l`. -/
+def Fp12.mulBy (f : Fp12) (l : Line) : Fp12 := f.mulLine l.a l.b l.c
+
 /-- The line through the untwisted points `ψ(T)` and `ψ(T')` with twist slope `λ`,
 evaluated at `P = (xP, yP)`: `yP − λxP·w + (λxT − yT)·w³`. -/
-def lineValue (lam xT yT : Fp2) (xP yP : Nat) : Fp12 :=
-  ⟨⟨.ofFp yP, .zero, .zero⟩, ⟨(lam.mulFp xP).neg, (lam.mul xT).sub yT, .zero⟩⟩
+def lineValue (lam xT yT : Fp2) (xP yP : Nat) : Line :=
+  ⟨yP, (lam.mulFp xP).neg, (lam.mul xT).sub yT⟩
 
 /-- Tangent line at `T` evaluated at `P`, and `2T`. Vertical tangents (only at infinity or
 2-torsion, impossible in `G₂`) contribute `1`. -/
-def lineDouble (t : Affine Fp2) (xP yP : Nat) : Fp12 × Affine Fp2 :=
+def lineDouble (t : Affine Fp2) (xP yP : Nat) : Line × Affine Fp2 :=
   match t with
   | .infinity => (.one, .infinity)
   | .point xT yT =>
@@ -443,7 +484,7 @@ def lineDouble (t : Affine Fp2) (xP yP : Nat) : Fp12 × Affine Fp2 :=
       (lineValue lam xT yT xP yP, .point x3 y3)
 
 /-- Line through `T` and `Q` evaluated at `P`, and `T + Q`. Vertical lines contribute `1`. -/
-def lineAdd (t q : Affine Fp2) (xP yP : Nat) : Fp12 × Affine Fp2 :=
+def lineAdd (t q : Affine Fp2) (xP yP : Nat) : Line × Affine Fp2 :=
   match t, q with
   | .infinity, _ => (.one, q)
   | _, .infinity => (.one, t)
@@ -461,10 +502,10 @@ def millerAux (q : Affine Fp2) (xP yP : Nat) : Nat → Fp12 → Affine Fp2 → F
   | 0, f, t => (f, t)
   | i + 1, f, t =>
     let (l, t) := lineDouble t xP yP
-    let f := f.sqr.mul l
+    let f := f.sqr.mulBy l
     if ateLoopCount.testBit i then
       let (l, t) := lineAdd t q xP yP
-      millerAux q xP yP i (f.mul l) t
+      millerAux q xP yP i (f.mulBy l) t
     else millerAux q xP yP i f t
 
 /-- The Frobenius endomorphism on the twist: `ψ⁻¹ ∘ π ∘ ψ`, i.e. `(x, y) ↦ (x̄γ₂, ȳγ₃)`. -/
@@ -488,7 +529,7 @@ def miller (q : Affine Fp2) (xP yP : Nat) : Fp12 :=
     let nq2 := affineNeg (twistFrob q1)
     let (l1, t) := lineAdd t q1 xP yP
     let (l2, _) := lineAdd t nq2 xP yP
-    (f.mul l1).mul l2
+    (f.mulBy l1).mulBy l2
 
 /-- Final exponentiation `f^((p¹² − 1)/r)`. -/
 def finalExp (f : Fp12) : Fp12 :=
