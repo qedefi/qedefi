@@ -20,6 +20,11 @@ import EvmLeanSpecs.Refinement.Abstraction
 import EvmLeanSpecs.Refinement.VaultViewsSpec
 import EvmLeanSpecs.Refinement.AssetSpec
 import EvmLeanSpecs.Refinement.AssetCallIn
+import EvmLeanSpecs.Refinement.DepositInternal
+import EvmLeanSpecs.Refinement.DepositConvert
+import EvmLeanSpecs.Refinement.DepositModel
+import EvmLeanSpecs.Refinement.Deposit
+import EvmLeanSpecs.Refinement.Mint
 import EvmLeanSpecs.Refinement.AssetApprove
 import EvmLeanSpecs.Refinement.AssetMint
 import EvmLeanSpecs.Refinement.AssetBurn

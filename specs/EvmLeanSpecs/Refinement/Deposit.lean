@@ -52,7 +52,7 @@ theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
   simp only [absOf] at hr hprev hinv
   pwp_run_to 0xbda [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self]
-  refine WP.bind_mono (convertToShares_wp_le _ ⟨rfl, hj, hcode, hpre, hdepth⟩ rfl rfl (by simp)
+  refine WP.bind_mono (convertToShares_wp_gas _ ⟨rfl, hj, hcode, hpre, hdepth⟩ rfl rfl (by simp)
     (by pjumpdest_disch) initMemory_fmpInit (by dsimp only; omega) (by dsimp only; omega)) ?_ ?_
   · rintro mf o - ⟨hnone, hrev⟩
     rw [deposit_none_preview (hprev.trans hnone)] at hr

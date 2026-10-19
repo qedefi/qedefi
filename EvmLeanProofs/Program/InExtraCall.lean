@@ -1,4 +1,4 @@
-import EvmLeanProofs.Program.Call
+import EvmLeanProofs.Program.OutExtraCall
 
 /-!
 # `CALL` without value: the callee-summary rule
@@ -9,8 +9,8 @@ with value `0` there is no value transfer (`transferValue` is the identity), no
 account-creation or value-transfer charge, no balance or static-context requirement, and the
 child message is non-static exactly when the caller's is.
 
-* `transferValue_zero`, `createCost_zero`, `transferCost_zero`: the value-dependent parts of
-  `step_call` at value `0`.
+* `transferValue_zero` (and `createCost_zero`, `transferCost_zero` of `OutExtraCall`): the
+  value-dependent parts of `step_call` at value `0`.
 * `step_call0`: `step_call` at value `0`.
 * `WP.call0`: if the child frame, started fresh on the child message, `Halts` with `Hc`
   (typically a callee summary such as an ERC-20 `transferFrom` of the callee's code), the
@@ -25,14 +25,6 @@ open Interpreter
 theorem transferValue_zero (w : World) (msg : Message) (h : msg.value = 0) :
     transferValue w msg = w := by
   simp [transferValue, h]
-
-/-- No account-creation charge without value. -/
-theorem createCost_zero (w : World) (to : Address) : createCost w 0 to = 0 := by
-  simp [createCost]
-
-/-- No value-transfer charge without value. -/
-theorem transferCost_zero : transferCost 0 = 0 := by
-  simp [transferCost]
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
