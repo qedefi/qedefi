@@ -85,10 +85,10 @@ def previewWithdraw (assets : ℕ) : Option ℕ :=
 def previewRedeem (shares : ℕ) : Option ℕ := s.convertToAssets shares
 
 /-- `maxDeposit(_) = type(uint256).max`. -/
-def maxDeposit (_receiver : A) : ℕ := MAX
+def maxDeposit (_s : State A) (_receiver : A) : ℕ := MAX
 
 /-- `maxMint(_) = type(uint256).max`. -/
-def maxMint (_receiver : A) : ℕ := MAX
+def maxMint (_s : State A) (_receiver : A) : ℕ := MAX
 
 /-- `maxWithdraw(owner) = convertToAssets(balanceOf[owner])`. -/
 def maxWithdraw (owner : A) : Option ℕ := s.convertToAssets (s.shares.balanceOf owner)
