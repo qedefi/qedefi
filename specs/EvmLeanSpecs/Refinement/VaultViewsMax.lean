@@ -1,7 +1,13 @@
 import EvmLeanSpecs.Refinement.VaultViews
 
 /-!
-# The vault's remaining views: `totalAssets`, `asset`, `max*`
+# The vault's remaining views, at the bytecode level: `totalAssets`, `asset`, `max*`
+
+As in `VaultViews`: `totalAssets()` (the `totalAssets` internal function with its `STATICCALL`
+to the asset, `totalAssets_wp`), `asset()` (the `asset` immutable, read from the patched code
+by `readBytes_code_asset688`), `maxDeposit` / `maxMint` (`type(uint256).max`), `maxRedeem`
+(the owner's share balance, `sharesOf`) and `maxWithdraw` (`convertToAssets` of it), for the
+vault deployed with any immutables, in any frame satisfying `ViewPre`.
 -/
 
 namespace EvmLeanSpecs.Refinement

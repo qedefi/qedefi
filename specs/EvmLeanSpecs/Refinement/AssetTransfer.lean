@@ -3,7 +3,15 @@ import EvmLeanProofs.Solidity.Examples.SolmateAssetTransfer
 import EvmLeanProofs.Solidity.ExtraTactic
 
 /-!
-# The asset's `transfer` and `transferFrom` as callee summaries
+# The asset's `transfer` as a callee summary
+
+`transfer_halts_ok` / `transfer_halts_revert`: `transfer(to, amount)` of the deployed asset
+(Solmate `MockERC20`, any immutables), run in any fresh frame (non-static for the success
+case: the code writes storage and emits a log), either returns ABI `true` with the world
+`transferWorld` (the two balance writes, in the code's order; shared with the solidity
+package's top-level `transfer_spec`), or, when the caller's balance does not cover `amount`,
+reverts with `Panic(0x11)`. Both bound the gas used, so that a caller can continue after the
+call (`WP.call`). `AssetSpec` relates them to `Token.transfer`.
 -/
 
 namespace EvmLeanSpecs.Refinement

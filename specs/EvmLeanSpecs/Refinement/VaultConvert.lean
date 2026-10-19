@@ -4,7 +4,8 @@ import EvmLeanSpecs.Refinement.VaultTotalAssets
 # The vault's conversions as internal functions
 
 Solmate's `ERC4626` computes every conversion and preview through one of four `internal view`
-functions, each compiled once (the external functions jump to them):
+functions, each compiled once (the external functions jump to them); entry pcs are those of
+`SolmateVault.runtimeCodeWith i` for any immutables `i`:
 
 | internal function | entry | non-empty vault (`supply ≠ 0`) | summary |
 |---|---|---|---|

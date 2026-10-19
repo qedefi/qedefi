@@ -3,6 +3,15 @@ import EvmLeanProofs.Solidity.SharesExtraErc20
 
 /-!
 # The asset's `transferFrom` as a callee summary
+
+`transferFrom_halts_ok` / `transferFrom_halts_revert`: `transferFrom(src, dst, amount)` of the
+deployed asset (any immutables) in any non-static fresh frame, with `msg.sender` the spender.
+On success (the allowance is infinite or covers `amount`, and `src`'s balance after the
+allowance step covers it) it returns ABI `true` with the world `Erc20.transferFromWorld` (the
+allowance step `Erc20.spendWorld`, then the `transfer` writes; the definitions are shared with
+the share-token refinement); otherwise one of the two checked subtractions panics. The proof
+splits on the three paths of the code (infinite allowance, finite allowance, and the revert
+points). `AssetSpec` relates them to `Token.transferFrom`.
 -/
 
 namespace EvmLeanSpecs.Refinement

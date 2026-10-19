@@ -1,7 +1,20 @@
 import EvmLeanSpecs.Refinement.VaultConvert
 
 /-!
-# The vault's view functions
+# The vault's conversion and preview views, at the bytecode level
+
+`*_halts`: `convertToShares`, `convertToAssets`, `previewDeposit`, `previewMint`,
+`previewWithdraw`, `previewRedeem` of the vault deployed with any immutables `i`, run in **any**
+fresh frame satisfying `ViewPre i` (top level or called by another contract), end the frame with
+`ViewPost`: the world unchanged, and the ABI word of the `Nat`-level specification
+(`convertToSharesN` … at `supplyOf m`, `assetsOf i.asset m`) or `revert(0, 0)` when it is
+`none`. Each proof runs the dispatcher and ABI decoder symbolically (`pwp_run_to`), then
+composes the summaries of the internal conversion (`VaultConvert`) and of the return encoder
+(`returnWord_wp`) with `WP.bind_mono`. `VaultViewsSpec` restates them against the model.
+
+`WordCall data sel x` describes calldata through what the decoder reads (selector, length,
+argument word), so the theorems apply both to `Abi.encodeCall sel [x]` and to calldata that a
+calling contract assembled in memory.
 -/
 
 namespace EvmLeanSpecs.Refinement
