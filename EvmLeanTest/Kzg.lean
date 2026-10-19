@@ -5,6 +5,7 @@ import EvmLean.Crypto.Kzg
 
 * Curve constants: generators and `[τ]G2` are on their curves and in the order-`r` subgroups,
   and `[τ]G2` compresses to the ceremony's `KZG_SETUP_G2_MONOMIAL_1` bytes.
+* Frobenius maps and the optimized final exponentiation against plain exponentiation.
 * Pairing: non-degenerate, of order `r`, bilinear on small multiples.
 * `G1` decoding edge cases (flags, `x ≥ p`, off-subgroup points).
 * `verifyProof`: vectors from c-kzg-4844 `tests/verify_kzg_proof/kzg-mainnet`
@@ -54,6 +55,20 @@ def compressG2 : Affine Fp2 → ByteArray
 #guard Affine.add g1Gen g1Gen = Affine.mul g1Gen 2
 #guard Affine.add (Affine.mul g2Gen 3) (Affine.mul g2Gen 4) = Affine.mul g2Gen 7
 #guard Affine.mul g1Gen (R - 1) = Affine.neg g1Gen
+
+/-! ## Frobenius and final exponentiation -/
+
+/-- A generic-looking `𝔽ₚ¹²` element: a Miller-loop value (before final exponentiation). -/
+def mGen : Fp12 := millerLoop g2Gen g1Gen
+
+#guard Fp12.frobGamma2.c1 = Fp.zero
+#guard Fp12.frobenius mGen = Fp12.pow mGen P
+#guard Fp12.frobenius2 mGen = Fp12.pow mGen (P * P)
+#guard Fp12.mul (Fp12.inv mGen) mGen = Fp12.one
+#guard (xAbs + 1) * (xAbs + 1) % 3 = 0
+-- The hard-part decomposition, and `finalExp` against plain square-and-multiply.
+#guard hardExp0 * (P - xAbs) * (xAbs * xAbs + P * P - 1) + 1 = hardExp
+#guard finalExp mGen = Fp12.pow (Fp12.conj mGen * Fp12.inv mGen) ((P * P + 1) * hardExp)
 
 /-! ## Pairing -/
 

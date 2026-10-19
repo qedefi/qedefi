@@ -304,6 +304,29 @@ def inv (a : Fp12) : Fp12 :=
 /-- `𝔽ₚ¹²` multiplication. -/
 instance : Mul Fp12 := ⟨Fp12.mul⟩
 
+/-- `ξ^((p − 1)/6)`, so that `wᵖ = γ₁·w` (because `w⁶ = ξ` and `6 ∣ p − 1`). -/
+def frobGamma1 : Fp2 := Fp2.pow ⟨⟨1⟩, ⟨1⟩⟩ ((P - 1) / 6)
+
+/-- `ξ^((p² − 1)/6)`, so that `w^(p²) = γ₂·w`. (It lies in `𝔽ₚ`; the tests check this.) -/
+def frobGamma2 : Fp2 := Fp2.pow ⟨⟨1⟩, ⟨1⟩⟩ ((P * P - 1) / 6)
+
+/-- Frobenius-type map: writing `a = Σₖ aₖ wᵏ` (`k < 6`, `aₖ ∈ 𝔽ₚ²`; recall `v = w²`), return
+`Σₖ σ(aₖ)·γᵏ·wᵏ`. With `σ = conj`, `γ = γ₁` this is `a ↦ aᵖ`; with `σ = id`, `γ = γ₂` it is
+`a ↦ a^(p²)`. -/
+def frobeniusWith (σ : Fp2 → Fp2) (γ : Fp2) (a : Fp12) : Fp12 :=
+  let g2 := Fp2.sq γ
+  let g3 := g2 * γ
+  let g4 := Fp2.sq g2
+  let g5 := g4 * γ
+  ⟨⟨σ a.c0.c0, σ a.c0.c1 * g2, σ a.c0.c2 * g4⟩,
+   ⟨σ a.c1.c0 * γ, σ a.c1.c1 * g3, σ a.c1.c2 * g5⟩⟩
+
+/-- The Frobenius endomorphism `a ↦ aᵖ`. -/
+def frobenius (a : Fp12) : Fp12 := frobeniusWith Fp2.conj frobGamma1 a
+
+/-- The squared Frobenius `a ↦ a^(p²)` (`𝔽ₚ²` coefficients are fixed by it). -/
+def frobenius2 (a : Fp12) : Fp12 := frobeniusWith id frobGamma2 a
+
 /-- `a ^ e` by square-and-multiply over the bits of `e` (least significant first). -/
 def pow (a : Fp12) (e : Nat) : Fp12 :=
   if _h : e = 0 then one

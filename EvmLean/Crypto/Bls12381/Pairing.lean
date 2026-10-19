@@ -25,8 +25,15 @@ never equals `±Q` or a 2-torsion point, so the affine slopes never divide by ze
 
 ## Final exponentiation
 
-`(p¹² − 1)/r = (p⁶ − 1)(p² + 1)·((p⁴ − p² + 1)/r)`. The first factor is a conjugation and
-one inversion; the rest is plain square-and-multiply.
+`(p¹² − 1)/r = (p⁶ − 1)(p² + 1)·((p⁴ − p² + 1)/r)`. The "easy part" `(p⁶ − 1)(p² + 1)` is a
+conjugation, one inversion and one `p²`-Frobenius. Its result lies in the cyclotomic subgroup,
+where inversion is conjugation. The "hard part" uses the exact decomposition (Hayashida,
+Hayasaka and Teruya, ePrint 2020/875, without their factor 3; `3 ∣ (x − 1)²` for BLS12-381)
+
+  `(p⁴ − p² + 1)/r = ((x − 1)²/3)·(x + p)·(x² + p² − 1) + 1`,
+
+which needs a 126-bit exponentiation, three exponentiations by `|x|` and a few Frobenius maps
+instead of a 1270-bit exponentiation. The tests check it against plain square-and-multiply.
 -/
 
 namespace EvmLean.Bls12381
@@ -89,16 +96,27 @@ def millerLoop (q : Affine Fp2) (p : Affine Fp) : Fp12 :=
   | .infinity, _ => Fp12.one
   | .point _ _, .infinity => Fp12.one
 
-/-- The "hard part" exponent `(p⁴ − p² + 1) / r` of the final exponentiation (exact). -/
+/-- The "hard part" exponent `(p⁴ − p² + 1) / r` of the final exponentiation (exact). Only
+used to document and test `finalExp`. -/
 def hardExp : Nat := (P * P * P * P - P * P + 1) / R
 
-/-- The final exponentiation `f ↦ f^((p¹² − 1)/r)`. -/
+/-- `(x − 1)²/3 = (|x| + 1)²/3` (exact), the first factor of the hard-part decomposition. -/
+def hardExp0 : Nat := (xAbs + 1) * (xAbs + 1) / 3
+
+/-- The final exponentiation `f ↦ f^((p¹² − 1)/r)` (see the module doc). -/
 def finalExp (f : Fp12) : Fp12 :=
   -- f^(p⁶ − 1): conjugation is the p⁶-power Frobenius.
   let f1 := Fp12.conj f * Fp12.inv f
   -- ^(p² + 1)
-  let f2 := Fp12.pow f1 (P * P) * f1
-  Fp12.pow f2 hardExp
+  let f2 := Fp12.frobenius2 f1 * f1
+  -- ^((x − 1)²/3)
+  let a := Fp12.pow f2 hardExp0
+  -- ^(x + p), with x < 0: a^x = conj (a^|x|) in the cyclotomic subgroup.
+  let b := Fp12.conj (Fp12.pow a xAbs) * Fp12.frobenius a
+  -- ^(x² + p² − 1)
+  let c := Fp12.pow (Fp12.pow b xAbs) xAbs * Fp12.frobenius2 b * Fp12.conj b
+  -- + 1
+  c * f2
 
 /-- The optimal ate pairing `e(P, Q)` for `P ∈ G1`, `Q ∈ G2`. -/
 def pairing (p : Affine Fp) (q : Affine Fp2) : Fp12 := finalExp (millerLoop q p)
