@@ -43,10 +43,18 @@ audit found there.
 
 ## Status (2026-10-19)
 
-Cancun complete: 22,332 / 22,332 BlockchainTests pass (626 other-fork tests skipped). Not yet
-implemented: Prague (EIP-7702 delegation, EIP-2537 BLS precompiles, EIP-2935, EIP-7623) and
-Osaka beyond `CLZ` and the MODEXP changes. Theorems about execution currently instantiate
-`Crypto.real`; a `step` simp set is needed to state them for arbitrary `Crypto`.
+Cancun, Prague and Osaka complete: 22,332 / 22,332 `ethereum/tests` Cancun BlockchainTests;
+execution-spec-tests v5.4.0 `blockchain_tests` 17,685 / 17,685 Cancun, 20,957 / 20,957 Prague
+(incl. `CancunToPragueAtTime15k`) and 21,644 / 21,644 Osaka (incl. `PragueToOsakaAtTime15k`).
+Theorems about execution currently instantiate `Crypto.real`; a `step` simp set is needed to
+state them for arbitrary `Crypto`.
+
+Prague/Osaka additions to the shared types: `Crypto` gained `bls12G1Add`, `bls12G1Msm`,
+`bls12G2Add`, `bls12G2Msm`, `bls12Pairing`, `bls12MapFpToG1`, `bls12MapFp2ToG2` and
+`p256Verify`; `TxEnv.authorizations` (EIP-7702, with the new `Authorization`);
+`Message.disablePrecompiles` (default `false`); `Header.requestsHash : Option Word`.
+EIP-7702 lives in `Interpreter/Delegation.lean` (`eoa_delegation.py`), replacing the former
+`resolveCallCode` hook.
 
 ## Module map and ownership (initial build)
 
@@ -89,7 +97,10 @@ The signatures below are frozen; bodies are `sorry` until their owner fills them
 `lake exe conform <fixtures-dir> [threads]` runs `ethereum/tests` BlockchainTests (pinned
 commit `08839f54`, Cancun-only refill), the same suite EVMYulLean reports against. It
 prints pass/fail/skipped/unparseable counts; nothing is dropped silently. The baseline
-to beat is 22,267 / 22,302 passed in EVMYulLean's main phase on macOS.
+to beat is 22,267 / 22,302 passed in EVMYulLean's main phase on macOS. Prague and Osaka are
+checked against the execution-spec-tests `blockchain_tests` (pinned release v5.4.0,
+`scripts/fetch-eest-fixtures.sh`) with `--fork Prague|Osaka|all`; transition networks
+(`<A>To<B>AtTime15k`) switch fork per block by timestamp.
 
 ## Known issues in EVMYulLean that this design fixes
 
