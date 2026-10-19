@@ -1,0 +1,13 @@
+{
+  "ERC20InsufficientAllowance(address,uint256,uint256)": "fb8f41b2",
+  "ERC20InsufficientBalance(address,uint256,uint256)": "e450d38c",
+  "ERC20InvalidApprover(address)": "e602df05",
+  "ERC20InvalidReceiver(address)": "ec442f05",
+  "ERC20InvalidSender(address)": "96c6fd1e",
+  "ERC20InvalidSpender(address)": "94280d62",
+  "ERC4626ExceededMaxDeposit(address,uint256,uint256)": "79012fb2",
+  "ERC4626ExceededMaxMint(address,uint256,uint256)": "284ff667",
+  "ERC4626ExceededMaxRedeem(address,uint256,uint256)": "b94abeec",
+  "ERC4626ExceededMaxWithdraw(address,uint256,uint256)": "fe9cceec",
+  "SafeERC20FailedOperation(address)": "5274afe7"
+}

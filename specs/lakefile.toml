@@ -1,0 +1,23 @@
+name = "EvmLeanSpecs"
+version = "0.1.0"
+defaultTargets = ["EvmLeanSpecs"]
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+linter.missingDocs = true
+# Proof files share `variable` blocks; unused instance arguments are harmless here.
+linter.unusedSectionVars = false
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.35.0"
+
+[[require]]
+name = "evm-lean"
+path = ".."
+
+# Abstract ERC-4626 vault model and its properties (Mathlib).
+[[lean_lib]]
+name = "EvmLeanSpecs"
