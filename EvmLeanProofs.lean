@@ -17,3 +17,9 @@ import EvmLeanProofs.Word
 import EvmLeanProofs.Decode
 import EvmLeanProofs.Call
 import EvmLeanProofs.Examples.Token
+import EvmLeanProofs.Contracts.Basic
+import EvmLeanProofs.Contracts.SolmateAsset
+import EvmLeanProofs.Contracts.SolmateVault
+import EvmLeanProofs.Contracts.OzAsset
+import EvmLeanProofs.Contracts.OzVault
+import EvmLeanProofs.Contracts.Deploy

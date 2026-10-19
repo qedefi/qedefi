@@ -1,0 +1,40 @@
+# Pinned build of the ERC-4626 verification targets (see README.md).
+# Bytecode must be reproducible: no metadata hash, no CBOR trailer, fixed compiler.
+[profile.default]
+src = "src"
+libs = ["lib"]
+test = "test"
+out = "out"
+cache_path = "cache"
+solc_version = "0.8.28"
+auto_detect_solc = false
+offline = true
+optimizer = true
+optimizer_runs = 200
+evm_version = "cancun"
+via_ir = false
+bytecode_hash = "none"
+cbor_metadata = false
+# The AST names the immutables in `immutableReferences` (scripts/build-contracts.sh).
+ast = true
+extra_output = ["storageLayout", "evm.methodIdentifiers", "evm.deployedBytecode.immutableReferences"]
+remappings = [
+  "solmate/=lib/solmate/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+# The a16z ERC-4626 property suite (contracts/run-a16z.sh). Inherits the default profile.
+[profile.a16z]
+test = "a16z"
+libs = ["lib", "ext"]
+offline = false
+remappings = [
+  "solmate/=lib/solmate/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=ext/forge-std/src/",
+  "erc4626-tests/=ext/erc4626-tests/",
+]
+
+[profile.a16z.fuzz]
+runs = 1000
+seed = "0x4626"
