@@ -184,6 +184,36 @@ theorem finishFrame_halt_top {e : ExceptionalHalt} (hp : m.parents = []) :
         sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
   simp only [finishFrame, hp]
 
+/-- `STOP` in a top-level call frame. -/
+theorem step_stop_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0x00)
+    (hp : m.parents = []) (hk : m.frame.kind = .call o s) :
+    step m = .done (topLevelResult m.frame.msg.target m.world m.transient
+      { gasLeft := m.frame.gasLeft, error := none, reverted := false, output := .empty,
+        sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
+  rw [step_stop hcode, finishFrame_success_top hp hk]
+
+/-- `RETURN` in a top-level call frame. -/
+theorem step_return_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0xf3)
+    (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft)
+    (hp : m.parents = []) (hk : m.frame.kind = .call o s) :
+    step m = .done (topLevelResult m.frame.msg.target m.world m.transient
+      { gasLeft := m.frame.gasLeft - outputCost m x y, error := none, reverted := false,
+        output := outputData m x y, sub := m.frame.sub, target := m.frame.msg.currentTarget,
+        kind := m.frame.kind }) := by
+  rw [step_return hcode hstk hgas, finishFrame_success_top (m := outputMachine m x y rest) hp hk]
+  rfl
+
+/-- `REVERT` in a top-level frame: the world and transient storage are rolled back. -/
+theorem step_revert_top (hcode : m.frame.code[m.frame.pc]? = some 0xfd)
+    (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft)
+    (hp : m.parents = []) :
+    step m = .done (topLevelResult m.frame.msg.target m.frame.snapshot.1 m.frame.snapshot.2
+      { gasLeft := m.frame.gasLeft - outputCost m x y, error := none, reverted := true,
+        output := outputData m x y, sub := m.frame.sub, target := m.frame.msg.currentTarget,
+        kind := m.frame.kind }) := by
+  rw [step_revert hcode hstk hgas, finishFrame_revert_top (m := outputMachine m x y rest) hp]
+  rfl
+
 /-- The final world is the one passed to `topLevelResult`. -/
 @[simp] theorem topLevelResult_world (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).world = w := by

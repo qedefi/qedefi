@@ -6,3 +6,9 @@ import EvmLeanProofs.StepArith
 import EvmLeanProofs.StepStack
 import EvmLeanProofs.StepEnv
 import EvmLeanProofs.StepFlow
+import EvmLeanProofs.StepPush
+import EvmLeanProofs.State
+import EvmLeanProofs.StepStorage
+import EvmLeanProofs.StepMemory
+import EvmLeanProofs.KernelRfl
+import EvmLeanProofs.Tactic
