@@ -1,7 +1,7 @@
 import Lean
 
 /-!
-# `kernel_rfl`: reflexivity checked by the kernel alone
+# `kernel_rfl` and `kernel_decide`: evaluation by the kernel alone
 
 `decide +kernel` evaluates a closed proposition in the kernel, but refuses goals with free
 variables. `rfl` and `decide` accept free variables but check definitional equality in the
@@ -14,7 +14,12 @@ only the kernel checks `lhs ≡ rhs`. This is sound for the same reason `decide 
 the kernel is the arbiter; the elaborator is skipped. The resulting proof depends on no
 axioms beyond those of the definitions involved.
 
-Use it when the free variables are *not inspected* by the computation, e.g. a run of
+`kernel_decide` does the same for a decidable goal `p`, with proof
+`of_decide_eq_true (Eq.refl true)`: the kernel evaluates `decide p` to `true`. Prefer it when
+both sides only agree after computing numbers (lazy unfolding in `kernel_rfl` can then hit the
+kernel's recursion limit).
+
+Use them when the free variables are *not inspected* by the computation, e.g. a run of
 bytecode that never hashes, stated for an arbitrary `Crypto`. When the computation branches
 on a free variable the kernel gets stuck and reports a type mismatch; use the step lemmas
 (`EvmLeanProofs.Step*`) instead.
