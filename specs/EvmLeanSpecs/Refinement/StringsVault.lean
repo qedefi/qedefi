@@ -144,7 +144,7 @@ theorem vaultStringShort_wp {i : SolmateVault.Immutables} (m : Machine) {S slot 
     (hs : m.frame.stack = S :: 1300#256 :: slot :: 504#256 :: rest)
     (hS : m.world.sload m.frame.msg.currentTarget slot = S) (hev : S.toNat % 2 = 0)
     (hmem : m.frame.memory = initMemory)
-    (hlen : rest.length ≤ 1000) (hg : 10000 ≤ m.frame.gasLeft) :
+    (hlen : rest.length ≤ 1000) (hg : 5000 ≤ m.frame.gasLeft) :
     WP m (fun _ => False)
       (StringPost m (Str.decode m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) slot)) := by
   have hagree := Shares.jumpDestsAgree i

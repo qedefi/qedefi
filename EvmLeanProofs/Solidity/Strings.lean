@@ -147,6 +147,13 @@ structure StoresLong (crypto : Crypto) (sload : Word → Word) (p : Word) (s : B
   data : ∀ j < (s.size + 31) / 32,
     sload (arrayDataSlot crypto p + BitVec.ofNat 256 j) = chunk s j
 
+/-- Gas that suffices for a call of the compiled getter of a `string` whose slot encodes
+length `L` (solc 0.8.28, Solmate `ERC20`): the dispatcher and two `SLOAD`s of the slot, one
+cold `SLOAD` (2100) and the loop overhead per data word, and the memory of the copy and of the
+return buffer (`256 + 64 ⌈L / 32⌉` bytes). -/
+def getterGas (L : Nat) : Nat :=
+  8000 + 2400 * ((L + 31) / 32) + Gas.memoryCost (256 + 64 * ((L + 31) / 32))
+
 end Str
 
 /-- The `string` (as bytes) that the getter of a `string` state variable at slot `p` of
