@@ -1,1 +1,4 @@
 import EvmLeanTest.Word
+import EvmLeanTest.Keccak
+import EvmLeanTest.Sha256
+import EvmLeanTest.Ripemd160
