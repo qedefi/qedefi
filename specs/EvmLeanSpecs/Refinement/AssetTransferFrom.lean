@@ -85,8 +85,15 @@ theorem transferFrom_halts_ok (m : Machine) (hf : Fresh SolmateAsset.runtimeCode
         (Bytes.ofWord (Word.ofAddress src) ++ Bytes.ofWord 4#256)))) = MAXW
   · simp only [hmax, eq_self_iff_true, Solidity.eq_self, ↓reduceIte] at hbal ⊢
     wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
-    trace_state
-    sorry
+    simp only [gt_sub_self_of_le hbal, iszero_zero]
+    wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    wp_codecopy
+    wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    refine ⟨rfl, ?_, rfl, rfl, ?_⟩
+    · simp only [outputMachine, transferFromWorld, transferWorld, spendWorld, balanceSlot_solmate,
+        allowanceSlot_solmate, hmax, ↓reduceIte]
+    · dsimp only [outputMachine]
+      evm_gas
   · simp only [eq_of_ne hmax, hmax, ↓reduceIte] at hbal ⊢
     have hle := hspend.resolve_left hmax
     wp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
