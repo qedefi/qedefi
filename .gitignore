@@ -1,3 +1,5 @@
 /.lake
 /tests/fixtures
 *.log
+.DS_Store
+conformance-results.txt
