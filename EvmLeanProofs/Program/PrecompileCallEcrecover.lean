@@ -1,5 +1,6 @@
 import EvmLeanProofs.Program.PrecompileCall
 import EvmLeanProofs.Solidity.Abi
+import EvmLeanProofs.Program.Memory
 
 /-!
 # `ECRECOVER` on a four-word input
@@ -132,5 +133,93 @@ theorem ecrecover_words (crypto : Crypto) (hash v r s : Word) {gas : Nat} (h : 3
       cases crypto.ecrecover (ofWord hash) (v.toNat - 27) r.toNat s.toNat with
       | none => simp
       | some pub => simp [Option.map_some, leftPad32_extract_ofWord]
+
+/-! ## The call -/
+
+open Interpreter
+
+/-- The calldata of a child message is the input window of the caller's memory. -/
+theorem childMsg_data (m : Machine) (caller to codeAddress : Address) (value : Word) (gas : Nat)
+    (stv st : Bool) (inOff inSize outOff outSize : Word) :
+    (childMsg m caller to codeAddress value gas stv st inOff inSize outOff outSize).data =
+      m.frame.memory.read inOff.toNat inSize.toNat := by
+  simp only [childMsg, callMemory, readBytes_bytes, Memory.read_expand]
+
+/-- What `ECRECOVER` writes back: the signer's ABI word, or nothing. -/
+def ecrecoverOutput (crypto : Crypto) (hash v r s : Word) : ByteArray :=
+  match ecrecoverAddress? crypto hash v r s with
+  | some a => ofWord (Word.ofAddress a)
+  | none => .empty
+
+/-- The caller's memory after `ECRECOVER` returned into a one-word output window: the signer's
+word stored there, or unchanged. -/
+theorem returnMemory_ecrecoverOutput (mem : Memory) (off : Nat) (crypto : Crypto)
+    (hash v r s : Word) :
+    returnMemory mem off 32 (ecrecoverOutput crypto hash v r s) =
+      match ecrecoverAddress? crypto hash v r s with
+      | some a => mem.storeWord off (Word.ofAddress a)
+      | none => mem := by
+  unfold ecrecoverOutput
+  cases ecrecoverAddress? crypto hash v r s with
+  | some a => exact returnMemory_ofWord mem off _
+  | none =>
+    unfold returnMemory
+    have : (ByteArray.empty.extract 0 (min 32 ByteArray.empty.size)).size = 0 := by simp
+    simp only [this, ↓reduceIte]
+
+variable {m : Machine} {gas inOff outOff : Word} {rest : List Word}
+
+/-- **`ecrecover(hash, v, r, s)` as solc calls it**: `STATICCALL(gas, 0x01, inOff, 128, outOff,
+32)` with the four words at `inOff`, under the standard precompiles of the machine's context
+(any `Crypto`). If the forwarded gas covers the precompile's 3000, the caller continues with
+`1` pushed, `3000` gas spent beyond the call's own charges, the signer's word written at
+`outOff` (or memory unchanged for an invalid signature, `returnMemory_ecrecoverOutput`) and
+kept as return data. -/
+theorem WP.staticcall_ecrecover {Q : Machine → Prop} {H : Machine → Outcome → Prop}
+    {hash v r s : Word}
+    (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
+    (hstk : m.frame.stack = gas :: 1#256 :: inOff :: 128#256 :: outOff :: 32#256 :: rest)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
+    (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code 1) = none)
+    (hgas : callCost m gas 0 1 0 0 inOff 128#256 outOff 32#256 ≤ m.frame.gasLeft)
+    (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
+    (hin : m.frame.memory.read inOff.toNat 128 =
+      ofWord hash ++ (ofWord v ++ (ofWord r ++ ofWord s)))
+    (hsub : 3000 ≤ (callGas m gas 0 1 0 0 inOff 128#256 outOff 32#256).subCall)
+    (k : WP { m with frame := { callerFrame m rest (callCost m gas 0 1 0 0 inOff 128#256 outOff
+          32#256) 1 inOff 128#256 outOff 32#256 with
+        gasLeft := m.frame.gasLeft - callCost m gas 0 1 0 0 inOff 128#256 outOff 32#256 +
+          ((callGas m gas 0 1 0 0 inOff 128#256 outOff 32#256).subCall - 3000)
+        sub := mergeSub (m.frame.sub.warmAddr 1)
+          (Substate.ofMessage (childMsg m m.frame.msg.currentTarget 1 1 0
+            (callGas m gas 0 1 0 0 inOff 128#256 outOff 32#256).subCall true true inOff 128#256
+            outOff 32#256)) m.world 1
+        returnData := ecrecoverOutput m.ctx.crypto hash v r s
+        stack := 1 :: rest
+        memory := returnMemory (callMemory m inOff 128#256 outOff 32#256) outOff.toNat 32
+          (ecrecoverOutput m.ctx.crypto hash v r s)
+        pc := m.frame.pc + 1 } } Q H) :
+    WP m Q H := by
+  have hto : Word.toAddress (1#256) = 1 := by decide
+  have hpre : m.precompiles.isPrecompile (Word.toAddress 1#256) = true := by
+    rw [hstd, hto]; exact isPrecompile_one _
+  refine WP.staticcall_precompile hcode hstk (by rw [hto]; exact hdel) (by rw [hto]; exact hgas)
+    hdepth hpre ?_
+  have hrun : ∀ msg : Message, msg.data = ofWord hash ++ (ofWord v ++ (ofWord r ++ ofWord s)) →
+      3000 ≤ msg.gas → m.precompiles.run 1 msg.data msg.gas =
+        { success := true, gasLeft := msg.gas - 3000,
+          output := ecrecoverOutput m.ctx.crypto hash v r s } := by
+    intro msg hd hg
+    rw [hstd, hd]
+    exact (run_one _ _ _ _).trans (ecrecover_words _ _ _ _ _ hg)
+  rw [hto]
+  have hd := childMsg_data m m.frame.msg.currentTarget 1 1 0
+    (callGas m gas 0 1 0 0 inOff 128#256 outOff 32#256).subCall true true inOff 128#256 outOff
+    32#256
+  rw [BitVec.toNat_ofNat, show 128 % 2 ^ 256 = 128 by decide, hin] at hd
+  have hr := hrun _ hd hsub
+  rw [resume_precompile_success (by rw [hr])]
+  rw [hr]
+  exact k
 
 end EvmLean.Program

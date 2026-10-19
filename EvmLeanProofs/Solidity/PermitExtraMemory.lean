@@ -70,3 +70,36 @@ attribute [permit_norm] EvmLean.Interpreter.memoryCost EvmLean.Gas.extendMemory 
   EvmLean.Memory.size_storeWord EvmLean.Memory.size_expand
   EvmLean.Memory.wordsAfter EvmLean.Memory.words EvmLean.Gas.keccak256Cost
   EvmLean.Gas.keccak256Base EvmLean.Gas.keccak256PerWord Nat.max_def
+
+attribute [permit_norm] Nat.reduceEqDiff Nat.reduceLeDiff Nat.reduceAdd Nat.reduceMul Nat.reduceDiv
+  Nat.reduceSub reduceIte
+
+namespace EvmLean.Memory
+
+/-- An access inside a word-aligned memory does not expand it (also for a symbolic length). -/
+theorem expand_eq_self_of_le {m : Memory} {off len : Nat} (h : off + len ≤ m.size) (h32 : m.size % 32 = 0) :
+    m.expand off len = m := by
+  unfold expand
+  have : 32 * wordsAfter m.words off len ≤ m.size := by
+    unfold wordsAfter words
+    split
+    · omega
+    · rw [Nat.max_def]; split <;> omega
+  simp only [this, ↓reduceIte]
+
+end EvmLean.Memory
+
+namespace EvmLean.Gas
+
+/-- An access inside a word-aligned memory costs no expansion gas (also for a symbolic
+length). -/
+theorem extendMemory_one_of_le {size off len : Nat} (h : off + len ≤ size) (h32 : size % 32 = 0) :
+    extendMemory size [(off, len)] = { cost := 0, newSize := size } := by
+  unfold extendMemory
+  simp only [List.foldl_cons, List.foldl_nil]
+  split
+  · rfl
+  · have : ceil32 (off + len) ≤ ceil32 size := by unfold ceil32; omega
+    simp only [this, ↓reduceIte]
+
+end EvmLean.Gas
