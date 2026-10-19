@@ -67,6 +67,13 @@ import EvmLeanSpecs.Refinement.EventsWithdraw
 import EvmLeanSpecs.Refinement.EventsRedeem
 import EvmLeanSpecs.Refinement.EventsEntry
 import EvmLeanSpecs.Refinement.EventsTrace
+import EvmLeanSpecs.Refinement.StringsVault
+import EvmLeanSpecs.Refinement.StringsVaultLong
+import EvmLeanSpecs.Refinement.StringsVaultSpec
+import EvmLeanSpecs.Refinement.StringsAsset
+import EvmLeanSpecs.Refinement.StringsAssetLong
+import EvmLeanSpecs.Refinement.StringsAssetSpec
+import EvmLeanSpecs.Refinement.StringsCanonical
 
 /-!
 # EvmLeanSpecs

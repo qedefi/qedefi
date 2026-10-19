@@ -63,3 +63,9 @@ import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Program.InExtraCall
 import EvmLeanProofs.Solidity.InExtraWord
 import EvmLeanProofs.Solidity.EventsExtra
+import EvmLeanProofs.Solidity.StringsStep
+import EvmLeanProofs.Solidity.StringsTactic
+import EvmLeanProofs.Solidity.Strings
+import EvmLeanProofs.Solidity.StringsWord
+import EvmLeanProofs.Solidity.StringsEncoding
+import EvmLeanProofs.Solidity.StringsExamples
