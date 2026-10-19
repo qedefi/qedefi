@@ -399,13 +399,11 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
             Memory.loadWord_storeWord_of_disjoint _ 164 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 132 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 128 64 _ (by decide), hfmp]
-        · rw_mem_sizes
-          evm_gas_norm
+        · evm_gas_norm
           rw_mem_sizes
           evm_gas_norm
         · evm_gas
         · logs_simp [hlogs]
-          try rfl
     · rw [Nat.not_le] at hbal
       refine WP.callNoValue (by pcode_fact) rfl ?_ ?_ hdepth ?_
         (transfer_halts_revert (ia := ia) («to» := rcv) (amount := amount) _ ?_ rfl
@@ -565,13 +563,11 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
             Memory.loadWord_storeWord_of_disjoint _ 196 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 164 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 160 64 _ (by decide), hfmp]
-        · rw_mem_sizes
-          evm_gas_norm
+        · evm_gas_norm
           rw_mem_sizes
           evm_gas_norm
         · evm_gas
         · logs_simp [hlogs]
-          try rfl
     · rw [Nat.not_le] at hbal
       refine WP.callNoValue (by pcode_fact) rfl ?_ ?_ hdepth ?_
         (transfer_halts_revert (ia := ia) («to» := rcv) (amount := amount) _ ?_ rfl

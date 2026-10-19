@@ -6,9 +6,9 @@ import EvmLeanSpecs.Refinement.Events
 /-!
 # Events of `deposit`
 
-`deposit_events`: the companion of `deposit_refines` (`Deposit.lean`) that also determines the frame's
-logs — the same proof, composing the log-tracking summaries (`*_wp_gas_logs`,
-`safeTransferFrom_wp_logs`, `mintShares_wp_logs`, `afterDeposit_wp_logs`) and the inline
+`deposit_events`: the companion of `deposit_refines` (`Deposit.lean`) that also
+determines the frame's logs — the same proof, composing the log-tracking summaries
+(`*_wp_gas_logs`, `safeTransferFrom_wp_logs`, `mintShares_wp_logs`, `afterDeposit_wp_logs`) and the inline
 `Deposit` event.
 -/
 
@@ -16,13 +16,12 @@ namespace EvmLeanSpecs.Refinement
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open Vault Shares
-open EvmLeanSpecs.Vault.Solmate (Events)
 
 set_option maxHeartbeats 0 in
-/-- **`deposit` emits the model's events**, in any frame: `deposit_refines`, and the frame ends as
-`EventsPost` with the encoded events of `Events.deposit` — on success the asset's `Transfer(caller, vault,
-assets)` (inside `safeTransferFrom`), the shares' `Transfer(0, receiver, shares)` and
-`Deposit(caller, receiver, assets, shares)`, in this order; on revert none. -/
+/-- **`deposit` emits the model's events**, in any frame: as `deposit_refines`, and the frame
+ends as `EventsPost` with the encoded events of the model — on success the asset's
+`Transfer(caller, vault, assets)` (inside `safeTransferFrom`), the shares' `Transfer(0,
+receiver, shares)` and `Deposit(caller, receiver, assets, shares)`, in this order. -/
 theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {assets : Word} {receiver : Address}
@@ -41,9 +40,9 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
       (fun v => depositWorld m.ctx.crypto m.world m.frame.msg.currentTarget i.asset
         m.frame.msg.caller receiver assets (BitVec.ofNat 256 v))
       (Solmate.deposit (absOf i.asset m) m.frame.msg.caller assets.toNat receiver) mf o ∧
-      EventsPost m (encode m.frame.msg.currentTarget i.asset (Events.deposit m.frame.msg.currentTarget
-        m.frame.msg.caller receiver assets.toNat (Solmate.deposit (absOf i.asset m) m.frame.msg.caller assets.toNat
-          receiver))) mf o) := by
+      EventsPost m (encode m.frame.msg.currentTarget i.asset
+        (Solmate.Events.deposit m.frame.msg.currentTarget m.frame.msg.caller receiver assets.toNat
+          (Solmate.deposit (absOf i.asset m) m.frame.msg.caller assets.toNat receiver))) mf o) := by
   obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
   have hsz4 : 4 ≤ m.frame.msg.data.size := by omega
   have hsel' := Dispatch.selector_eq hsel
@@ -145,8 +144,10 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
       subst hr
       refine ⟨⟨rfl, rfl, hR⟩, ?_⟩
       show _ = _
+      dsimp only [outputMachine]
       rw [encode_deposit, append_three]
       logs_simp [hl1, hl2, hl3, hl4]
+      simp only [ofAddress_and_addressMask]
       event_log [assets, BitVec.ofNat 256 v]
 
 end EvmLeanSpecs.Refinement

@@ -130,8 +130,8 @@ theorem opEvents_of {c : VCall}
             wk) = .ok res ∧
           res.logs = encode vault asset (events (abs crypto w vault asset) c.op)) :
     OpEventsAt crypto vault asset minGas Act c := by
-  rintro hs hact w w' L hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩,
-    -, hL⟩
+  rintro hs hact w w' L hdep hinv
+    ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩, -, hL⟩
   obtain ⟨n', hn'⟩ := h hs hact w ctx tr gas wa wk hcr hdep hinv hdeleg hg hg'
   obtain ⟨res, hrun, hres⟩ := hn' (max n n') (le_max_right _ _)
   obtain rfl := terminates_unique hn (le_max_left _ _) hrun
@@ -211,7 +211,8 @@ inductive LogTrace (crypto : Crypto) (vault asset : Address) (minGas : Nat) :
 
 /-- A trace with logs is a trace. -/
 theorem LogTrace.trace {w w' : World} {cs : List VCall} {L : Array Log}
-    (h : LogTrace crypto vault asset minGas w cs w' L) : Trace crypto vault asset minGas w cs w' := by
+    (h : LogTrace crypto vault asset minGas w cs w' L) :
+    Trace crypto vault asset minGas w cs w' := by
   induction h with
   | refl w => exact Trace.nil w
   | env he _ ih => exact Trace.env he ih
@@ -239,8 +240,8 @@ theorem logTrace_stream (hs : SlotsOk crypto vault Act)
   | @call w₁ w₂ w₃ c cs L₁ L₂ hc _ ih =>
     have hokc : ∀ a ∈ c.actors, a ∈ Act := hact c (by simp)
     have hi : Inv (abs crypto w₁ vault asset) := hag.symm.inv hsi
-    obtain ⟨hdep₂, hag₂⟩ := href.call_stepD (w := w₁) (op := c) hdep ⟨hi, rfl⟩ ⟨hokc, trivial⟩
-      hc.callStep
+    obtain ⟨hdep₂, hag₂⟩ :=
+      href.call_stepD (w := w₁) (op := c) hdep ⟨hi, rfl⟩ ⟨hokc, trivial⟩ hc.callStep
     have hreads : Reads (ActorPairs Act) (abs crypto w₁ vault asset).self c.op :=
       reads_of_actors hs.vault_mem hokc
     have hev : events (abs crypto w₁ vault asset) c.op = events s c.op := events_agree hag hreads

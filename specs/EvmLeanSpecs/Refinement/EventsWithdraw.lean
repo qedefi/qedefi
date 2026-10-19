@@ -118,6 +118,7 @@ theorem withdraw_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : O
     clear hW hcode₃ hcode hpre
     pwp_steps [hm5a, hm5b]
     refine ⟨rfl, rfl, ?_⟩
+    dsimp only [outputMachine]
     logs_simp [hl1, hl2, hl3, hl4, hl5]
     event_log [assets, BitVec.ofNat 256 v]
 

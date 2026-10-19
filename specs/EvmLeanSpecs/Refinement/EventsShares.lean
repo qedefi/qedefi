@@ -46,7 +46,8 @@ theorem transfer_events {dst : Address} {amount : Word}
   rw [processMessageCall_vaultCall hdeleg hpre]
   cases hT : t.transfer caller dst amount.toNat with
   | some t' =>
-    have hbal : amount.toNat ≤ ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat := by
+    have hbal :
+        amount.toNat ≤ ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat := by
       rw [hr.balanceOf caller]; exact (Token.transfer_eq_some.1 hT).1
     obtain ⟨r, hrun, -, -, -, hl⟩ := transfer_ok_events (i := i) (tr := tr) (dst := dst)
       (warmAddrs := warmAddrs) (warmKeys := warmKeys) hgas hbal k
@@ -54,7 +55,8 @@ theorem transfer_events {dst : Address} {amount : Word}
     simp only [Events.transfer, hT, Option.isSome_some, ↓reduceIte, encode_single,
       toLog_transfer, Emitter.addr, hl]
   | none =>
-    have hlt : ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat < amount.toNat := by
+    have hlt :
+        ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat < amount.toNat := by
       rw [hr.balanceOf caller]
       unfold Token.transfer at hT
       split at hT

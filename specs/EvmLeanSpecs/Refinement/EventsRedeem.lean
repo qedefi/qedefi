@@ -142,6 +142,7 @@ theorem redeem_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : Out
       clear hR hcode₃ hcode₁ hcode hpre
       pwp_steps [hm6a, hm6b]
       refine ⟨rfl, rfl, ?_⟩
+      dsimp only [outputMachine]
       logs_simp [hl2, hl3, hl4, hl5, hl6]
       event_log [BitVec.ofNat 256 v, shares]
 

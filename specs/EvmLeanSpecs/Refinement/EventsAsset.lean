@@ -204,24 +204,41 @@ theorem assetBurn_events {ia : SolmateAsset.Immutables} (m : Machine)
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
+/-- Short calldata fits the frame theorems' size bound. -/
+theorem encodeCall_size_lt (sel : Nat) (args : List Word) (h : args.length ≤ 3) :
+    (Abi.encodeCall sel args).size < 2 ^ 64 := by
+  rw [Abi.size_encodeCall]; omega
+
+/-- Lift a frame theorem `EventsPost` about the start of a top-level call to the deployed asset
+to the result of `processMessageCall`. -/
+theorem asset_events_call (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) {data : ByteArray}
+    {L : Array Log}
+    (h : ∀ ia : SolmateAsset.Immutables,
+      let m := startMachine ctx w tr
+        (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller data gas wa wk)
+      Fresh (SolmateAsset.runtimeCodeWith ia) m → Halts m (EventsPost m L)) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code asset) asset caller data gas wa wk) = .ok res ∧ res.logs = L := by
+  obtain ⟨ia, hcode⟩ := hdep.assetCode
+  rw [hcode]
+  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
+    (h ia (fresh_startMachine ctx w tr
+      (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller data gas wa wk)))
+
 /-- **`asset.transfer(dst, amount)` at the top level**: the result's logs are the model's
 events, encoded. -/
 theorem assetTransfer_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (dst : Address) (amount : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
-        (callMsg (w.code asset) asset caller (Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount])
-          gas wa wk) = .ok res ∧
+        (callMsg (w.code asset) asset caller
+          (Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]) gas wa wk) = .ok res ∧
       res.logs = encode vault asset
         (events (abs ctx.crypto w vault asset) (.assetTransfer caller dst amount.toNat)) := by
-  obtain ⟨ia, hcode⟩ := hdep.assetCode
-  rw [hcode]
-  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
-    (assetTransfer_events (startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-      (Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]) gas wa wk))
-      (fresh_startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-        (Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]) gas wa wk)) rfl rfl (Invariants.twoWordCall_encodeCall (by decide) _ _)
-      (show (Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]).size < 2 ^ 64 by rw [Abi.size_encodeCall]; simp) hgas (rep_toToken _) vault)
+  exact asset_events_call hdep hdeleg fun _ hf => assetTransfer_events _ hf rfl rfl
+    (Invariants.twoWordCall_encodeCall (by decide) _ _)
+    (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
 /-- **`asset.transferFrom(src, dst, amount)` at the top level**: the result's logs are the
 model's events, encoded. -/
@@ -234,15 +251,11 @@ theorem assetTransferFrom_events_call (hdep : Deployed w vault asset)
           (Abi.encodeCall 0x23b872dd [Word.ofAddress src, Word.ofAddress dst, amount])
           gas wa wk) = .ok res ∧
       res.logs = encode vault asset
-        (events (abs ctx.crypto w vault asset) (.assetTransferFrom caller src dst amount.toNat)) := by
-  obtain ⟨ia, hcode⟩ := hdep.assetCode
-  rw [hcode]
-  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
-    (assetTransferFrom_events (startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-      (Abi.encodeCall 0x23b872dd [Word.ofAddress src, Word.ofAddress dst, amount]) gas wa wk))
-      (fresh_startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-        (Abi.encodeCall 0x23b872dd [Word.ofAddress src, Word.ofAddress dst, amount]) gas wa wk)) rfl rfl (Invariants.threeWordCall_encodeCall (by decide) _ _ _)
-      (show (Abi.encodeCall 0x23b872dd [Word.ofAddress src, Word.ofAddress dst, amount]).size < 2 ^ 64 by rw [Abi.size_encodeCall]; simp) hgas ha (rep_toToken _) vault)
+        (events (abs ctx.crypto w vault asset)
+          (.assetTransferFrom caller src dst amount.toNat)) := by
+  exact asset_events_call hdep hdeleg fun _ hf => assetTransferFrom_events _ hf rfl rfl
+    (Invariants.threeWordCall_encodeCall (by decide) _ _ _)
+    (encodeCall_size_lt _ _ (by simp)) hgas ha (rep_toToken _) vault
 
 /-- **`asset.approve(spender, amount)` at the top level**: the result's logs are the model's
 event, encoded. -/
@@ -254,14 +267,9 @@ theorem assetApprove_events_call (hdep : Deployed w vault asset)
           (Abi.encodeCall 0x095ea7b3 [Word.ofAddress spender, amount]) gas wa wk) = .ok res ∧
       res.logs = encode vault asset
         (events (abs ctx.crypto w vault asset) (.assetApprove caller spender amount.toNat)) := by
-  obtain ⟨ia, hcode⟩ := hdep.assetCode
-  rw [hcode]
-  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
-    (assetApprove_events (startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-      (Abi.encodeCall 0x095ea7b3 [Word.ofAddress spender, amount]) gas wa wk))
-      (fresh_startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-        (Abi.encodeCall 0x095ea7b3 [Word.ofAddress spender, amount]) gas wa wk)) rfl rfl (Invariants.twoWordCall_encodeCall (by decide) _ _)
-      (show (Abi.encodeCall 0x095ea7b3 [Word.ofAddress spender, amount]).size < 2 ^ 64 by rw [Abi.size_encodeCall]; simp) hgas vault)
+  exact asset_events_call hdep hdeleg fun _ hf => assetApprove_events _ hf rfl rfl
+    (Invariants.twoWordCall_encodeCall (by decide) _ _)
+    (encodeCall_size_lt _ _ (by simp)) hgas vault
 
 /-- **`asset.mint(dst, amount)` at the top level** (any caller): the result's logs are the
 model's events, encoded. -/
@@ -269,18 +277,13 @@ theorem assetMint_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (dst : Address) (amount : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
-        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x40c10f19 [Word.ofAddress dst, amount])
-          gas wa wk) = .ok res ∧
+        (callMsg (w.code asset) asset caller
+          (Abi.encodeCall 0x40c10f19 [Word.ofAddress dst, amount]) gas wa wk) = .ok res ∧
       res.logs = encode vault asset
         (events (abs ctx.crypto w vault asset) (.assetMint dst amount.toNat)) := by
-  obtain ⟨ia, hcode⟩ := hdep.assetCode
-  rw [hcode]
-  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
-    (assetMint_events (startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-      (Abi.encodeCall 0x40c10f19 [Word.ofAddress dst, amount]) gas wa wk))
-      (fresh_startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-        (Abi.encodeCall 0x40c10f19 [Word.ofAddress dst, amount]) gas wa wk)) rfl rfl (Invariants.twoWordCall_encodeCall (by decide) _ _)
-      (show (Abi.encodeCall 0x40c10f19 [Word.ofAddress dst, amount]).size < 2 ^ 64 by rw [Abi.size_encodeCall]; simp) hgas (rep_toToken _) vault)
+  exact asset_events_call hdep hdeleg fun _ hf => assetMint_events _ hf rfl rfl
+    (Invariants.twoWordCall_encodeCall (by decide) _ _)
+    (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
 /-- **`asset.burn(src, amount)` at the top level** (any caller): the result's logs are the
 model's events, encoded. -/
@@ -288,17 +291,12 @@ theorem assetBurn_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (src : Address) (amount : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
-        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x9dc29fac [Word.ofAddress src, amount])
-          gas wa wk) = .ok res ∧
+        (callMsg (w.code asset) asset caller
+          (Abi.encodeCall 0x9dc29fac [Word.ofAddress src, amount]) gas wa wk) = .ok res ∧
       res.logs = encode vault asset
         (events (abs ctx.crypto w vault asset) (.assetBurn src amount.toNat)) := by
-  obtain ⟨ia, hcode⟩ := hdep.assetCode
-  rw [hcode]
-  exact events_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
-    (assetBurn_events (startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-      (Abi.encodeCall 0x9dc29fac [Word.ofAddress src, amount]) gas wa wk))
-      (fresh_startMachine ctx w tr (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller
-        (Abi.encodeCall 0x9dc29fac [Word.ofAddress src, amount]) gas wa wk)) rfl rfl (Invariants.twoWordCall_encodeCall (by decide) _ _)
-      (show (Abi.encodeCall 0x9dc29fac [Word.ofAddress src, amount]).size < 2 ^ 64 by rw [Abi.size_encodeCall]; simp) hgas (rep_toToken _) vault)
+  exact asset_events_call hdep hdeleg fun _ hf => assetBurn_events _ hf rfl rfl
+    (Invariants.twoWordCall_encodeCall (by decide) _ _)
+    (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
 end EvmLeanSpecs.Refinement
