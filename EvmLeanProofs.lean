@@ -55,6 +55,7 @@ import EvmLeanProofs.Solidity.SharesExtraErc20
 import EvmLeanProofs.Solidity.SharesExtraCall
 import EvmLeanProofs.Program.ExtraLogic
 import EvmLeanProofs.Program.ExtraTactic
+import EvmLeanProofs.Program.OutExtraCall
 import EvmLeanProofs.Solidity.ExtraWord
 import EvmLeanProofs.Solidity.ExtraMemory
 import EvmLeanProofs.Solidity.ExtraPatchedWP
