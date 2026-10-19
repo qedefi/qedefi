@@ -85,4 +85,38 @@ theorem WP.callNoValue {Q : Machine → Prop} {H Hc : Machine → Outcome → Pr
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
     (fun mf o hs hc => k mf o hc hs)
 
+/-- Copying a child's output into a one-word output window at `0` (Solmate's `SafeTransferLib`
+calls) changes neither the size of a memory of at least one word nor the word at `64` (the
+free-memory pointer). -/
+theorem returnMemory_zero_word (mem : Memory) (out : ByteArray) (h : 32 ≤ mem.size) :
+    (returnMemory mem 0 32 out).loadWord 64 = mem.loadWord 64 ∧
+      (returnMemory mem 0 32 out).size = mem.size := by
+  unfold returnMemory
+  split
+  · exact ⟨rfl, rfl⟩
+  · have hd : (out.extract 0 (min 32 out.size)).size ≤ 32 := by
+      simp only [ByteArray.size_extract]; omega
+    have hc : 32 * Memory.wordsAfter mem.words 0 (out.extract 0 (min 32 out.size)).size ≤
+        mem.size := by
+      unfold Memory.wordsAfter Memory.words
+      have h1 : 1 ≤ mem.size / 32 := (Nat.le_div_iff_mul_le (by decide)).2 (by omega)
+      have h2 : (0 + (out.extract 0 (min 32 out.size)).size + 31) / 32 < 2 :=
+        (Nat.div_lt_iff_lt_mul (by decide)).2 (by omega)
+      have h3 := Nat.mul_div_le mem.size 32
+      split
+      · omega
+      · rw [Nat.max_eq_left (by omega)]; omega
+    have he : mem.expand 0 (out.extract 0 (min 32 out.size)).size = mem := by
+      simp only [Memory.expand, hc, ↓reduceIte]
+    constructor
+    · rw [Memory.loadWord, Memory.loadWord,
+        Memory.read_write_of_disjoint _ _ _ _ _ (.inr (by omega))]
+    · rw [Memory.size_write, he]
+
+/-- `returnMemory_zero_word` for a memory named by an equation (as `generalize` leaves it). -/
+theorem returnMemory_zero_word_eq {mem M : Memory} {out : ByteArray}
+    (hM : returnMemory mem 0 32 out = M) (h : 32 ≤ mem.size) :
+    M.loadWord 64 = mem.loadWord 64 ∧ M.size = mem.size :=
+  hM ▸ returnMemory_zero_word mem out h
+
 end EvmLean.Program
