@@ -67,7 +67,7 @@ the head with `k + 1`, or to the exit when `k + 1 = n`. -/
 theorem vaultCopyBody_wp {i : SolmateVault.Immutables} {w : World} {a : Address} {h fmp : Word}
     {L n R k : Nat} {tl : List Word} (m : Machine)
     (hst : VaultCopy i w a h L n R fmp tl k 0x56e m) (hkn : k < n) (hn : n = (L + 31) / 32)
-    (hL : 32 ≤ L) (hL' : L < 2 ^ 64) (htl : tl.length ≤ 1000) :
+    (hL : 32 ≤ L) (hL' : L < 2 ^ 64) (htl : tl.length ≤ 1010) :
     WP m (fun m' => (k + 1 < n ∧ VaultCopy i w a h L n R fmp tl (k + 1) 0x56e m') ∨
       (k + 1 = n ∧ VaultCopy i w a h L n R fmp tl (k + 1) 0x582 m')) (fun _ _ => False) := by
   have hagree := Shares.jumpDestsAgree i
@@ -164,7 +164,7 @@ theorem vaultCopyBody_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
 theorem vaultCopyLoop_wp {i : SolmateVault.Immutables} {w : World} {a : Address} {h fmp : Word}
     {L n R k : Nat} {tl : List Word} (m : Machine)
     (hst : VaultCopy i w a h L n R fmp tl k 0x56e m) (hkn : k < n) (hn : n = (L + 31) / 32)
-    (hL : 32 ≤ L) (hL' : L < 2 ^ 64) (htl : tl.length ≤ 1000) :
+    (hL : 32 ≤ L) (hL' : L < 2 ^ 64) (htl : tl.length ≤ 1010) :
     WP m (VaultCopy i w a h L n R fmp tl n 0x582) (fun _ _ => False) := by
   refine WP.loop_nat (fun j m => ∃ k, j = n - k ∧ k < n ∧ VaultCopy i w a h L n R fmp tl k 0x56e m)
     ⟨k, rfl, hkn, hst⟩ ?_
@@ -387,5 +387,89 @@ theorem vaultLongTail_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
     omega
   pwp_return_in [hM4s, hhead, hsz, hM4r]
   exact ⟨trivial, trivial⟩
+
+end EvmLeanSpecs.Refinement
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+set_option maxHeartbeats 0 in
+/-- **The vault's string getter, long (odd) slot word**, from the entry of
+`extract_byte_array_length` (`0x1339`): with enough gas for the copy, the call returns
+`Abi.encodeString` of the decoded string, or panics if the slot is inconsistent. -/
+theorem vaultStringLong_wp {i : SolmateVault.Immutables} (m : Machine) {S slot : Word}
+    {rest : List Word}
+    (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
+    (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
+    (hpc : m.frame.pc = 0x1339)
+    (hs : m.frame.stack = S :: 1300#256 :: slot :: 504#256 :: rest)
+    (hS : m.world.sload m.frame.msg.currentTarget slot = S) (hodd : S.toNat % 2 = 1)
+    (hmem : m.frame.memory = initMemory)
+    (hlen : rest.length ≤ 1000)
+    (hg : 5000 + 2400 * ((Str.slotLen S + 31) / 32) +
+      Gas.memoryCost (256 + 64 * ((Str.slotLen S + 31) / 32)) ≤ m.frame.gasLeft)
+    (hg' : m.frame.gasLeft < 2 ^ 64) :
+    WP m (fun _ => False)
+      (StringPost m (Str.decode m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) slot)) := by
+  have hagree := Shares.jumpDestsAgree i
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hs hpc hc hmem
+  have hL := Str.slotLen_lt S
+  by_cases hlong : 32 ≤ Str.slotLen S
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot =
+        some (Str.longData (m_world.sload m_msg.currentTarget)
+          (arrayDataSlot m_ctx.crypto slot) (Str.slotLen S)) := by
+      simp [Str.decode, hS, Str.slotOk, hodd, hlong]
+    rw [hdec]
+    generalize hn : (Str.slotLen S + 31) / 32 = n at hg
+    have hmono := Gas.memoryCost_mono (show 160 ≤ 256 + 64 * n by omega)
+    have hn64 : Str.slotLen S < 2 ^ 64 := by
+      have := Gas.memoryCost_mono (show 0 ≤ 256 + 64 * n by omega); omega
+    pwp_run_to 1390 [initMemory, hS, Str.and_one_of_odd hodd, Str.shr_one_of_odd hodd,
+      Str.lt_32_of_ge hlong (by omega),
+      Str.iszero_of_ne (show Str.slotLen S ≠ 0 by omega) (by omega),
+      Str.div_32_mul_32 hL, Str.lt_31_of_gt (show 31 < Str.slotLen S by omega) (by omega)]
+    wp_generalize_mem M0 hM0
+    have hM0s : M0.size = 160 := by
+      subst hM0; simp [Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]
+    have hM0f : M0.loadWord 64 = BitVec.ofNat 256 (160 + 32 * n) := by
+      subst hM0
+      simp (disch := omega) only [Memory.loadWord_storeWord_of_disjoint, Memory.loadWord_expand,
+        Memory.loadWord_storeWord]
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_add, BitVec.toNat_ofNat, show (128 : Word).toNat = 128 from rfl]
+      omega
+    have hM0l : M0.read 128 32 = ofWord (BitVec.ofNat 256 (Str.slotLen S)) := by
+      subst hM0
+      simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand,
+        Memory.read_storeWord]
+    have hM0d : M0.read 160 (32 * 0) = Str.wordsFrom (m_world.sload m_msg.currentTarget)
+        (m_ctx.crypto.keccak256 (ofWord slot)) 0 := Memory.read_zero_len _ _
+    refine WP.bind_mono (vaultCopyLoop_wp (k := 0) (n := n) (R := 500 + 3 * n)
+      (fmp := BitVec.ofNat 256 (160 + 32 * n)) _
+      ⟨rfl, hj, rfl, rfl, rfl, ⟨_, _, _, rfl, rfl, (BitVec.add_zero _).symm, ?_⟩, hM0s, hM0f,
+        hM0l, hM0d, ?_⟩ (by omega) hn.symm hlong hn64 (by simp only [List.length_cons]; omega))
+      (fun _ _ _ h => h.elim) ?_
+    · simp only [BitVec.toNat_add, BitVec.toNat_ofNat]; omega
+    · dsimp only
+      simp only [Nat.mul_zero, Nat.add_zero, Nat.sub_zero]
+      generalize Gas.memoryCost (256 + 64 * n) = cF at *
+      generalize Gas.memoryCost 160 = c0 at *
+      evm_gas
+    · intro m' _ hst
+      refine (vaultLongTail_wp m' hst hn.symm hlong hn64 (by omega) (by omega)).mono
+        (fun _ _ h => h.elim) ?_
+      rintro mf o - ⟨hw, ho⟩
+      exact ⟨hw, ho⟩
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot = none := by
+      simp [Str.decode, hS, Str.slotOk, hodd, hlong]
+    rw [hdec]
+    pwp_steps [initMemory, hS, Str.and_one_of_odd hodd, Str.shr_one_of_odd hodd,
+      Str.lt_32_of_lt (Nat.lt_of_not_le hlong)]
+    exact ⟨rfl, _, rfl⟩
 
 end EvmLeanSpecs.Refinement
