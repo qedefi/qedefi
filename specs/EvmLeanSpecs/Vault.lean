@@ -6,6 +6,8 @@ public import EvmLeanSpecs.Vault.Solmate
 public import EvmLeanSpecs.Vault.SolmateEffects
 public import EvmLeanSpecs.Vault.RoundTripAlgebra
 public import EvmLeanSpecs.Vault.SolmateProps
+public import EvmLeanSpecs.Vault.Oz
+public import EvmLeanSpecs.Vault.OzProps
 
 /-!
 # `EvmLeanSpecs.Vault`: abstract ERC-4626 vault models

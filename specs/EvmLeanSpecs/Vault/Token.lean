@@ -349,6 +349,66 @@ theorem WF_ozTransferFrom {t t' : Token A} {sp src dst : A} {v : ℕ} (hw : t.WF
   obtain ⟨t1, h1, h2⟩ := Option.bind_eq_some_iff.1 h
   exact WF_ozTransfer (WF_ozSpend hw h1) h2
 
+
+/-! ## Effects of the OpenZeppelin operations -/
+
+theorem ozTransfer_eq_some {t t' : Token A} {src dst : A} {v : ℕ}
+    (h : t.ozTransfer src dst v = some t') :
+    src ≠ 0 ∧ dst ≠ 0 ∧ v ≤ t.balanceOf src ∧
+      t'.balanceOf = t.balanceOf - single src v + single dst v ∧
+      t'.totalSupply = t.totalSupply := by
+  unfold ozTransfer at h
+  split_ifs at h with hs hd
+  unfold ozUpdate at h
+  obtain ⟨t1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
+  simp only [hs, hd, ↓reduceIte] at h1 ⊢
+  split_ifs at h1 with hv
+  cases h1
+  exact ⟨hs, hd, not_lt.1 hv, rfl, rfl⟩
+
+theorem ozMint_eq_some {t t' : Token A} {dst : A} {v : ℕ} (h : t.ozMint dst v = some t') :
+    dst ≠ 0 ∧ t.totalSupply + v ≤ MAX ∧ t'.balanceOf = t.balanceOf + single dst v ∧
+      t'.totalSupply = t.totalSupply + v := by
+  unfold ozMint at h
+  split_ifs at h with hd
+  unfold ozUpdate at h
+  obtain ⟨t1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
+  simp only [hd, ↓reduceIte] at h1 ⊢
+  split_ifs at h1 with hv
+  cases h1
+  exact ⟨hd, not_lt.1 hv, rfl, rfl⟩
+
+theorem ozBurn_eq_some {t t' : Token A} {src : A} {v : ℕ} (h : t.ozBurn src v = some t') :
+    src ≠ 0 ∧ v ≤ t.balanceOf src ∧ t'.balanceOf = t.balanceOf - single src v ∧
+      t'.totalSupply = t.totalSupply - v := by
+  unfold ozBurn at h
+  split_ifs at h with hs
+  unfold ozUpdate at h
+  obtain ⟨t1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
+  simp only [hs, ↓reduceIte] at h1 ⊢
+  split_ifs at h1 with hv
+  cases h1
+  exact ⟨hs, not_lt.1 hv, rfl, rfl⟩
+
+theorem ozSpend_eq_some {t t' : Token A} {o sp : A} {v : ℕ} (h : t.ozSpend o sp v = some t') :
+    t'.balanceOf = t.balanceOf ∧ t'.totalSupply = t.totalSupply := by
+  unfold ozSpend at h
+  split_ifs at h
+  · unfold ozApprove at h
+    split_ifs at h
+    cases h; exact ⟨rfl, rfl⟩
+  · cases h; exact ⟨rfl, rfl⟩
+
+theorem ozTransferFrom_eq_some {t t' : Token A} {sp src dst : A} {v : ℕ}
+    (h : t.ozTransferFrom sp src dst v = some t') :
+    v ≤ t.balanceOf src ∧ t'.balanceOf = t.balanceOf - single src v + single dst v ∧
+      t'.totalSupply = t.totalSupply := by
+  unfold ozTransferFrom at h
+  obtain ⟨t1, h1, h2⟩ := Option.bind_eq_some_iff.1 h
+  obtain ⟨e1, e2⟩ := ozSpend_eq_some h1
+  obtain ⟨-, -, hv, hb, hs⟩ := ozTransfer_eq_some h2
+  exact ⟨e1 ▸ hv, by rw [hb, e1], hs.trans e2⟩
+
 end Oz
 
 end Token
