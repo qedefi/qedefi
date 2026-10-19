@@ -22,6 +22,7 @@ For each family (Solmate `MockERC20`/`MockERC4626`, OpenZeppelin `ERC20Mock`/`Oz
    four actors, each starting from the deployed state (anvil `evm_snapshot`/`evm_revert`).
    After every call the tester compares success, return/revert data, logs, receipt
    `gasUsed`, and storage: every slot either side wrote or holds (see `Differential.Rpc`).
+   Before them, a fixed first-depositor inflation-attack scenario is run and compared.
 3. **Shrinking.** On a mismatch the sequence is cut after the failing call and calls are
    removed greedily while the mismatch persists; the minimal sequence is printed with
    calldata.
@@ -293,6 +294,40 @@ def Session.report (s : Session) (seq : Nat) (seed : UInt64) (calls : Array Call
   IO.println "  differences after the last call:"
   for d in diffs do IO.println s!"    - {d}"
 
+/-- Run fixed calls from the deployed state, comparing after each; the final evm-lean world
+and the first mismatch, if any. -/
+def Session.runFixed (s : Session) (calls : Array Call) :
+    IO (World × Option (Nat × List String)) := do
+  s.restart
+  let mut w := s.world0
+  for h : i in [0:calls.size] do
+    let (w', _, diffs) ← s.exec w calls[i]
+    unless diffs.isEmpty do return (w', some (i, diffs))
+    w := w'
+  return (w, none)
+
+/-- The first-depositor inflation (donation) attack: alice deposits 1 wei, donates `10¹⁸`
+directly to the vault, bob deposits `2·10¹⁸ - 1`, alice redeems her share. -/
+def inflationScenario (f : Family) : Array Call :=
+  let alice := actors[0]?.getD 0
+  let bob := actors[1]?.getD 0
+  let a := f.assetSelectors
+  let v := f.vaultSelectors
+  let addr (x : Address) : Word × String := (Word.ofAddress x, addrName f x)
+  let num (n : Nat) : Word × String := (BitVec.ofNat 256 n, toString n)
+  let e18 := 10 ^ 18
+  #[mkCall f a alice f.asset "mint(address,uint256)" [addr alice, num (e18 + 1)],
+    mkCall f a alice f.asset "approve(address,uint256)" [addr f.vault, num (2 ^ 256 - 1)],
+    mkCall f v alice f.vault "deposit(uint256,address)" [num 1, addr alice],
+    mkCall f a alice f.asset "transfer(address,uint256)" [addr f.vault, num e18],
+    mkCall f a bob f.asset "mint(address,uint256)" [addr bob, num (2 * e18 - 1)],
+    mkCall f a bob f.asset "approve(address,uint256)" [addr f.vault, num (2 ^ 256 - 1)],
+    mkCall f v bob f.vault "previewDeposit(uint256)" [num (2 * e18 - 1)],
+    mkCall f v bob f.vault "deposit(uint256,address)" [num (2 * e18 - 1), addr bob],
+    mkCall f v alice f.vault "maxRedeem(address)" [addr alice],
+    mkCall f v alice f.vault "redeem(uint256,address,address)" [num 1, addr alice, addr alice],
+    mkCall f v bob f.vault "maxWithdraw(address)" [addr bob]]
+
 /-- Test one family. -/
 def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) (fam : Family) :
     IO Unit := do
@@ -302,6 +337,17 @@ def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) 
   let snap ← IO.mkRef (← rpc.snapshot)
   let s : Session := { cfg, rpc, fam, world0, snap, stats }
   let mut found := 0
+  let scenario := inflationScenario fam
+  let (w, res) ← s.runFixed scenario
+  match res with
+  | some (k, diffs) =>
+    found := found + 1
+    s.report 0 0 (scenario.extract 0 (k + 1)) diffs
+  | none =>
+    let bal (x : Address) := (balanceIn w fam.asset fam.assetBalances x).toNat
+    IO.println (s!"  inflation-attack scenario agrees: alice paid {10 ^ 18 + 1} and ends " ++
+      s!"with {bal (actors[0]?.getD 0)}, bob paid {2 * 10 ^ 18 - 1} and holds " ++
+      s!"{(balanceIn w fam.vault fam.vaultBalances (actors[1]?.getD 0)).toNat} shares")
   for seq in [0:cfg.sequences] do
     (← IO.getStdout).flush
     let seed : UInt64 := (cfg.seed * 1_000_003 + famIdx * 7_919 + seq).toUInt64
