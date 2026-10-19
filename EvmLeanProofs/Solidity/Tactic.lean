@@ -27,7 +27,9 @@ applies only the step lemmas for that byte, and discharges side goals with `sol_
 * code bytes `code[i]? = some b` by `decide +kernel` (closed after projecting the machine
   literal; the kernel indexes the literal in microseconds);
 * jump destinations by `isValidJumpDest_of_mem` + `decide +kernel` on the list scan;
-* everything else by `evm_disch`.
+* other closed goals (literal `JUMPI` conditions, stack bounds) by `decide +kernel`;
+* everything else by `evm_disch` (runtime errors such as the recursion limit are turned into
+  ordinary failures, so that the next candidate lemma is tried).
 
 The new machine is normalized by `evm_norm` plus `reduceCodeImm`, which evaluates
 `Bytes.toWord (readBytes code i n)` (pushed immediates) and `readBytes code i 32`
@@ -129,7 +131,17 @@ elab "sol_disch" : tactic => withMainContext do
     evalTactic (← `(tactic| apply EvmLean.Solidity.isValidJumpDest_of_mem))
     evalTactic (← `(tactic| decide +kernel))
   else
-    evalTactic (← `(tactic| evm_disch))
+    -- Closed side goals (literal JUMPI conditions, stack bounds) are evaluated by the kernel:
+    -- the elaborator's `rfl`/`decide` can unfold large numerals until the recursion limit,
+    -- a runtime error that `first` does not catch.
+    if !t.hasFVar && !t.hasMVar then
+      let s ← saveState
+      try
+        evalTactic (← `(tactic| decide +kernel))
+        return
+      catch _ => s.restore
+    tryCatchRuntimeEx (evalTactic (← `(tactic| evm_disch))) fun e =>
+      throwError "sol_disch: {e.toMessageData}"
 
 /-! ## Lemma selection by opcode -/
 

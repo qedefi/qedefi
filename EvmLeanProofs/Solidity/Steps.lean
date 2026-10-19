@@ -32,17 +32,21 @@ theorem step_pushN (n : Nat) (hn : 0 < n ∧ n < 33)
   have h := step_push ⟨n, hn.2⟩ hcode hlen (by simpa [hne] using hgas)
   simpa [hne] using h
 
-/-- `CODECOPY` of `z ≠ 0` bytes from code offset `y` to memory offset `x`. -/
+/-- `CODECOPY` of `z ≠ 0` bytes from code offset `y` to memory offset `x`. The cost
+`3 + 3 · ⌈z / 32⌉ + expansion` is spelled out (`Gas.veryLow + Gas.copyCost z`), so that
+`evm_gas` can bound it. -/
 theorem step_codecopy (hcode : m.frame.code[m.frame.pc]? = some 0x39)
     (hstk : m.frame.stack = x :: y :: z :: rest) (hz : z.toNat ≠ 0)
-    (hgas : Gas.veryLow + Gas.copyCost z.toNat + memoryCost m x z.toNat ≤ m.frame.gasLeft) :
+    (hgas : 3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
       stack := rest,
       memory := (m.frame.memory.expand x.toNat z.toNat).write x.toNat
         (readBytes m.frame.code y.toNat z.toNat),
-      gasLeft := m.frame.gasLeft - (Gas.veryLow + Gas.copyCost z.toNat + memoryCost m x z.toNat),
+      gasLeft := m.frame.gasLeft - (3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat),
       pc := m.frame.pc + 1 } } := by
+  have hc : Gas.veryLow + Gas.copyCost z.toNat = 3 + 3 * ((z.toNat + 31) / 32) := rfl
   have hg := Nat.not_lt.mpr hgas
+  rw [← hc] at hg ⊢
   simp only [memoryCost] at hg
   have hs : ¬ (readBytes m.frame.code y.toNat z.toNat).size = 0 := by
     rw [size_readBytes]; exact hz

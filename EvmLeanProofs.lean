@@ -26,3 +26,8 @@ import EvmLeanProofs.Solidity.JumpDest
 import EvmLeanProofs.Solidity.Steps
 import EvmLeanProofs.Solidity.Tactic
 import EvmLeanProofs.Solidity.Examples.Erc20Code
+import EvmLeanProofs.Solidity.Keccak
+import EvmLeanProofs.Solidity.Erc20
+import EvmLeanProofs.Solidity.Dispatch
+import EvmLeanProofs.Solidity.Examples.Erc20
+import EvmLeanProofs.Solidity.Examples.Erc20Transfer

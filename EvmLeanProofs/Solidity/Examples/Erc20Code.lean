@@ -30,7 +30,7 @@ solc 0.8.28 --optimize --optimize-runs 200 --evm-version cancun
   code and loaded with `CODECOPY`).
 -/
 
-namespace EvmLean.Solidity.Examples.Erc20
+namespace EvmLean.Solidity.Examples.SolmateErc20
 
 /-- The deployed runtime bytecode (1639 bytes). -/
 def code : ByteArray := ⟨#[
@@ -139,4 +139,4 @@ def code : ByteArray := ⟨#[
   0xf5, 0x5a, 0x4d, 0xf5, 0x23, 0xb3, 0xef
 ]⟩
 
-end EvmLean.Solidity.Examples.Erc20
+end EvmLean.Solidity.Examples.SolmateErc20

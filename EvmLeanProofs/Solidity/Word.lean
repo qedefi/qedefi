@@ -13,6 +13,8 @@ occur during symbolic execution; they are tagged `@[sol_norm]`.
   addresses (`ofAddress_and_addressMask`, `addressMask_and_ofAddress`), which is how
   `cleanup_address` and ABI address validation (`v == v & mask`) disappear.
 * `eq_self`: `EQ x x = 1`, so the validation `JUMPI` is taken.
+* Checked arithmetic (`checked_sub_t_uint256`: `r := x - y; if r > x then panic(0x11)`):
+  `gt_sub_self_of_le` / `gt_sub_self_of_lt` decide the overflow test from `y ≤ x`.
 
 Literals are stated as `BitVec.ofNat 256 n` (`n#256`), the simp normal form produced by the
 step lemmas (`BitVec.ofNat_eq_ofNat` turns `OfNat` literals into it).
@@ -65,5 +67,23 @@ theorem ofAddress_and_mask (a : Address) : Word.ofAddress a &&& addressMask = Wo
 /-- `EQ x x = 1`. -/
 @[sol_norm] theorem eq_self (x : Word) : Word.eq x x = 1#256 := by
   simp [Word.eq, Word.ofBool]
+
+/-- Checked subtraction does not underflow: `(x - y) > x` is false when `y ≤ x`. -/
+theorem gt_sub_self_of_le {x y : Word} (h : y.toNat ≤ x.toNat) :
+    Word.gt (x - y) x = 0#256 := by
+  simp only [Word.gt, Word.ofBool, BitVec.ult, decide_eq_true_eq]
+  rw [BitVec.toNat_sub_of_le (BitVec.le_def.mpr h)]
+  simp
+
+/-- Checked subtraction underflows: `(x - y) > x` (wrapping) when `x < y`. -/
+theorem gt_sub_self_of_lt {x y : Word} (h : x.toNat < y.toNat) :
+    Word.gt (x - y) x = 1#256 := by
+  simp only [Word.gt, Word.ofBool, BitVec.ult, decide_eq_true_eq]
+  have hx := x.isLt
+  have hy := y.isLt
+  rw [BitVec.toNat_sub]
+  have : x.toNat < (2 ^ 256 - y.toNat + x.toNat) % 2 ^ 256 := by
+    rw [Nat.mod_eq_of_lt (by omega)]; omega
+  simp [this]
 
 end EvmLean.Solidity

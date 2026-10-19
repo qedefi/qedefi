@@ -43,9 +43,7 @@ theorem size_readBytes (b : ByteArray) (off len : Nat) : (readBytes b off len).s
 
 end EvmLean.Interpreter
 
-namespace EvmLean.Solidity
-
-open Bytes Interpreter
+namespace EvmLean.Bytes
 
 /-! ## Big-endian values of concatenations -/
 
@@ -81,7 +79,7 @@ private theorem toNat_eq_foldl_toList (b : ByteArray) :
   rw [toNat_eq_foldl, Array.foldl_toList]
 
 /-- The big-endian value of `x ‖ y`. -/
-theorem Bytes.toNat_append (x y : ByteArray) :
+theorem toNat_append (x y : ByteArray) :
     Bytes.toNat (x ++ y) = Bytes.toNat x * 256 ^ y.size + Bytes.toNat y := by
   rw [toNat_eq_foldl_toList, toNat_eq_foldl_toList x, toNat_eq_foldl_toList y,
     ByteArray.data_append, Array.toList_append, List.foldl_append, foldl_bigEndian,
@@ -89,10 +87,16 @@ theorem Bytes.toNat_append (x y : ByteArray) :
   rfl
 
 /-- The big-endian value of `n` bytes is below `256 ^ n`. -/
-theorem Bytes.toNat_lt (b : ByteArray) : Bytes.toNat b < 256 ^ b.size := by
+theorem toNat_lt (b : ByteArray) : Bytes.toNat b < 256 ^ b.size := by
   rw [toNat_eq_foldl_toList]
   have := foldl_bigEndian_lt b.data.toList
   rwa [Array.length_toList] at this
+
+end EvmLean.Bytes
+
+namespace EvmLean.Solidity
+
+open Bytes Interpreter
 
 /-! ## Slicing -/
 

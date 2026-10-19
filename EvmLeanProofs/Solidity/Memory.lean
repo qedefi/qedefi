@@ -62,6 +62,8 @@ namespace EvmLean.Solidity
 `0x80` at `0x40`), in the form symbolic execution produces it. -/
 def initMemory : Memory := (({} : Memory).expand 64 32).storeWord 64 0x80
 
+attribute [sol_norm] initMemory
+
 /-- The free-memory pointer of `initMemory`. -/
 theorem loadWord_initMemory : initMemory.loadWord 64 = 0x80 :=
   Memory.loadWord_storeWord _ _ _
