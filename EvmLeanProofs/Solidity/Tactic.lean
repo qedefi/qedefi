@@ -57,14 +57,17 @@ def byteLit? (e : Expr) : Option Nat :=
 
 /-- The bytes of a `ByteArray` given by a literal `⟨#[b₀, b₁, …]⟩` (after unfolding
 definitions and zeta-reducing the `have` chain of long list literals). -/
-def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) := do
+def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) :=
+  -- Long literals are deep terms (`b₀ :: b₁ :: …` or nested `have`s); Meta traversals count
+  -- their depth against `maxRecDepth`.
+  withTheReader Core.Context (fun ctx => { ctx with maxRecDepth := 1000000 }) do
   let c ← whnfD c
   let_expr ByteArray.mk arr := c | return none
   let arr ← whnfR arr
   let l ← match_expr arr with
     | Array.mk _ l => pure l
     | _ => return none
-  let l ← zetaReduce l
+  let l ← if l.isLet then zetaReduce l else pure l
   let some (_, elems) := l.listLit? | return none
   let mut out : Array Nat := Array.mkEmpty elems.length
   for e in elems do

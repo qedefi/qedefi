@@ -25,15 +25,14 @@ import EvmLeanProofs.Solidity.Layout
 import EvmLeanProofs.Solidity.JumpDest
 import EvmLeanProofs.Solidity.Steps
 import EvmLeanProofs.Solidity.Tactic
-import EvmLeanProofs.Solidity.Examples.Erc20Code
 import EvmLeanProofs.Solidity.Keccak
 import EvmLeanProofs.Solidity.Erc20
 import EvmLeanProofs.Solidity.Dispatch
-import EvmLeanProofs.Solidity.Examples.Erc20
-import EvmLeanProofs.Solidity.Examples.Erc20Transfer
 import EvmLeanProofs.Contracts.Basic
 import EvmLeanProofs.Contracts.SolmateAsset
 import EvmLeanProofs.Contracts.SolmateVault
 import EvmLeanProofs.Contracts.OzAsset
 import EvmLeanProofs.Contracts.OzVault
 import EvmLeanProofs.Contracts.Deploy
+import EvmLeanProofs.Solidity.Call
+import EvmLeanProofs.Solidity.Examples.SolmateAssetTransfer
