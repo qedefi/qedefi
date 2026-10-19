@@ -70,7 +70,7 @@ theorem frameOk_view {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
   have hg := h.funded.gas
   rcases hv with ⟨ht, hd⟩ | ⟨ht, a, hd⟩
   · obtain ⟨i, hia, hf⟩ := vault_fresh h.start h.dep ht
-    have hp := viewPre_of hmin h hia hf
+    have hp := viewPre_of hmin h hia ht hf
     have w : ∀ {H : Machine → Outcome → Prop}, Halts m H →
         (∀ mf o, H mf o → mf.world = m.world) →
         Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) :=

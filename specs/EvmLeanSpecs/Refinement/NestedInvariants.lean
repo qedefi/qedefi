@@ -21,12 +21,12 @@ write and needs nothing) is **covered** (`Covered`) and the modelled call it exe
 frames are those with a proved frame summary:
 
 * calls carrying value (they revert), with at least 100 gas;
-* funded calls (no value, at least `minGas` gas, room for one more call level, calldata below
-  `2⁶⁴` bytes) executing a modelled state-changing function (`Executes`: deposit, mint, withdraw,
+* funded calls (no value, at least `minGas` gas, for the vault room for one more call level,
+  calldata below `2⁶⁴` bytes) executing a modelled state-changing function (`Executes`: deposit, mint, withdraw,
   redeem, the share and asset transfers, approvals, the asset's mint and burn) or one of the
   covered views (`ViewData`).
 
-The uncovered frames — less than `minGas` gas, depth 1024, other selectors (`permit`, `name`,
+The uncovered frames — less than `minGas` gas, the vault at depth 1024, other selectors (`permit`, `name`,
 `symbol`, `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the asset's other views), malformed
 calldata — are the pending obligations (`PendingFrames`); `follows_tx_pending` takes them as a
 hypothesis instead of `TxOk`'s coverage.
@@ -61,15 +61,15 @@ variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCa
 
 /-! ## Covered frames -/
 
-/-- A funded call: no value, at least `minGas` gas, room for one more call level, calldata
-below `2⁶⁴` bytes. -/
-structure FundedCall (minGas : Nat) (m : Machine) : Prop where
+/-- A funded call: no value, at least `minGas` gas, room for one more call level (for the
+vault, which calls the asset), calldata below `2⁶⁴` bytes. -/
+structure FundedCall (vault : Address) (minGas : Nat) (m : Machine) : Prop where
   /-- No value. -/
   value : m.frame.msg.value = 0
   /-- Enough gas. -/
   gas : minGas ≤ m.frame.gasLeft
-  /-- Room for one more call level. -/
-  depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
+  /-- A frame of the vault has room for one more call level. -/
+  depth : m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
   /-- Calldata length fits 64 bits. -/
   size : m.frame.msg.data.size < 2 ^ 64
 
@@ -77,7 +77,7 @@ structure FundedCall (minGas : Nat) (m : Machine) : Prop where
 value (it reverts), or a funded call executing a modelled function or a covered view. -/
 def Covered (vault asset : Address) (minGas : Nat) (m : Machine) : Prop :=
   (m.frame.msg.value ≠ 0 ∧ 100 ≤ m.frame.gasLeft) ∨
-  (FundedCall minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m))
+  (FundedCall vault minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m))
 
 /-- **A covered transaction**: every non-static frame of the vault's or the asset's code it
 starts is covered, and the modelled calls they execute are admitted. -/

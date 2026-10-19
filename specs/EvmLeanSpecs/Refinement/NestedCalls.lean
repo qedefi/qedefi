@@ -75,16 +75,17 @@ structure VaultStart (vault asset : Address) (m : Machine) : Prop where
   caller : ¬ Prot vault asset m.frame.msg.caller
 
 /-- The frame is funded: no value, at least `minGas` and below `2⁶⁴` gas, room for the vault's
-call into the asset, calldata below `2⁶⁴` bytes. -/
-structure Funded (minGas : Nat) (m : Machine) : Prop where
+call into the asset (a frame of the vault below the depth limit), calldata below `2⁶⁴`
+bytes. -/
+structure Funded (vault : Address) (minGas : Nat) (m : Machine) : Prop where
   /-- No value. -/
   value : m.frame.msg.value = 0
   /-- Enough gas. -/
   gas : minGas ≤ m.frame.gasLeft
   /-- Gas fits 64 bits. -/
   gasLt : m.frame.gasLeft < 2 ^ 64
-  /-- Room for one more call level. -/
-  depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
+  /-- A frame of the vault has room for one more call level. -/
+  depth : m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
   /-- Calldata length fits 64 bits. -/
   size : m.frame.msg.data.size < 2 ^ 64
 
@@ -111,7 +112,7 @@ structure FrameHyp (crypto : Crypto) (vault asset : Address) (Act : List Address
   /-- The chain's hash. -/
   hash : m.ctx.crypto = crypto
   /-- Funded. -/
-  funded : Funded minGas m
+  funded : Funded vault minGas m
   /-- The trace-level hash hypothesis. -/
   slots : SlotsOk crypto vault Act
 
@@ -142,12 +143,13 @@ theorem vault_fresh {m : Machine} (hv : VaultStart vault asset m) (hdep : Deploy
 /-- The view preconditions of a funded vault frame. -/
 theorem viewPre_of {minGas : Nat} {m : Machine} {i : SolmateVault.Immutables}
     (hmin : 60000 ≤ minGas) (h : FrameHyp crypto vault asset Act minGas m)
-    (hi : i.asset = asset) (hf : Fresh (SolmateVault.runtimeCodeWith i) m) : ViewPre i m where
+    (hi : i.asset = asset) (ht : m.frame.msg.currentTarget = vault)
+    (hf : Fresh (SolmateVault.runtimeCodeWith i) m) : ViewPre i m where
   fresh := hf
   value := h.funded.value
   assetCode := by rw [hi]; exact h.dep.assetCode
   assetNotPrecompile := by rw [h.start.pre, hi]; exact h.dep.assetNotPrecompile _
-  depth := h.funded.depth
+  depth := h.funded.depth ht
   gas := Nat.le_trans hmin h.funded.gas
   gasLt := h.funded.gasLt
   sizeLt := h.funded.size
@@ -171,7 +173,7 @@ theorem frameOk_deposit {minGas : Nat} {m : Machine} (hmin : 250000 ≤ minGas)
   have hdep := h.dep
   have hinv : Solmate.Inv (absOf i.asset m) := by
     simp only [absOf, hcr, ht, hia]; exact h.inv
-  have hD := deposit_refines m (viewPre_of (by omega) h hia hf) h.start.static
+  have hD := deposit_refines m (viewPre_of (by omega) h hia ht hf) h.start.static
     (Nat.le_trans hmin h.funded.gas) hx.data hne (hcr ▸ hk)
     (by rw [hcr, hcl]; exact hs.bal c hc) (by rw [hcr, ht]; exact hs.bal vault hs.vault_mem)
     (by rw [hcr]; exact hs.bal r hr) (by rw [hcr, hcl, ht]; exact hs.allow c hc vault hs.vault_mem)
@@ -209,7 +211,7 @@ theorem frameOk_mint {minGas : Nat} {m : Machine} (hmin : 250000 ≤ minGas)
   have hdep := h.dep
   have hinv : Solmate.Inv (absOf i.asset m) := by
     simp only [absOf, hcr, ht, hia]; exact h.inv
-  have hD := mint_refines m (viewPre_of (by omega) h hia hf) h.start.static
+  have hD := mint_refines m (viewPre_of (by omega) h hia ht hf) h.start.static
     (Nat.le_trans hmin h.funded.gas) hx.data hne (hcr ▸ hk)
     (by rw [hcr, hcl]; exact hs.bal c hc) (by rw [hcr, ht]; exact hs.bal vault hs.vault_mem)
     (by rw [hcr]; exact hs.bal r hr) (by rw [hcr, hcl, ht]; exact hs.allow c hc vault hs.vault_mem)
@@ -239,7 +241,7 @@ theorem outPre_of {minGas : Nat} {m : Machine} {i : SolmateVault.Immutables}
   assetCode := by rw [hi]; exact h.dep.assetCode
   assetNotPrecompile := by rw [h.start.pre, hi]; exact h.dep.assetNotPrecompile _
   assetNe := by rw [hi, ht]; exact h.dep.vault_ne_asset.symm
-  depth := h.funded.depth
+  depth := h.funded.depth ht
   gas := Nat.le_trans hmin h.funded.gas
   gasLt := h.funded.gasLt
   sizeLt := h.funded.size
