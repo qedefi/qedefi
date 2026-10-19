@@ -92,11 +92,27 @@ than 32 bytes, a long (odd) one at least 32. -/
 def slotOk (S : Word) : Bool := if S.toNat % 2 = 0 then decide (slotLen S < 32) else
   decide (32 ≤ slotLen S)
 
+/-- The words at slots `d, d + 1, …, d + k - 1` of a storage, concatenated. -/
+def wordsFrom (sload : Word → Word) (d : Word) (k : Nat) : ByteArray :=
+  (List.range k).foldl (fun acc j => acc ++ ofWord (sload (d + BitVec.ofNat 256 j)))
+    ByteArray.empty
+
 /-- The data of a long string of `len` bytes whose first data slot is `d`: the words at
 `d, d + 1, …` (`⌈len / 32⌉` of them), concatenated and cut to `len` bytes. -/
 def longData (sload : Word → Word) (d : Word) (len : Nat) : ByteArray :=
-  ((List.range ((len + 31) / 32)).foldl
-    (fun acc j => acc ++ ofWord (sload (d + BitVec.ofNat 256 j))) ByteArray.empty).extract 0 len
+  (wordsFrom sload d ((len + 31) / 32)).extract 0 len
+
+/-- One more word. -/
+theorem wordsFrom_succ (sload : Word → Word) (d : Word) (k : Nat) :
+    wordsFrom sload d (k + 1) = wordsFrom sload d k ++ ofWord (sload (d + BitVec.ofNat 256 k)) := by
+  simp only [wordsFrom, List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+/-- `k` words are `32 k` bytes. -/
+theorem size_wordsFrom (sload : Word → Word) (d : Word) (k : Nat) :
+    (wordsFrom sload d k).size = 32 * k := by
+  induction k with
+  | zero => rfl
+  | succ k ih => rw [wordsFrom_succ, ByteArray.size_append, ih, size_ofWord]; omega
 
 /-- The bytes of the `string` at slot `p` of a storage `sload`, or `none` if its getter
 panics (inconsistent slot word). -/

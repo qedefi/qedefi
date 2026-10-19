@@ -130,4 +130,19 @@ theorem div_256_mul_256 (S : Word) :
   apply BitVec.eq_of_toNat_eq
   simp only [Word.div, BitVec.toNat_mul, BitVec.toNat_udiv, BitVec.toNat_ofNat]
 
+/-- `gt(a, b)` when `a > b`. -/
+theorem gt_eq_one {a b : Word} (h : b.toNat < a.toNat) : Word.gt a b = 1#256 := by
+  simp only [Word.gt, BitVec.ult]
+  rw [decide_eq_true (by simpa using h)]; rfl
+
+/-- `gt(a, b)` when `a ≤ b`. -/
+theorem gt_eq_zero {a b : Word} (h : a.toNat ≤ b.toNat) : Word.gt a b = 0#256 := by
+  simp only [Word.gt, BitVec.ult]
+  rw [decide_eq_false (by simp; omega)]; rfl
+
+/-- `toNat` of a sum that does not overflow. -/
+theorem toNat_add_of_lt {a b : Word} (h : a.toNat + b.toNat < 2 ^ 256) :
+    (a + b).toNat = a.toNat + b.toNat := by
+  rw [BitVec.toNat_add, Nat.mod_eq_of_lt h]
+
 end EvmLean.Solidity.Str
