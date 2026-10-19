@@ -175,6 +175,7 @@ designator). Everything else runs arbitrary code.
   taken from the caller, and for a non-static child: from a non-static frame, at the caller's
   own account — `CALLCODE`/`DELEGATECALL` — or a `CALL` from the caller's account running the
   callee's own code) / `CreateOk` (the new account holds no code).
+* `NestedExtraGas`: `exec_bump` (gas monotonicity of every gas-oblivious opcode, §6.5).
 * `NestedExtraStep`: `step_cases`, `frameResult_world` (a finished frame hands over its world,
   its world with deposited code, or its snapshot), and **gas conservation** (`step_gas`,
   `stepN_gas`: the total gas of the frame stack never increases; all standard precompiles
@@ -233,10 +234,15 @@ dangerous frame it reaches.
 ### 6.4 Headlines (`NestedInvariants.lean`)
 
 A transaction is **covered** (`TxOk vault asset minGas Act K ctx w tr msg`) when every
-non-static frame of the vault's or the asset's code it starts (`Reaches`, `VaultStart`) is
-`Covered` (value with `≥ 100` gas, or funded and executing a modelled call or a covered view)
-and executes an admitted call. **Actors** are thus required per executed call — callers
-(routers included), receivers, owners, spenders, sources — not fixed before the transaction.
+non-static frame of the vault's or the asset's code that **unprotected code** starts during it
+(`Reaches`, `VaultStart`, no non-static vault/asset frame below it — the vault's own calls into
+the asset are inside the vault's frame summary) is `Covered` (value with `≥ 100` gas, or
+funded and executing a modelled call or a covered view) and executes an admitted call.
+**Actors** are thus required per executed call — callers (routers included), receivers,
+owners, spenders, sources — not fixed before the transaction. `txOk_direct`: a direct
+transaction to the vault or the asset is covered as soon as its own frame is (proved with the
+bottom-frame invariant `Reaches.bottom`: any later fresh frame has the transaction's frame,
+which is dangerous, below it).
 
 | theorem | statement |
 |---|---|
@@ -258,15 +264,25 @@ calls are only known to exist.
 
 * **Low gas** (part 2): frames with less than `minGas` gas, the vault at depth 1024 (its call
   into the asset fails), value with `< 100` gas. A frame either succeeds or rolls back; what is
-  missing is that a *successful* low-gas frame commits the high-gas outcome. The planned
-  argument is a lockstep simulation of the low-gas frame against the same frame with more gas:
-  every instruction except `GAS`/`CALL*`/`CREATE*` commutes with adding gas to a successful
-  run; in this bytecode every reachable `GAS` is immediately followed by `CALL`/`STATICCALL`
-  (offsets 1231, 3437, 3955, 4325 in the vault, 1630 in the asset; the metadata after offset
-  5215 is unreachable: no jump destination there), so child frames get monotonically more gas;
-  the only divergence is a child call that fails with less gas but succeeds with more, after
-  which the frame must fail — a per-call-site fact (the post-call code computes
-  `and(…, success)` and reverts) still to be proved for the five call sites.
+  missing is that a *successful* low-gas frame commits the high-gas outcome.
+  - Proved (`EvmLeanProofs/Program/NestedExtraGas.lean`, `exec_bump`): **every instruction
+    except `GAS`, `CALL*`, `CREATE*` commutes with adding gas** — a successful instruction
+    succeeds identically with more gas (one theorem for all opcodes, via a total-WP calculus).
+  - Missing: the frame-level lockstep. In this bytecode every `GAS` is immediately followed by
+    `CALL`/`STATICCALL` (vault offsets 1231, 3437, 3955, 4325; asset 1630; the metadata after
+    vault offset 5215 holds no jump destination, so it is unreachable), so a child gets
+    monotonically more gas and the simulation could continue through calls — but the lockstep
+    argument must know **which code the children run** (the vault calls only the asset, whose
+    address is a stack value at the call sites) and that **a failed child call makes the frame
+    fail** (the post-call code computes `and(…, success)` and reverts, at five call sites; with
+    arbitrary memory and return data, so with symbolic memory-expansion costs). Both are facts
+    about the paths the code takes, which today only the symbolic-execution proofs know: a
+    path-agnostic simulation cannot supply them. The remaining routes are (a) an out-of-gas
+    tolerant variant of `pwp_step` (split on each step's gas condition; the failing branch is an
+    exceptional halt, provable per opcode with the `Wp` calculus) and re-running the frame
+    proofs with it, adding the child-failure branches of `totalAssets`, `safeTransferFrom`,
+    `safeTransfer`; or (b) instrumenting the frame proofs to record the call targets and
+    executed opcodes so that the lockstep simulation applies.
 * **Unmodelled selectors**: `permit` (permit work package; it needs a model operation),
   `name`/`symbol` (strings work package), `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the
   asset's `totalSupply`/`allowance`/`decimals`, unknown selectors and malformed calldata
