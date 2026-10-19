@@ -1,4 +1,6 @@
 import EvmLeanSpecs.Refinement.InvariantsCalls
+import EvmLeanSpecs.Refinement.AssetApproveCall
+import EvmLeanSpecs.Refinement.AssetBurnCall
 import EvmLeanSpecs.Refinement.InvariantsPrice
 import EvmLeanSpecs.Vault.Inflation
 
@@ -16,16 +18,21 @@ arbitrary interleaving of unrelated transactions) and the per-call refinement th
   interleaved with environment steps (`EnvStep`: anything that leaves the storage and code of
   the vault and the asset unchanged, including view calls).
 * `RefinesFor crypto vault asset minGas Act K`: every call kind admitted by `K` refines its
-  model operation (`OpRefinesAt`). Two instances:
-  - `refinesFor_proven` (no hypothesis): `K = VCall.Proven` — the vault's
-    `transfer`/`transferFrom`/`approve` and the asset's `transfer`/`transferFrom` (so
-    donations), i.e. everything whose bytecode refinement is on `main`;
-  - `refinesFor_all hmin (hp : Pending …)`: every call kind, given the `Pending` obligations
-    (`deposit`, `mint`, `withdraw`, `redeem`, and the asset's `approve`, `mint`, `burn`).
-    **Wiring** once the deposit/mint and withdraw/redeem refinements land: prove the four
-    `Pending` fields from their `X_refines` theorems via `callRefines_some` /
-    `callRefines_none` and the bridge `agree_of_reps` (both ledgers as `Shares.RepOn`, the
-    hook counters), as in `InvariantsCalls.lean`; see `INVARIANTS.md`.
+  model operation (`OpRefinesAt`). Three instances:
+  - `refinesFor_now hmin hk`: `K = VCall.NotEntry` — every modelled call except the four
+    ERC-4626 entry points: the vault's `transfer`/`transferFrom`/`approve` and the asset's
+    `transfer`/`transferFrom` (so donations), `approve`, and the unrestricted `mint`/`burn`
+    (`InvariantsCalls.lean`, `AssetApproveCall.lean`, `AssetMintCall.lean`,
+    `AssetBurnCall.lean`). `hk : KeccakAvoids crypto (AddressKeyed [3]) [2]` (no balance slot
+    is the `totalSupply` slot; needed by `mint`/`burn`, which write slot 2);
+  - `refinesFor_proven` (no hash hypothesis beyond `SlotsOk`): `K = VCall.Proven`, the share
+    functions and the asset's `transfer`/`transferFrom`;
+  - `refinesFor_all hmin hk (hp : Pending …)`: every call kind, given the `Pending`
+    obligations (`deposit`, `mint`, `withdraw`, `redeem`). **Wiring** once the deposit/mint
+    and withdraw/redeem refinements land: prove the four `Pending` fields from their
+    `X_refines` theorems via `callRefines_some` / `callRefines_none` and the bridge
+    `agree_of_reps` (both ledgers as `Shares.RepOn`, the hook counters), as in
+    `InvariantsCalls.lean`; see `INVARIANTS.md`.
 
 ## Headline theorems (for any `K` with `RefinesFor`, any trace whose calls are admitted by
 `K` and whose actors are in `Act`, under `SlotsOk crypto vault Act`, from a deployed world
@@ -48,7 +55,7 @@ whose two ledgers are well formed)
   `donation_attack_view`: a `convertToAssets(1)` call on the final world returns the victim's
   share value `⌊(a+D+1)/2⌋`. These take the `deposit` refinement as a hypothesis.
 
-`*_now` versions instantiate `refinesFor_proven`.
+`*_now` versions instantiate `refinesFor_now` (every call but the four entry points).
 -/
 
 namespace EvmLeanSpecs.Refinement.Invariants
@@ -99,14 +106,14 @@ def RefinesFor (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : L
     (K : VCall → Prop) : Prop :=
   ∀ c, K c → OpRefinesAt crypto vault asset minGas Act c
 
-/-- **Proved today**: the share-token functions and the asset's `transfer`/`transferFrom`. -/
+/-- The share-token functions and the asset's `transfer`/`transferFrom`, which need no hash
+hypothesis beyond `SlotsOk` (`refinesFor_now` adds the asset's `approve`, `mint`, `burn`). -/
 theorem refinesFor_proven (hmin : 100000 ≤ minGas) :
     RefinesFor crypto vault asset minGas Act VCall.Proven :=
   fun c hc => opRefines_proven hmin c hc
 
 /-- **The obligations still open**: the four ERC-4626 entry points (deposit/mint and
-withdraw/redeem work packages) and the asset's `approve`, `mint`, `burn` (not yet proved
-for the bytecode). -/
+withdraw/redeem work packages). -/
 structure Pending (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : List Address) :
     Prop where
   /-- `vault.deposit`. -/
@@ -117,15 +124,47 @@ structure Pending (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act 
   withdraw : ∀ c a r o, OpRefinesAt crypto vault asset minGas Act (.withdraw c a r o)
   /-- `vault.redeem`. -/
   redeem : ∀ c n r o, OpRefinesAt crypto vault asset minGas Act (.redeem c n r o)
-  /-- `asset.approve`. -/
-  assetApprove : ∀ c sp v, OpRefinesAt crypto vault asset minGas Act (.assetApprove c sp v)
-  /-- `asset.mint` (`MockERC20.mint`, unrestricted). -/
-  assetMint : ∀ c d v, OpRefinesAt crypto vault asset minGas Act (.assetMint c d v)
-  /-- `asset.burn` (`MockERC20.burn`, unrestricted). -/
-  assetBurn : ∀ c s v, OpRefinesAt crypto vault asset minGas Act (.assetBurn c s v)
+
+/-- The calls whose bytecode refinement is proved: every modelled call except the four
+ERC-4626 entry points (`deposit`, `mint`, `withdraw`, `redeem`). -/
+def VCall.NotEntry : VCall → Prop
+  | .deposit .. | .mint .. | .withdraw .. | .redeem .. => False
+  | .transfer .. | .transferFrom .. | .approve .. | .assetTransfer .. | .assetTransferFrom ..
+  | .assetApprove .. | .assetMint .. | .assetBurn .. => True
+
+/-- The calls proved without the supply-slot hypothesis are among them. -/
+theorem VCall.Proven.notEntry {c : VCall} (h : c.Proven) : c.NotEntry := by
+  cases c <;> first | exact h.elim | trivial
+
+/-- **Every call but the four entry points refines its operation.** -/
+theorem opRefines_notEntry (hmin : 100000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256]) (c : VCall) (hc : c.NotEntry) :
+    OpRefinesAt crypto vault asset minGas Act c := by
+  cases c with
+  | assetApprove c sp v => exact opRefines_assetApprove hmin c sp v
+  | assetMint c d v => exact opRefines_assetMint hmin hk c d v
+  | assetBurn c s v => exact opRefines_assetBurn hmin hk c s v
+  | transfer c d v => exact opRefines_transfer hmin c d v
+  | transferFrom c s d v => exact opRefines_transferFrom hmin c s d v
+  | approve c sp v => exact opRefines_approve hmin c sp v
+  | assetTransfer c d v => exact opRefines_assetTransfer hmin c d v
+  | assetTransferFrom c s d v => exact opRefines_assetTransferFrom hmin c s d v
+  | deposit => exact hc.elim
+  | mint => exact hc.elim
+  | withdraw => exact hc.elim
+  | redeem => exact hc.elim
+
+/-- **Proved today**: every modelled call except the four ERC-4626 entry points, under the
+hash hypothesis that no balance slot is the `totalSupply` slot (for the asset's `mint`/`burn`). -/
+theorem refinesFor_now (hmin : 100000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256]) :
+    RefinesFor crypto vault asset minGas Act VCall.NotEntry :=
+  fun c hc => opRefines_notEntry hmin hk c hc
 
 /-- **Everything**, given the pending obligations. -/
-theorem refinesFor_all (hmin : 100000 ≤ minGas) (hp : Pending crypto vault asset minGas Act) :
+theorem refinesFor_all (hmin : 100000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
+    (hp : Pending crypto vault asset minGas Act) :
     RefinesFor crypto vault asset minGas Act (fun _ => True) := by
   intro c _
   cases c with
@@ -133,14 +172,7 @@ theorem refinesFor_all (hmin : 100000 ≤ minGas) (hp : Pending crypto vault ass
   | mint c n r => exact hp.mint c n r
   | withdraw c a r o => exact hp.withdraw c a r o
   | redeem c n r o => exact hp.redeem c n r o
-  | assetApprove c sp v => exact hp.assetApprove c sp v
-  | assetMint c d v => exact hp.assetMint c d v
-  | assetBurn c s v => exact hp.assetBurn c s v
-  | transfer c d v => exact opRefines_transfer hmin c d v
-  | transferFrom c s d v => exact opRefines_transferFrom hmin c s d v
-  | approve c sp v => exact opRefines_approve hmin c sp v
-  | assetTransfer c d v => exact opRefines_assetTransfer hmin c d v
-  | assetTransferFrom c s d v => exact opRefines_assetTransferFrom hmin c s d v
+  | _ => exact opRefines_notEntry hmin hk _ trivial
 
 /-- Refinement hypotheses for fewer kinds. -/
 theorem RefinesFor.mono {K' : VCall → Prop} (h : RefinesFor crypto vault asset minGas Act K)
@@ -234,17 +266,19 @@ theorem supply_eq_sum (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto va
   obtain ⟨-, hi, -⟩ := lift hs hR hdep hinv htr hact hK
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
-/-- `supply_eq_sum` with the refinements proved today (share-token functions and asset
-transfers, arbitrarily interleaved with any other transactions). -/
+/-- `supply_eq_sum` with the refinements proved today: every modelled call except the four
+ERC-4626 entry points (the share-token functions; the asset's transfers, approvals, and its
+unrestricted mints and burns), arbitrarily interleaved with any other transactions. -/
 theorem supply_eq_sum_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
-    (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.Proven) :
+    (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.NotEntry) :
     (w.sload vault 2#256).toNat =
         ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
         ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat :=
-  supply_eq_sum hs (refinesFor_proven hmin) hdep hinv htr hact hK
+  supply_eq_sum hs (refinesFor_now hmin hk) hdep hinv htr hact hK
 
 /-- **I-SOLVENT on bytecode.** In every world reached by a trace, the vault can pay every
 holder's `convertToAssets` at once: `Σₐ ⌊shares[a]·T/S⌋ ≤ T`, where `T` is the vault's asset
@@ -260,14 +294,16 @@ theorem solvent (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault as
   rw [Finsupp.sum_fintype _ _ (fun _ => by simp)] at this
   simpa only [abs_sharesOf, abs_totalAssets', abs_totalSupply'] using this
 
-/-- `solvent` with the refinements proved today. -/
+/-- `solvent` with the refinements proved today (every call but the four entry points; in
+particular arbitrary asset mints and burns, also to and from the vault). -/
 theorem solvent_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
-    (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.Proven) :
+    (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.NotEntry) :
     ∑ a : Address, sharesAt crypto w vault a * assetsAt crypto w vault asset / supplyAt w vault ≤
       assetsAt crypto w vault asset :=
-  solvent hs (refinesFor_proven hmin) hdep hinv htr hact hK
+  solvent hs (refinesFor_now hmin hk) hdep hinv htr hact hK
 
 /-- **E-PRICE on bytecode (one call).** Inside any trace, a user call (`UserOp`) executed from
 a world `v` in which the vault has shares, ending in `v'`, never lowers assets-per-share:
