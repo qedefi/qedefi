@@ -21,6 +21,29 @@ variable {m : Machine} {x y : Word} {rest : List Word}
 def Substate.warmKey (sub : Substate) (a : Address) (k : Word) : Substate :=
   { sub with accessedStorageKeys := addStorageKey sub.accessedStorageKeys a k }
 
+/-- The substate with `r` added to the refund counter. -/
+def Substate.addRefund (sub : Substate) (r : Int) : Substate :=
+  { sub with refundCounter := sub.refundCounter + r }
+
+/-- Marking a key warm twice is marking it once. -/
+@[simp] theorem Substate.warmKey_warmKey (sub : Substate) (a : Address) (k : Word) :
+    (sub.warmKey a k).warmKey a k = sub.warmKey a k := by
+  simp only [Substate.warmKey]
+  rw [addStorageKey_of_warm (storageKeyWarm_addStorageKey_self _ _ _)]
+
+/-- The warm keys after `warmKey`. -/
+@[simp] theorem Substate.accessedStorageKeys_warmKey (sub : Substate) (a : Address) (k : Word) :
+    (sub.warmKey a k).accessedStorageKeys = addStorageKey sub.accessedStorageKeys a k := rfl
+
+/-- The warm keys after `addRefund`. -/
+@[simp] theorem Substate.accessedStorageKeys_addRefund (sub : Substate) (r : Int) :
+    (sub.addRefund r).accessedStorageKeys = sub.accessedStorageKeys := rfl
+
+/-- The original value of a slot of an account not created in this transaction. -/
+@[simp] theorem getStorageOriginal_empty (o : World) (a : Address) (k : Word) :
+    getStorageOriginal o ∅ a k = o.sload a k := by
+  simp [getStorageOriginal]
+
 /-- `accessStorageKey` marks the key warm and reports whether it already was. -/
 theorem run_accessStorageKey (k : Word) :
     (accessStorageKey k).run m = pure
@@ -92,8 +115,8 @@ theorem step_sstore (hcode : m.frame.code[m.frame.pc]? = some 0x55)
       frame := { m.frame with
         stack := rest,
         gasLeft := m.frame.gasLeft - (sstoreCostRefund m x y).1,
-        sub := { m.frame.sub.warmKey m.frame.msg.currentTarget x with
-          refundCounter := m.frame.sub.refundCounter + (sstoreCostRefund m x y).2 },
+        sub := (m.frame.sub.warmKey m.frame.msg.currentTarget x).addRefund
+          (sstoreCostRefund m x y).2,
         pc := m.frame.pc + 1 } } := by
   have hg := Nat.not_lt.mpr hgas
   have hs : ¬ m.frame.gasLeft ≤ Gas.callStipend := Nat.not_le.mpr hstipend

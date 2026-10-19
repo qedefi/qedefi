@@ -24,8 +24,7 @@ machine whose code, pc and stack shape are known (concrete bytecode, symbolic va
    * `decide` for stack bounds and jump-destination validity;
    * `evm_gas` for gas: unfolds the `Gas` constants, adds the bounds `sstoreCost_le` and
      `sloadCost_le` for every symbolic cost in the goal, and calls `omega`;
-   * `assumption`, and `simp_all` as a last resort (e.g. `isStatic = false` from a
-     hypothesis);
+   * `assumption` (e.g. `isStatic = false` from a hypothesis);
 3. it normalizes the new machine with `dsimp only` plus `reduceByteArrayGetElem` (which
    evaluates `code[i]` for literal bytecode, so `PUSH` immediates become numerals).
 
@@ -99,7 +98,8 @@ macro "evm_gas" : tactic => `(tactic| (
   evm_gas_bounds
   try dsimp only at *
   try simp only [Gas.base, Gas.veryLow, Gas.low, Gas.mid, Gas.high, Gas.jumpdest, Gas.fastStep,
-    Gas.callStipend, Gas.warmAccess, Gas.coldStorageAccess] at *
+    Gas.callStipend, Gas.warmAccess, Gas.coldStorageAccess, List.length_cons,
+    List.length_nil] at *
   omega))
 
 /-! ## Side conditions -/
@@ -109,12 +109,11 @@ syntax "evm_disch" : tactic
 
 macro_rules
   | `(tactic| evm_disch) => `(tactic| first
-    | rfl
+    | exact rfl
     | decide
     | (dsimp only; decide)
     | evm_gas
     | assumption
-    | (simp_all; done)
     | fail "evm_disch: cannot discharge side condition")
 
 /-! ## Step lemma search -/
@@ -187,24 +186,38 @@ macro_rules | `(tactic| evm_halt_core) => `(tactic| first
 
 /-- Normalize the machine after a step: evaluate bytes of literal code, numerals, gas
 constants, and costs of zero-length memory accesses. -/
-macro "evm_norm" : tactic => `(tactic| simp only [reduceByteArrayGetElem, UInt8.reduceToNat,
-  Nat.reduceAdd, Nat.reduceSub, Nat.reduceMul, BitVec.reduceOfNat, BitVec.reduceAdd,
-  BitVec.reduceSub, BitVec.reduceMul, Gas.base, Gas.veryLow, Gas.low, Gas.mid, Gas.high,
-  Gas.jumpdest, Gas.fastStep, sstoreCostRefund, outputCost_zero, outputData_zero,
-  outputMachine_zero])
+syntax "evm_norm" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+
+macro_rules
+  | `(tactic| evm_norm) => `(tactic| evm_norm [])
+  | `(tactic| evm_norm [$extra,*]) => `(tactic| simp only [reduceByteArrayGetElem,
+    UInt8.reduceToNat, Nat.reduceAdd, Nat.reduceSub, Nat.reduceMul, BitVec.reduceOfNat,
+    BitVec.reduceToNat, BitVec.reduceAdd, BitVec.reduceSub, BitVec.reduceMul, Gas.base,
+    Gas.veryLow, Gas.low, Gas.mid, Gas.high, Gas.jumpdest, Gas.fastStep, sstoreCostRefund,
+    outputCost_zero, outputData_zero, outputMachine_zero, Substate.warmKey_warmKey,
+    Substate.accessedStorageKeys_warmKey, Substate.accessedStorageKeys_addRefund,
+    storageKeyWarm_addStorageKey_self, getStorageOriginal_empty, $extra,*])
 
 
-/-- Advance `run (n + 1) m` in the goal by one instruction (see the module docstring). -/
-syntax "evm_step" : tactic
+/-- Advance `run (n + 1) m` in the goal by one instruction (see the module docstring).
+`evm_step [h₁, …]` adds simp lemmas to the normalization of the new machine (e.g. facts about
+calldata). -/
+syntax "evm_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
-macro_rules | `(tactic| evm_step) => `(tactic| (
+macro_rules
+  | `(tactic| evm_step) => `(tactic| evm_step [])
+  | `(tactic| evm_step [$extra,*]) => `(tactic| (
   first
     | (rw [run_succ_of_running ?h]; case h => evm_step_core)
     | (rw [run_succ_of_done ?h]; case h => evm_halt_core)
     | fail "evm_step: no step lemma applies to the next instruction"
-  try evm_norm))
+  try evm_norm [$extra,*]))
 
 /-- Repeat `evm_step` while it succeeds. -/
-macro "evm_steps" : tactic => `(tactic| repeat evm_step)
+syntax "evm_steps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+
+macro_rules
+  | `(tactic| evm_steps) => `(tactic| repeat evm_step)
+  | `(tactic| evm_steps [$extra,*]) => `(tactic| repeat evm_step [$extra,*])
 
 end EvmLean.Tactic
