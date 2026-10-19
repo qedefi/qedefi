@@ -198,7 +198,9 @@ def haltTactics (b : Nat) : MetaM (List (TSyntax `tactic)) := do
 
 /-- The machine `m` of the first `run n m` in `e`. -/
 def findRunMachine? (e : Expr) : Option Expr :=
-  (e.find? fun x => x.isAppOfArity ``EvmLean.Interpreter.run 2).map (·.appArg!)
+  match e.find? fun x => x.isAppOfArity ``EvmLean.Interpreter.run 2 with
+  | some (.app _ m) => some m
+  | _ => none
 
 /-- The opcode byte at the `pc` of the machine in the goal's `run n m`. -/
 def currentByte : TacticM Nat := withMainContext do

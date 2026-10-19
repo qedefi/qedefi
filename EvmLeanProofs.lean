@@ -36,3 +36,4 @@ import EvmLeanProofs.Contracts.OzVault
 import EvmLeanProofs.Contracts.Deploy
 import EvmLeanProofs.Solidity.Call
 import EvmLeanProofs.Solidity.Examples.SolmateAssetTransfer
+import EvmLeanProofs.Solidity.Examples.SolmateAssetTransferSpec
