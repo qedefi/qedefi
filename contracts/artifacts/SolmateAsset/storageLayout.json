@@ -1,0 +1,83 @@
+{
+  "storage": [
+    {
+      "astId": 68,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "name",
+      "offset": 0,
+      "slot": "0",
+      "type": "t_string_storage"
+    },
+    {
+      "astId": 70,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "symbol",
+      "offset": 0,
+      "slot": "1",
+      "type": "t_string_storage"
+    },
+    {
+      "astId": 74,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "totalSupply",
+      "offset": 0,
+      "slot": "2",
+      "type": "t_uint256"
+    },
+    {
+      "astId": 78,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "balanceOf",
+      "offset": 0,
+      "slot": "3",
+      "type": "t_mapping(t_address,t_uint256)"
+    },
+    {
+      "astId": 84,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "allowance",
+      "offset": 0,
+      "slot": "4",
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))"
+    },
+    {
+      "astId": 92,
+      "contract": "lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20",
+      "label": "nonces",
+      "offset": 0,
+      "slot": "5",
+      "type": "t_mapping(t_address,t_uint256)"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}
