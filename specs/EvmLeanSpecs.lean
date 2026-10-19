@@ -19,6 +19,7 @@ import EvmLeanSpecs.Refinement.VaultViewsMax
 import EvmLeanSpecs.Refinement.Abstraction
 import EvmLeanSpecs.Refinement.VaultViewsSpec
 import EvmLeanSpecs.Refinement.AssetSpec
+import EvmLeanSpecs.Refinement.AssetCallIn
 
 /-!
 # EvmLeanSpecs
@@ -26,4 +27,3 @@ import EvmLeanSpecs.Refinement.AssetSpec
 Abstract specifications (Mathlib-based) for contracts verified against evm-lean. See
 `specs/README.md`.
 -/
-import EvmLeanSpecs.Refinement.AssetCallIn
