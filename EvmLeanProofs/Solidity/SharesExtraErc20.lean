@@ -40,6 +40,15 @@ open Interpreter
 /-- `type(uint256).max`, the "infinite" allowance (`PUSH0 NOT` in the bytecode). -/
 def maxWord : Word := ~~~0#256
 
+/-- `EQ allowed (NOT 0)` (the `allowed != type(uint256).max` test) on a maximal allowance. -/
+theorem eq_maxWord_of_eq {a : Word} (h : a = maxWord) : Word.eq a (~~~0#256) = 1#256 := by
+  subst h; simp [Word.eq, Word.ofBool, maxWord]
+
+/-- `EQ allowed (NOT 0)` on a non-maximal allowance. -/
+theorem eq_maxWord_of_ne {a : Word} (h : a ≠ maxWord) : Word.eq a (~~~0#256) = 0#256 := by
+  have h' : (a == ~~~0#256) = false := beq_eq_false_iff_ne.mpr h
+  rw [Word.eq, Word.ofBool, h']; rfl
+
 /-- Update one allowance. -/
 def State.setAllowance (s : State) (o sp : Address) (v : Word) : State :=
   { s with allowance := fun o' sp' => if o' = o ∧ sp' = sp then v else s.allowance o' sp' }
