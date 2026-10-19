@@ -185,6 +185,38 @@ elab "wp_generalize_mem " M:ident h:ident : tactic => withMainContext do
   let memS ← Term.exprToSyntax mem
   evalTactic (← `(tactic| generalize $h : $memS = $M))
 
+/-- For every `Memory.mcopy M d s l` with a numeral length `l ≠ 0` in the goal that has no size
+fact yet, add `hmcopy_size : (Memory.mcopy M d s l).size = …` (`Memory.size_mcopy`, normalized),
+so that `evm_gas` (`rw_mem_sizes`) can compute the cost of later accesses. -/
+elab "mcopy_size_facts" : tactic => withMainContext do
+  let t ← instantiateMVars (← getMainTarget)
+  let found ← IO.mkRef (#[] : Array Expr)
+  forEachExpr t fun e => do
+    if e.isAppOfArity ``Memory.mcopy 4 then found.modify (·.push e)
+  let mut known : Array Expr := #[]
+  for decl in ← getLCtx do
+    if decl.isImplementationDetail then continue
+    let ty ← instantiateMVars decl.type
+    if let some (_, lhs, _) := ty.eq? then
+      if lhs.isAppOfArity ``Memory.size 1 then known := known.push lhs.appArg!
+  for e in ← found.get do
+    if known.contains e then continue
+    let args := e.getAppArgs
+    let some l ← (evalNat args[3]!).run | continue
+    if l == 0 then continue
+    known := known.push e
+    let eS ← Term.exprToSyntax e
+    let mS ← Term.exprToSyntax args[0]!
+    let dS ← Term.exprToSyntax args[1]!
+    let sS ← Term.exprToSyntax args[2]!
+    let lS ← Term.exprToSyntax args[3]!
+    evalTactic (← `(tactic| have hmcopy_size : Memory.size $eS = _ :=
+      Memory.size_mcopy $mS $dS $sS $lS (by decide)))
+    evalTactic (← `(tactic| try simp only [Memory.size_storeWord, Memory.size_expand,
+      Memory.size_empty, Memory.wordsAfter, Memory.words, Nat.reduceAdd, Nat.reduceMul,
+      Nat.reduceDiv, Nat.reduceSub, Nat.reduceLeDiff, Nat.reduceEqDiff, Nat.max_def,
+      ↓reduceIte] at hmcopy_size))
+
 /-- Discharge the length side condition `len ≠ 0` / `len = 0` of an `MCOPY` step. -/
 macro "mcopy_len_disch" : tactic =>
   `(tactic| first | assumption | decide | (dsimp only; omega) | omega)
@@ -221,7 +253,8 @@ macro_rules
         case hz => mcopy_len_disch
         case hgas => mcopy_gas_disch
       case hs => same_frame
-      pwp_norm [$extra,*]))
+      pwp_norm [EvmLean.Interpreter.mcopyCost, $extra,*]
+      mcopy_size_facts))
 
 /-- Execute an empty `MCOPY` in a `WP` goal (literal or patched code). -/
 syntax "pwp_mcopy_zero" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
@@ -328,9 +361,10 @@ macro_rules
         case hstk => exact rfl
         case hz => mcopy_len_disch
         case hgas => mcopy_gas_disch
-      try evm_norm [EvmLean.Solidity.Patched.reducePatchedRead,
+      try evm_norm [EvmLean.Interpreter.mcopyCost, EvmLean.Solidity.Patched.reducePatchedRead,
         EvmLean.Solidity.Exec.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow,
-        Nat.reduceLT, $extra,*]))
+        Nat.reduceLT, $extra,*]
+      mcopy_size_facts))
 
 /-- Execute an empty `MCOPY` in a `run` goal (literal or patched code). -/
 syntax "psol_mcopy_zero" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic

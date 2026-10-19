@@ -49,6 +49,13 @@ import EvmLeanSpecs.Refinement.WithdrawRefines
 import EvmLeanSpecs.Refinement.InvariantsWithdrawRedeem
 import EvmLeanSpecs.Refinement.InvariantsDepositMint
 import EvmLeanSpecs.Refinement.InvariantsFinal
+import EvmLeanSpecs.Refinement.StringsVault
+import EvmLeanSpecs.Refinement.StringsVaultLong
+import EvmLeanSpecs.Refinement.StringsVaultSpec
+import EvmLeanSpecs.Refinement.StringsAsset
+import EvmLeanSpecs.Refinement.StringsAssetLong
+import EvmLeanSpecs.Refinement.StringsAssetSpec
+import EvmLeanSpecs.Refinement.StringsCanonical
 
 /-!
 # EvmLeanSpecs

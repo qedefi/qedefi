@@ -22,3 +22,4 @@ import EvmLeanTest.Bls12381Precompile
 import EvmLeanTest.P256
 import EvmLeanTest.Contracts
 import EvmLeanTest.Solidity
+import EvmLeanTest.Strings
