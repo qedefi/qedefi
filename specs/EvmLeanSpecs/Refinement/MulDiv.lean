@@ -54,7 +54,7 @@ theorem mulDivDown_wp (m : Machine) {d y x r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCode)
     (hj : JumpTable m.frame.jumpDests SolmateVault.runtimeCode)
     (hpc : m.frame.pc = 0xe62) (hs : m.frame.stack = d :: y :: x :: r :: rest)
-    (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
+    (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hg : 100 ≤ m.frame.gasLeft) :
     WP m (fun m' => ∃ v, mulDivDownN x.toNat y.toNat d.toNat = some v ∧
         m' = m.resumeAt r.toNat (BitVec.ofNat 256 v :: rest) (m.frame.gasLeft - 81))
@@ -83,7 +83,7 @@ theorem mulDivUp_wp (m : Machine) {d y x r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCode)
     (hj : JumpTable m.frame.jumpDests SolmateVault.runtimeCode)
     (hpc : m.frame.pc = 0xe7d) (hs : m.frame.stack = d :: y :: x :: r :: rest)
-    (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
+    (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hg : 120 ≤ m.frame.gasLeft) :
     WP m (fun m' => ∃ v, mulDivUpN x.toNat y.toNat d.toNat = some v ∧
         m' = m.resumeAt r.toNat (BitVec.ofNat 256 v :: rest) (m.frame.gasLeft - 107))

@@ -51,7 +51,7 @@ structure VaultFrame (m : Machine) : Prop where
   depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
 
 /-- The vault's `totalSupply` word (slot 2 of the executing account). -/
-def supplyOf (m : Machine) : Word := m.world.sload m.frame.msg.currentTarget 2
+def supplyOf (m : Machine) : Word := m.world.sload m.frame.msg.currentTarget (2#256)
 
 /-- The asset balance word of the executing account: what `totalAssets()` returns. -/
 def assetsOf (m : Machine) : Word :=
@@ -70,7 +70,7 @@ set_option maxHeartbeats 0 in
 `FmpAfterCall` and the gas bound, nothing else (in particular not the world). -/
 theorem totalAssets_wp (m : Machine) {r : Word} {rest : List Word} (hv : VaultFrame m)
     (hpc : m.frame.pc = 0x47b) (hs : m.frame.stack = r :: rest)
-    (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
+    (hlen : rest.length ≤ 1010) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hfmp : m.frame.memory.loadWord 64 = 128#256) (hsize : m.frame.memory.size = 96)
     (hg : 20000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
     WP m (fun m' => ∃ mem g rd sub,
