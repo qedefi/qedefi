@@ -130,10 +130,15 @@ every call it compares status, return/revert data, logs, receipt `gasUsed` and t
 slots either side touched. Mismatches are shrunk to a minimal sequence. `--inject-bug`
 corrupts evm-lean's `deposit` to self-test the comparison (detected and shrunk to 3 calls).
 
-Result (seed 2026, 200 sequences × 50 calls per family): see the summary in the commit that
-records it (`DIFFTEST RESULT` below).
+Before the random sequences, a fixed first-depositor inflation-attack scenario runs on both
+sides (alice deposits 1 wei, donates 10¹⁸, bob deposits 2·10¹⁸ − 1, alice redeems): both
+agree; on Solmate alice ends with 1.5·10¹⁸ (profit ≈ 0.5·10¹⁸, bob holds 1 share), on
+OpenZeppelin with 0.6·10¹⁸ (loss ≈ 0.4·10¹⁸, bob holds 3 shares).
 
-DIFFTEST RESULT: pending
+Result (`lake exe difftest --seed 2026 --sequences 200 --length 50`, 2026-10-19): **20,008
+transactions** (11,400 successful on both sides), **0 mismatches** in status, return data,
+logs, `gasUsed` or storage, for both families; deployments from both deployers agree on code,
+storage and gas. 651 s (~33 ms per transaction, dominated by the JSON-RPC round trips).
 
 ## a16z ERC-4626 property suite
 
