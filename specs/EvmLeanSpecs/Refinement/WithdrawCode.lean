@@ -36,7 +36,7 @@ theorem bump_wp {i : SolmateVault.Immutables} (m : Machine) {a b r : Word} {rest
     (hg : 30000 ≤ m.frame.gasLeft) :
     WP m (fun m' => ∃ w', bumpStep m.world m.frame.msg.currentTarget = some w' ∧ ∃ g sub,
         m' = resumeWorld m r.toNat rest m.frame.memory g m.frame.returnData sub w' ∧
-        m.frame.gasLeft ≤ g + 25000)
+        m.frame.gasLeft ≤ g + 25000 ∧ g ≤ m.frame.gasLeft)
       (fun _ o => bumpStep m.world m.frame.msg.currentTarget = none ∧ ∃ out, o = .revert out) := by
   have hagree := Shares.jumpDestsAgree i
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
@@ -57,7 +57,7 @@ theorem bump_wp {i : SolmateVault.Immutables} (m : Machine) {a b r : Word} {rest
     have hnz' : m_world.sload m_msg.currentTarget 6#256 + 1#256 ≠ 0 := hnz
     pwp_steps
     apply WP.ret
-    exact ⟨_, by simp [bumpStep, hmax], _, _, rfl, by evm_gas⟩
+    exact ⟨_, by simp [bumpStep, hmax], _, _, rfl, by evm_gas, by evm_gas⟩
 
 /-- Memory after `_burn`: the free pointer at `0x80` with five words, or at `0xa0` with six (the
 `Transfer` log data written at the free pointer). -/
@@ -79,7 +79,7 @@ theorem burn_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word} {s
     WP m (fun m' => ∃ w', burnStep m.ctx.crypto m.world m.frame.msg.currentTarget src amount =
           some w' ∧ ∃ mem g rd sub,
         m' = resumeWorld m r.toNat rest mem g rd sub w' ∧ FmpBurnt mem ∧
-        m.frame.gasLeft ≤ g + 55000)
+        m.frame.gasLeft ≤ g + 55000 ∧ g ≤ m.frame.gasLeft)
       (fun _ o => burnStep m.ctx.crypto m.world m.frame.msg.currentTarget src amount = none ∧
         ∃ out, o = .revert out) := by
   have hagree := Shares.jumpDestsAgree i
@@ -102,7 +102,8 @@ theorem burn_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word} {s
       pwp_steps [hsize, hfmp, ofAddress_and_addressMask, addressMask_and_ofAddress,
         Memory.read_64]
       apply WP.ret
-      refine ⟨_, by simp only [Nat.not_lt.2 hbal, ↓reduceIte], _, _, _, _, rfl, ?_, by evm_gas⟩
+      refine ⟨_, by simp only [Nat.not_lt.2 hbal, ↓reduceIte], _, _, _, _, rfl, ?_, by evm_gas,
+        by evm_gas⟩
       first
         | refine .inl ⟨?_, ?_⟩
           · simp only [Memory.loadWord_expand,

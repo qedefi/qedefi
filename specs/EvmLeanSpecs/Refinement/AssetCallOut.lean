@@ -73,6 +73,11 @@ theorem readBytes_code_asset2995 (i : SolmateVault.Immutables) :
 def FmpCall (mem : Memory) : Prop :=
   (mem.loadWord 64 = 128#256 ∧ mem.size = 192) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 224)
 
+/-- An `MSTORE` at or above `0x60` keeps the free-memory pointer. -/
+theorem loadWord_64_storeWord {mem : Memory} {off : Nat} (w : Word) (h : 96 ≤ off) :
+    (mem.storeWord off w).loadWord 64 = mem.loadWord 64 :=
+  Memory.loadWord_storeWord_of_disjoint _ _ _ _ (.inl h)
+
 /-- `x AND 0` (the success flag of a failed call masks the return-data test). -/
 theorem and_zero_word (x : Word) : x &&& 0 = 0 := by simp
 

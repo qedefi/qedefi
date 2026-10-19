@@ -39,7 +39,7 @@ theorem withdrawSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v x : Word
         m' = resumeWorld m 0xa00 (v :: Word.ofAddress owner :: rest) mem g m.frame.returnData sub
           w₁ ∧
         mem.loadWord 64 = m.frame.memory.loadWord 64 ∧ mem.size = m.frame.memory.size ∧
-        m.frame.gasLeft ≤ g + 26000)
+        m.frame.gasLeft ≤ g + 26000 ∧ g ≤ m.frame.gasLeft)
       (fun _ o => spendStep m.ctx.crypto m.world m.frame.msg.currentTarget owner
           m.frame.msg.caller v = none ∧ ∃ out, o = .revert out) := by
   have hagree := Shares.jumpDestsAgree i
@@ -52,7 +52,7 @@ theorem withdrawSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v x : Word
   · subst hco
     pwp_run_to 0xa00 [ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self]
     apply WP.ret
-    exact ⟨_, by simp [spendStep], _, _, _, rfl, rfl, rfl, by evm_gas⟩
+    exact ⟨_, by simp [spendStep], _, _, _, rfl, rfl, rfl, by evm_gas, by evm_gas⟩
   · have hne1 := eq_ofAddress_of_ne hco
     have hne2 := eq_ofAddress_of_ne (Ne.symm hco)
     have hsp : spendStep m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v =
@@ -73,7 +73,7 @@ theorem withdrawSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v x : Word
       · simp only [hmax, Solidity.eq_self]
         pwp_run_to 0xa00 [hsize]
         apply WP.ret
-        refine ⟨_, by simp, _, _, _, rfl, ?_, ?_, by evm_gas⟩
+        refine ⟨_, by simp, _, _, _, rfl, ?_, ?_, by evm_gas, by evm_gas⟩
         · simp only [Memory.loadWord_expand,
             Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide)]
@@ -89,7 +89,7 @@ theorem withdrawSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v x : Word
           pwp_run_to 0xa00 [hsize, ofAddress_and_addressMask, addressMask_and_ofAddress,
             Memory.read_64]
           apply WP.ret
-          refine ⟨_, by simp [Nat.not_lt.2 hle], _, _, _, rfl, ?_, ?_, by evm_gas⟩
+          refine ⟨_, by simp [Nat.not_lt.2 hle], _, _, _, rfl, ?_, ?_, by evm_gas, by evm_gas⟩
           · simp only [Memory.loadWord_expand,
               Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
               Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide)]
@@ -117,7 +117,7 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
         m' = resumeWorld m 0xaff (0#256 :: Word.ofAddress owner :: y :: v :: rest) mem g
           m.frame.returnData sub w₁ ∧
         mem.loadWord 64 = m.frame.memory.loadWord 64 ∧ mem.size = m.frame.memory.size ∧
-        m.frame.gasLeft ≤ g + 26000)
+        m.frame.gasLeft ≤ g + 26000 ∧ g ≤ m.frame.gasLeft)
       (fun _ o => spendStep m.ctx.crypto m.world m.frame.msg.currentTarget owner
           m.frame.msg.caller v = none ∧ ∃ out, o = .revert out) := by
   have hagree := Shares.jumpDestsAgree i
@@ -130,7 +130,7 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
   · subst hco
     pwp_run_to 0xaff [ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self]
     apply WP.ret
-    exact ⟨_, by simp [spendStep], _, _, _, rfl, rfl, rfl, by evm_gas⟩
+    exact ⟨_, by simp [spendStep], _, _, _, rfl, rfl, rfl, by evm_gas, by evm_gas⟩
   · have hne1 := eq_ofAddress_of_ne hco
     have hne2 := eq_ofAddress_of_ne (Ne.symm hco)
     have hsp : spendStep m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v =
@@ -151,7 +151,7 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
       · simp only [hmax, Solidity.eq_self]
         pwp_run_to 0xaff [hsize]
         apply WP.ret
-        refine ⟨_, by simp, _, _, _, rfl, ?_, ?_, by evm_gas⟩
+        refine ⟨_, by simp, _, _, _, rfl, ?_, ?_, by evm_gas, by evm_gas⟩
         · simp only [Memory.loadWord_expand,
             Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
             Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide)]
@@ -167,7 +167,7 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
           pwp_run_to 0xaff [hsize, ofAddress_and_addressMask, addressMask_and_ofAddress,
             Memory.read_64]
           apply WP.ret
-          refine ⟨_, by simp [Nat.not_lt.2 hle], _, _, _, rfl, ?_, ?_, by evm_gas⟩
+          refine ⟨_, by simp [Nat.not_lt.2 hle], _, _, _, rfl, ?_, ?_, by evm_gas, by evm_gas⟩
           · simp only [Memory.loadWord_expand,
               Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
               Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide)]
