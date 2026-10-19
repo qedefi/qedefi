@@ -49,6 +49,24 @@ import EvmLeanSpecs.Refinement.WithdrawRefines
 import EvmLeanSpecs.Refinement.InvariantsWithdrawRedeem
 import EvmLeanSpecs.Refinement.InvariantsDepositMint
 import EvmLeanSpecs.Refinement.InvariantsFinal
+import EvmLeanSpecs.Refinement.EventsLog
+import EvmLeanSpecs.Refinement.Events
+import EvmLeanSpecs.Refinement.EventsTactic
+import EvmLeanSpecs.Refinement.EventsAssetTransfer
+import EvmLeanSpecs.Refinement.EventsAssetTransferFrom
+import EvmLeanSpecs.Refinement.EventsAssetMint
+import EvmLeanSpecs.Refinement.EventsAsset
+import EvmLeanSpecs.Refinement.EventsSharesCode
+import EvmLeanSpecs.Refinement.EventsShares
+import EvmLeanSpecs.Refinement.EventsConvert
+import EvmLeanSpecs.Refinement.EventsDepositInternal
+import EvmLeanSpecs.Refinement.EventsWithdrawInternal
+import EvmLeanSpecs.Refinement.EventsDeposit
+import EvmLeanSpecs.Refinement.EventsMint
+import EvmLeanSpecs.Refinement.EventsWithdraw
+import EvmLeanSpecs.Refinement.EventsRedeem
+import EvmLeanSpecs.Refinement.EventsEntry
+import EvmLeanSpecs.Refinement.EventsTrace
 
 /-!
 # EvmLeanSpecs

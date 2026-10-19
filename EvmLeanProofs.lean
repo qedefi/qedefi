@@ -62,3 +62,4 @@ import EvmLeanProofs.Solidity.ExtraPatchedWP
 import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Program.InExtraCall
 import EvmLeanProofs.Solidity.InExtraWord
+import EvmLeanProofs.Solidity.EventsExtra
