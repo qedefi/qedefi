@@ -55,7 +55,8 @@ whose two ledgers are well formed)
   `donation_attack_view`: a `convertToAssets(1)` call on the final world returns the victim's
   share value `⌊(a+D+1)/2⌋`. These take the `deposit` refinement as a hypothesis.
 
-`*_now` versions instantiate `refinesFor_now` (every call but the four entry points).
+`*_now` versions (`supply_eq_sum_now`, `solvent_now`, `no_dilution_now`, `price_mono_now`)
+instantiate `refinesFor_now` (every call but the four entry points).
 -/
 
 namespace EvmLeanSpecs.Refinement.Invariants
@@ -362,6 +363,35 @@ theorem price_mono (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault
     rw [exec_eq, List.map_take] at ha
     rw [← ha.totalSupply, abs_totalSupply']
     exact hv
+
+/-- `no_dilution` with the refinements proved today: no share transfer or approval, asset
+transfer, approval, mint (yield, also to the vault) or burn from another account than the vault
+lowers assets-per-share. -/
+theorem no_dilution_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
+    {w₀ w : World} {cs₁ cs₂ : List VCall} {c : VCall} (hdep : Deployed w₀ vault asset)
+    (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (htr : Trace crypto vault asset minGas w₀ (cs₁ ++ c :: cs₂) w)
+    (hact : ∀ d ∈ cs₁ ++ c :: cs₂, ∀ a ∈ d.actors, a ∈ Act)
+    (hK : ∀ d ∈ cs₁ ++ c :: cs₂, d.NotEntry) (hu : UserOp vault c.op) :
+    ∃ v v', CallStep crypto vault asset minGas v c v' ∧
+      (supplyAt v vault ≠ 0 →
+        assetsAt crypto v vault asset * supplyAt v' vault ≤
+          assetsAt crypto v' vault asset * supplyAt v vault) :=
+  no_dilution hs (refinesFor_now hmin hk) hdep hinv htr hact hK hu
+
+/-- `price_mono` with the refinements proved today. -/
+theorem price_mono_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
+    {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
+    (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
+    (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.NotEntry)
+    (hu : ∀ c ∈ cs, UserOp vault c.op)
+    (hS : ∀ k v, Trace crypto vault asset minGas w₀ (cs.take k) v →
+      Trace crypto vault asset minGas v (cs.drop k) w → supplyAt v vault ≠ 0) :
+    (assetsAt crypto w₀ vault asset : ℚ) / supplyAt w₀ vault ≤
+      (assetsAt crypto w vault asset : ℚ) / supplyAt w vault :=
+  price_mono hs (refinesFor_now hmin hk) hdep hinv htr hact hK hu hS
 
 /-! ## The donation attack on bytecode -/
 
