@@ -82,4 +82,33 @@ theorem addStore_slot0' (crypto : Crypto) :
   simp only [Option.map, Except.toOption, topLevelResult_world, World.sload_sstore_self]
   decide
 
+/-! ## Memory: returning a word -/
+
+/-- `PUSH1 42 PUSH0 MSTORE PUSH1 32 PUSH0 RETURN`: return the word 42. -/
+def ret42 : ByteArray := ⟨#[0x60, 0x2a, 0x5f, 0x52, 0x60, 0x20, 0x5f, 0xf3]⟩
+
+/-- A top-level call frame running `ret42` with `g` gas, in any context, world and message. -/
+def ret42Machine (ctx : Context) (g : Nat) (msg : Message) (w : World) : Machine where
+  ctx := ctx
+  precompiles := PrecompileImpl.standard ctx
+  world := w
+  transient := ∅
+  originalWorld := w
+  createdAccounts := ∅
+  parents := []
+  frame := { msg, code := ret42, jumpDests := validJumpDests ret42, gasLeft := g, sub := {},
+             snapshot := (w, ∅), kind := .call 0 0 }
+
+/-- `ret42` returns the word 42, for every context, gas amount ≥ 100, message and world:
+symbolic gas, with `Memory.read_storeWord` and `Bytes.toWord_ofWord` doing the memory
+reasoning. -/
+theorem ret42_output (ctx : Context) (g : Nat) (hg : 100 ≤ g) (msg : Message) (w : World)
+    (k : Nat) : ∃ r, run (k + 6) (ret42Machine ctx g msg w) = .ok r ∧
+      Bytes.toWord r.output = 42 := by
+  simp only [ret42Machine]
+  evm_steps
+  refine ⟨_, rfl, ?_⟩
+  simp only [topLevelResult_output, Memory.read_storeWord, Bytes.toWord_ofWord]
+  rfl
+
 end EvmLean.Examples

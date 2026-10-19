@@ -1,5 +1,6 @@
 import Lean
 import EvmLeanProofs.KernelRfl
+import EvmLeanProofs.Bytes
 import EvmLeanProofs.StepArith
 import EvmLeanProofs.StepEnv
 import EvmLeanProofs.StepFlow
@@ -98,6 +99,12 @@ elab "evm_gas_bounds" : tactic => withMainContext do
 macro "evm_gas" : tactic => `(tactic| (
   evm_gas_bounds
   try dsimp only at *
+  try simp only [memoryCost, outputCost, Gas.extendMemory, List.foldl, Gas.ceil32,
+    Gas.memoryCost, Gas.words, Gas.memoryPerWord, Memory.size_storeWord, Memory.size_expand,
+    Memory.size_empty, Memory.wordsAfter, Memory.words, Gas.logCost, Gas.logBase,
+    Gas.logDataPerByte, Gas.logTopic, Gas.keccak256Cost, Gas.keccak256Base, Gas.keccak256PerWord,
+    BitVec.reduceToNat, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.reduceSub,
+    Nat.reduceLeDiff, Nat.reduceEqDiff, Nat.max_def, ↓reduceIte] at *
   try simp only [Gas.base, Gas.veryLow, Gas.low, Gas.mid, Gas.high, Gas.jumpdest, Gas.fastStep,
     Gas.callStipend, Gas.warmAccess, Gas.coldStorageAccess, List.length_cons,
     List.length_nil] at *
@@ -214,7 +221,11 @@ macro_rules
     Gas.veryLow, Gas.low, Gas.mid, Gas.high, Gas.jumpdest, Gas.fastStep, sstoreCostRefund,
     outputCost_zero, outputData_zero, outputMachine_zero, Substate.warmKey_warmKey,
     Substate.accessedStorageKeys_warmKey, Substate.accessedStorageKeys_addRefund,
-    storageKeyWarm_addStorageKey_self, getStorageOriginal_empty, $extra,*])
+    storageKeyWarm_addStorageKey_self, getStorageOriginal_empty, memoryCost, outputCost,
+    outputData, Gas.extendMemory, List.foldl, Gas.ceil32, Gas.memoryCost, Gas.words,
+    Gas.memoryPerWord, Memory.size_storeWord, Memory.size_expand, Memory.size_empty,
+    Memory.wordsAfter, Memory.words, Nat.reduceDiv, Nat.reduceLeDiff, Nat.reduceEqDiff,
+    Nat.max_def, ↓reduceIte, Memory.expand_storeWord_self, readBytes_bytes, $extra,*])
 
 
 /-- Advance `run (n + 1) m` in the goal by one instruction (see the module docstring).

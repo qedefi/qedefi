@@ -1,4 +1,5 @@
 import EvmLeanProofs.StepBasic
+import EvmLeanProofs.Bytes
 
 /-!
 # Step lemmas: memory
@@ -13,6 +14,29 @@ read-after-write facts about the resulting memory are in `EvmLeanProofs.Bytes`
 namespace EvmLean.Interpreter
 
 variable {m : Machine} {x y : Word} {rest : List Word}
+
+/-- The empty memory has size zero. -/
+@[simp] theorem Memory.size_empty : ({} : Memory).size = 0 := rfl
+
+/-- Expanding memory to a range it already covers does nothing. -/
+theorem Memory.expand_of_le (mem : Memory) (off len : Nat)
+    (h : 32 * Memory.wordsAfter mem.words off len ≤ mem.size) : mem.expand off len = mem := by
+  simp only [Memory.expand, h, ite_true]
+
+/-- After `MSTORE` at `off`, memory covers `[off, off + 32)`. -/
+@[simp] theorem Memory.expand_storeWord_self (mem : Memory) (off : Nat) (w : Word) :
+    (mem.storeWord off w).expand off 32 = mem.storeWord off w := by
+  apply Memory.expand_of_le
+  rw [Memory.size_storeWord]
+  simp only [Memory.wordsAfter, Memory.words, Memory.size_storeWord]
+  simp only [Nat.reduceEqDiff, ite_false]
+  omega
+
+/-- Reading memory bytes with `readBytes` is `Memory.read`. -/
+@[simp] theorem readBytes_bytes (mem : Memory) (off len : Nat) :
+    readBytes mem.bytes off len = mem.read off len := by
+  rw [readBytes_eq_readPadded]
+  rfl
 
 /-- Memory expansion cost of an `n`-byte access at offset `x` in machine `m`. -/
 def memoryCost (m : Machine) (x : Word) (n : Nat) : Nat :=
