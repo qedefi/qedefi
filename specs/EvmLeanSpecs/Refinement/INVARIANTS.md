@@ -222,7 +222,7 @@ dangerous frame it reaches.
   `sharesDecimals_halts` (`SharesFrameViews.lean`).
 * `frameOk_of_executes`: a frame executing a modelled call (`Executes`: caller, account and
   ABI calldata `CallData c` of a `VCall`) that is funded (`Funded`: no value, `≥ minGas` and
-  `< 2⁶⁴` gas, depth `< 1024`, calldata `< 2⁶⁴` bytes), for all twelve call kinds, from the
+  `< 2⁶⁴` gas, for the vault depth `< 1024` — it calls the asset —, calldata `< 2⁶⁴` bytes), for all twelve call kinds, from the
   frame-level refinement theorems (`deposit_refines`, `mint_refines`, `withdraw_refines`,
   `redeem_refines`, `shares*_refines`, `asset*_refines`).
 * `frameOk_view`: the vault's twelve ERC-4626 views, its four share-token views and the asset's
@@ -256,8 +256,8 @@ calls are only known to exist.
 
 ### 6.5 What remains (pending frame summaries, `PendingFrames`)
 
-* **Low gas** (part 2): frames with less than `minGas` gas, depth 1024 (the vault's call into
-  the asset fails), value with `< 100` gas. A frame either succeeds or rolls back; what is
+* **Low gas** (part 2): frames with less than `minGas` gas, the vault at depth 1024 (its call
+  into the asset fails), value with `< 100` gas. A frame either succeeds or rolls back; what is
   missing is that a *successful* low-gas frame commits the high-gas outcome. The planned
   argument is a lockstep simulation of the low-gas frame against the same frame with more gas:
   every instruction except `GAS`/`CALL*`/`CREATE*` commutes with adding gas to a successful
