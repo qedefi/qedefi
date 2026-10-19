@@ -54,4 +54,37 @@ theorem size_jumpDestLoop (code : ByteArray) (fuel pc : Nat) (acc : Array Bool) 
 theorem size_validJumpDests (code : ByteArray) : (validJumpDests code).size = code.size := by
   simp [validJumpDests, size_jumpDestLoop]
 
+/-- A position marked by the scan was marked initially or holds a `JUMPDEST` byte. -/
+theorem jumpDestLoop_true (code : ByteArray) (fuel pc : Nat) (acc : Array Bool) (i : Nat)
+    (h : (jumpDestLoop code fuel pc acc)[i]? = some true) :
+    acc[i]? = some true ∨ code[i]? = some 0x5b := by
+  induction fuel generalizing pc acc with
+  | zero => exact .inl h
+  | succ n ih =>
+    unfold jumpDestLoop at h
+    split at h
+    · rename_i hpc
+      simp only [] at h
+      split at h
+      · rename_i hb
+        rcases ih _ _ h with h' | h'
+        · rw [Array.getElem?_setIfInBounds] at h'
+          split at h'
+          · subst_vars
+            right
+            simp [hpc, hb]
+          · exact .inl h'
+        · exact .inr h'
+      · split at h <;> exact ih _ _ h
+    · exact .inl h
+
+/-- Soundness: every valid jump destination is a `JUMPDEST` (`0x5b`) byte of the code.
+(That `0x5b` bytes inside `PUSH` data are excluded is checked by `#guard`s in
+`EvmLeanTest/Interpreter.lean`.) -/
+theorem validJumpDests_true (code : ByteArray) (i : Nat)
+    (h : (validJumpDests code)[i]? = some true) : code[i]? = some 0x5b := by
+  rcases jumpDestLoop_true code _ _ _ i h with h' | h'
+  · simp [Array.getElem?_replicate] at h'
+  · exact h'
+
 end EvmLean.Interpreter

@@ -336,3 +336,50 @@ def sdInit : ByteArray := asm [.push other.toNat, .op .selfdestruct]
   (·.accountsToDelete.isEmpty) = some true
 
 end EvmLean.Test.InterpreterCall
+
+namespace EvmLean.Test.InterpreterCall
+
+/-! ## Explicit call stack -/
+
+/-- A calls B (`other`), which runs `PUSH1 1`. -/
+def stackProbe : ByteArray := asm (callAsm 1000 other 0 0 0 0 0 ++ [.op .pop])
+/-- The world for `stackProbe`. -/
+def stackProbeWorld : World := mkWorld stackProbe [(other, acct [.push 1])]
+-- Seven pushes, then the CALL step pushes B's frame.
+#guard (stepN (callMsg contract stackProbe) stackProbeWorld 8).map
+  (fun m => (m.parents.length, m.frame.msg.currentTarget, m.frame.msg.depth)) =
+  some (1, other, 1)
+-- B executes PUSH1 1 …
+#guard (stepN (callMsg contract stackProbe) stackProbeWorld 9).map
+  (fun m => (m.parents.length, m.frame.stack)) = some (1, [1])
+-- … runs off its code, and A resumes after the CALL with the success flag.
+#guard (stepN (callMsg contract stackProbe) stackProbeWorld 10).map
+  (fun m => (m.parents.length, m.frame.stack, m.frame.pc)) =
+  some (0, [1], asmSize (callAsm 1000 other 0 0 0 0 0))
+
+/-! ## Output windows and return data -/
+
+-- Only `retSize` bytes of the output are written; RETURNDATASIZE sees all of it.
+#guard (runAB (callAsm 100000 other 0 0 0 0 1 ++ [.op .pop, .push 0, .op .mload] ++ storeTop 0
+    ++ [.op .returndatasize] ++ storeTop 1) ([.push 0xabcd] ++ retTop)).map
+  (fun r => (r.world.sload contract 0, r.world.sload contract 1)) =
+  some (0, 32)
+-- B returns the two bytes `ab cd`; the window (31, 2) puts `ab` at the end of word 0.
+#guard (runAB (callAsm 100000 other 0 0 0 31 2 ++ [.op .pop, .push 0, .op .mload] ++ retTop)
+    [.push 0xabcd, .push 0, .op .mstore, .push 2, .push 30, .op .«return»]).map
+  (fun r => Bytes.toWord r.output) = some 0xab
+-- After a successful CREATE the return-data buffer is empty.
+#guard outWord (runCode (asm (callAsm 100000 other 0 0 0 0 0 ++ createAsm initCode
+  ++ [.op .returndatasize] ++ retTop)) [(other, acct ([.push 1] ++ retTop))]) = 0
+
+/-! ## Recursion -/
+
+/-- Calls itself with all available gas, counting the depth in slot 0 of `contract`
+via DELEGATECALL-free recursion: each level increments the counter, then recurses. -/
+def recurse : List Asm :=
+  [.push 0, .op .sload, .push 1, .op .add, .push 0, .op .sstore]
+    ++ callAsm (2 ^ 255) contract 0 0 0 0 0
+#guard ((runCode (asm recurse) (gas := 3000000)).map
+  (fun r => decide (r.world.sload contract 0 > 10))).getD false
+
+end EvmLean.Test.InterpreterCall
