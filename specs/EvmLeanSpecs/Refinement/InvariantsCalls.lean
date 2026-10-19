@@ -118,7 +118,7 @@ set_option maxHeartbeats 1000000 in
 /-- **`vault.transfer`** refines `Op.transfer`. -/
 theorem opRefines_transfer (hmin : 100000 ≤ minGas) (caller dst : Address) (amount : Word) :
     OpRefinesAt crypto vault asset minGas Act (.transfer caller dst amount) := by
-  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, ⟨n, hn⟩, hw'⟩
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, -, -, ⟨n, hn⟩, hw'⟩
   subst hcr hw'
   have hne := hdep.vault_ne_asset
   obtain ⟨i, -, hcode⟩ := hdep.vaultCode
@@ -174,7 +174,7 @@ set_option maxHeartbeats 1000000 in
 theorem opRefines_transferFrom (hmin : 100000 ≤ minGas) (caller src dst : Address)
     (amount : Word) :
     OpRefinesAt crypto vault asset minGas Act (.transferFrom caller src dst amount) := by
-  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, ⟨n, hn⟩, hw'⟩
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, -, -, ⟨n, hn⟩, hw'⟩
   subst hcr hw'
   have hne := hdep.vault_ne_asset
   obtain ⟨i, -, hcode⟩ := hdep.vaultCode
@@ -217,7 +217,7 @@ set_option maxHeartbeats 1000000 in
 /-- **`vault.approve`** refines `Op.approve`. -/
 theorem opRefines_approve (hmin : 100000 ≤ minGas) (caller spender : Address) (amount : Word) :
     OpRefinesAt crypto vault asset minGas Act (.approve caller spender amount) := by
-  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, ⟨n, hn⟩, hw'⟩
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, -, -, ⟨n, hn⟩, hw'⟩
   subst hcr hw'
   have hne := hdep.vault_ne_asset
   obtain ⟨i, -, hcode⟩ := hdep.vaultCode
@@ -246,7 +246,7 @@ set_option maxHeartbeats 1000000 in
 /-- **`asset.transfer`** (a donation when `dst` is the vault) refines `Op.assetTransfer`. -/
 theorem opRefines_assetTransfer (hmin : 100000 ≤ minGas) (caller dst : Address) (amount : Word) :
     OpRefinesAt crypto vault asset minGas Act (.assetTransfer caller dst amount) := by
-  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, ⟨n, hn⟩, hw'⟩
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, -, -, ⟨n, hn⟩, hw'⟩
   subst hcr hw'
   have hne := hdep.vault_ne_asset
   obtain ⟨ia, hcode⟩ := hdep.assetCode
@@ -295,7 +295,7 @@ set_option maxHeartbeats 1000000 in
 theorem opRefines_assetTransferFrom (hmin : 100000 ≤ minGas) (caller src dst : Address)
     (amount : Word) :
     OpRefinesAt crypto vault asset minGas Act (.assetTransferFrom caller src dst amount) := by
-  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, ⟨n, hn⟩, hw'⟩
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, -, -, -, ⟨n, hn⟩, hw'⟩
   subst hcr hw'
   have hne := hdep.vault_ne_asset
   obtain ⟨ia, hcode⟩ := hdep.assetCode

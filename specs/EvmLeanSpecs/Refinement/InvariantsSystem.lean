@@ -17,7 +17,9 @@ Worlds `w : World` with `Deployed w vault asset`: the compiled Solmate `MockERC4
 ## Transitions
 
 * **Modelled calls** (`CallStep`): a top-level message call (`processMessageCall`, i.e. the
-  message part of a transaction) from an **arbitrary caller** to the vault or to the asset,
+  message part of a transaction) from an **arbitrary caller** (other than the vault and the
+  asset themselves, which have code and so cannot send transactions, EIP-3607) to the vault
+  or to the asset,
   with zero value, calldata `VCall.data c` encoding one of the modelled state-changing
   functions with arbitrary arguments (`VCall`, mirroring `Solmate.Op`: the four ERC-4626
   entry points, the vault's `transfer`/`transferFrom`/`approve`, and the asset's
@@ -164,7 +166,8 @@ def Terminates (ctx : Context) (w : World) (tr : TransientStorage) (msg : Messag
   ∃ n, ∀ fuel, n ≤ fuel → processMessageCall fuel ctx w tr msg = .ok r
 
 /-- **A modelled call.** `w'` is the world after a terminating top-level call `c` (from any
-caller, zero value, at least `minGas` and fewer than `2⁶⁴` gas, any transient storage and warm
+caller other than the vault and the asset themselves — a transaction's sender has no code,
+EIP-3607 — zero value, at least `minGas` and fewer than `2⁶⁴` gas, any transient storage and warm
 sets, any context with hash `crypto` before Prague or without EIP-7702 authorizations), whether
 it succeeded or reverted. -/
 def CallStep (crypto : Crypto) (vault asset : Address) (minGas : Nat) (w : World) (c : VCall)
@@ -172,7 +175,7 @@ def CallStep (crypto : Crypto) (vault asset : Address) (minGas : Nat) (w : World
   ∃ (ctx : Context) (tr : TransientStorage) (gas : Nat) (wa : AddressSet) (wk : StorageKeySet)
     (r : MessageResult),
     ctx.crypto = crypto ∧ (ctx.fork < .prague ∨ ctx.tx.authorizations = []) ∧
-    minGas ≤ gas ∧ gas < 2 ^ 64 ∧
+    minGas ≤ gas ∧ gas < 2 ^ 64 ∧ c.caller ≠ vault ∧ c.caller ≠ asset ∧
     Terminates ctx w tr (callMsg (w.code (c.target vault asset)) (c.target vault asset) c.caller
       c.data gas wa wk) r ∧
     r.world = w'
@@ -329,6 +332,26 @@ theorem agree_of_asset {crypto : Crypto} {w w' : World} {vault asset : Address}
   shares := by simp only [abs, tokenView_congr hv]; exact .refl _
   afterDeposit := by simp only [abs, hv]
   beforeWithdraw := by simp only [abs, hv]
+
+/-- **Bridge for the ERC-4626 entry points** (both ledgers and a hook counter change): the
+share and asset storage represent the model's new ledgers on allowance predicates containing
+the actor pairs (`Shares.RepOn`, as the deposit/mint/withdraw/redeem refinement theorems give
+them), and the counter slots hold the model's counters. This is `Refines` weakened to
+`RepOn`; it is all the wiring of a `Pending` obligation needs on the model side. -/
+theorem agree_of_reps {crypto : Crypto} {w' : World} {vault asset : Address}
+    {Act : List Address} {P₁ P₂ : Address → Address → Prop} {s' : State Address}
+    (hself : s'.self = vault)
+    (hsh : Shares.RepOn P₁ (Erc20.view crypto Erc20.Layout.solmate w' vault) s'.shares)
+    (has : Shares.RepOn P₂ (Erc20.view crypto Erc20.Layout.solmate w' asset) s'.asset)
+    (hP₁ : ∀ o sp, ActorPairs Act o sp → P₁ o sp) (hP₂ : ∀ o sp, ActorPairs Act o sp → P₂ o sp)
+    (h7 : (w'.sload vault 7#256).toNat = s'.afterDepositCount)
+    (h6 : (w'.sload vault 6#256).toNat = s'.beforeWithdrawCount) :
+    AgreeOn (ActorPairs Act) (abs crypto w' vault asset) s' where
+  self := hself.symm
+  asset := tokAgree_of_repOn has hP₂
+  shares := tokAgree_of_repOn hsh hP₁
+  afterDeposit := h7
+  beforeWithdraw := h6
 
 /-! ## The refinement, from per-call theorems -/
 

@@ -24,8 +24,8 @@ arbitrary interleaving of unrelated transactions) and the per-call refinement th
     (`deposit`, `mint`, `withdraw`, `redeem`, and the asset's `approve`, `mint`, `burn`).
     **Wiring** once the deposit/mint and withdraw/redeem refinements land: prove the four
     `Pending` fields from their `X_refines` theorems via `callRefines_some` /
-    `callRefines_none` and the bridges `agree_of_shares`-style (both ledgers change:
-    combine `tokAgree_of_repOn` for each), as in `InvariantsCalls.lean`.
+    `callRefines_none` and the bridge `agree_of_reps` (both ledgers as `Shares.RepOn`, the
+    hook counters), as in `InvariantsCalls.lean`; see `INVARIANTS.md`.
 
 ## Headline theorems (for any `K` with `RefinesFor`, any trace whose calls are admitted by
 `K` and whose actors are in `Act`, under `SlotsOk crypto vault Act`, from a deployed world
