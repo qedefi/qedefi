@@ -1,5 +1,6 @@
 import EvmLeanProofs.StepBasic
 import EvmLeanProofs.StepFlow
+import EvmLeanProofs.Bytes
 import EvmLeanProofs.Program.Summary
 
 /-!
@@ -355,6 +356,30 @@ theorem resumeAfter_halt {p : Frame} {ps : List Frame} {mf : Machine} {e : Excep
     simp
   simp only [this, ite_true]
 
+/-- Returning one word into a 32-byte output window is an `MSTORE`. -/
+theorem returnMemory_ofWord (mem : Memory) (off : Nat) (w : Word) :
+    returnMemory mem off 32 (Bytes.ofWord w) = mem.storeWord off w := by
+  have hs : (Bytes.ofWord w).size = 32 := Bytes.size_ofWord w
+  have he : (Bytes.ofWord w).extract 0 (min 32 (Bytes.ofWord w).size) = Bytes.ofWord w := by
+    rw [hs, Nat.min_self, ← hs, ByteArray.extract_zero_size]
+  unfold returnMemory
+  rw [he, hs]
+  rfl
+
+/-- The EIP-2929 address access cost is at most 2600. -/
+theorem accessCost_le (warm : Bool) : Gas.accessCost warm ≤ 2600 := by
+  cases warm <;> decide
+
+/-- `Gas.messageCallGas` without value, when the extra and memory costs are affordable:
+EIP-150 caps the forwarded gas at all but 1/64 of what is left, and the caller pays exactly the
+forwarded gas plus the extra cost. -/
+theorem messageCallGas_zero {g L mc extra : Nat} (h : extra + mc ≤ L) :
+    Gas.messageCallGas (0 : Word).toNat g L mc extra =
+      { cost := min g (Gas.maxMessageCallGas (L - mc - extra)) + extra,
+        subCall := min g (Gas.maxMessageCallGas (L - mc - extra)) } := by
+  have h0 : (0 : Word).toNat = 0 := rfl
+  simp only [Gas.messageCallGas, h0, ite_true, Nat.not_lt.mpr h, ite_false, Nat.add_zero]
+
 /-! ## The callee-summary rule -/
 
 /-- **Callee-summary rule.** If the next step of `m` pushes a child frame (`mc`, whose parent
@@ -394,12 +419,19 @@ theorem WP.staticcall {Q : Machine → Prop} {H Hc : Machine → Outcome → Pro
         (.call outOff.toNat outSize.toNat) (m.world, m.transient)
       parents := callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff
         outSize) (Word.toAddress toW) inOff inSize outOff outSize :: m.parents } Hc)
-    (k : ∀ mf o, Hc mf o → mf.frame.kind = .call outOff.toNat outSize.toNat →
+    (k : ∀ mf o, Hc mf o → SameFrame { m with
+      frame := Frame.init
+        (childMsg m m.frame.msg.currentTarget (Word.toAddress toW) (Word.toAddress toW) 0
+          (callGas m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff outSize).subCall true true
+          inOff inSize outOff outSize)
+        (.call outOff.toNat outSize.toNat) (m.world, m.transient)
+      parents := callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff
+        outSize) (Word.toAddress toW) inOff inSize outOff outSize :: m.parents } mf →
       WP (resumeAfter (callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize
         outOff outSize) (Word.toAddress toW) inOff inSize outOff outSize) m.parents mf o) Q H) :
     WP m Q H :=
   WP.call (step_staticcall hcode hstk hdel hgas hdepth hpre) rfl
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
-    (fun mf o hs hc => k mf o hc hs.kind)
+    (fun mf o hs hc => k mf o hc hs)
 
 end EvmLean.Program

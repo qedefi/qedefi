@@ -110,6 +110,23 @@ def wpDisch : TacticM Unit := withMainContext do
 /-- `wp_disch`: see `wpDisch`. -/
 elab "wp_disch" : tactic => wpDisch
 
+/-- Close a goal `code[pc]? = some b` for literal code (behind projections of a literal
+machine) and a numeral `pc`, by a kernel-checked fact (`codeFact`). -/
+elab "code_fact" : tactic => withMainContext do
+  let g ← getMainGoal
+  let t ← instantiateMVars (← g.getType)
+  let_expr Eq _ lhs rhs := t | throwError "code_fact: not an equation"
+  let_expr GetElem?.getElem? _ _ _ _ _ coll i := lhs | throwError "code_fact: not `code[pc]?`"
+  let code ← whnfR coll
+  let some pc ← (evalNat (← whnfR i)).run | throwError "code_fact: pc is not a numeral"
+  let some bytes ← codeBytes? code | throwError "code_fact: code is not a literal"
+  let some b := bytes[pc]? | throwError "code_fact: pc out of range"
+  let_expr Option.some _ v := rhs | throwError "code_fact: right side is not `some b`"
+  let some v ← uint8Lit? v | throwError "code_fact: right side is not a literal"
+  unless v = b.toNat do throwError "code_fact: the byte at {pc} is {b}, not {v}"
+  g.assign (← codeFact code pc b)
+  replaceMainGoal []
+
 /-- The machine of a goal `WP m Q H`. -/
 def wpGoalMachine? (g : MVarId) : MetaM (Option Expr) := do
   let t ← instantiateMVars (← g.getType)
@@ -140,6 +157,7 @@ def wpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Boo
     try evalTactic (← `(tactic| evm_norm [List.set_cons_zero, List.set_cons_succ, Nat.sub_sub,
       Memory.loadWord_expand, Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
       Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint, true_or, or_true,
+      reduceClosedWord, Bytes.size_ofWord,
       $extra,*]))
     catch _ => pure ()
   if 0x5f ≤ b.toNat ∧ b.toNat ≤ 0x7f then
@@ -227,16 +245,19 @@ elab_rules : tactic
     let extra := (extra.map (·.getElems)).getD #[]
     wpRunTo (pcs.getElems.toList.map (·.getNat)) extra
 
-/-- Destructure the machine variable `m` into its fields and substitute equations about them
-from the context. -/
+/-- Destructure the machine variable `m` into its fields `m_ctx`, `m_world`, `m_msg`,
+`m_gasLeft`, `m_sub`, … and substitute equations about them from the context. -/
 syntax "wp_intro " ident : tactic
 
 macro_rules
-  | `(tactic| wp_intro $m) => `(tactic| (
-    obtain ⟨ctx, pre, world, transient, originalWorld, created,
-      ⟨msg, code, jumpDests, pc, stack, memory, gasLeft, returnData, sub, snapshot, kind⟩,
-      parents⟩ := $m
-    dsimp only at *
-    subst_vars))
+  | `(tactic| wp_intro $m) => do
+    let n (f : String) : TSyntax `ident := mkIdent (Name.mkSimple (m.getId.toString ++ "_" ++ f))
+    `(tactic| (
+      obtain ⟨$(n "ctx"), $(n "pre"), $(n "world"), $(n "transient"), $(n "originalWorld"),
+        $(n "created"), ⟨$(n "msg"), $(n "code"), $(n "jumpDests"), $(n "pc"), $(n "stack"),
+          $(n "memory"), $(n "gasLeft"), $(n "returnData"), $(n "sub"), $(n "snapshot"),
+          $(n "kind")⟩, $(n "parents")⟩ := $m
+      dsimp only at *
+      subst_vars))
 
 end EvmLean.Program

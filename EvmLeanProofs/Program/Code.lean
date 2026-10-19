@@ -104,6 +104,27 @@ def pushFact (code : Expr) (bytes : Array UInt8) (pc n : Nat) : MetaM Expr := do
   let rhs := mkApp2 (mkConst ``BitVec.ofNat) (mkNatLit 256) (mkNatLit (immValue bytes (pc + 1) n))
   kernelFact (← mkEq lhs rhs) rhs
 
+/-- Evaluate a closed word-valued term that is not yet a literal (e.g. `Word.shl 224 x` for a
+literal `x`, or the masks solc builds with `NOT`/`AND`) to `BitVec.ofNat 256 n`. The result is
+definitionally equal; the kernel re-checks it. Terms with free variables are left alone. -/
+dsimproc_decl reduceClosedWord (_) := fun e => do
+  unless e.isApp do return .continue
+  if e.hasFVar || e.hasMVar || e.hasLooseBVars then return .continue
+  if e.isAppOfArity ``BitVec.ofNat 2 || e.isAppOfArity ``OfNat.ofNat 3 then return .continue
+  let ty ← instantiateMVars (← inferType e)
+  let ty ← whnfR ty
+  unless ty.isAppOfArity ``BitVec 1 do return .continue
+  let some w ← (evalNat ty.appArg!).run | return .continue
+  unless w = 256 do return .continue
+  let r ← tryCatchRuntimeEx
+    (do
+      let v ← withTransparency .default <|
+        reduce (mkApp2 (mkConst ``BitVec.toNat) (mkNatLit 256) e)
+      (evalNat v).run)
+    (fun _ => pure none)
+  let some n := r | return .continue
+  return .done (mkApp2 (mkConst ``BitVec.ofNat) (mkNatLit 256) (mkNatLit n))
+
 /-- The valid jump destinations of a byte array, computed at the meta level (the same scan as
 `validJumpDests`). -/
 def jumpDestsOf (bytes : Array UInt8) : Std.HashSet Nat := Id.run do
