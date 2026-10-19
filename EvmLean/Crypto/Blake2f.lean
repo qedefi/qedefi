@@ -18,8 +18,8 @@ execution specs (`src/ethereum/crypto/blake2.py`).
   (including 0), the schedule wrapping around every 10 rounds.
 * The new state is `h[i] ⊕ v[i] ⊕ v[i+8]`.
 
-`G`'s rotation constants for BLAKE2b are `(32, 24, 16, 63)`. All indices are `Fin 16` /
-`Fin 8` literals or `σ` entries typed `Fin 16`, so there are no bounds checks.
+`G`'s rotation constants for BLAKE2b are `(32, 24, 16, 63)`. Message words are indexed by
+`σ` entries typed `Fin 16`, so there are no bounds checks or fallbacks.
 -/
 
 namespace EvmLean.Blake2
@@ -45,49 +45,102 @@ def sigma : Vector (Vector (Fin 16) 16) 10 :=
 /-- Rotate right by `n` bits, `0 < n < 64`. -/
 @[inline] def rotr (x : UInt64) (n : UInt64) : UInt64 := (x >>> n) ||| (x <<< (64 - n))
 
-/-- The mixing function `G` (RFC 7693, §3.1) on words `a b c d` of `v`, with message
-words `x y`. -/
-@[inline] def g (v : Vector UInt64 16) (a b c d : Fin 16) (x y : UInt64) :
-    Vector UInt64 16 :=
-  let va := v[a] + v[b] + x
-  let vd := rotr (v[d] ^^^ va) 32
-  let vc := v[c] + vd
-  let vb := rotr (v[b] ^^^ vc) 24
-  let va := va + vb + y
-  let vd := rotr (vd ^^^ va) 16
-  let vc := vc + vd
-  let vb := rotr (vb ^^^ vc) 63
-  (((v.set a va).set b vb).set c vc).set d vd
+/-- Run `n` rounds starting at round index `r` on the work vector `v0 … v15`. Each round
+applies the mixing function `G` (RFC 7693, §3.1; rotations 32, 24, 16, 63) to the four
+columns and then the four diagonals of `v`, with message words permuted by
+`s = σ[r mod 10]`. `G` is unrolled (`vi_k` is the `k`-th update of `v[i]` in the round), and
+the work vector lives in the arguments of this tail-recursive function, so the compiled
+loop keeps it in unboxed registers and allocates only the final `Vector`. -/
+def rounds (m : Vector UInt64 16) (n r : Nat)
+    (v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 : UInt64) : Vector UInt64 16 :=
+  match n with
+  | 0 => #v[v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15]
+  | n + 1 =>
+    let s := sigma[r % 10]'(Nat.mod_lt _ (by decide))
+    -- G(0, 4, 8, 12)
+    let v0_1 := v0 + v4 + (m.get (s.get 0))
+    let v12_1 := rotr (v12 ^^^ v0_1) 32
+    let v8_1 := v8 + v12_1
+    let v4_1 := rotr (v4 ^^^ v8_1) 24
+    let v0_2 := v0_1 + v4_1 + (m.get (s.get 1))
+    let v12_2 := rotr (v12_1 ^^^ v0_2) 16
+    let v8_2 := v8_1 + v12_2
+    let v4_2 := rotr (v4_1 ^^^ v8_2) 63
+    -- G(1, 5, 9, 13)
+    let v1_1 := v1 + v5 + (m.get (s.get 2))
+    let v13_1 := rotr (v13 ^^^ v1_1) 32
+    let v9_1 := v9 + v13_1
+    let v5_1 := rotr (v5 ^^^ v9_1) 24
+    let v1_2 := v1_1 + v5_1 + (m.get (s.get 3))
+    let v13_2 := rotr (v13_1 ^^^ v1_2) 16
+    let v9_2 := v9_1 + v13_2
+    let v5_2 := rotr (v5_1 ^^^ v9_2) 63
+    -- G(2, 6, 10, 14)
+    let v2_1 := v2 + v6 + (m.get (s.get 4))
+    let v14_1 := rotr (v14 ^^^ v2_1) 32
+    let v10_1 := v10 + v14_1
+    let v6_1 := rotr (v6 ^^^ v10_1) 24
+    let v2_2 := v2_1 + v6_1 + (m.get (s.get 5))
+    let v14_2 := rotr (v14_1 ^^^ v2_2) 16
+    let v10_2 := v10_1 + v14_2
+    let v6_2 := rotr (v6_1 ^^^ v10_2) 63
+    -- G(3, 7, 11, 15)
+    let v3_1 := v3 + v7 + (m.get (s.get 6))
+    let v15_1 := rotr (v15 ^^^ v3_1) 32
+    let v11_1 := v11 + v15_1
+    let v7_1 := rotr (v7 ^^^ v11_1) 24
+    let v3_2 := v3_1 + v7_1 + (m.get (s.get 7))
+    let v15_2 := rotr (v15_1 ^^^ v3_2) 16
+    let v11_2 := v11_1 + v15_2
+    let v7_2 := rotr (v7_1 ^^^ v11_2) 63
+    -- G(0, 5, 10, 15)
+    let v0_3 := v0_2 + v5_2 + (m.get (s.get 8))
+    let v15_3 := rotr (v15_2 ^^^ v0_3) 32
+    let v10_3 := v10_2 + v15_3
+    let v5_3 := rotr (v5_2 ^^^ v10_3) 24
+    let v0_4 := v0_3 + v5_3 + (m.get (s.get 9))
+    let v15_4 := rotr (v15_3 ^^^ v0_4) 16
+    let v10_4 := v10_3 + v15_4
+    let v5_4 := rotr (v5_3 ^^^ v10_4) 63
+    -- G(1, 6, 11, 12)
+    let v1_3 := v1_2 + v6_2 + (m.get (s.get 10))
+    let v12_3 := rotr (v12_2 ^^^ v1_3) 32
+    let v11_3 := v11_2 + v12_3
+    let v6_3 := rotr (v6_2 ^^^ v11_3) 24
+    let v1_4 := v1_3 + v6_3 + (m.get (s.get 11))
+    let v12_4 := rotr (v12_3 ^^^ v1_4) 16
+    let v11_4 := v11_3 + v12_4
+    let v6_4 := rotr (v6_3 ^^^ v11_4) 63
+    -- G(2, 7, 8, 13)
+    let v2_3 := v2_2 + v7_2 + (m.get (s.get 12))
+    let v13_3 := rotr (v13_2 ^^^ v2_3) 32
+    let v8_3 := v8_2 + v13_3
+    let v7_3 := rotr (v7_2 ^^^ v8_3) 24
+    let v2_4 := v2_3 + v7_3 + (m.get (s.get 13))
+    let v13_4 := rotr (v13_3 ^^^ v2_4) 16
+    let v8_4 := v8_3 + v13_4
+    let v7_4 := rotr (v7_3 ^^^ v8_4) 63
+    -- G(3, 4, 9, 14)
+    let v3_3 := v3_2 + v4_2 + (m.get (s.get 14))
+    let v14_3 := rotr (v14_2 ^^^ v3_3) 32
+    let v9_3 := v9_2 + v14_3
+    let v4_3 := rotr (v4_2 ^^^ v9_3) 24
+    let v3_4 := v3_3 + v4_3 + (m.get (s.get 15))
+    let v14_4 := rotr (v14_3 ^^^ v3_4) 16
+    let v9_4 := v9_3 + v14_4
+    let v4_4 := rotr (v4_3 ^^^ v9_4) 63
+    rounds m n (r + 1) v0_4 v1_4 v2_4 v3_4 v4_4 v5_4
+      v6_4 v7_4 v8_4 v9_4 v10_4 v11_4
+      v12_4 v13_4 v14_4 v15_4
 
-/-- One round: `G` on the four columns, then on the four diagonals, with the message
-words permuted by `s = σ[r mod 10]`. -/
-def round (m : Vector UInt64 16) (s : Vector (Fin 16) 16) (v : Vector UInt64 16) :
-    Vector UInt64 16 :=
-  let v := g v 0 4 8 12 m[s[0]] m[s[1]]
-  let v := g v 1 5 9 13 m[s[2]] m[s[3]]
-  let v := g v 2 6 10 14 m[s[4]] m[s[5]]
-  let v := g v 3 7 11 15 m[s[6]] m[s[7]]
-  let v := g v 0 5 10 15 m[s[8]] m[s[9]]
-  let v := g v 1 6 11 12 m[s[10]] m[s[11]]
-  let v := g v 2 7 8 13 m[s[12]] m[s[13]]
-  g v 3 4 9 14 m[s[14]] m[s[15]]
-
-/-- Run `n` rounds starting at round index `r` (the schedule index is `r mod 10`). -/
-def rounds (m : Vector UInt64 16) : (n : Nat) → (r : Nat) → Vector UInt64 16 →
-    Vector UInt64 16
-  | 0, _, v => v
-  | n + 1, r, v =>
-    rounds m n (r + 1) (round m (sigma[r % 10]'(Nat.mod_lt _ (by decide))) v)
 
 /-- BLAKE2b `F` with a caller-chosen number of rounds: state `h`, message block `m`,
 offset counters `t₀ t₁`, final-block flag. -/
 def compress (rounds : Nat) (h : Vector UInt64 8) (m : Vector UInt64 16)
     (t₀ t₁ : UInt64) (final : Bool) : Vector UInt64 8 :=
-  let v : Vector UInt64 16 :=
-    #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7],
-      iv[0], iv[1], iv[2], iv[3], iv[4] ^^^ t₀, iv[5] ^^^ t₁,
-      if final then ~~~iv[6] else iv[6], iv[7]]
-  let v := Blake2.rounds m rounds 0 v
+  let v := Blake2.rounds m rounds 0 h[0] h[1] h[2] h[3] h[4] h[5] h[6] h[7]
+    iv[0] iv[1] iv[2] iv[3] (iv[4] ^^^ t₀) (iv[5] ^^^ t₁)
+    (if final then ~~~iv[6] else iv[6]) iv[7]
   Vector.ofFn fun i => h[i] ^^^ v[i.castAdd 8] ^^^ v[i.natAdd 8]
 
 end EvmLean.Blake2

@@ -24,8 +24,9 @@ in FIPS 202 §3.
 
 ## Implementation notes
 
-The round function is fully unrolled over `Vector UInt64 25` with literal indices, so it
-needs no bounds checks or runtime proofs. Message bytes are read straight from the input
+The round function is fully unrolled, with the 25 lanes held in the arguments of the
+tail-recursive `rounds`, so it needs no bounds checks or runtime proofs and compiles to a
+loop over unboxed `UInt64`s. Message bytes are read straight from the input
 (`byteAt` reads zero past the end), so the final, padded block is never materialised: its
 padding bits are XORed directly into the state. Every recursion is structural, so the
 kernel can evaluate the hash (see `EvmLeanTest/Keccak.lean`).
@@ -48,75 +49,75 @@ def roundConstants : List UInt64 :=
    0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
 
-/-- One round of Keccak-f[1600] with round constant `rc`: θ (column parities `c`, mixing
-terms `d`), then ρ and π combined (`b[y, 2x+3y] = rotl (a[x, y] ^ d[x]) r[x, y]`), then
-χ and ι. Unrolled; the rotation offsets are those of the Keccak reference, §1.2. -/
-def round (rc : UInt64) (a : State) : State :=
-  let c0 := a[0] ^^^ a[5] ^^^ a[10] ^^^ a[15] ^^^ a[20]
-  let c1 := a[1] ^^^ a[6] ^^^ a[11] ^^^ a[16] ^^^ a[21]
-  let c2 := a[2] ^^^ a[7] ^^^ a[12] ^^^ a[17] ^^^ a[22]
-  let c3 := a[3] ^^^ a[8] ^^^ a[13] ^^^ a[18] ^^^ a[23]
-  let c4 := a[4] ^^^ a[9] ^^^ a[14] ^^^ a[19] ^^^ a[24]
-  let d0 := c4 ^^^ rotl c1 1
-  let d1 := c0 ^^^ rotl c2 1
-  let d2 := c1 ^^^ rotl c3 1
-  let d3 := c2 ^^^ rotl c4 1
-  let d4 := c3 ^^^ rotl c0 1
-  let b0 := (a[0] ^^^ d0)
-  let b1 := rotl (a[6] ^^^ d1) 44
-  let b2 := rotl (a[12] ^^^ d2) 43
-  let b3 := rotl (a[18] ^^^ d3) 21
-  let b4 := rotl (a[24] ^^^ d4) 14
-  let b5 := rotl (a[3] ^^^ d3) 28
-  let b6 := rotl (a[9] ^^^ d4) 20
-  let b7 := rotl (a[10] ^^^ d0) 3
-  let b8 := rotl (a[16] ^^^ d1) 45
-  let b9 := rotl (a[22] ^^^ d2) 61
-  let b10 := rotl (a[1] ^^^ d1) 1
-  let b11 := rotl (a[7] ^^^ d2) 6
-  let b12 := rotl (a[13] ^^^ d3) 25
-  let b13 := rotl (a[19] ^^^ d4) 8
-  let b14 := rotl (a[20] ^^^ d0) 18
-  let b15 := rotl (a[4] ^^^ d4) 27
-  let b16 := rotl (a[5] ^^^ d0) 36
-  let b17 := rotl (a[11] ^^^ d1) 10
-  let b18 := rotl (a[17] ^^^ d2) 15
-  let b19 := rotl (a[23] ^^^ d3) 56
-  let b20 := rotl (a[2] ^^^ d2) 62
-  let b21 := rotl (a[8] ^^^ d3) 55
-  let b22 := rotl (a[14] ^^^ d4) 39
-  let b23 := rotl (a[15] ^^^ d0) 41
-  let b24 := rotl (a[21] ^^^ d1) 2
-  #v[b0 ^^^ (~~~b1 &&& b2) ^^^ rc,
-    b1 ^^^ (~~~b2 &&& b3),
-    b2 ^^^ (~~~b3 &&& b4),
-    b3 ^^^ (~~~b4 &&& b0),
-    b4 ^^^ (~~~b0 &&& b1),
-    b5 ^^^ (~~~b6 &&& b7),
-    b6 ^^^ (~~~b7 &&& b8),
-    b7 ^^^ (~~~b8 &&& b9),
-    b8 ^^^ (~~~b9 &&& b5),
-    b9 ^^^ (~~~b5 &&& b6),
-    b10 ^^^ (~~~b11 &&& b12),
-    b11 ^^^ (~~~b12 &&& b13),
-    b12 ^^^ (~~~b13 &&& b14),
-    b13 ^^^ (~~~b14 &&& b10),
-    b14 ^^^ (~~~b10 &&& b11),
-    b15 ^^^ (~~~b16 &&& b17),
-    b16 ^^^ (~~~b17 &&& b18),
-    b17 ^^^ (~~~b18 &&& b19),
-    b18 ^^^ (~~~b19 &&& b15),
-    b19 ^^^ (~~~b15 &&& b16),
-    b20 ^^^ (~~~b21 &&& b22),
-    b21 ^^^ (~~~b22 &&& b23),
-    b22 ^^^ (~~~b23 &&& b24),
-    b23 ^^^ (~~~b24 &&& b20),
-    b24 ^^^ (~~~b20 &&& b21)]
+/-- The rounds of Keccak-f[1600] for the given round constants, on the 25 lanes passed as
+arguments `a0 … a24` (lane `(x, y)` is `a{x + 5y}`). Each round is θ (column parities `c`,
+mixing terms `d`), then ρ and π combined (`b[y, 2x+3y] = rotl (a[x, y] ^ d[x]) r[x, y]`),
+then χ, and ι on lane 0. Unrolled, with the rotation offsets of the Keccak reference §1.2.
+
+Keeping the lanes in arguments of a tail-recursive function lets the compiler hold them in
+unboxed registers across all 24 rounds; only the final `Vector` is allocated. -/
+def rounds (rcs : List UInt64)
+    (a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23
+      a24 : UInt64) : State :=
+  match rcs with
+  | [] => #v[a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17,
+    a18, a19, a20, a21, a22, a23, a24]
+  | rc :: rcs =>
+      let c0 := a0 ^^^ a5 ^^^ a10 ^^^ a15 ^^^ a20
+      let c1 := a1 ^^^ a6 ^^^ a11 ^^^ a16 ^^^ a21
+      let c2 := a2 ^^^ a7 ^^^ a12 ^^^ a17 ^^^ a22
+      let c3 := a3 ^^^ a8 ^^^ a13 ^^^ a18 ^^^ a23
+      let c4 := a4 ^^^ a9 ^^^ a14 ^^^ a19 ^^^ a24
+      let d0 := c4 ^^^ rotl c1 1
+      let d1 := c0 ^^^ rotl c2 1
+      let d2 := c1 ^^^ rotl c3 1
+      let d3 := c2 ^^^ rotl c4 1
+      let d4 := c3 ^^^ rotl c0 1
+      let b0 := (a0 ^^^ d0)
+      let b1 := rotl (a6 ^^^ d1) 44
+      let b2 := rotl (a12 ^^^ d2) 43
+      let b3 := rotl (a18 ^^^ d3) 21
+      let b4 := rotl (a24 ^^^ d4) 14
+      let b5 := rotl (a3 ^^^ d3) 28
+      let b6 := rotl (a9 ^^^ d4) 20
+      let b7 := rotl (a10 ^^^ d0) 3
+      let b8 := rotl (a16 ^^^ d1) 45
+      let b9 := rotl (a22 ^^^ d2) 61
+      let b10 := rotl (a1 ^^^ d1) 1
+      let b11 := rotl (a7 ^^^ d2) 6
+      let b12 := rotl (a13 ^^^ d3) 25
+      let b13 := rotl (a19 ^^^ d4) 8
+      let b14 := rotl (a20 ^^^ d0) 18
+      let b15 := rotl (a4 ^^^ d4) 27
+      let b16 := rotl (a5 ^^^ d0) 36
+      let b17 := rotl (a11 ^^^ d1) 10
+      let b18 := rotl (a17 ^^^ d2) 15
+      let b19 := rotl (a23 ^^^ d3) 56
+      let b20 := rotl (a2 ^^^ d2) 62
+      let b21 := rotl (a8 ^^^ d3) 55
+      let b22 := rotl (a14 ^^^ d4) 39
+      let b23 := rotl (a15 ^^^ d0) 41
+      let b24 := rotl (a21 ^^^ d1) 2
+      rounds rcs
+        (b0 ^^^ (~~~b1 &&& b2) ^^^ rc) (b1 ^^^ (~~~b2 &&& b3))
+        (b2 ^^^ (~~~b3 &&& b4)) (b3 ^^^ (~~~b4 &&& b0))
+        (b4 ^^^ (~~~b0 &&& b1)) (b5 ^^^ (~~~b6 &&& b7))
+        (b6 ^^^ (~~~b7 &&& b8)) (b7 ^^^ (~~~b8 &&& b9))
+        (b8 ^^^ (~~~b9 &&& b5)) (b9 ^^^ (~~~b5 &&& b6))
+        (b10 ^^^ (~~~b11 &&& b12)) (b11 ^^^ (~~~b12 &&& b13))
+        (b12 ^^^ (~~~b13 &&& b14)) (b13 ^^^ (~~~b14 &&& b10))
+        (b14 ^^^ (~~~b10 &&& b11)) (b15 ^^^ (~~~b16 &&& b17))
+        (b16 ^^^ (~~~b17 &&& b18)) (b17 ^^^ (~~~b18 &&& b19))
+        (b18 ^^^ (~~~b19 &&& b15)) (b19 ^^^ (~~~b15 &&& b16))
+        (b20 ^^^ (~~~b21 &&& b22)) (b21 ^^^ (~~~b22 &&& b23))
+        (b22 ^^^ (~~~b23 &&& b24)) (b23 ^^^ (~~~b24 &&& b20))
+        (b24 ^^^ (~~~b20 &&& b21))
 
 
 /-- Keccak-f[1600]: the 24 rounds. -/
 def permute (s : State) : State :=
-  roundConstants.foldl (fun s rc => round rc s) s
+  rounds roundConstants s[0] s[1] s[2] s[3] s[4] s[5] s[6] s[7] s[8] s[9] s[10] s[11] s[12]
+    s[13] s[14] s[15] s[16] s[17] s[18] s[19] s[20] s[21] s[22] s[23] s[24]
 
 /-- Byte `i` of `b` as a lane fragment, zero past the end of `b`. -/
 @[inline] def byteAt (b : ByteArray) (i : Nat) : UInt64 :=
