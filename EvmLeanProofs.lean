@@ -22,3 +22,4 @@ import EvmLeanProofs.Contracts.SolmateAsset
 import EvmLeanProofs.Contracts.SolmateVault
 import EvmLeanProofs.Contracts.OzAsset
 import EvmLeanProofs.Contracts.OzVault
+import EvmLeanProofs.Contracts.Deploy
