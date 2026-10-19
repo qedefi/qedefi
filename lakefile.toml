@@ -1,0 +1,30 @@
+name = "evm-lean"
+version = "0.1.0"
+defaultTargets = ["EvmLean"]
+testDriver = "EvmLeanTest"
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+linter.missingDocs = true
+
+# The executable EVM semantics. No Mathlib, no FFI, no `opaque`, no `partial`.
+[[lean_lib]]
+name = "EvmLean"
+
+# Unit tests: `#guard` checks evaluated at build time (`lake test`).
+[[lean_lib]]
+name = "EvmLeanTest"
+
+# Kernel-checked sanity theorems about the semantics.
+[[lean_lib]]
+name = "EvmLeanProofs"
+
+# Ethereum conformance-test runner (`lake exe conform`).
+[[lean_lib]]
+name = "Conformance"
+
+[[lean_exe]]
+name = "conform"
+root = "Conformance.Main"
+supportInterpreter = false
