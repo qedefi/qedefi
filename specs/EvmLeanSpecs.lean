@@ -23,6 +23,8 @@ import EvmLeanSpecs.Refinement.Lift
 import EvmLeanSpecs.Refinement.InvariantsAgree
 import EvmLeanSpecs.Refinement.InvariantsSystem
 import EvmLeanSpecs.Refinement.InvariantsCalls
+import EvmLeanSpecs.Refinement.InvariantsPrice
+import EvmLeanSpecs.Refinement.Invariants
 
 /-!
 # EvmLeanSpecs

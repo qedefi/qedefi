@@ -156,6 +156,16 @@ inductive Reach : W → List O → W → Prop
 
 variable {σ}
 
+/-- Traces only depend on the transitions: a trace of `σ` is a trace of every system `σ'`
+with at least the same calls and environment steps (e.g. one with other `Ok`, `Agree`, …). -/
+theorem Reach.mono {σ' : System W S O} (hc : ∀ w op w', σ.call w op w' → σ'.call w op w')
+    (he : ∀ w w', σ.env w w' → σ'.env w w') {w w' : W} {ops : List O} (h : σ.Reach w ops w') :
+    σ'.Reach w ops w' := by
+  induction h with
+  | refl w => exact .refl w
+  | env h _ ih => exact .env (he _ _ h) ih
+  | call h _ ih => exact .call (hc _ _ _ h) ih
+
 /-- A single call is a trace. -/
 theorem Reach.single {w w' : W} {op : O} (h : σ.call w op w') : σ.Reach w [op] w' :=
   .call h (.refl w')
