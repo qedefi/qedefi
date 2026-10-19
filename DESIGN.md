@@ -43,18 +43,14 @@ audit found there.
 
 ## Status (2026-10-19)
 
-Cancun, Prague and Osaka complete: 22,332 / 22,332 `ethereum/tests` Cancun BlockchainTests;
-execution-spec-tests v5.4.0 `blockchain_tests` 17,685 / 17,685 Cancun, 20,957 / 20,957 Prague
-(incl. `CancunToPragueAtTime15k`) and 21,644 / 21,644 Osaka (incl. `PragueToOsakaAtTime15k`).
-Theorems about execution currently instantiate `Crypto.real`; a `step` simp set is needed to
-state them for arbitrary `Crypto`.
-
-Prague/Osaka additions to the shared types: `Crypto` gained `bls12G1Add`, `bls12G1Msm`,
-`bls12G2Add`, `bls12G2Msm`, `bls12Pairing`, `bls12MapFpToG1`, `bls12MapFp2ToG2` and
-`p256Verify`; `TxEnv.authorizations` (EIP-7702, with the new `Authorization`);
-`Message.disablePrecompiles` (default `false`); `Header.requestsHash : Option Word`.
-EIP-7702 lives in `Interpreter/Delegation.lean` (`eoa_delegation.py`), replacing the former
-`resolveCallCode` hook.
+- Cancun, Prague and Osaka implemented. Conformance: ethereum/tests Cancun 22,332/22,332;
+  execution-spec-tests v5.4.0 blockchain tests for Cancun, Prague, Osaka and the
+  Cancun→Prague, Prague→Osaka transitions all pass (see README).
+- Proof library (`EvmLeanProofs`): per-opcode step lemmas, memory/storage/word lemmas,
+  `evm_step`/`evm_steps` symbolic execution, `kernel_rfl`/`kernel_decide` for kernel-only
+  evaluation with free variables. Theorems hold for every `Crypto`.
+- Next: loops/invariants (CFG lemmas), CALL/CREATE frame lemmas, Solidity ABI and keccak
+  mapping slots under explicit non-collision hypotheses.
 
 ## Module map and ownership (initial build)
 
