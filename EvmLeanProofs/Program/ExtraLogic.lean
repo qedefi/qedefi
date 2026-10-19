@@ -9,7 +9,9 @@ postcondition is "back at the return address with the results on the stack", and
 halting postcondition says how it may end the frame (e.g. a `revert`).
 
 * `Machine.resumeAt m pc stack gas`: `m` with only pc, stack and gas changed — the shape of
-  the machine after a pure internal function (no memory, storage or return-data effects).
+  the machine after a pure internal function (no memory, storage or return-data effects);
+  `Machine.resumeWith` also replaces memory, return data and substate (an internal function
+  that writes memory or makes a call).
 * `WP.bind_mono`: sequencing with a summary whose halting postcondition is weaker than the
   caller's (the usual case: the caller's `H` mentions the whole call, the summary's only the
   fragment).
@@ -24,6 +26,26 @@ open Interpreter
 def _root_.EvmLean.Interpreter.Machine.resumeAt (m : Machine) (pc : Nat) (stack : List Word)
     (gas : Nat) : Machine :=
   { m with frame := { m.frame with pc := pc, stack := stack, gasLeft := gas } }
+
+/-- `m` with the mutable fields of its frame that an internal function with memory and call
+effects changes (pc, stack, memory, gas, return data, substate) replaced. -/
+def _root_.EvmLean.Interpreter.Machine.resumeWith (m : Machine) (pc : Nat) (stack : List Word)
+    (mem : Memory) (gas : Nat) (rd : ByteArray) (sub : Substate) : Machine :=
+  { m with
+    frame :=
+      { m.frame with
+        pc := pc
+        stack := stack
+        memory := mem
+        gasLeft := gas
+        returnData := rd
+        sub := sub } }
+
+/-- `resumeAt` is `resumeWith` with memory, return data and substate unchanged. -/
+theorem _root_.EvmLean.Interpreter.Machine.resumeAt_eq (m : Machine) (pc : Nat)
+    (stack : List Word) (gas : Nat) :
+    m.resumeAt pc stack gas =
+      m.resumeWith pc stack m.frame.memory gas m.frame.returnData m.frame.sub := rfl
 
 namespace WP
 
