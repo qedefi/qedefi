@@ -37,6 +37,142 @@ namespace EvmLeanSpecs.Refinement
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open Vault Shares
 
+/-! ## The conversions fit in a word -/
+
+/-- A `mulDivDown` result fits in a word. -/
+theorem mulDivDownN_lt {x y d v : ℕ} (h : mulDivDownN x y d = some v) : v < 2 ^ 256 := by
+  unfold mulDivDownN MAXN at h
+  split at h
+  · cases h
+  · rename_i hc
+    cases h
+    by_cases hy : y = 0
+    · subst hy; simp
+    · have hx : x ≤ (2 ^ 256 - 1) / y := by omega
+      have := (Nat.le_div_iff_mul_le (Nat.pos_of_ne_zero hy)).1 hx
+      have := Nat.div_le_self (x * y) d
+      omega
+
+/-- A `mulDivUp` result fits in a word. -/
+theorem mulDivUpN_lt {x y d v : ℕ} (h : mulDivUpN x y d = some v) : v < 2 ^ 256 := by
+  unfold mulDivUpN MAXN ceilDivN at h
+  split at h
+  · cases h
+  · rename_i hc
+    cases h
+    have hd : d ≠ 0 := fun e => hc (.inl e)
+    have hxy : x * y ≤ 2 ^ 256 - 1 := by
+      by_cases hy : y = 0
+      · subst hy; simp
+      · have hx : x ≤ (2 ^ 256 - 1) / y := by omega
+        exact (Nat.le_div_iff_mul_le (Nat.pos_of_ne_zero hy)).1 hx
+    have h1 := Nat.div_le_self (x * y) d
+    by_cases hd1 : d = 1
+    · subst hd1; simp only [Nat.mod_one, Nat.lt_irrefl, ↓reduceIte, Nat.div_one]; omega
+    · split
+      · rename_i hr
+        have : x * y / d < x * y := Nat.div_lt_self (by
+          rcases Nat.eq_zero_or_pos (x * y) with h0 | h0
+          · rw [h0] at hr; simp at hr
+          · exact h0) (by omega)
+        omega
+      · omega
+
+/-- `convertToShares` of a word fits in a word. -/
+theorem convertToSharesN_lt {S T x v : ℕ} (hx : x < 2 ^ 256)
+    (h : convertToSharesN S T x = some v) : v < 2 ^ 256 := by
+  unfold convertToSharesN at h
+  split at h
+  · cases h; exact hx
+  · exact mulDivDownN_lt h
+
+/-- `previewMint` of a word fits in a word. -/
+theorem previewMintN_lt {S T x v : ℕ} (hx : x < 2 ^ 256)
+    (h : previewMintN S T x = some v) : v < 2 ^ 256 := by
+  unfold previewMintN at h
+  split at h
+  · cases h; exact hx
+  · exact mulDivUpN_lt h
+
+/-! ## The model's `deposit` / `mint`, step by step -/
+
+section Steps
+
+variable {s : Solmate.State Address} {c r : Address} {a v : ℕ} {t' sh : Token Address}
+
+/-- `deposit` reverts when `previewDeposit` does. -/
+theorem deposit_none_preview (h : s.previewDeposit a = none) : Solmate.deposit s c a r = none := by
+  simp [Solmate.deposit, h]
+
+/-- `deposit` reverts on zero shares (`ZERO_SHARES`). -/
+theorem deposit_none_zero (h : s.previewDeposit a = some 0) : Solmate.deposit s c a r = none := by
+  simp [Solmate.deposit, h]
+
+/-- `deposit` reverts when the asset's `transferFrom` does. -/
+theorem deposit_none_transfer (h : s.previewDeposit a = some v)
+    (ht : s.asset.transferFrom s.self c s.self a = none) : Solmate.deposit s c a r = none := by
+  simp [Solmate.deposit, h, ht]
+
+/-- `deposit` reverts when `_mint` does. -/
+theorem deposit_none_mint (h : s.previewDeposit a = some v) (hv : v ≠ 0)
+    (ht : s.asset.transferFrom s.self c s.self a = some t') (hm : s.shares.mint r v = none) :
+    Solmate.deposit s c a r = none := by
+  simp [Solmate.deposit, h, hv, ht, hm]
+
+/-- `deposit` reverts when the hook counter overflows. -/
+theorem deposit_none_bump (h : s.previewDeposit a = some v)
+    (ht : s.asset.transferFrom s.self c s.self a = some t')
+    (hb : Solmate.bump s.afterDepositCount = none) : Solmate.deposit s c a r = none := by
+  simp [Solmate.deposit, h, ht, hb]
+
+/-- `deposit` succeeds when every step does. -/
+theorem deposit_some {n : ℕ} (h : s.previewDeposit a = some v) (hv : v ≠ 0)
+    (ht : s.asset.transferFrom s.self c s.self a = some t') (hm : s.shares.mint r v = some sh)
+    (hb : Solmate.bump s.afterDepositCount = some n) :
+    Solmate.deposit s c a r =
+      some ({ s with asset := t', shares := sh, afterDepositCount := n }, v) := by
+  simp [Solmate.deposit, h, hv, ht, hm, hb]
+
+/-- `mint` reverts when `previewMint` does. -/
+theorem mint_none_preview (h : s.previewMint a = none) : Solmate.mint s c a r = none := by
+  simp [Solmate.mint, h]
+
+/-- `mint` reverts when the asset's `transferFrom` does. -/
+theorem mint_none_transfer (h : s.previewMint a = some v)
+    (ht : s.asset.transferFrom s.self c s.self v = none) : Solmate.mint s c a r = none := by
+  simp [Solmate.mint, h, ht]
+
+/-- `mint` reverts when `_mint` does. -/
+theorem mint_none_mint (h : s.previewMint a = some v) (hm : s.shares.mint r a = none) :
+    Solmate.mint s c a r = none := by
+  simp [Solmate.mint, h, hm]
+
+/-- `mint` reverts when the hook counter overflows. -/
+theorem mint_none_bump (h : s.previewMint a = some v)
+    (hb : Solmate.bump s.afterDepositCount = none) : Solmate.mint s c a r = none := by
+  simp [Solmate.mint, h, hb]
+
+/-- `mint` succeeds when every step does. -/
+theorem mint_some {n : ℕ} (h : s.previewMint a = some v)
+    (ht : s.asset.transferFrom s.self c s.self v = some t') (hm : s.shares.mint r a = some sh)
+    (hb : Solmate.bump s.afterDepositCount = some n) :
+    Solmate.mint s c a r =
+      some ({ s with asset := t', shares := sh, afterDepositCount := n }, v) := by
+  simp [Solmate.mint, h, ht, hm, hb]
+
+end Steps
+
+/-- `Token.mint` fails exactly on a supply overflow. -/
+theorem token_mint_none_iff {t : Token Address} {dst : Address} {v : ℕ} :
+    t.mint dst v = none ↔ 2 ^ 256 ≤ t.totalSupply + v := by
+  unfold Token.mint MAX; split_ifs with h <;> simp <;> omega
+
+/-- `bump` fails exactly on a counter overflow. -/
+theorem bump_none_iff {n : ℕ} : Solmate.bump n = none ↔ n + 1 = 2 ^ 256 ∨ 2 ^ 256 < n + 1 := by
+  unfold Solmate.bump checkedAdd MAX; split_ifs with h <;> simp <;> omega
+
+/-! ## The world -/
+
 /-- The world after a successful `deposit` / `mint` from `caller` for `receiver`, pulling
 `assets` and minting `shares`. -/
 def depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Address)
@@ -185,5 +321,74 @@ theorem refinesAllow_depositWorld {crypto : Crypto} {w : World} {vault asset cal
     rw [sload_bumpWorld (.inr (by decide)), sload_mintWorld (.inr ⟨by decide, fun e => h6 e.symm⟩),
       hv₁]
     rfl
+
+end EvmLeanSpecs.Refinement
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open Vault Shares
+
+variable {crypto : Crypto} {w : World} {vault asset caller receiver : Address} {v : ℕ}
+
+/-- `_mint` succeeds without supply overflow. -/
+theorem shares_mint_some (h : (w.sload vault 2#256).toNat + v < 2 ^ 256) :
+    ∃ sh, (abs crypto w vault asset).shares.mint receiver v = some sh :=
+  ⟨_, Token.mint_eq_some.2 ⟨by simp only [abs, tokenView_totalSupply]; unfold MAX; omega, rfl⟩⟩
+
+/-- The hook counter increments without overflow. -/
+theorem bump_some (h : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
+    Solmate.bump (abs crypto w vault asset).afterDepositCount =
+      some ((abs crypto w vault asset).afterDepositCount + 1) := by
+  have h' : (abs crypto w vault asset).afterDepositCount + 1 < 2 ^ 256 := h
+  have hM : ¬ MAX < (abs crypto w vault asset).afterDepositCount + 1 := by unfold MAX; omega
+  simp only [Solmate.bump, checkedAdd, hM, ↓reduceIte]
+
+/-- **Successful `deposit`, model side**: when every step of the bytecode succeeded, the model
+succeeds with the same shares, and `depositWorld` represents its result. -/
+theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ asset)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
+    (hbv : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate vault)
+    (hbr : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate receiver)
+    (ha : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate caller vault)
+    (hinv : Solmate.Inv (abs crypto w vault asset))
+    (hpv : (abs crypto w vault asset).previewDeposit assets.toNat = some v) (hv0 : v ≠ 0)
+    (hvlt : v < 2 ^ 256)
+    (hT : (abs crypto w vault asset).asset.transferFrom vault caller vault assets.toNat = some t')
+    (hov : (w.sload vault 2#256).toNat + v < 2 ^ 256)
+    (hov7 : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
+    ∃ s', Solmate.deposit (abs crypto w vault asset) caller assets.toNat receiver = some (s', v) ∧
+      RefinesAllow (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
+        crypto (depositWorld crypto w vault asset caller receiver assets (BitVec.ofNat 256 v))
+        vault asset s' := by
+  obtain ⟨sh, hm⟩ := shares_mint_some (asset := asset) (receiver := receiver) hov
+  have hb := bump_some (crypto := crypto) (asset := asset) hov7
+  refine ⟨_, deposit_some hpv hv0 hT hm hb, ?_⟩
+  have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
+  exact refinesAllow_depositWorld hne hk hbc hbv hbr ha hinv hT (by rw [hvn]; exact hm) hb
+
+/-- **Successful `mint`, model side**: when every step of the bytecode succeeded, the model
+succeeds with the same assets, and `depositWorld` represents its result. -/
+theorem mint_post_some {shares : Word} {t' : Token Address} (hne : vault ≠ asset)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
+    (hbv : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate vault)
+    (hbr : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate receiver)
+    (ha : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate caller vault)
+    (hinv : Solmate.Inv (abs crypto w vault asset))
+    (hpv : (abs crypto w vault asset).previewMint shares.toNat = some v) (hvlt : v < 2 ^ 256)
+    (hT : (abs crypto w vault asset).asset.transferFrom vault caller vault v = some t')
+    (hov : (w.sload vault 2#256).toNat + shares.toNat < 2 ^ 256)
+    (hov7 : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
+    ∃ s', Solmate.mint (abs crypto w vault asset) caller shares.toNat receiver = some (s', v) ∧
+      RefinesAllow (DepositAllowances crypto receiver) (TransferFromAllowances crypto vault caller vault)
+        crypto (depositWorld crypto w vault asset caller receiver (BitVec.ofNat 256 v) shares)
+        vault asset s' := by
+  obtain ⟨sh, hm⟩ := shares_mint_some (asset := asset) (receiver := receiver) hov
+  have hb := bump_some (crypto := crypto) (asset := asset) hov7
+  refine ⟨_, mint_some hpv hT hm hb, ?_⟩
+  have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
+  exact refinesAllow_depositWorld hne hk hbc hbv hbr ha hinv (by rw [hvn]; exact hT) hm hb
 
 end EvmLeanSpecs.Refinement

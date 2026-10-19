@@ -7,6 +7,28 @@ namespace EvmLeanSpecs.Refinement
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
 open Vault Shares
 
+/-- The `asset` immutable, as the `PUSH32` at `0x07dd` (in `deposit`) reads it. -/
+theorem readBytes_code_asset2014 (i : SolmateVault.Immutables) :
+    readBytes (SolmateVault.runtimeCodeWith i) 2014 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
+  have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
+      (688, Word.ofAddress i.asset), (1170, Word.ofAddress i.asset)] ++
+      (2014, Word.ofAddress i.asset) :: [(2169, Word.ofAddress i.asset),
+      (2668, Word.ofAddress i.asset), (2995, Word.ofAddress i.asset), (623, i.decimals)] := rfl
+  simp only [SolmateVault.runtimeCodeWith, hp]
+  exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
+    (by simp)
+
+/-- The `asset` immutable, as the `PUSH32` at `0x0878` (in `mint`) reads it. -/
+theorem readBytes_code_asset2169 (i : SolmateVault.Immutables) :
+    readBytes (SolmateVault.runtimeCodeWith i) 2169 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
+  have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
+      (688, Word.ofAddress i.asset), (1170, Word.ofAddress i.asset),
+      (2014, Word.ofAddress i.asset)] ++ (2169, Word.ofAddress i.asset) ::
+      [(2668, Word.ofAddress i.asset), (2995, Word.ofAddress i.asset), (623, i.decimals)] := rfl
+  simp only [SolmateVault.runtimeCodeWith, hp]
+  exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
+    (by simp)
+
 set_option maxHeartbeats 0 in
 theorem mintShares_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {dst : Address} {rest : List Word}
@@ -17,7 +39,7 @@ theorem mintShares_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Wo
     (hs : m.frame.stack = amount :: Word.ofAddress dst :: r :: rest)
     (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hmem : FmpAfterTransfer m.frame.memory)
-    (hg : 60000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
+    (hg : 60000 ≤ m.frame.gasLeft) :
     WP m (fun m' => (m.world.sload m.frame.msg.currentTarget 2#256).toNat + amount.toNat < 2 ^ 256 ∧
         ∃ mem g rd sub,
           m' = { m.resumeWith r.toNat rest mem g rd sub with
@@ -64,7 +86,7 @@ theorem afterDeposit_wp {i : SolmateVault.Immutables} (m : Machine) {x y r : Wor
     (hs : m.frame.stack = x :: y :: r :: rest)
     (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hmem : FmpAfterTransfer m.frame.memory)
-    (hg : 30000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
+    (hg : 30000 ≤ m.frame.gasLeft) :
     WP m (fun m' => (m.world.sload m.frame.msg.currentTarget 7#256).toNat + 1 < 2 ^ 256 ∧
         ∃ g sub,
           m' = { m.resumeWith r.toNat rest m.frame.memory g m.frame.returnData sub with
