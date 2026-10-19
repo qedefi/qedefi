@@ -1,5 +1,5 @@
 import EvmLeanSpecs.Refinement.StringsVaultLong
-import EvmLeanSpecs.Refinement.Abstraction
+import EvmLeanSpecs.Refinement.VaultViewsSpec
 
 /-!
 # `name()` / `symbol()` of the compiled vault refine the storage strings
@@ -108,5 +108,90 @@ theorem vaultSymbol_refines {i : SolmateVault.Immutables} (m : Machine)
   dsimp only
   generalize sloadCost _ = sl at *
   exact getterGas_le hg _ (by omega)
+
+end EvmLeanSpecs.Refinement
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+/-! ## Top-level transactions -/
+
+/-- What a top-level call of a string getter returns: success with `Abi.encodeString s` for
+`some s`, a revert for `none`. -/
+def StringResult (res : MessageResult) (r : Option ByteArray) : Prop :=
+  match r with
+  | some s => res.success = true ∧ res.output = Abi.encodeString s
+  | none => res.success = false ∧ res.reverted = true
+
+variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
+  {data : ByteArray} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
+
+/-- A string-getter summary of the start machine of a top-level call gives the result of
+`processMessageCall`: the world is unchanged and the result is `StringResult`. -/
+theorem string_call {code : ByteArray} {a : Address} {r : Option ByteArray}
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hdel : delegatedAddress? code = none) (hpre : Precompile.isPrecompile ctx.fork a = false)
+    (h : Halts (startMachine ctx w tr (callMsg code a caller data gas wa wk))
+      (StringPost (startMachine ctx w tr (callMsg code a caller data gas wa wk)) r)) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg code a caller data gas wa wk) = .ok res ∧ res.world = w ∧ StringResult res r := by
+  obtain ⟨n, hn⟩ := processMessageCall_of_halts (a := a)
+    (msg := callMsg code a caller data gas wa wk) hdeleg hdel rfl rfl hpre rfl rfl h
+  refine ⟨n, fun fuel hle => ?_⟩
+  obtain ⟨mf, o, ⟨hw, ho⟩, hs, hrun⟩ := hn fuel hle
+  have hk : mf.frame.kind = .call 0 0 := hs.kind
+  refine ⟨_, hrun, ?_⟩
+  cases r with
+  | some v =>
+    simp only at ho
+    subst ho
+    obtain ⟨h1, h2, h3, -⟩ := topLevelResult_success_call
+      (t := (callMsg code a caller data gas wa wk).target) (out := Abi.encodeString v) hk
+    exact ⟨h3.trans hw, h1, h2⟩
+  | none =>
+    obtain ⟨out, ho⟩ := ho
+    subst ho
+    have hsnap : mf.frame.snapshot.1 = w := by rw [hs.snapshot]; rfl
+    simp only [frameResult_revert, topLevelResult_world, topLevelResult_success,
+      topLevelResult_reverted, StringResult, ChildResult.success, hsnap]
+    decide
+
+/-- The start of a top-level call satisfies `StringPre` when the gas covers the string. -/
+theorem stringPre_start {code : ByteArray} {a : Address} {slot : Word}
+    (hgas : Str.getterGas (Str.slotLen (w.sload a slot)) ≤ gas) (hgas' : gas < 2 ^ 64)
+    (hsize : data.size < 2 ^ 64) :
+    StringPre code slot (startMachine ctx w tr (callMsg code a caller data gas wa wk)) where
+  fresh := fresh_startMachine ctx w tr (callMsg code a caller data gas wa wk)
+  value := rfl
+  gas := hgas
+  gasLt := hgas'
+  sizeLt := hsize
+
+/-- **`name()` as a top-level transaction** on the deployed vault: the string at slot 0. -/
+theorem vaultName_call (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hgas : Str.getterGas (Str.slotLen (w.sload vault 0#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code vault) vault caller (Abi.encodeCall 0x06fdde03 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ StringResult res (stringAt ctx.crypto w vault 0#256) := by
+  obtain ⟨i, -, hcode⟩ := hdep.vaultCode
+  rw [hcode]
+  exact string_call hdeleg (Shares.delegatedAddress?_code i) (hdep.vaultNotPrecompile _)
+    (vaultName_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
+      (noArgCall_encodeCall (by decide)))
+
+/-- **`symbol()` as a top-level transaction** on the deployed vault: the string at slot 1. -/
+theorem vaultSymbol_call (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hgas : Str.getterGas (Str.slotLen (w.sload vault 1#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code vault) vault caller (Abi.encodeCall 0x95d89b41 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ StringResult res (stringAt ctx.crypto w vault 1#256) := by
+  obtain ⟨i, -, hcode⟩ := hdep.vaultCode
+  rw [hcode]
+  exact string_call hdeleg (Shares.delegatedAddress?_code i) (hdep.vaultNotPrecompile _)
+    (vaultSymbol_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
+      (noArgCall_encodeCall (by decide)))
 
 end EvmLeanSpecs.Refinement
