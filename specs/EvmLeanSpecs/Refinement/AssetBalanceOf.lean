@@ -41,6 +41,12 @@ theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by
   rw [Word.lt_eq_zero_iff]; simp only [ofNat, BitVec.toNat_ofNat]; omega
 
+/-- The balance slot of `a` in a Solmate `ERC20`, as symbolic execution computes it
+(`keccak256(a ‖ 3)`). -/
+theorem balanceSlot_solmate (crypto : Crypto) (a : Address) :
+    Erc20.balanceSlot crypto Erc20.Layout.solmate a =
+      crypto.keccak256 (Bytes.ofWord (Word.ofAddress a) ++ Bytes.ofWord 3#256) := rfl
+
 set_option maxHeartbeats 0 in
 /-- **`balanceOf(a)` of the asset, in any frame.** -/
 theorem balanceOf_halts (m : Machine) (hf : Fresh SolmateAsset.runtimeCode m) (a : Address)

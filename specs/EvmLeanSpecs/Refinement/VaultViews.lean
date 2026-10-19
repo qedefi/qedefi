@@ -68,7 +68,7 @@ macro "view_intro" : tactic => `(tactic| (
   dsimp only at *
   wp_hide_jump_tables
   subst hs hpc hc hmem
-  simp only [supplyOf, assetsOf]))
+  try simp only [supplyOf, assetsOf]))
 
 set_option maxHeartbeats 0 in
 /-- The return encoder of the vault's word-returning functions (`0x01dd`): `mstore(fmp, v)`,
