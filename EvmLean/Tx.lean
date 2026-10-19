@@ -7,7 +7,14 @@ import EvmLean.Tx.Codec
 # Transactions
 
 Validation, intrinsic gas and execution of a single transaction, following
-`ethereum/execution-specs` (`src/ethereum/forks/cancun/`):
+`ethereum/execution-specs` (`src/ethereum/forks/{cancun,prague,osaka}/`). Fork differences:
+
+* Prague: set-code transactions (EIP-7702: authorization cost, empty-list check, delegated
+  senders allowed by EIP-3607), the calldata floor (EIP-7623), blob parameters (EIP-7691).
+* Osaka: the transaction gas limit cap `2²⁴` (EIP-7825) and at most six blobs per
+  transaction (`BLOB_COUNT_LIMIT`, EIP-7594).
+
+The table maps definitions to the reference:
 
 | Lean                 | execution-specs                                      |
 |----------------------|------------------------------------------------------|
@@ -30,10 +37,15 @@ namespace EvmLean.Tx
 
 /-- `TX_BASE`: base cost of every transaction. -/
 def txBase : Nat := 21000
-/-- `TX_DATA_PER_ZERO`. -/
-def txDataPerZero : Nat := 4
-/-- `TX_DATA_PER_NON_ZERO`. -/
-def txDataPerNonZero : Nat := 16
+/-- `TX_DATA_TOKEN_STANDARD`: gas per calldata token (a zero byte is one token, a non-zero
+byte four, so this is Cancun's 4 per zero / 16 per non-zero byte). -/
+def txDataTokenStandard : Nat := 4
+/-- `TX_DATA_TOKEN_FLOOR` (EIP-7623, Prague): floor gas per calldata token. -/
+def txDataTokenFloor : Nat := 10
+/-- `TX_MAX_GAS_LIMIT` (EIP-7825, Osaka): maximum gas limit of a transaction. -/
+def txMaxGasLimit : Nat := 2 ^ 24
+/-- `BLOB_COUNT_LIMIT` (Osaka): maximum number of blobs per transaction. -/
+def blobCountLimit : Nat := 6
 /-- `TX_ACCESS_LIST_ADDRESS`. -/
 def txAccessListAddress : Nat := 2400
 /-- `TX_ACCESS_LIST_STORAGE_KEY`. -/
@@ -61,16 +73,33 @@ def blobParams : Fork → BlobParams
 /-- Number of zero bytes in `b`. -/
 def zeroBytes (b : ByteArray) : Nat := b.foldl (fun n x => if x = 0 then n + 1 else n) 0
 
+/-- Number of calldata tokens: one per zero byte, four per non-zero byte (EIP-7623). -/
+def calldataTokens (data : ByteArray) : Nat :=
+  let zeros := zeroBytes data
+  zeros + (data.size - zeros) * 4
+
+/-- The two intrinsic costs of a transaction (`IntrinsicGasCost`). -/
+structure IntrinsicGas where
+  /-- Charged before execution: base, calldata, creation, access list, authorizations. -/
+  regular : Nat
+  /-- EIP-7623 floor (Prague): the minimum gas a transaction is charged. -/
+  calldataFloor : Nat
+  deriving DecidableEq, Repr, Inhabited
+
 /-- Gas charged before execution starts. Mirrors `calculate_intrinsic_cost`: base cost,
-calldata (4 per zero byte, 16 per non-zero byte), creation (32000 plus the EIP-3860
-init-code charge) and access list (2400 per address, 1900 per storage key). -/
-def intrinsicGas (tx : Transaction) : Nat :=
-  let zeros := zeroBytes tx.data
-  let dataCost := zeros * txDataPerZero + (tx.data.size - zeros) * txDataPerNonZero
+calldata (4 per token, i.e. 4 per zero byte and 16 per non-zero byte), creation (32000 plus
+the EIP-3860 init-code charge), access list (2400 per address, 1900 per storage key) and
+EIP-7702 authorizations (25000 each); plus the EIP-7623 floor `21000 + 10 · tokens`, which
+`validate` and `process` only use from Prague. -/
+def intrinsicGas (tx : Transaction) : IntrinsicGas :=
+  let tokens := calldataTokens tx.data
+  let dataCost := tokens * txDataTokenStandard
   let createCost := if tx.isCreate then Gas.createCost tx.data.size else 0
   let accessListCost := tx.accessList.foldl
     (fun c i => c + txAccessListAddress + i.storageKeys.length * txAccessListStorageKey) 0
-  txBase + dataCost + createCost + accessListCost
+  let authCost := Interpreter.authPerEmptyAccount * tx.authorizations.length
+  { regular := txBase + dataCost + createCost + accessListCost + authCost
+    calldataFloor := tokens * txDataTokenFloor + txBase }
 
 /-- `calculate_total_blob_gas`: blob gas consumed by `tx`. -/
 def totalBlobGas (tx : Transaction) : Nat := gasPerBlob * tx.blobVersionedHashes.length
@@ -94,6 +123,14 @@ inductive SignatureError where
 /-- Why a transaction is invalid, i.e. cannot be included in a block. Constructor names
 follow the reference's exception classes. -/
 inductive InvalidTx where
+  /-- `TransactionTypeError`: a transaction type the fork does not know. -/
+  | unsupportedType (ty : Nat)
+  /-- `TransactionGasLimitExceededError` (EIP-7825, Osaka): gas limit above `2²⁴`. -/
+  | gasLimitAboveCap (gasLimit : Nat)
+  /-- `BlobCountExceededError` (Osaka): more than six blobs. -/
+  | blobCountExceeded (count : Nat)
+  /-- `EmptyAuthorizationListError` (EIP-7702). -/
+  | emptyAuthorizationList
   /-- `InsufficientTransactionGasError`: gas limit below the intrinsic cost. -/
   | intrinsicGasTooLow (intrinsic gasLimit : Nat)
   /-- `InitCodeTooLargeError` (EIP-3860). -/
@@ -133,6 +170,10 @@ inductive InvalidTx where
 
 /-- Human-readable description of an invalid-transaction reason. -/
 def InvalidTx.toString : InvalidTx → String
+  | .unsupportedType t => s!"transaction type {t} not supported by this fork"
+  | .gasLimitAboveCap g => s!"gas limit {g} above the transaction cap 2^24"
+  | .blobCountExceeded n => s!"{n} blobs exceed the per-transaction limit"
+  | .emptyAuthorizationList => "set-code transaction with empty authorization list"
   | .intrinsicGasTooLow i g => s!"intrinsic gas too low ({i} > gas limit {g})"
   | .initCodeSizeExceeded n => s!"init code size {n} exceeds limit"
   | .nonceOverflow n => s!"nonce {n} ≥ 2^64-1"
@@ -162,13 +203,26 @@ def feeCaps? : Transaction → Option (Nat × Nat)
   | .eip2930 _ => none
   | .eip1559 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
   | .eip4844 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
+  | .eip7702 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
 
-/-- Stateless validity; returns the intrinsic gas. Mirrors `validate_transaction`. -/
-def validate (fork : Fork) (tx : Transaction) : Except InvalidTx Nat := do
+/-- Is the transaction's type known to `fork`? Set-code transactions start in Prague (before
+it, `decode_transaction` raises `TransactionTypeError`). -/
+def typeSupported (fork : Fork) : Transaction → Bool
+  | .legacy _ | .eip2930 _ | .eip1559 _ | .eip4844 _ => true
+  | .eip7702 _ => fork ≥ .prague
+
+/-- Stateless validity; returns the intrinsic gas. Mirrors `validate_transaction`: the gas
+limit must cover the intrinsic cost (and, from Prague, the calldata floor); from Osaka it
+must not exceed `2²⁴`. -/
+def validate (fork : Fork) (tx : Transaction) : Except InvalidTx IntrinsicGas := do
+  if !typeSupported fork tx then throw (.unsupportedType tx.typeByte)
   let intrinsic := intrinsicGas tx
-  if intrinsic > tx.gas then throw (.intrinsicGasTooLow intrinsic tx.gas)
+  let required :=
+    if fork ≥ .prague then max intrinsic.regular intrinsic.calldataFloor else intrinsic.regular
+  if required > tx.gas then throw (.intrinsicGasTooLow required tx.gas)
   if tx.isCreate && tx.data.size > Gas.maxInitCodeSize fork then
     throw (.initCodeSizeExceeded tx.data.size)
+  if fork ≥ .osaka && tx.gas > txMaxGasLimit then throw (.gasLimitAboveCap tx.gas)
   if tx.nonce ≥ Gas.maxNonce then throw (.nonceOverflow tx.nonce)
   match feeCaps? tx with
   | some (maxFee, maxPrio) =>
@@ -188,6 +242,7 @@ def chainIdOf : Transaction → Except InvalidTx (Option Nat)
   | .eip2930 t => .ok (some t.chainId)
   | .eip1559 t => .ok (some t.chainId)
   | .eip4844 t => .ok (some t.chainId)
+  | .eip7702 t => .ok (some t.chainId)
 
 /-- A y-parity must be 0 or 1. -/
 def yParityId (y : Nat) : Except InvalidTx Nat :=
@@ -202,6 +257,7 @@ def recoveryId : Transaction → Except InvalidTx Nat
   | .eip2930 t => yParityId t.yParity
   | .eip1559 t => yParityId t.yParity
   | .eip4844 t => yParityId t.yParity
+  | .eip7702 t => yParityId t.yParity
 
 /-- The address controlled by an uncompressed 64-byte public key: the low 20 bytes of its
 Keccak. -/
@@ -246,6 +302,7 @@ def gasPricing (baseFee : Nat) : Transaction → Except InvalidTx (Nat × Nat)
   | .eip2930 t => fixed t.gasPrice t.gas
   | .eip1559 t => market t.maxFeePerGas t.maxPriorityFeePerGas t.gas
   | .eip4844 t => market t.maxFeePerGas t.maxPriorityFeePerGas t.gas
+  | .eip7702 t => market t.maxFeePerGas t.maxPriorityFeePerGas t.gas
 where
   /-- Pricing of a legacy or EIP-2930 transaction. -/
   fixed (price gas : Nat) : Except InvalidTx (Nat × Nat) :=
@@ -260,13 +317,17 @@ where
 def versionByte (h : Word) : Nat := h.toNat / 2 ^ 248
 
 /-- EIP-4844 checks of `check_transaction` for a blob transaction; returns the maximum
-blob-gas fee to add to the balance requirement (zero for other types). -/
+blob-gas fee to add to the balance requirement (zero for other types). From Osaka a
+transaction carries at most `BLOB_COUNT_LIMIT` blobs. -/
 def blobChecks (fork : Fork) (env : BlockEnv) : Transaction → Except InvalidTx Nat
   | .legacy _ => .ok 0
   | .eip2930 _ => .ok 0
   | .eip1559 _ => .ok 0
+  | .eip7702 _ => .ok 0
   | .eip4844 t => do
     if t.blobVersionedHashes.isEmpty then throw .noBlobData
+    if fork ≥ .osaka && t.blobVersionedHashes.length > blobCountLimit then
+      throw (.blobCountExceeded t.blobVersionedHashes.length)
     if t.blobVersionedHashes.any (versionByte · ≠ versionedHashVersionKzg) then
       throw .invalidBlobVersionedHash
     let price := Gas.blobGasPrice fork env.excessBlobGas
@@ -276,7 +337,8 @@ def blobChecks (fork : Fork) (env : BlockEnv) : Transaction → Except InvalidTx
 
 /-- Whether `tx` can be included given the block environment, the gas and blob gas still
 available in the block, and the current world. Mirrors `check_transaction`, in the same
-order of checks. -/
+order of checks. From Prague a set-code transaction needs a non-empty authorization list,
+and a sender whose code is a delegation designator counts as an EOA (EIP-7702). -/
 def check (crypto : Crypto) (fork : Fork) (env : BlockEnv) (gasAvailable blobGasAvailable : Nat)
     (world : World) (tx : Transaction) (senderHint : Option Address) :
     Except InvalidTx Checked := do
@@ -291,12 +353,17 @@ def check (crypto : Crypto) (fork : Fork) (env : BlockEnv) (gasAvailable blobGas
   let account := world.account sender
   let (effectiveGasPrice, maxGasFee) ← gasPricing env.baseFee tx
   let maxBlobFee ← blobChecks fork env tx
+  match tx with
+  | .eip7702 t => if t.authorizations.isEmpty then throw .emptyAuthorizationList
+  | .legacy _ | .eip2930 _ | .eip1559 _ | .eip4844 _ => pure ()
   if account.nonce > tx.nonce then throw (.nonceTooLow account.nonce tx.nonce)
   if account.nonce < tx.nonce then throw (.nonceTooHigh account.nonce tx.nonce)
   let required := maxGasFee + maxBlobFee + tx.value
   if account.balance.toNat < required then
     throw (.insufficientBalance account.balance.toNat required)
-  if account.code.size ≠ 0 then throw .senderNotEOA
+  if account.code.size ≠ 0 &&
+      !(fork ≥ .prague && Interpreter.isValidDelegation account.code) then
+    throw .senderNotEOA
   return { sender, effectiveGasPrice, blobVersionedHashes := tx.blobVersionedHashes,
            blobGasUsed }
 
@@ -380,8 +447,10 @@ def prepareMessage (crypto : Crypto) (fork : Fork) (env : BlockEnv) (world : Wor
 (execution and blob gas), increment the nonce, run the top-level message (pre-warming the
 origin, the target or new contract address, the precompiles, the coinbase (EIP-3651) and
 the access list), refund unused gas plus the capped refund counter (EIP-3529: at most a
-fifth of the gas used), pay the priority fee to the coinbase, delete self-destructed
-accounts and touched empty accounts. Transient storage starts empty and is discarded
+fifth of the gas used; from Prague at least the EIP-7623 calldata floor is charged), pay
+the priority fee to the coinbase, delete self-destructed accounts and touched empty
+accounts. A set-code transaction's authorizations travel in `TxEnv.authorizations` and are
+applied by the interpreter (`Interpreter.applyTopLevelDelegation`). Transient storage starts empty and is discarded
 afterwards (EIP-1153). `fuel` bounds interpreter steps. -/
 def process (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (gasAvailable blobGasAvailable : Nat) (world : World) (tx : Transaction)
@@ -396,17 +465,21 @@ def process (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
   let w := Interpreter.incrementNonce world sender
   let w := Interpreter.setAccountBalance w sender
     (BitVec.ofNat 256 (senderAccount.balance.toNat - effectiveGasFee - blobGasFee))
-  let msg := prepareMessage crypto fork env w tx sender senderAccount.nonce (tx.gas - intrinsic)
+  let msg := prepareMessage crypto fork env w tx sender senderAccount.nonce
+    (tx.gas - intrinsic.regular)
   let ctx : Context := {
     crypto, fork, block := env,
     tx := { origin := sender, gasPrice := c.effectiveGasPrice,
-            blobVersionedHashes := c.blobVersionedHashes.toArray } }
+            blobVersionedHashes := c.blobVersionedHashes.toArray,
+            authorizations := tx.authorizations } }
   let res ← match Interpreter.processMessageCall fuel ctx w ∅ msg with
     | .ok r => pure r
     | .error _ => throw TxError.outOfFuel
   let gasUsedBeforeRefund := tx.gas - res.gasLeft
   let refund := min (gasUsedBeforeRefund / 5) res.refundCounter.toNat
   let gasUsed := gasUsedBeforeRefund - refund
+  -- EIP-7623 (Prague): transactions pay at least the calldata floor.
+  let gasUsed := if fork ≥ .prague then max gasUsed intrinsic.calldataFloor else gasUsed
   let gasLeft := tx.gas - gasUsed
   let priorityFeePerGas := c.effectiveGasPrice - env.baseFee
   let w := creditBalance res.world sender (gasLeft * c.effectiveGasPrice)

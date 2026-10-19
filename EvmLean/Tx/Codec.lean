@@ -9,7 +9,7 @@ import EvmLean.Tx.RlpDecode
 * `Transaction.ofRlp` is `decode_transaction` applied to an item of a block body: a list is a
   legacy transaction, a byte string is an EIP-2718 typed envelope `type ‖ rlp(fields)`.
 * `Transaction.signingMessage` is the preimage of `signing_hash_pre155`, `signing_hash_155`,
-  `signing_hash_2930`, `signing_hash_1559` or `signing_hash_4844`; hashing it is left to the
+  `signing_hash_2930`, `signing_hash_1559`, `signing_hash_4844` or `signing_hash_7702`; hashing it is left to the
   caller's `Crypto`, so this module never depends on a hash implementation.
 -/
 
@@ -32,6 +32,11 @@ def toRlp : Option Address → Rlp
 def accessListRlp (l : List AccessListItem) : Rlp :=
   .list (l.map fun i => .list [addressRlp i.address, .list (i.storageKeys.map wordRlp)])
 
+/-- An EIP-7702 authorization list, as `[[chainId, address, nonce, yParity, r, s], …]`. -/
+def authorizationsRlp (l : List Authorization) : Rlp :=
+  .list (l.map fun a => .list [.nat a.chainId, addressRlp a.address, .nat a.nonce,
+    .nat a.yParity, .nat a.r, .nat a.s])
+
 /-- The RLP list of all fields, signature included, in reference field order. -/
 def fieldsRlp : Transaction → Rlp
   | .legacy t => .list [.nat t.nonce, .nat t.gasPrice, .nat t.gas, toRlp t.to, .nat t.value,
@@ -46,6 +51,10 @@ def fieldsRlp : Transaction → Rlp
       .nat t.maxFeePerGas, .nat t.gas, addressRlp t.to, .nat t.value, .bytes t.data,
       accessListRlp t.accessList, .nat t.maxFeePerBlobGas,
       .list (t.blobVersionedHashes.map wordRlp), .nat t.yParity, .nat t.r, .nat t.s]
+  | .eip7702 t => .list [.nat t.chainId, .nat t.nonce, .nat t.maxPriorityFeePerGas,
+      .nat t.maxFeePerGas, .nat t.gas, addressRlp t.to, .nat t.value, .bytes t.data,
+      accessListRlp t.accessList, authorizationsRlp t.authorizations, .nat t.yParity,
+      .nat t.r, .nat t.s]
 
 /-- `type ‖ payload` for a typed transaction. -/
 def typed (ty : UInt8) (payload : ByteArray) : ByteArray := ⟨#[ty]⟩ ++ payload
@@ -59,13 +68,14 @@ def encode (tx : Transaction) : ByteArray :=
   | .eip2930 _ => typed 1 tx.fieldsRlp.encode
   | .eip1559 _ => typed 2 tx.fieldsRlp.encode
   | .eip4844 _ => typed 3 tx.fieldsRlp.encode
+  | .eip7702 _ => typed 4 tx.fieldsRlp.encode
 
 /-- How a transaction appears inside a block body: a list for legacy transactions, an opaque
 byte string for typed ones. -/
 def bodyRlp (tx : Transaction) : Rlp :=
   match tx with
   | .legacy _ => tx.fieldsRlp
-  | .eip2930 _ | .eip1559 _ | .eip4844 _ => .bytes tx.encode
+  | .eip2930 _ | .eip1559 _ | .eip4844 _ | .eip7702 _ => .bytes tx.encode
 
 /-- The EIP-155 chain id encoded in a legacy `v ≥ 35`. -/
 def legacyChainId (v : Nat) : Nat := (v - 35) / 2
@@ -89,6 +99,9 @@ def signingMessage : Transaction → ByteArray
       .nat t.maxFeePerGas, .nat t.gas, addressRlp t.to, .nat t.value, .bytes t.data,
       accessListRlp t.accessList, .nat t.maxFeePerBlobGas,
       .list (t.blobVersionedHashes.map wordRlp)]).encode
+  | .eip7702 t => typed 4 (Rlp.list [.nat t.chainId, .nat t.nonce, .nat t.maxPriorityFeePerGas,
+      .nat t.maxFeePerGas, .nat t.gas, addressRlp t.to, .nat t.value, .bytes t.data,
+      accessListRlp t.accessList, authorizationsRlp t.authorizations]).encode
 
 /-! ## Decoding -/
 
@@ -104,6 +117,21 @@ def decodeAccessList (r : Rlp) : Except DecodeError (List AccessListItem) := do
       let storageKeys ← keys.mapM (asWord "accessList storage key")
       return { address, storageKeys }
     | _ => throw (.unexpected "accessList entry must have 2 fields")
+
+open Rlp in
+/-- Decode an EIP-7702 authorization list with the reference widths: `U256` chain id, `U64`
+nonce, `U8` y-parity, `U256` `r` and `s`. -/
+def decodeAuthorizations (r : Rlp) : Except DecodeError (List Authorization) := do
+  let items ← asList "authorizationList" r
+  items.mapM fun item => do
+    match ← asList "authorization" item with
+    | [chainId, address, nonce, yParity, r, s] =>
+      return { chainId := ← asU256 "authorization chainId" chainId,
+               address := ← asAddress "authorization address" address,
+               nonce := ← asU64 "authorization nonce" nonce,
+               yParity := ← asNat "authorization yParity" 1 yParity,
+               r := ← asU256 "authorization r" r, s := ← asU256 "authorization s" s }
+    | _ => throw (.unexpected "authorization must have 6 fields")
 
 open Rlp in
 /-- Decode the fields of a legacy transaction. -/
@@ -149,7 +177,16 @@ def decodeTyped (ty : Nat) (payload : ByteArray) : Except DecodeError Transactio
       blobVersionedHashes := ← (← asList "blobVersionedHashes" hashes).mapM
         (asWord "blob versioned hash"),
       yParity := ← asU256 "yParity" yParity, r := ← asU256 "r" r, s := ← asU256 "s" s }
-  | 1, _ | 2, _ | 3, _ =>
+  | 4, [chainId, nonce, maxPrio, maxFee, gas, to, value, data, al, auths, yParity, r, s] =>
+    return .eip7702 {
+      chainId := ← asU64 "chainId" chainId, nonce := ← asU64 "nonce" nonce,
+      maxPriorityFeePerGas := ← asUint "maxPriorityFeePerGas" maxPrio,
+      maxFeePerGas := ← asUint "maxFeePerGas" maxFee, gas := ← asUint "gas" gas,
+      to := ← asAddress "to" to, value := ← asU256 "value" value,
+      data := ← asBytes "data" data, accessList := ← decodeAccessList al,
+      authorizations := ← decodeAuthorizations auths,
+      yParity := ← asU256 "yParity" yParity, r := ← asU256 "r" r, s := ← asU256 "s" s }
+  | 1, _ | 2, _ | 3, _ | 4, _ =>
     throw (.unexpected s!"type-{ty} transaction has wrong field count {items.length}")
   | _, _ => throw (.unexpected s!"unsupported transaction type {ty}")
 

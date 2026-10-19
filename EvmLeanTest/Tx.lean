@@ -95,15 +95,24 @@ def blobTx (hashes : List Word) (maxFeePerBlobGas := 10) (gas := 100000) : Trans
 /-- A valid versioned hash (version byte `0x01`). -/
 def vh : Word := hw "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"
 
-#guard intrinsicGas (legacyTx) = 21000
-#guard intrinsicGas (legacyTx (data := hx "0x0001")) = 21000 + 4 + 16
-#guard intrinsicGas (legacyTx (data := hx "0x00000000ff")) = 21000 + 4 * 4 + 16
+#guard (intrinsicGas (legacyTx)).regular = 21000
+#guard (intrinsicGas (legacyTx (data := hx "0x0001"))).regular = 21000 + 4 + 16
+#guard (intrinsicGas (legacyTx (data := hx "0x00000000ff"))).regular = 21000 + 4 * 4 + 16
 -- Creation: 32000 plus 2 gas per init-code word (EIP-3860); 33 bytes = 2 words.
-#guard intrinsicGas (legacyTx (to := none) (data := Bytes.zeros 33)) = 21000 + 33 * 4 + 32000 + 4
-#guard intrinsicGas (legacyTx (to := none)) = 53000
+#guard (intrinsicGas (legacyTx (to := none) (data := Bytes.zeros 33))).regular = 21000 + 33 * 4 + 32000 + 4
+#guard (intrinsicGas (legacyTx (to := none))).regular = 53000
 -- Access list: 2400 per address, 1900 per key.
-#guard intrinsicGas (feeTx 10 1 (accessList := [⟨0xbb, [1, 2]⟩, ⟨0xcc, []⟩])) =
+#guard (intrinsicGas (feeTx 10 1 (accessList := [⟨0xbb, [1, 2]⟩, ⟨0xcc, []⟩]))).regular =
   21000 + 2 * 2400 + 2 * 1900
+-- EIP-7623 floor: 21000 + 10 per token (4 tokens per non-zero byte).
+#guard (intrinsicGas (legacyTx (data := hx "0x0001"))).calldataFloor = 21000 + 10 * 5
+#guard validate .prague (legacyTx (data := Bytes.zeros 100 ++ hx "0xff") (gas := 21000 + 416)) =
+  .error (.intrinsicGasTooLow (21000 + 10 * 104) (21000 + 416))
+#guard (validate .cancun (legacyTx (data := Bytes.zeros 100 ++ hx "0xff") (gas := 21000 + 416))).isOk
+-- EIP-7825 (Osaka): gas limit cap 2^24.
+#guard validate .osaka (legacyTx (gas := 2 ^ 24 + 1)) = .error (.gasLimitAboveCap (2 ^ 24 + 1))
+#guard (validate .osaka (legacyTx (gas := 2 ^ 24))).isOk
+#guard (validate .prague (legacyTx (gas := 2 ^ 24 + 1))).isOk
 #guard Gas.initCodeCost 0 = 0
 #guard Gas.initCodeCost 1 = 2
 #guard Gas.initCodeCost 32 = 2
@@ -111,12 +120,12 @@ def vh : Word := hw "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e32400
 
 /-! ## `validate_transaction` -/
 
-#guard (validate .cancun (legacyTx (gas := 21000))).toOption = some 21000
+#guard (validate .cancun (legacyTx (gas := 21000))).toOption.map (·.regular) = some 21000
 #guard validate .cancun (legacyTx (gas := 20999)) = .error (.intrinsicGasTooLow 21000 20999)
 #guard validate .cancun (legacyTx (nonce := 2 ^ 64 - 1)) = .error (.nonceOverflow (2 ^ 64 - 1))
-#guard (validate .cancun (legacyTx (nonce := 2 ^ 64 - 2))).toOption = some 21000
+#guard (validate .cancun (legacyTx (nonce := 2 ^ 64 - 2))).toOption.map (·.regular) = some 21000
 #guard validate .cancun (feeTx 10 11) = .error (.priorityFeeGreaterThanMaxFee 11 10)
-#guard (validate .cancun (feeTx 10 10)).toOption = some 21000
+#guard (validate .cancun (feeTx 10 10)).toOption.map (·.regular) = some 21000
 -- EIP-3860: init code above 49152 bytes is invalid (gas is checked first).
 #guard validate .cancun (legacyTx (to := none) (data := Bytes.zeros 49153) (gas := 10000000)) =
   .error (.initCodeSizeExceeded 49153)

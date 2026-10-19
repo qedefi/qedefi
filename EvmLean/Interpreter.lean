@@ -8,6 +8,7 @@ import EvmLean.Interpreter.JumpDest
 import EvmLean.Interpreter.State
 import EvmLean.Interpreter.Frame
 import EvmLean.Interpreter.Monad
+import EvmLean.Interpreter.Delegation
 import EvmLean.Interpreter.Instructions
 import EvmLean.Interpreter.Step
 
@@ -21,6 +22,7 @@ call stack: `step` is a total, non-recursive function, `run` iterates it with fu
 |---|---|---|
 | `Interpreter.JumpDest` | jump destination bitmap | `vm/runtime.py` |
 | `Interpreter.State` | world/transient operations, addresses | `state_tracker.py`, `utils/address.py` |
+| `Interpreter.Delegation` | EIP-7702 delegation (Prague) | `vm/eoa_delegation.py` |
 | `Interpreter.Frame` | `Frame`, `Machine`, results | `vm/__init__.py` (`Evm`) |
 | `Interpreter.Monad` | stack, gas, memory primitives | `vm/stack.py`, `vm/gas.py`, `vm/memory.py` |
 | `Interpreter.Instructions` | `exec : Opcode → M Action` | `vm/instructions/*.py` |
@@ -72,12 +74,18 @@ def initMachine (pre : PrecompileImpl) (ctx : Context) (world : World)
         .inl (topLevelResult msg.target w t r)
       | none => .inr (mk world' ∅ (.call 0 0))
 
-/-- `processMessageCall` with an explicit precompile implementation. -/
+/-- `processMessageCall` with an explicit precompile implementation. From Prague, a call
+first applies the transaction's EIP-7702 authorizations and resolves a delegated target
+(`applyTopLevelDelegation`); those state changes are not rolled back if the message fails,
+and the authorization refund is kept even then (`process_message_call`). -/
 def processMessageCallWith (pre : PrecompileImpl) (fuel : Nat) (ctx : Context) (world : World)
     (transient : TransientStorage) (msg : Message) : Except OutOfFuel MessageResult :=
+  let (world, msg, authRefund) := applyTopLevelDelegation ctx pre.isPrecompile world msg
+  let withRefund (r : MessageResult) : MessageResult :=
+    { r with refundCounter := r.refundCounter + authRefund }
   match initMachine pre ctx world transient msg with
-  | .inl r => .ok r
-  | .inr m => run fuel m
+  | .inl r => .ok (withRefund r)
+  | .inr m => (run fuel m).map withRefund
 
 /-- Execute a top-level message (call or creation) to completion. Mirrors
 `process_message_call` in `ethereum/execution-specs`. Each unit of `fuel` is one `step`. -/

@@ -4,16 +4,20 @@ import Conformance.Runner
 # `lake exe conform`
 
 ```
-lake exe conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork Cancun]
-                               [--parse-only] [--results FILE] [--fuel N]
+lake exe conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING]
+                 [--fork Cancun|Prague|Osaka|all] [--parse-only] [--results FILE] [--fuel N]
 ```
 
 Walks each `<dir>` (default `tests/fixtures/BlockchainTests`) for `*.json` BlockchainTests fixtures, runs them on `--threads` worker
-threads with `Crypto.real`, prints a summary (PASSED / FAILED / SKIPPED / UNPARSEABLE, with
-the names of unparseable tests and the first failures) and writes every test's status and
+threads with `Crypto.real`, prints a summary (PASSED / FAILED / SKIPPED / UNPARSEABLE, in total
+and per network, with the names of unparseable tests and the first failures) and writes every test's status and
 reason to the results file (default `conformance-results.txt`). The exit code is non-zero
 iff some test FAILED or was UNPARSEABLE.
 
+`--fork F` (default `Cancun`) runs the tests whose network is `F` or a transition network
+ending in `F` (e.g. `CancunToPragueAtTime15k` for `Prague`); `--fork all` runs every network
+built from supported forks. Fixtures may be `ethereum/tests` BlockchainTests or
+execution-spec-tests `blockchain_tests` (e.g. `tests/fixtures-eest/fixtures/blockchain_tests`).
 `--filter` keeps the tests whose `file::name` contains the substring. `--parse-only`
 decodes and cross-checks every fixture without executing it.
 -/
@@ -37,7 +41,7 @@ structure Config where
 
 /-- Usage text. -/
 def usage : String :=
-  "usage: conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork NAME] " ++
+  "usage: conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork NAME|all] " ++
   "[--parse-only] [--results FILE] [--fuel N]"
 
 /-- Parse the command line. -/
@@ -47,8 +51,9 @@ def parseArgs : List String → Config → Except String Config
     | some k => if k = 0 then .error "--threads must be positive" else parseArgs rest { c with threads := k }
     | none => .error s!"--threads: not a number: {n}"
   | "--filter" :: s :: rest, c => parseArgs rest { c with filter := some s }
+  | "--fork" :: "all" :: rest, c => parseArgs rest { c with opts.fork := none }
   | "--fork" :: f :: rest, c => match Fork.ofName? f with
-    | some fork => parseArgs rest { c with opts.fork := fork }
+    | some fork => parseArgs rest { c with opts.fork := some fork }
     | none => .error s!"--fork: unknown fork {f}"
   | "--parse-only" :: rest, c => parseArgs rest { c with opts.parseOnly := true }
   | "--results" :: f :: rest, c => parseArgs rest { c with results := f }
@@ -125,7 +130,10 @@ def runMain (args : List String) : IO UInt32 := do
     IO.eprintln s!"no JSON fixtures found under {roots}"
     return 2
   let mode := if cfg.opts.parseOnly then "parse-only" else "execute"
-  IO.println s!"conform: {files.size} files under {roots}, {cfg.threads} threads, fork {cfg.opts.fork.name}, mode {mode}"
+  let forkName := match cfg.opts.fork with
+    | some f => f.name
+    | none => "all"
+  IO.println s!"conform: {files.size} files under {roots}, {cfg.threads} threads, fork {forkName}, mode {mode}"
   let start ← IO.monoMsNow
   let results ← runPool files cfg.threads (runFile cfg)
   let results := results.qsort fun a b => a.file < b.file || (a.file == b.file && a.name < b.name)
@@ -142,6 +150,12 @@ def runMain (args : List String) : IO UInt32 := do
     IO.println s!"first failures (of {failed.size}):"
     for r in failed.toList.take 25 do IO.println s!"  {r.file}::{r.name}: {r.reason}"
   let passLabel := if cfg.opts.parseOnly then "PARSED" else "PASSED"
+  let networks := (results.filter (·.status != .skipped)).foldl
+    (fun (acc : Array String) r => if acc.contains r.network then acc else acc.push r.network) #[]
+  for n in networks.qsort (· < ·) do
+    let rs := results.filter (·.network == n)
+    let c (s : Status) := (rs.filter (·.status == s)).size
+    IO.println s!"  {n}: {passLabel} {c .passed}  FAILED {c .failed}  UNPARSEABLE {c .unparseable}"
   IO.println s!"{passLabel}: {count .passed}  FAILED: {count .failed}  SKIPPED: {count .skipped}  UNPARSEABLE: {count .unparseable}  (total {results.size}, {elapsed / 1000}s)"
   IO.println s!"results written to {cfg.results}"
   return if failed.isEmpty && unparseable.isEmpty then 0 else 1

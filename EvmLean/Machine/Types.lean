@@ -36,6 +36,24 @@ structure BlockEnv where
   parentBeaconBlockRoot : Word := 0
   deriving Inhabited
 
+/-- An EIP-7702 authorization tuple: the signer (the *authority*) allows its account to
+delegate to the code at `address`. Mirrors `Authorization` in `prague/fork_types.py`; the
+integer widths (`U256` chain id, `U64` nonce, `U8` y-parity) are enforced when decoding. -/
+structure Authorization where
+  /-- Chain id the authorization is valid on (`0` for every chain). -/
+  chainId : Nat
+  /-- The delegation target (the zero address clears the delegation). -/
+  address : Address
+  /-- The authority's nonce the authorization is valid for. -/
+  nonce : Nat
+  /-- Signature y-parity. -/
+  yParity : Nat
+  /-- Signature `r`. -/
+  r : Nat
+  /-- Signature `s`. -/
+  s : Nat
+  deriving DecidableEq, Inhabited
+
 /-- Transaction-level environment, constant during a transaction. -/
 structure TxEnv where
   /-- Transaction sender (`ORIGIN`). -/
@@ -44,6 +62,9 @@ structure TxEnv where
   gasPrice : Nat := 0
   /-- EIP-4844 blob versioned hashes (`BLOBHASH`). -/
   blobVersionedHashes : Array Word := #[]
+  /-- EIP-7702 authorizations of a set-code transaction (Prague), processed by
+  `process_message_call` before the top-level message runs. -/
+  authorizations : List Authorization := []
   deriving Inhabited
 
 /-- The cryptographic primitives the EVM depends on. The semantics is parameterised by
@@ -129,6 +150,9 @@ structure Message where
   accessedAddresses : AddressSet
   /-- Warm storage keys at message start. -/
   accessedStorageKeys : StorageKeySet
+  /-- EIP-7702 (Prague): the code was reached through a delegation designator, so a
+  precompile at `codeAddress` is *not* run (`Message.disable_precompiles`). -/
+  disablePrecompiles : Bool := false
   deriving Inhabited
 
 set_option linter.missingDocs false in
