@@ -246,8 +246,10 @@ elab_rules : tactic
   | `(tactic| pwp_msteps $[$n]? $[[$extra,*]]?) => do
     let extraA := (extra.map (·.getElems)).getD #[]
     let limit := (n.map (·.getNat)).getD 1000000
-    for _ in [0:limit] do
-      if ← pwpStep extraA then continue
+    let mut cfg : Option FastStep.Cfg := none
+    for i in [0:limit] do
+      if i == 1 then cfg ← pwpFastCfg extraA
+      if ← pwpStepFast cfg extraA then continue
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy [$extraA,*]))) then continue
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*]))) then continue
       return
@@ -351,11 +353,18 @@ macro_rules
 /-- `psol_steps` that also executes `MCOPY`. -/
 syntax "psol_msteps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
-macro_rules
-  | `(tactic| psol_msteps) => `(tactic| psol_msteps [])
-  | `(tactic| psol_msteps [$extra,*]) =>
-    `(tactic| repeat (first | psol_step [$extra,*] | psol_mcopy [$extra,*] |
-      psol_mcopy_zero [$extra,*]))
+elab_rules : tactic
+  | `(tactic| psol_msteps $[[$extra,*]]?) => do
+    let extraA := (extra.map (·.getElems)).getD #[]
+    let mut cfg : Option FastStep.Cfg := none
+    for i in [0:1000000] do
+      if i == 1 then cfg ← psolFastCfg extraA
+      if let some c := cfg then
+        if ← FastStep.fastRunStep c then continue
+      if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_step [$extraA,*]))) then continue
+      if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy [$extraA,*]))) then continue
+      if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy_zero [$extraA,*]))) then continue
+      return
 
 end EvmLogic.Tactic.Patched
 
