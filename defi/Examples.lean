@@ -24,6 +24,7 @@ import Examples.Solmate.ERC20.MintBurn
 import Examples.Solmate.ERC20.Permit
 import Examples.Solmate.ERC20.Spec
 import Examples.Solmate.ERC20.Strings
+import Examples.Solmate.ERC20.StringsVault
 import Examples.Solmate.ERC20.Transfer
 import Examples.Solmate.ERC20.TransferFrom
 import Examples.Solmate.ERC4626.Abstraction
@@ -40,6 +41,7 @@ import Examples.Solmate.ERC4626.Invariants.Deployed
 import Examples.Solmate.ERC4626.Invariants.Events
 import Examples.Solmate.ERC4626.Invariants.System
 import Examples.Solmate.ERC4626.LowGas.AnyGas
+import Examples.Solmate.ERC4626.LowGas.Certify
 import Examples.Solmate.ERC4626.LowGas.Code
 import Examples.Solmate.ERC4626.LowGas.Frames
 import Examples.Solmate.ERC4626.LowGas.Targets
@@ -59,6 +61,7 @@ import Examples.Solmate.ERC4626.Shares
 import Examples.Solmate.ERC4626.SharesCode
 import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.Strings
+import Examples.Solmate.ERC4626.StringsCommon
 import Examples.Solmate.ERC4626.UnknownSelectors
 import Examples.Solmate.ERC4626.Views
 import Examples.Solmate.ERC4626.ViewsSpec

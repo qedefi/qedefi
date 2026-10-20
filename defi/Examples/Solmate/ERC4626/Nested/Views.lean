@@ -2,6 +2,7 @@ import Examples.Solmate.ERC4626.Nested.Calls
 import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC20.Strings
+import Examples.Solmate.ERC4626.Strings
 import Examples.Solmate.ERC4626.PermitSpec
 import Examples.Solmate.ERC4626.Malformed
 
