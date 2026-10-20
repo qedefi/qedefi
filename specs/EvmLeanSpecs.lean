@@ -104,6 +104,7 @@ import EvmLeanSpecs.Refinement.MalformedVaultB
 import EvmLeanSpecs.Refinement.MalformedAsset
 import EvmLeanSpecs.Refinement.MalformedCalldata
 import EvmLeanSpecs.Refinement.NestedCoverage
+import EvmLeanSpecs.Refinement.LowGas
 
 /-!
 # EvmLeanSpecs
@@ -111,4 +112,3 @@ import EvmLeanSpecs.Refinement.NestedCoverage
 Abstract specifications (Mathlib-based) for contracts verified against evm-lean. See
 `specs/README.md`.
 -/
-import EvmLeanSpecs.Refinement.LowGas
