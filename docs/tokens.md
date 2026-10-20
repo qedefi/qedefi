@@ -504,3 +504,70 @@ WETH9 189 deposits, 77 fallback deposits, 115 withdrawals; BNB 63 phantom/fallba
 earlier run (`--seed 2026 --family oz3,tokens --sequences 40 --length 40`, before the
 mainnet weird tokens): 6,445 transactions, 0 mismatches. No evm-lean discrepancy was found.
 
+
+## Model-level results
+
+Proved in Mathlib (standard axioms only, `#print axioms` checked), no bytecode yet.
+
+**The variant model** (`defi/Defi/ERC20/Variant.lean`). `Defi.ERC20.Variant A` is a record of
+policies: return data per entry point (`bool`/`empty`), how guards and insufficient
+balance/allowance fail (`revert`/`invalid`/`returnFalse`), zero-address checks (also inside
+OZ's `_spendAllowance`), `rejectsSelf`, `zeroValueReverts`, `approveGuard`, infinite
+allowances (`none`/`= MAX`/`≥ MAX`), WETH's self-spend, Solady's Permit2, `fee`
+(`bpsCapped`: USDT `min(v·bps/10⁴, maxFee)`; `ceilPercent 100`: STA `⌈v/100⌉`) with a sink
+(`owner`/`burn`), `pausable`, `blacklist` (+ `destroyBlackFunds`), `rebasing` (gons with
+`scale = TOTAL_GONS / supply`), mint/burn authority, the fallback (`revert`/`accept`/`deposit`),
+and `totalSupply` stored or the ether balance. `VState A` holds every field; `Variant.call`
+adds the observable outcome and `Result.safe`/`decoded`/`unchecked` are the three ways a
+caller consumes it. Instances: `standard` (Solmate), `oz`, `solady p`, `weth9`, `usdt`, `bnb`,
+`sta`, `ampl`.
+
+| Theorem | Statement |
+|---|---|
+| `Variant.standard_transfer`, `_transferFrom`, `_approve`, `_mint`, `_burn` | `standard`'s operations are `Token.transfer` … (through `VState.toToken`/`withToken`) |
+| `Variant.oz_transfer`, `_transferFrom`, `_approve`, `_mint`, `_burn` | `oz`'s operations are `Token.ozTransfer` … |
+| `Variant.safe_call` | through `SafeTransferLib`/`SafeERC20` a call is exactly its state change, for every return and failure convention |
+| `Variant.usdt_decoded_eq_none`, `bnb_decoded_transfer` | a `returns (bool)` decoder rejects every USDT `transfer`/`transferFrom`/`approve` and every BNB `transfer` |
+| `Variant.usdt_call_invalid`, `unchecked_call_returnFalse`, `bnb_phantom` | USDT fails with `INVALID` on insufficient balance; ignoring return data continues after `false`; BNB's fallback accepts any unknown selector (e.g. `permit`) with no effect |
+| `Variant.WF_exec` (+ `*_sane`) | the supply invariant holds after any operation sequence for every `Sane` variant: `Σ bal = supply ≤ MAX` (owner fees stay in `Σ`, burned fees and `destroyBlackFunds` leave both sides), `Σ bal ≤ ether` (WETH9), `Σ gons = TOTAL_GONS ∧ scale = TOTAL_GONS/supply` (rebasing) |
+| `Variant.sum_balanceOf_le_supply` | rebasing: `Σ ⌊gons/scale⌋ ≤ supply` (from `cap² ≤ TOTAL_GONS`; for AMPL `(2¹²⁸−1)² ≤ TOTAL_GONS`) |
+| `Variant.weth9_backed_exec`, `weth9_deposit`, `weth9_withdraw` | ether backing `Σ balanceOf ≤ address(this).balance` under deposits, withdrawals, transfers, forced ether; exact deposit/withdraw effects, withdrawal liveness |
+| `Variant.move_balanceOf` | without fee every variant (rebasing included) moves exactly `v` in the `balanceOf` view |
+| `Variant.move_fee_dst`, `move_fee_src`, `move_fee_supply` | with a fee the recipient gets `v − fee`, the payer loses `v`, a burned fee leaves the supply |
+| `Variant.usdt_approve_isSome_iff`, `approve_approve_eq_none`, `usdt_approve_reset`, `bnb_approve_zero` | USDT `approve` succeeds iff `v = 0 ∨ allowance = 0`; approve-then-approve fails; resetting to 0 works on USDT and is impossible on BNB |
+
+**The vaults over an asset variant** (`defi/Defi/ERC4626/AssetVariants.lean`). `Asset σ A`
+abstracts what a vault uses (balance view, `transfer`, `transferFrom`); `GSolmate` and `GOz`
+are the two vault models over any `Asset`, and `GSolmate.deposit_solmate` …,
+`GOz.deposit_oz` … prove they are the existing models over `Asset.solmate`/`Asset.oz`.
+`Asset.variant V` is a variant behind `SafeTransferLib`. For any asset: share ledger
+invariant (`Inv_*`) and solvency (`GSolmate.solvent`, `GOz.solvent`); for an
+`Asset.ExactOn` asset: no dilution (`GSolmate.*_price_mono` while `S > 0`, `GOz.*_price_mono`
+always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`NoFee`).
+
+**Integration** (`defi/Defi/ERC4626/Integration.lean`, namespace `Defi.ERC4626.Integration`):
+
+| Theorem | Statement |
+|---|---|
+| `solmate_vinv_deposit`, `_mint`, `_withdraw`, `_redeem` | asset `WF` and share ledger preserved for every `Sane` variant, fees and rebasing included: the breakage below is economic, not a ledger bug |
+| `noFee_solmate_*_price_mono`, `noFee_oz_*_price_mono`; `usdt_solmate_deposit_price_mono`, `bnb_solmate_deposit_price_mono` | (a) no dilution with any fee-free variant whatever its conventions: USDT with `basisPointsRate = 0` (`usdt_noFee`), BNB (`bnb_noFee`), AMPL between rebases (`ampl_noFee`) |
+| `naive_usdt_deposit_eq_none`, `naive_usdt_withdraw_eq_none` | a vault that decodes a `bool` reverts on every USDT deposit and withdrawal |
+| `unchecked_returnFalse_deposit` | a vault ignoring return data mints shares without receiving tokens from a `returnFalse` token |
+| `fee_deposit_totalAssets` | (b) deposit of `a` with fee `f`: `T' + f = T + a` while shares are minted for `a` |
+| `fee_deposit_dilution` | exactly `T·S' + ρ = T'·S + f·S` with rounding remainder `ρ = a·S − n·T < T`: existing holders lose `(f·S − ρ)/S'` |
+| `fee_deposit_price_drop`, `oz_fee_deposit_price_drop` | if the fee is worth a share (`T ≤ f·S`; OZ `T̂ ≤ f·Ŝ`) the price strictly drops (`T'·S < T·S'`), refuting no-dilution |
+| `fee_withdraw_receiver` | `withdraw(a)` delivers `a − fee(a)` (EIP-4626: exactly `a`) |
+| `sta_solmate_witness` | STA: alice deposits 100 (100 shares, vault gets 99), bob deposits 100 (101 shares, vault 198); alice's shares go from 99 to 98 (`99·201 > 198·100`), she redeems 98 and receives 97: bob's inbound fee is socialised onto her |
+| `rebase_totalAssets`, `negative_rebase_totalAssets_le`, `positive_rebase_accrues` | a rebase sets `T = gons/(TOTAL_GONS/S)` with no vault call; negative lowers `T`, positive raises it and every holder's `convertToAssets` |
+| `ampl_rebase_witness` | AMPL: deposit 100 (100 shares); after halving the supply the shares are worth 50 and the previewed `withdraw(100)` reverts; after doubling, worth 200 |
+| `usdt_reapprove_reverts` | (c) `approve(x)` then `approve(y)`, `x, y ≠ 0`: the second call halts with `REVERT` |
+| `usdt_reapprove_after_pull` | after `approve(x)` (`x < MAX`) and a spender's `transferFrom` of `x'`, a nonzero `approve(y)` succeeds iff `x' = x` |
+
+**Left for the bytecode phase**: refinement of each mainnet/compiled token against its
+instance (`processMessageCall` = `Variant.call` lifted through a per-token storage layout,
+including the `INVALID`/`REVERT` distinction and empty return data), and of the vaults'
+`SafeTransferLib`/`SafeERC20` call sites against `Result.safe` so that the integration
+theorems above transfer to the deployed code; events per operation; the parts the model does
+not cover (USDT deprecation forwarding, BNB `freeze`/`unfreeze`/`withdrawEther`, STA allowance
+helpers, `permit`, fee-arithmetic overflow, AMPL `transferAll` and dust), and WETH's
+2300-gas stipend callee summary.
