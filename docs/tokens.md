@@ -518,10 +518,15 @@ allowances (`none`/`= MAX`/`≥ MAX`), WETH's self-spend, Solady's Permit2, `fee
 (`bpsCapped`: USDT `min(v·bps/10⁴, maxFee)`; `ceilPercent 100`: STA `⌈v/100⌉`) with a sink
 (`owner`/`burn`), `pausable`, `blacklist` (+ `destroyBlackFunds`), `rebasing` (gons with
 `scale = TOTAL_GONS / supply`), mint/burn authority, the fallback (`revert`/`accept`/`deposit`),
-and `totalSupply` stored or the ether balance. `VState A` holds every field; `Variant.call`
-adds the observable outcome and `Result.safe`/`decoded`/`unchecked` are the three ways a
-caller consumes it. Instances: `standard` (Solmate), `oz`, `solady p`, `weth9`, `usdt`, `bnb`,
-`sta`, `ampl`.
+`totalSupply` stored or the ether balance, and the extra entry points: BNB's
+`freeze`/`unfreeze` ledger and `withdrawEther`, allowance helpers (`checked`: STA;
+`saturating`: AMPL), STA's `destroyFrom`, AMPL's `transferAll`/`transferAllFrom`, and EIP-2612
+`permit` (`eip2612 rejectZero wraps`: Solmate/Solady `true true`, AMPL `false false`; without
+it a `permit` call reaches the fallback). The fee computation's SafeMath overflow
+(`feeOverflow`) fails a transfer with `INVALID` (`failKind`). `VState A` holds every field
+(including `frozen` and `nonces`); `Variant.call` adds the observable outcome and
+`Result.safe`/`decoded`/`unchecked` are the three ways a caller consumes it. Instances:
+`standard` (Solmate), `oz`, `solady p`, `weth9`, `usdt`, `bnb`, `sta`, `ampl`.
 
 | Theorem | Statement |
 |---|---|
@@ -530,12 +535,51 @@ caller consumes it. Instances: `standard` (Solmate), `oz`, `solady p`, `weth9`, 
 | `Variant.safe_call` | through `SafeTransferLib`/`SafeERC20` a call is exactly its state change, for every return and failure convention |
 | `Variant.usdt_decoded_eq_none`, `bnb_decoded_transfer` | a `returns (bool)` decoder rejects every USDT `transfer`/`transferFrom`/`approve` and every BNB `transfer` |
 | `Variant.usdt_call_invalid`, `unchecked_call_returnFalse`, `bnb_phantom` | USDT fails with `INVALID` on insufficient balance; ignoring return data continues after `false`; BNB's fallback accepts any unknown selector (e.g. `permit`) with no effect |
-| `Variant.WF_exec` (+ `*_sane`) | the supply invariant holds after any operation sequence for every `Sane` variant: `Σ bal = supply ≤ MAX` (owner fees stay in `Σ`, burned fees and `destroyBlackFunds` leave both sides), `Σ bal ≤ ether` (WETH9), `Σ gons = TOTAL_GONS ∧ scale = TOTAL_GONS/supply` (rebasing) |
+| `Variant.WF_exec` (+ `*_sane`) | the supply invariant holds after any operation sequence for every `Sane` variant: `Σ bal + Σ frozen = supply ≤ MAX` (owner fees stay in `Σ`, burned fees, `destroyBlackFunds` and `destroyFrom` leave both sides, freezing moves between the ledgers), `Σ bal ≤ ether` (WETH9), `Σ gons = TOTAL_GONS ∧ scale = TOTAL_GONS/supply` (rebasing; `transferAll` moves whole gon balances) |
 | `Variant.sum_balanceOf_le_supply` | rebasing: `Σ ⌊gons/scale⌋ ≤ supply` (from `cap² ≤ TOTAL_GONS`; for AMPL `(2¹²⁸−1)² ≤ TOTAL_GONS`) |
 | `Variant.weth9_backed_exec`, `weth9_deposit`, `weth9_withdraw` | ether backing `Σ balanceOf ≤ address(this).balance` under deposits, withdrawals, transfers, forced ether; exact deposit/withdraw effects, withdrawal liveness |
 | `Variant.move_balanceOf` | without fee every variant (rebasing included) moves exactly `v` in the `balanceOf` view |
 | `Variant.move_fee_dst`, `move_fee_src`, `move_fee_supply` | with a fee the recipient gets `v − fee`, the payer loses `v`, a burned fee leaves the supply |
 | `Variant.usdt_approve_isSome_iff`, `approve_approve_eq_none`, `usdt_approve_reset`, `bnb_approve_zero` | USDT `approve` succeeds iff `v = 0 ∨ allowance = 0`; approve-then-approve fails; resetting to 0 works on USDT and is impossible on BNB |
+
+**The extra entry points** (`defi/Defi/ERC20/VariantExtras.lean`, namespace
+`Defi.ERC20.Variant`):
+
+| Theorem | Statement |
+|---|---|
+| `usdt_call_transfer`, `usdt_call_transferFrom` | complete outcome of a USDT transfer (`bps ≤ 10⁴`): `REVERT` iff paused or the sender (`transferFrom`: `from`; spender and recipient unchecked) is blacklisted; else `INVALID` iff the allowance (unless `≥ MAX`) or balance is short or `MAX < v·bps` (SafeMath `mul` `assert`, computed first); else success, no return data |
+| `usdt_feeOverflow_false`, `usdt_overflow_unreachable` | with `bps < 20` the overflow needs `v > MAX/19 ≈ 6.1·10⁷⁵`; unreachable in a well-formed state with `19·totalSupply ≤ MAX` |
+| `sta_feeOverflow_iff`, `sta_call_transfer_overflow`, `sta_call_transfer_short` | STA's `cut` overflows iff `MAX < ⌈v/100⌉·100·100` (the `.mul(basePercent)` step, from `v ≈ MAX/100`, not `ceil`'s `v + 100`); that is `INVALID`, while a short balance is `REVERT` |
+| `bnb_freeze`, `bnb_unfreeze`, `bnb_freeze_unfreeze` | `freeze`/`unfreeze` are holder-level (not owner-only): fail iff short, `v = 0` or overflow; freezing is undone exactly by unfreezing |
+| `bnb_supply_exec`, `bnb_sum_lt_supply` | `Σ balanceOf + Σ freezeOf = totalSupply ≤ MAX` after any sequence; `Σ balanceOf < totalSupply` while anything is frozen |
+| `bnb_withdrawEther_not_owner`, `bnb_withdrawEther`, `ether_le_stepOp`, `bnb_ether_le_stepOp` | `withdrawEther` is owner-only; only `withdraw` (WETH9) and `withdrawEther` lower a token's ether, so BNB's ether (phantom calls' value) leaves only to the owner |
+| `sta_upAllowance`, `sta_downAllowance`, `sta_adjustFail` | STA has `upAllowance`/`downAllowance` (no `increaseAllowance`): spender `0` → `REVERT`, overflow/underflow → `INVALID` |
+| `ampl_increaseAllowance`, `ampl_decreaseAllowance` | AMPL: increase reverts only on overflow (any spender), decrease saturates at `0`, never fails |
+| `sta_burnFrom` | `destroyFrom` fails iff allowance short, `v = 0` or balance short; spends even an infinite allowance |
+| `ampl_transferAll_balanceOf`, `ampl_transfer_dust` | `transferAll` moves all gons: sender `0`, recipient gains the reported value or one more; `transfer(balanceOf)` leaves `gons mod gonsPerFragment` behind |
+| `standard_permit` | Solmate `permit` is `PermitToken.permit` with validity "not expired ∧ `ecrecover = owner ≠ 0`" |
+| `standard_permit_zero_owner`, `ampl_permit_zero_owner`, `ampl_permit_nonce_max`, `standard_permit_wraps` | a failed recovery (`0`) passes for `owner = 0` on AMPL, not on Solmate; AMPL's nonce is checked, Solmate's wraps |
+| `weth9_permit_phantom`, `bnb_permit_phantom`, `permit_none_revert` | without `permit`: WETH9 and BNB report success and change nothing; USDT, STA, OZ revert |
+| `weth9_permit_then_transferFrom` | `permit` then `transferFrom` on WETH9 = the `transferFrom` alone, whatever the signature: a standing allowance is spent unsigned |
+| `withdraw_eq_withdrawWith`, `weth9_withdraw_reject` | `withdraw` is `withdrawWith` with a stipend callee (accept/reject, no storage change: no `SSTORE` under the EIP-2200 sentry, no value transfer; `TSTORE`/logs only, never read by WETH9); a rejection reverts the withdrawal |
+| `weth9_backed_withdrawWith`, `weth9_reentrant_withdraw` | even an unbounded reentrant callee keeps the ether backing and cannot withdraw the same funds twice (debit before the call) |
+
+**USDT deprecation** (`defi/Defi/ERC20/VariantDeprecation.lean`): `DState` is legacy USDT, the
+switch, and the upgraded token's state (`none`: no code), the upgraded token any variant `W`
+with legacy entry points `byLegacy trusted` (accepted only from `msg.sender = trusted`, then
+executed as called by the original user passed as an argument: `msg.sender` is rewritten to
+USDT by the forward).
+
+| Theorem | Statement |
+|---|---|
+| `DState.call_of_not_deprecated` | before deprecation: `usdt.call` |
+| `DState.safe_call_deprecated` | through `SafeTransferLib`: USDT's guards (pause, blacklist of caller/`from`; none for `approve`) then `W`'s ordinary entry point called by the original user |
+| `DState.call_noCode`, `call_untrusted`, `balanceOf_noCode` | no code at `upgradedAddress`, or an upgraded token not trusting USDT: every transfer/`transferFrom`/`approve` and the views revert |
+| `DState.call_halt_revert`, `call_masks_returnFalse` | every failure of `W` (incl. `INVALID`) surfaces as `REVERT`; a `false` from `W` is dropped: success with nothing moved, accepted by `SafeTransferLib` |
+| `DState.approve_ignores_guards`, `transfer_guarded`, `call_legacy_eq` | `approve` is forwarded while paused/blacklisted; transfers are not; the legacy ledger is frozen |
+| `DState.destroyBlackFunds_deprecated`, `destroyBlackFunds_of_not_deprecated` | after deprecation it zeroes the stale legacy balance and lowers the stale `_totalSupply` by the forwarded balance (unchecked); the live ledger and all views are unchanged; before, it is `usdt`'s |
+| `Variant.byLegacy_spoof`, `byLegacyUnchecked_impersonation` | with the `msg.sender` check direct calls revert; without it anyone moves anyone's tokens |
+| `DState.deprecated_call`, `deprecated_setDeprecated` | `deprecated` is never cleared |
 
 **The vaults over an asset variant** (`defi/Defi/ERC4626/AssetVariants.lean`). `Asset σ A`
 abstracts what a vault uses (balance view, `transfer`, `transferFrom`); `GSolmate` and `GOz`
@@ -564,11 +608,26 @@ always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`N
 | `usdt_reapprove_reverts` | (c) `approve(x)` then `approve(y)`, `x, y ≠ 0`: the second call halts with `REVERT` |
 | `usdt_reapprove_after_pull` | after `approve(x)` (`x < MAX`) and a spender's `transferFrom` of `x'`, a nonzero `approve(y)` succeeds iff `x' = x` |
 
+**Vaults over USDT** (`defi/Defi/ERC4626/IntegrationUsdt.lean`, same namespace):
+
+| Theorem | Statement |
+|---|---|
+| `usdt_fee_deposit_price_drop`, `usdt_oz_fee_deposit_price_drop` | (a) fee on: if `min(a·bps/10⁴, maximumFee)` is worth a share (`T ≤ fee·S`; OZ `T̂ ≤ fee·Ŝ`), a deposit strictly lowers the price |
+| `usdtFee_reachable`, `usdt_fee_witness` | `bps = 19`, `maximumFee = 10⁶` (`setParams(19, 1)`), cap binding: alice deposits 10⁹ (10⁹ shares, vault gets 999·10⁶), bob 10⁹ (1,001,001,001 shares); alice's shares drop from 999,000,000 to 998,500,250, she receives 997,500,250 |
+| `blacklisted_vault_withdraw`, `_redeem`, `_oz_withdraw`, `_oz_redeem` | (b) a blacklisted vault: every `withdraw`/`redeem` reverts (USDT checks the sender of `transfer`) |
+| `deposit_setBl` | a deposit's outcome depends on the blacklist only at the caller: deposits into a blacklisted vault proceed unchanged |
+| `blacklisted_caller_deposit`, `_mint`, `_oz_deposit`, `_oz_mint` | a blacklisted caller cannot deposit or mint (`from` is checked) |
+| `destroyBlackFunds_vault`, `blacklisted_vault_witness` | `destroyBlackFunds(vault)` sets `totalAssets = 0` with the shares outstanding; witness: blacklisted vault takes alice's 100, her redeem reverts, then her shares are worth 0 |
+| `blacklist_bypass_witness` | a user blacklisted after depositing cannot `transfer` but redeems her shares to another receiver, who gets the USDT |
+| `paused_solmate`, `paused_oz` | (c) pausable variant, paused: every `deposit`/`mint`/`withdraw`/`redeem` reverts on both vaults |
+| `paused_views`, `oz_paused_views` | `totalAssets` and all conversions/previews ignore `paused` and the blacklist |
+
 **Left for the bytecode phase**: refinement of each mainnet/compiled token against its
 instance (`processMessageCall` = `Variant.call` lifted through a per-token storage layout,
 including the `INVALID`/`REVERT` distinction and empty return data), and of the vaults'
 `SafeTransferLib`/`SafeERC20` call sites against `Result.safe` so that the integration
-theorems above transfer to the deployed code; events per operation; the parts the model does
-not cover (USDT deprecation forwarding, BNB `freeze`/`unfreeze`/`withdrawEther`, STA allowance
-helpers, `permit`, fee-arithmetic overflow, AMPL `transferAll` and dust), and WETH's
-2300-gas stipend callee summary.
+theorems above transfer to the deployed code; events per operation; the generic EvmLogic
+lemma that a stipend frame writes no persistent state (which justifies `stipend` as the only
+callees of WETH9's and BNB's ether sends); the parts the model still does not cover (USDT's
+deprecation with `upgradedAddress = USDT`, the forwarded gas and short-return quirk; signature
+recovery itself, which `permit` takes as a parameter; short-payload checks).
