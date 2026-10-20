@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fail if a trust escape hatch is used (DESIGN.md, principles 1–2).
+# Fail if a trust escape hatch is used (docs/architecture.md, principles 1–2).
 #
 # * The semantics (EvmLean/): no `sorry`, `axiom`, `opaque`, `partial def`, `unsafe`,
 #   `@[extern]`, `implemented_by`, `native_decide`, `panic!`, `get!`, `head!`, `getLast!`,
