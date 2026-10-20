@@ -248,8 +248,8 @@ elab_rules : tactic
     let limit := (n.map (·.getNat)).getD 1000000
     let mut cfg : Option FastStep.Cfg := none
     for i in [0:limit] do
-      if i == 1 then cfg ← pwpFastCfg extraA
-      if ← pwpStepFast cfg extraA then continue
+      if i == 0 then cfg ← pwpFastCfg extraA
+      if ← pwpStepFast cfg extraA (normAll := i == 0) then continue
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy [$extraA,*]))) then continue
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*]))) then continue
       return
@@ -358,9 +358,9 @@ elab_rules : tactic
     let extraA := (extra.map (·.getElems)).getD #[]
     let mut cfg : Option FastStep.Cfg := none
     for i in [0:1000000] do
-      if i == 1 then cfg ← psolFastCfg extraA
+      if i == 0 then cfg ← psolFastCfg extraA
       if let some c := cfg then
-        if ← FastStep.fastRunStep c then continue
+        if ← FastStep.fastRunStep c (normAll := i == 0) then continue
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_step [$extraA,*]))) then continue
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy [$extraA,*]))) then continue
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy_zero [$extraA,*]))) then continue

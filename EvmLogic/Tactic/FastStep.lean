@@ -72,6 +72,8 @@ theorem lt_sub_chain {L G c bc : Nat} (l bs : List Nat) (hb : BoundedBy l bs) (h
   Nat.lt_of_le_of_lt hc (le_sub_chain' (c := bc + 1) l bs hb hL
     (by have := Nat.le_of_ble_eq_true h; omega))
 
+theorem sub_le_sub_of {l H a b : Nat} (h1 : l ≤ H) (h2 : a ≤ b) : l - b ≤ H - a := by omega
+
 theorem le_of_le_add {L X G c : Nat} (h1 : L ≤ X) (h2 : X ≤ G + c) : L - c ≤ G := by omega
 
 theorem sub_sub_lit (G n k s : Nat) (h : n + k = s) : G - n - k = G - s := by
@@ -165,33 +167,56 @@ def gasShape (g : Expr) : MetaM (Option (Expr × Nat)) := do
   unless G.isFVar do return none
   return some (G, n)
 
-/-- A lower bound `L ≤ G` (numeral `L`) with its proof: a hypothesis `L ≤ G`, or `L - c` from
-hypotheses `L ≤ X` and `X ≤ G + c` (the gas returned by a summary). -/
-def gasBound (G : Expr) : MetaM (Option (Expr × Nat)) := do
-  let mut best : Option (Expr × Nat) := none
-  for decl in ← getLCtx do
-    if decl.isImplementationDetail then continue
-    let ty ← instantiateMVars decl.type
-    let_expr LE.le _ _ L G' := ty | continue
-    if G' == G then
-      let some l ← (evalNat L).run | continue
-      if best.all (·.2 < l) then best := some (decl.toExpr, l)
-      continue
-    -- `X ≤ G + c`
-    let_expr HAdd.hAdd _ _ _ _ G'' c := G' | continue
-    unless G'' == G do continue
-    let some cv ← (evalNat c).run | continue
-    for d2 in ← getLCtx do
-      if d2.isImplementationDetail then continue
-      let t2 ← instantiateMVars d2.type
-      let_expr LE.le _ _ L2 X := t2 | continue
-      unless X == L do continue
-      let some l ← (evalNat L2).run | continue
+/-- A lower bound of a numeral-valued term `X` (a numeral, a variable with a bound, or
+`H - a` for a numeral `a`): `(proof of L ≤ X, L)`. -/
+def termBound (bound : Expr → MetaM (Option (Expr × Nat))) (X : Expr) :
+    MetaM (Option (Expr × Nat)) := do
+  let X := X.consumeMData
+  if let some v ← (evalNat X).run then return some (mkApp (mkConst ``Nat.le_refl) X, v)
+  if X.isFVar then return ← bound X
+  let_expr HSub.hSub _ _ _ _ H a := X | return none
+  unless H.isFVar do return none
+  let some (pH, l) ← bound H | return none
+  match ← (evalNat a).run with
+  | some av =>
+    -- `l - a ≤ H - a`
+    let pf := mkApp4 (mkConst ``Nat.sub_le_sub_right) (mkNatLit l) H pH a
+    return some (← mkExpectedTypeHint pf (← mkLE (mkNatLit (l - av)) X), l - av)
+  | none =>
+    -- `l - b ≤ H - a` for a bounded cost `a ≤ b`
+    let some (b, pa) ← costBound (fun _ => pure none) 4096 a | return none
+    let some bv ← closedNat? b | return none
+    let pf := mkAppN (mkConst ``sub_le_sub_of) #[mkNatLit l, H, a, b, pH, pa]
+    return some (← mkExpectedTypeHint pf (← mkLE (mkNatLit (l - bv)) X), l - bv)
+
+/-- A lower bound `L ≤ G` (numeral `L`) with its proof, from hypotheses `L ≤ G` and, through
+at most `depth` summaries, `X ≤ G + c` with a lower bound of `X` (the gas a call or an internal
+function returns). -/
+def gasBoundN : Nat → Expr → MetaM (Option (Expr × Nat))
+  | 0, _ => return none
+  | depth + 1, G => do
+    let mut best : Option (Expr × Nat) := none
+    for decl in ← getLCtx do
+      if decl.isImplementationDetail then continue
+      let ty ← instantiateMVars decl.type
+      let_expr LE.le _ _ X R := ty | continue
+      if R == G then
+        if let some v ← (evalNat X).run then
+          if best.all (·.2 < v) then best := some (decl.toExpr, v)
+        continue
+      let_expr HAdd.hAdd _ _ _ _ G' c := R | continue
+      unless G' == G do continue
+      let some cv ← (evalNat c).run | continue
+      if X == G then continue
+      let some (pX, l) ← termBound (gasBoundN depth) X | continue
       if l ≤ cv then continue
       if best.all (·.2 < l - cv) then
-        let pf := mkAppN (mkConst ``le_of_le_add) #[L2, X, G, c, d2.toExpr, decl.toExpr]
+        let pf := mkAppN (mkConst ``le_of_le_add) #[mkNatLit l, X, G, c, pX, decl.toExpr]
         best := some (← mkExpectedTypeHint pf (← mkLE (mkNatLit (l - cv)) G), l - cv)
-  return best
+    return best
+
+/-- `gasBoundN` through at most six summaries. -/
+def gasBound (G : Expr) : MetaM (Option (Expr × Nat)) := gasBoundN 7 G
 
 /-- Close `c ≤ gas` or `c < gas` for a bounded cost `c` and a gas field `G - a₁ - … - aₖ`
 with bounded `aᵢ`, from a hypothesis `L ≤ G`. -/
@@ -547,7 +572,8 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
 /-- One instruction of the machine literal `m`: the next machine `m'` (changed fields
 normalized) and a proof of `step m = .running m'`. `none` if the instruction is not handled
 here (halts, calls, creates, `GAS`) or a side condition fails. -/
-def stepCore (cfg : Cfg) (m : Expr) : TacticM (Option (Expr × Expr)) := do
+def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
+    TacticM (Option (Expr × Expr)) := do
   let some (ms, fs) := literalFields? m | do trace[EvmLean.wp] "fast step: core check 1"; return none
   let code := fs[1]!
   let some pc ← (evalNat fs[3]!).run | do trace[EvmLean.wp] "fast step: core check 2"; return none
@@ -592,7 +618,10 @@ def stepCore (cfg : Cfg) (m : Expr) : TacticM (Option (Expr × Expr)) := do
       let mut fPf : Array (Option Expr) := #[]
       let mut fi := 0
       for (v, changed) in fOut do
-        let (raw, v', p) ← if !changed then pure (v, v, none)
+        let mutable := [3, 4, 5, 6, 7, 8].contains fi
+        let (raw, v', p) ← if normAll && mutable then do
+            let (v', p) ← normField cfg m v; pure (v, v', p)
+          else if !changed then pure (v, v, none)
           else if fi == 3 then normPc m v
           else if fi == 4 then normStack cfg m fs[4]! v
           else if fi == 6 then normGas cfg m fs[6]! v
@@ -609,7 +638,7 @@ def stepCore (cfg : Cfg) (m : Expr) : TacticM (Option (Expr × Expr)) := do
         let (v, changed) := mOut[i]!
         if i == 6 then
           mRaw := mRaw.push frRaw; mNew := mNew.push frNew; mPf := mPf.push frPf
-        else if changed then
+        else if changed || (normAll && [2, 3, 5].contains i) then
           let (v', p) ← normField cfg m v
           mRaw := mRaw.push v; mNew := mNew.push v'; mPf := mPf.push p
         else mRaw := mRaw.push v; mNew := mNew.push v; mPf := mPf.push none
@@ -637,13 +666,13 @@ def stepCore (cfg : Cfg) (m : Expr) : TacticM (Option (Expr × Expr)) := do
 
 /-- One fast step on the main goal `WP m Q H`. `false` (goal unchanged) if the instruction is
 not handled here. -/
-def fastWpStep (cfg : Cfg) : TacticM Bool := withMainContext do
+def fastWpStep (cfg : Cfg) (normAll : Bool := false) : TacticM Bool := withMainContext do
   let g ← getMainGoal
   let t ← instantiateMVars (← g.getType)
   let_expr WP m Q H := t | return false
   if (literalFields? m).isNone then
     trace[EvmLean.wp] "fast step: not a machine literal: {m}"
-  let some (m', hstep) ← stepCore cfg m | return false
+  let some (m', hstep) ← stepCore cfg m normAll | return false
   let some (mNew, fNew) := literalFields? m' | return false
   let hsame := mkAppN (mkConst ``SameFrame.of_update)
     #[m, mNew[2]!, mNew[3]!, mNew[5]!, fNew[3]!, fNew[4]!, fNew[5]!, fNew[6]!, fNew[7]!, fNew[8]!]
@@ -668,14 +697,14 @@ def predFuel? (fuel : Expr) : MetaM (Option Expr) := do
   return some (← mkAdd k (mkNatLit (c - 1)))
 
 /-- One fast step in a goal containing `run fuel m`: rewrite it to `run fuel' m'`. -/
-def fastRunStep (cfg : Cfg) : TacticM Bool := withMainContext do
+def fastRunStep (cfg : Cfg) (normAll : Bool := false) : TacticM Bool := withMainContext do
   let g ← getMainGoal
   let t ← instantiateMVars (← g.getType)
   let some runE := t.find? fun x => x.isAppOfArity ``EvmLean.Interpreter.run 2 | return false
   let fuel := runE.appFn!.appArg!
   let m := runE.appArg!
   let some fuel' ← predFuel? fuel | return false
-  let some (m', hstep) ← stepCore cfg m | return false
+  let some (m', hstep) ← stepCore cfg m normAll | return false
   -- `run (fuel' + 1) m = run fuel' m'`, with `fuel' + 1 ≡ fuel`
   let heq := mkAppN (mkConst ``run_succ_of_running) #[m, m', fuel', hstep]
   let heq ← mkExpectedTypeHint heq (← mkEq runE (mkApp2 (mkConst ``EvmLean.Interpreter.run) fuel' m'))

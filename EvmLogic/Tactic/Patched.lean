@@ -470,9 +470,10 @@ def pwpFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
 
 /-- One step: the fast stepper if it applies, else `pwpStep`. -/
 def pwpStepFast (cfg : Option FastStep.Cfg)
-    (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool := do
+    (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) (normAll : Bool := false) :
+    TacticM Bool := do
   if let some c := cfg then
-    if ← FastStep.fastWpStep c then return true
+    if ← FastStep.fastWpStep c normAll then return true
   pwpStep extra
 
 /-- Advance a goal `WP m Q H` by one instruction (literal or patched code). -/
@@ -495,8 +496,8 @@ elab_rules : tactic
     -- only what they change
     let mut cfg : Option FastStep.Cfg := none
     for i in [0:limit] do
-      if i == 1 then cfg ← pwpFastCfg extra
-      unless ← pwpStepFast cfg extra do return
+      if i == 0 then cfg ← pwpFastCfg extra
+      unless ← pwpStepFast cfg extra (normAll := i == 0) do return
 
 /-- `wp_run_to` for literal or patched code. -/
 syntax "pwp_run_to " num,+ (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
@@ -511,8 +512,8 @@ elab_rules : tactic
       if i > 0 then
         if let some pc ← wpGoalPc? g then
           if pcs.contains pc then return
-      if i == 1 then cfg ← pwpFastCfg extra
-      unless ← pwpStepFast cfg extra do return
+      if i == 0 then cfg ← pwpFastCfg extra
+      unless ← pwpStepFast cfg extra (normAll := i == 0) do return
 
 end EvmLogic.Program
 
@@ -586,9 +587,9 @@ elab_rules : tactic
         return false
     let mut cfg : Option FastStep.Cfg := none
     for i in [0:1000000] do
-      if i == 1 then cfg ← psolFastCfg extra
+      if i == 0 then cfg ← psolFastCfg extra
       if let some c := cfg then
-        if ← FastStep.fastRunStep c then continue
+        if ← FastStep.fastRunStep c (normAll := i == 0) then continue
       unless ← one do return
 
 end EvmLogic.Tactic.Patched
