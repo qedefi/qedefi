@@ -1,5 +1,6 @@
 import EvmLeanSpecs.Refinement.LowGasTargets
 import EvmLeanProofs.Program.AbsInt.CodeRun
+import EvmLeanProofs.Program.GasMono.Depth
 
 /-!
 # The invariants for arbitrary transactions, at any gas
@@ -38,12 +39,62 @@ open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
+/-! ## The depth limit -/
+
+/-- `VaultStart` survives changing the depth. -/
+theorem _root_.EvmLeanSpecs.Refinement.Nested.VaultStart.setDepth {m : Machine}
+    (hv : VaultStart vault asset m) (d : Nat) : VaultStart vault asset (setDepth d m) := by
+  obtain ⟨msg, k, s, hf, hc⟩ := hv.fresh
+  refine ⟨⟨{ msg with depth := d }, k, s, ?_, hc⟩, hv.static, hv.prot, hv.pre, hv.caller⟩
+  simp only [GasMono.setDepth, hf, Frame.init]
+
+/-- The admitted calls of a frame only depend on its caller, account and calldata. -/
+theorem _root_.EvmLeanSpecs.Refinement.Nested.FrameAdmitted.congr {m m' : Machine}
+    (h : FrameAdmitted crypto vault asset Act K m) (hc : m'.frame.msg.caller = m.frame.msg.caller)
+    (ht : m'.frame.msg.currentTarget = m.frame.msg.currentTarget)
+    (hd : m'.frame.msg.data = m.frame.msg.data) : FrameAdmitted crypto vault asset Act K m' := by
+  refine ⟨fun c hx => h.calls c ⟨hc ▸ hx.caller, ht ▸ hx.target, hd ▸ hx.data⟩,
+    fun c hx => h.permits c ?_⟩
+  cases c <;> simp only [PermitData] at hx ⊢ <;> rw [ht, hd] at hx <;> exact hx
+
+/-- **A frame summary transfers to the call-depth limit and any lower gas**: for a frame of the
+vault or the asset at depth 1024, `FrameOk` of the same frame with gas `G` at another depth (at
+the top level) gives `FrameOk` of the frame. Every call of a frame at the limit fails, and a
+failed call makes the frame fail (`depth_lockstep`). -/
+theorem frameOk_of_depth {m : Machine} (hv : VaultStart vault asset m)
+    (hdep : Deployed m.world vault asset) (hnd : EcrecoverOk m) {ko ks : Nat}
+    (hk : m.frame.kind = .call ko ks) (hd : Gas.stackDepthLimit < m.frame.msg.depth + 1) {G : Nat}
+    (hG : m.frame.gasLeft ≤ G) (hG' : G < 2 ^ 256) {d' : Nat}
+    (h : FrameOk crypto vault asset Act K (setDepth d' (topBump G m))) :
+    FrameOk crypto vault asset Act K m := by
+  refine frameOk_of_topBump assetCallsPrecompile (vaultCallsAsset vault asset) hv hdep hnd hk hG hG'
+    ?_
+  let P : World → Prop := fun w => Deployed w vault asset ∧ ∃ cs : List VCall,
+    (∀ c ∈ cs, Admitted Act K c) ∧ AgreeOn (ActorPairs Act) (abs crypto w vault asset)
+      (Solmate.exec (abs crypto m.world vault asset) (cs.map VCall.op))
+  have h' : Halts (setDepth d' (topBump G m)) (fun mf o => ∀ out, o = .success out → P mf.world) :=
+    h
+  show Halts (topBump G m) (fun mf o => ∀ out, o = .success out → P mf.world)
+  rcases high_of_vaultStart hv hdep hnd hG hG' with ⟨i, hi⟩ | ⟨ia, hi⟩
+  · exact halts_world_of_depth (vault_codeOk i) rfl hi.code (hi.jd.trans (by rw [hi.code]))
+      (by rw [hi.pc]; exact pcOk_zero (vault_codeOk i).region) hd hk h'
+  · exact halts_world_of_depth (asset_codeOk ia) rfl hi.code (hi.jd.trans (by rw [hi.code]))
+      (by rw [hi.pc]; exact pcOk_zero (asset_codeOk ia).region) hd hk h'
+
+/-- **Covered at the depth limit**: a frame at depth 1024 that, with some more gas below `2⁶⁴`
+and one level up, would be covered. -/
+def CoveredAtLimit (vault asset : Address) (m : Machine) : Prop :=
+  Gas.stackDepthLimit < m.frame.msg.depth + 1 ∧ ∃ G, m.frame.gasLeft ≤ G ∧ G < 2 ^ 64 ∧
+    Covered vault asset 250000 (setDepth (Gas.stackDepthLimit - 1) (topBump G m))
+
 /-! ## Frames covered at any gas -/
 
 /-- **A frame covered at any gas**: covered with its own gas, or (with `0x01` not delegated)
-covered with some more gas below `2⁶⁴`. -/
+covered with some more gas below `2⁶⁴` (`CoveredAtSomeGas`), or at the depth limit and covered
+one level up with some more gas (`CoveredAtLimit`). -/
 def CoveredAnyGas (vault asset : Address) (m : Machine) : Prop :=
-  Covered vault asset 250000 m ∨ (EcrecoverOk m ∧ CoveredAtSomeGas vault asset 250000 m)
+  Covered vault asset 250000 m ∨
+    (EcrecoverOk m ∧ (CoveredAtSomeGas vault asset 250000 m ∨ CoveredAtLimit vault asset m))
 
 /-- **The frame summary of a frame covered at any gas.** -/
 theorem frameOk_of_coveredAnyGas
@@ -54,10 +105,17 @@ theorem frameOk_of_coveredAnyGas
     (hcr : m.ctx.crypto = crypto) (hlt : m.frame.gasLeft < 2 ^ 64)
     (hc : CoveredAnyGas vault asset m) (hadm : FrameAdmitted crypto vault asset Act K m) :
     FrameOk crypto vault asset Act K m := by
-  rcases hc with hc | ⟨hnd, hc⟩
+  rcases hc with hc | ⟨hnd, hc | ⟨hd, G, hG, hG64, hc⟩⟩
   · exact frameOk_of_covered (le_refl _) hk hs hv hdep hinv hcr hlt hc hadm
   · exact frameOk_of_coveredAtSomeGas assetCallsPrecompile (vaultCallsAsset vault asset)
       (le_refl _) hk hs hv hkind hdep hinv hcr hnd hc hadm
+  · refine frameOk_of_depth (d' := Gas.stackDepthLimit - 1) hv hdep hnd hkind hd hG
+      (Nat.lt_of_lt_of_le hG64 (by decide)) ?_
+    have hgas : (setDepth (Gas.stackDepthLimit - 1) (topBump G m)).frame.gasLeft < 2 ^ 64 := by
+      show (topBump G m).frame.gasLeft < 2 ^ 64
+      simp only [topBump, bump_frame, bumpF]; omega
+    exact frameOk_of_covered (le_refl _) hk hs ((hv.topBump hG).setDepth _) hdep hinv hcr hgas hc
+      (hadm.congr rfl rfl rfl)
 
 /-- The conditions of `CoverOk` that do not depend on the gas: the getter of a stored string
 needs less than `2⁶⁴` gas, `DOMAIN_SEPARATOR()` is a covered case, `permit` has its frame
@@ -71,8 +129,10 @@ structure CoverOkAnyGas (m : Machine) : Prop where
     Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 1#256)) < 2 ^ 64
   /-- `DOMAIN_SEPARATOR()`: a covered case. -/
   domain : Abi.selectorOf m.frame.msg.data = 0x3644e515 → DomainOk m
-  /-- `permit`: the permit frame conditions. -/
-  permit : Abi.selectorOf m.frame.msg.data = 0xd505accf → PermitFrame m
+  /-- `permit`: the domain separator is computed in a covered case (the other permit frame
+  conditions, `0x01` not delegated and room for the precompile call, are taken care of by
+  `EcrecoverOk` and the depth-limit argument). -/
+  permit : Abi.selectorOf m.frame.msg.data = 0xd505accf → DomainOk m
 
 /-- The gas a frame is lifted to: at least 250000, and enough for the stored string of
 `name()`/`symbol()`. -/
@@ -83,20 +143,57 @@ def liftGas (m : Machine) : Nat :=
       (if Abi.selectorOf m.frame.msg.data = 0x95d89b41 then
         Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 1#256)) else 0))
 
-/-- **A gas-free sufficient condition for `CoveredAnyGas`**: value, or no value, room for the
-vault's call, calldata below `2⁶⁴` bytes and `CoverOkAnyGas`; and `0x01` not delegated. -/
+/-- A frame `M` with the calldata, account, world and context of `m`, no value, room for one
+more call level and the lifted gas (`liftGas m`) is covered, given `CoverOkAnyGas m`. -/
+theorem covered_of_lift {m M : Machine} (hvM : VaultStart vault asset M)
+    (hdM : Deployed M.world vault asset) (hw : M.world = m.world)
+    (ht : M.frame.msg.currentTarget = m.frame.msg.currentTarget)
+    (hdata : M.frame.msg.data = m.frame.msg.data) (hctx : M.ctx = m.ctx)
+    (hval : M.frame.msg.value = 0) (hg : M.frame.gasLeft = liftGas m)
+    (hdepth : M.frame.msg.depth + 1 ≤ Gas.stackDepthLimit) (hsz : m.frame.msg.data.size < 2 ^ 64)
+    (hc : CoverOkAnyGas m) (hnd : EcrecoverOk m) : Covered vault asset 250000 M := by
+  have hdom : Abi.selectorOf M.frame.msg.data = 0x3644e515 ∨
+      Abi.selectorOf M.frame.msg.data = 0xd505accf → DomainOk M := by
+    intro hs
+    have hd : DomainOk m := by
+      rw [hdata] at hs
+      rcases hs with hs | hs
+      · exact hc.domain hs
+      · exact hc.permit hs
+    unfold DomainOk at hd ⊢
+    rw [hw, ht, hctx]
+    exact hd
+  refine covered_of_funded hvM hdM ⟨hval, ?_, fun _ => hdepth, hdata ▸ hsz⟩ ⟨?_, ?_,
+    fun h => hdom (.inl h), fun h => ⟨hdom (.inr h), ?_, hdepth⟩⟩
+  · rw [hg]; exact Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_left _ _)
+  · intro hs
+    rw [hdata] at hs
+    rw [hg, hw, ht]
+    refine Nat.le_trans ?_ (Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _))
+    simp only [hs, ↓reduceIte]
+    exact Nat.le_refl _
+  · intro hs
+    rw [hdata] at hs
+    rw [hg, hw, ht]
+    refine Nat.le_trans ?_ (Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _))
+    simp only [hs, ↓reduceIte]
+    exact Nat.le_refl _
+  · unfold EcrecoverOk at hnd
+    rw [hctx, hw]
+    exact hnd
+
+/-- **A gas-free sufficient condition for `CoveredAnyGas`**, at any depth: value, or no value,
+calldata below `2⁶⁴` bytes and `CoverOkAnyGas`; and `0x01` not delegated. -/
 theorem coveredAnyGas_of {m : Machine} (hv : VaultStart vault asset m)
     (hdep : Deployed m.world vault asset) (hlt : m.frame.gasLeft < 2 ^ 64) (hnd : EcrecoverOk m)
     (h : m.frame.msg.value ≠ 0 ∨
-      (m.frame.msg.value = 0 ∧
-        (m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit) ∧
-        m.frame.msg.data.size < 2 ^ 64 ∧ CoverOkAnyGas m)) :
+      (m.frame.msg.value = 0 ∧ m.frame.msg.data.size < 2 ^ 64 ∧ CoverOkAnyGas m)) :
     CoveredAnyGas vault asset m := by
   refine .inr ⟨hnd, ?_⟩
   have hgas : ∀ G, m.frame.gasLeft ≤ G → (topBump G m).frame.gasLeft = G := by
     intro G hG; simp only [topBump, bump_frame, bumpF]; omega
-  rcases h with hval | ⟨hval, hdepth, hsz, hc⟩
-  · refine ⟨max m.frame.gasLeft 100, Nat.le_max_left _ _, ?_, .inl ⟨hval, ?_⟩⟩
+  rcases h with hval | ⟨hval, hsz, hc⟩
+  · refine .inl ⟨max m.frame.gasLeft 100, Nat.le_max_left _ _, ?_, .inl ⟨hval, ?_⟩⟩
     · have : 100 < 2 ^ 64 := by decide
       omega
     · rw [hgas _ (Nat.le_max_left _ _)]; exact Nat.le_max_right _ _
@@ -118,24 +215,13 @@ theorem coveredAnyGas_of {m : Machine} (hv : VaultStart vault asset m)
         · exact hc.symbol (by assumption)
         · decide
       omega
-    refine ⟨liftGas m, hG, hG64, ?_⟩
     have hgl := hgas _ hG
-    refine covered_of_funded (hv.topBump hG) hdep ⟨hval, ?_, hdepth, hsz⟩
-      ⟨?_, ?_, fun h => hc.domain h, fun h => ⟨(hc.permit h).domain, (hc.permit h).ecrecover,
-        (hc.permit h).depth⟩⟩
-    · rw [hgl]; exact Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_left _ _)
-    · intro hs
-      show _ ≤ (topBump (liftGas m) m).frame.gasLeft
-      rw [hgl]
-      refine Nat.le_trans ?_ (Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _))
-      simp only [show Abi.selectorOf m.frame.msg.data = 0x06fdde03 from hs, ↓reduceIte]
-      exact Nat.le_refl _
-    · intro hs
-      show _ ≤ (topBump (liftGas m) m).frame.gasLeft
-      rw [hgl]
-      refine Nat.le_trans ?_ (Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _))
-      simp only [show Abi.selectorOf m.frame.msg.data = 0x95d89b41 from hs, ↓reduceIte]
-      exact Nat.le_refl _
+    by_cases hd : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
+    · exact .inl ⟨liftGas m, hG, hG64, covered_of_lift (m := m) (hv.topBump hG) hdep rfl rfl rfl rfl hval
+        hgl hd hsz hc hnd⟩
+    · refine .inr ⟨by omega, liftGas m, hG, hG64, ?_⟩
+      exact covered_of_lift (m := m) ((hv.topBump hG).setDepth _) hdep rfl rfl rfl rfl hval hgl
+        (by simp [GasMono.setDepth, Gas.stackDepthLimit]) hsz hc hnd
 
 /-- **A transaction covered at any gas**: every frame of the vault or the asset that other
 code starts is covered at any gas, and the model calls it commits are admitted. -/
@@ -168,9 +254,7 @@ theorem txOkAnyGas_of {ctx : Context} {w : World} {tr : TransientStorage} {msg :
     (h : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset →
       (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
       (m.frame.msg.value ≠ 0 ∨
-        (m.frame.msg.value = 0 ∧
-          (m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit) ∧
-          m.frame.msg.data.size < 2 ^ 64 ∧ CoverOkAnyGas m)) ∧
+        (m.frame.msg.value = 0 ∧ m.frame.msg.data.size < 2 ^ 64 ∧ CoverOkAnyGas m)) ∧
       FrameAdmitted ctx.crypto vault asset Act K m)
     (hdep : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset) :
     TxOkAnyGas vault asset Act K ctx w tr msg := by
