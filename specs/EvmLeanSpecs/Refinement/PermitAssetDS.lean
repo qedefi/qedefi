@@ -79,7 +79,7 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     (hg : 10000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
     WP m (fun m' => ∃ mem g sub, m' = m.resumeWith r.toNat
         (dsOf ia.initialChainId ia.initialDomainSeparator m :: rest) mem g m.frame.returnData sub ∧
-        DsMem mem ∧ m.frame.gasLeft ≤ g + 6000)
+        DsMem mem ∧ m.frame.gasLeft ≤ g + 6000 ∧ g ≤ m.frame.gasLeft)
       (fun _ _ => False) := by
   have hagree := assetJumpDestsAgree ia
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
@@ -95,7 +95,7 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     simp only [hceq, ↓reduceIte]
     pwp_steps [he, readBytes_asset_chainId, readBytes_asset_ds]
     apply WP.ret
-    exact ⟨_, _, _, rfl, .inl ⟨hfmp, hsize⟩, by omega⟩
+    exact ⟨_, _, _, rfl, .inl ⟨hfmp, hsize⟩, by omega, by omega⟩
   · -- another chain: `computeDomainSeparator()`
     have hne : Word.eq (ofNat m_ctx.block.chainId) ia.initialChainId = 0#256 := eq_of_ne hceq
     have hshort := hcase.resolve_left hceq
@@ -131,10 +131,11 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     wp_generalize_gas g1 hg1
     have hg1' : m_gasLeft ≤ g1 + 3000 := by subst hg1; evm_gas
     have hg1'' : 5000 ≤ g1 := by subst hg1; evm_gas
+    have hg1u : g1 ≤ m_gasLeft := by subst hg1; omega
     clear hg1
     pwp_steps [hM64, hMs, permit_norm, Memory.read_160]
     apply WP.ret
-    refine ⟨_, _, _, rfl, .inr ⟨?_, ?_⟩, by omega⟩
+    refine ⟨_, _, _, rfl, .inr ⟨?_, ?_⟩, by omega, by omega⟩
     · simp only [Memory.loadWord_expand, Memory.loadWord_storeWord]
     · simp only [permit_norm, hMs]
 
@@ -169,7 +170,7 @@ theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (Memory.loadWord_storeWord _ _ _) (by simp [Memory.size_storeWord, Memory.size_expand,
       Memory.wordsAfter, Memory.words]) hcase (by dsimp only; omega) (by dsimp only; omega))
     (fun _ _ _ h => h.elim) ?_
-  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb⟩
+  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, hgu⟩
   dsimp only [Machine.resumeWith] at hgb ⊢
   simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
   simp only [dsOf]
