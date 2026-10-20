@@ -363,20 +363,26 @@ def moveOk (s : State A) (src dst : A) (v : ℕ) : Bool :=
   !(V.zero.sender && decide (src = 0)) && !(V.zero.receiver && decide (dst = 0)) &&
   !(V.rejectsSelf && decide (dst = s.self)) && !(V.zeroValueReverts && decide (v = 0))
 
-/-- The balance update of a transfer of `v` from `src` to `dst`: debit `v`, credit `v`, then
-move the fee from `dst` to its sink. Fails on an insufficient balance or a fee above `v`. -/
+/-- The state after a transfer of `v` from `src` to `dst`: debit `v`, credit `v`, then move
+the fee from `dst` to its sink (USDT: `bal[from] −= v; bal[to] += v − fee; bal[owner] += fee`). -/
+def credit (s : State A) (src dst : A) (v : ℕ) : State A :=
+  if V.feeOf s v = 0 then
+    { s with bal := s.bal - single src (V.units s v) + single dst (V.units s v) }
+  else
+    match V.feeSink with
+    | .owner =>
+      { s with bal := s.bal - single src (V.units s v) + single dst (V.units s v) -
+                        single dst (V.units s (V.feeOf s v)) + single s.admin (V.units s (V.feeOf s v)) }
+    | .burn =>
+      { s with bal := s.bal - single src (V.units s v) + single dst (V.units s v) -
+                        single dst (V.units s (V.feeOf s v)),
+               supply := s.supply - V.feeOf s v }
+
+/-- The balance update of a transfer: fails on an insufficient balance or a fee above `v`. -/
 def move (s : State A) (src dst : A) (v : ℕ) : Option (State A) :=
   if s.bal src < V.units s v then none
   else if v < V.feeOf s v then none
-  else
-    let s1 : State A := { s with bal := s.bal - single src (V.units s v) + single dst (V.units s v) }
-    if V.feeOf s v = 0 then some s1
-    else
-      match V.feeSink with
-      | .owner => some { s1 with bal := s1.bal - single dst (V.units s (V.feeOf s v)) +
-                                         single s.admin (V.units s (V.feeOf s v)) }
-      | .burn => some { s1 with bal := s1.bal - single dst (V.units s (V.feeOf s v)),
-                                supply := s.supply - V.feeOf s v }
+  else some (V.credit s src dst v)
 
 /-- The allowance step of `transferFrom(owner, …)` by `spender`. -/
 def spend (s : State A) (owner spender : A) (v : ℕ) : Option (State A) :=
@@ -666,7 +672,7 @@ theorem standard_totalSupply (s : State A) : (standard : Variant A).totalSupply 
 
 theorem standard_move (s : State A) (src dst : A) (v : ℕ) :
     (standard : Variant A).move s src dst v = (s.toToken.transfer src dst v).map s.withToken := by
-  unfold move Token.transfer
+  unfold move credit Token.transfer
   simp only [units, feeOf, standard, Bool.false_eq_true, ↓reduceIte, Nat.not_lt_zero,
     State.toToken]
   by_cases h : s.bal src < v <;> simp [h, State.withToken]
