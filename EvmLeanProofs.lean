@@ -74,3 +74,9 @@ import EvmLeanProofs.Solidity.Strings
 import EvmLeanProofs.Solidity.StringsWord
 import EvmLeanProofs.Solidity.StringsEncoding
 import EvmLeanProofs.Solidity.StringsExamples
+import EvmLeanProofs.Program.PrecompileCall
+import EvmLeanProofs.Program.PrecompileCallEcrecover
+import EvmLeanProofs.Solidity.PermitExtraAttr
+import EvmLeanProofs.Solidity.PermitExtraMemory
+import EvmLeanProofs.Solidity.PermitExtraTactic
+import EvmLeanProofs.Solidity.PermitExtraWord

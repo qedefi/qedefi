@@ -88,3 +88,16 @@ import EvmLeanSpecs.Refinement.StringsCanonical
 Abstract specifications (Mathlib-based) for contracts verified against evm-lean. See
 `specs/README.md`.
 -/
+import EvmLeanSpecs.Vault.Permit
+import EvmLeanSpecs.Refinement.PermitDefs
+import EvmLeanSpecs.Refinement.PermitAssetDS
+import EvmLeanSpecs.Refinement.PermitAssetTail
+import EvmLeanSpecs.Refinement.PermitAssetBody
+import EvmLeanSpecs.Refinement.PermitAsset
+import EvmLeanSpecs.Refinement.PermitVaultDS
+import EvmLeanSpecs.Refinement.PermitVaultTail
+import EvmLeanSpecs.Refinement.PermitVaultBody
+import EvmLeanSpecs.Refinement.PermitVault
+import EvmLeanSpecs.Refinement.PermitCall
+import EvmLeanSpecs.Refinement.PermitSpec
+import EvmLeanSpecs.Refinement.PermitEvents

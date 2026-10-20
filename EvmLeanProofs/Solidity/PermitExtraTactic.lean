@@ -1,28 +1,10 @@
-import EvmLeanProofs.Program.ExtraTactic
+import EvmLeanProofs.Solidity.StringsTactic
 
 /-!
-# Generalizing the memory of a `WP` goal
+# Tactics of the `permit` proofs
 
-During a long symbolic execution solc's memory becomes a deep term of `expand`s and
-`storeWord`s, and every step (normalization, memory-expansion gas) traverses it. Once the
-words that the rest of the code reads are known (typically the free-memory pointer and the
-memory size), `wp_generalize_mem M h` replaces the memory of the goal's machine by a variable
-`M` (with `h : term = M`), from which the caller derives the few facts it keeps
-(`M.loadWord 64 = …`, `M.size = …`) before clearing `h`.
+The `permit` proofs generalize the memory of long symbolic executions with
+`wp_generalize_mem M h` (defined in `EvmLeanProofs.Solidity.StringsTactic`, re-exported here):
+the memory term is replaced by a variable from which the few facts the rest of the code reads
+(the free-memory pointer, the memory size) are derived before the equation is cleared.
 -/
-
-namespace EvmLean.Program
-
-open Lean Elab Tactic Meta
-open EvmLean.Interpreter
-
-/-- `wp_generalize_mem M h`: in a goal `WP m Q H` whose machine is a structure literal,
-replace the frame's memory by a new variable `M` (with `h : term = M`). -/
-elab "wp_generalize_mem " M:ident h:ident : tactic => withMainContext do
-  let some m ← wpGoalMachine? (← getMainGoal) | throwError "wp_generalize_mem: not a WP goal"
-  let fr ← whnfR (mkApp (mkConst ``Machine.frame) m)
-  let mem ← whnfR (mkApp (mkConst ``Frame.memory) fr)
-  let memS ← Term.exprToSyntax mem
-  evalTactic (← `(tactic| generalize $h : $memS = $M))
-
-end EvmLean.Program
