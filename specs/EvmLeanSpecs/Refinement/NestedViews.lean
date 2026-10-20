@@ -4,6 +4,7 @@ import EvmLeanSpecs.Refinement.VaultViewsSpec
 import EvmLeanSpecs.Refinement.ViewsRest
 import EvmLeanSpecs.Refinement.StringsAssetSpec
 import EvmLeanSpecs.Refinement.PermitSpec
+import EvmLeanSpecs.Refinement.UnknownSelectors
 
 /-!
 # Frame summaries of views and of calls carrying value
@@ -27,7 +28,9 @@ world is unchanged on success:
     covered (the out-of-place string encoder is not verified);
 * `frameOk_value`: any call with non-zero value to the vault or the asset: both are compiled
   with every function non-payable, so the dispatcher's first instructions revert
-  (`CALLVALUE ISZERO JUMPI … REVERT`), with at least 100 gas.
+  (`CALLVALUE ISZERO JUMPI … REVERT`), with at least 100 gas;
+* `frameOk_unknown`: calldata shorter than four bytes, or a selector that is none of the
+  contract's functions (`UnknownData`): the dispatcher reverts (`UnknownSelectors.lean`).
 -/
 
 namespace EvmLeanSpecs.Refinement.Nested
@@ -250,6 +253,34 @@ theorem frameOk_value {m : Machine} (hv : VaultStart vault asset m)
       exact vault_value_reverts m hf hval hg
     · obtain ⟨ia, hf⟩ := asset_fresh hv hdep ht
       exact asset_value_reverts m hf hval hg
+  exact hrev.mono fun _ _ _ ⟨out, ho⟩ out' ho' => by rw [ho] at ho'; cases ho'
+
+/-! ## Unknown selectors and short calldata -/
+
+/-- The calldata selects no function of the called contract: shorter than four bytes, or a
+selector outside `vaultSelectors` / `assetSelectors`. -/
+def UnknownData (vault asset : Address) (m : Machine) : Prop :=
+  m.frame.msg.data.size < 4 ∨
+  (4 ≤ m.frame.msg.data.size ∧
+    (m.frame.msg.currentTarget = vault → Abi.selectorOf m.frame.msg.data ∉ vaultSelectors) ∧
+    (m.frame.msg.currentTarget = asset → Abi.selectorOf m.frame.msg.data ∉ assetSelectors))
+
+/-- **Calldata selecting no function**, in any frame without value: the dispatcher reverts
+(at least 1000 gas). -/
+theorem frameOk_unknown {m : Machine} (hv : VaultStart vault asset m)
+    (hdep : Deployed m.world vault asset) (hval : m.frame.msg.value = 0)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 1000 ≤ m.frame.gasLeft)
+    (hu : UnknownData vault asset m) : FrameOk crypto vault asset Act K m := by
+  have hrev : Halts m (fun _ o => ∃ out, o = .revert out) := by
+    rcases hv.prot with ht | ht
+    · obtain ⟨i, -, hf⟩ := vault_fresh hv hdep ht
+      rcases hu with hu | ⟨h4, hu, -⟩
+      · exact vault_short_reverts m hf hval hu hg
+      · exact vault_unknown_reverts m hf hval h4 hsz hg (hu ht)
+    · obtain ⟨ia, hf⟩ := asset_fresh hv hdep ht
+      rcases hu with hu | ⟨h4, -, hu⟩
+      · exact asset_short_reverts m hf hval hu hg
+      · exact asset_unknown_reverts m hf hval h4 hsz hg (hu ht)
   exact hrev.mono fun _ _ _ ⟨out, ho⟩ out' ho' => by rw [ho] at ho'; cases ho'
 
 end EvmLeanSpecs.Refinement.Nested

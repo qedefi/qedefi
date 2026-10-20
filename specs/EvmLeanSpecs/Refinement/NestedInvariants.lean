@@ -16,20 +16,30 @@ asset's storage and code alone (`TxTrace`).
 
 `TxOk vault asset minGas Act K ctx w tr msg`: every non-static frame of the vault's or the
 asset's code that the transaction starts (`Reaches`, `VaultStart` — a `STATICCALL` frame cannot
-write and needs nothing) is **covered** (`Covered`) and the modelled call it executes is
-**admitted** (`Admitted Act K`: its actors are in `Act`, its kind admitted by `K`). Covered
-frames are those with a proved frame summary:
+write and needs nothing) is **covered** (`Covered`) and the model calls it commits are
+**admitted** (`FrameAdmitted`: actors in `Act`, kind admitted by `K`; for a `permit`, also the
+owner's nonce slot fresh, `NonceSlotOk`). Covered frames are those with a proved frame summary:
 
 * calls carrying value (they revert), with at least 100 gas;
 * funded calls (no value, at least `minGas` gas, for the vault room for one more call level,
-  calldata below `2⁶⁴` bytes) executing a modelled state-changing function (`Executes`: deposit, mint, withdraw,
-  redeem, the share and asset transfers, approvals, the asset's mint and burn) or one of the
-  covered views (`ViewData`).
+  calldata below `2⁶⁴` bytes) that
+  - execute a modelled state-changing function (`Executes`: deposit, mint, withdraw, redeem,
+    the share and asset transfers, approvals, the asset's mint and burn), or
+  - call a covered view (`ViewData`: every view of both contracts — the ERC-4626 views, the
+    token views, `nonces`, the hook counters, `name`/`symbol` with the gas their stored string
+    needs, `DOMAIN_SEPARATOR()` in the cases `DomainOk` covers), or
+  - run `permit` of either token (`PermitData`, committing the owner's approval) with the
+    permit frame conditions (`PermitFrame`: `DomainOk`, `0x01` not EIP-7702-delegated, depth
+    below 1024), or
+  - select no function (`UnknownData`: calldata shorter than four bytes or an unknown
+    selector; the dispatcher reverts).
 
-The uncovered frames — less than `minGas` gas, the vault at depth 1024, other selectors (`permit`, `name`,
-`symbol`, `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the asset's other views), malformed
-calldata — are the pending obligations (`PendingFrames`); `follows_tx_pending` takes them as a
-hypothesis instead of `TxOk`'s coverage.
+The uncovered frames — less than `minGas` gas, the vault at depth 1024, `name`/`symbol` without
+the gas for the stored string, `DOMAIN_SEPARATOR()`/`permit` on another chain with a name of 32
+bytes or more (or `permit` with `0x01` delegated, or the asset's `permit` at depth 1024),
+calldata selecting a function but malformed for its ABI decoder (arguments missing, dirty
+address words) — are the pending obligations (`PendingFrames`); `follows_tx_pending` takes them
+as a hypothesis instead of `TxOk`'s coverage.
 
 ## Hash hypotheses
 
@@ -37,7 +47,10 @@ hypothesis instead of `TxOk`'s coverage.
 `hk` (no balance slot is slot 2, 6 or 7), as before. The actors are now the addresses
 appearing in the vault/asset calls **the transaction executes** (callers — routers included —
 receivers, owners, spenders, sources), required by `TxOk` per frame: there is no need to fix
-them before knowing the transaction, only to have `Act` contain them.
+them before knowing the transaction, only to have `Act` contain them. A `permit` additionally
+needs `NonceSlotOk crypto Act owner` (its owner's nonce slot `keccak(owner ‖ 5)` fresh among the
+address-keyed rows of slots 3, 4, 5, not slot 2, 6, 7, and no actor pair's allowance slot),
+also required per frame; with it the nonce write is invisible to the abstraction.
 
 ## Results
 
@@ -45,8 +58,11 @@ them before knowing the transaction, only to have `Act` contain them.
   `w₀` (`Follows`: deployed, abstraction `≈ Solmate.exec (abs w₀)` of admitted calls);
 * `follows_trace`: the same for any `TxTrace`;
 * `lift_any_tx`, `invariant_any_tx`, `supply_eq_sum_any_tx`, `solvent_any_tx`,
-  `price_mono_any_tx` (one transaction) and `lift_nested`, `supply_eq_sum_nested`,
-  `solvent_nested`, `price_mono_nested` (sequences of transactions).
+  `price_mono_any_tx` (one transaction) and `lift_nested`, `invariant_nested`,
+  `supply_eq_sum_nested`, `solvent_nested`, `price_mono_nested` (sequences of transactions).
+  A successful `permit` appears in the committed calls as the owner's approval
+  (`.approve owner spender value` / `.assetApprove …`), a user operation (`UserOp`), so the
+  price theorems hold with permits included.
 -/
 
 namespace EvmLeanSpecs.Refinement.Nested
@@ -74,13 +90,13 @@ structure FundedCall (vault : Address) (minGas : Nat) (m : Machine) : Prop where
   size : m.frame.msg.data.size < 2 ^ 64
 
 /-- **The frames of the vault and the asset with a proved frame summary**: a call carrying
-value (it reverts), or a funded call executing a modelled function, a covered view, or `permit`
+value (it reverts), or a funded call executing a modelled function, a covered view, `permit`
 with the permit frame conditions (`PermitFrame`: covered domain-separator case, `0x01` not
-delegated, depth below 1024). -/
+delegated, depth below 1024), or selecting no function (`UnknownData`: it reverts). -/
 def Covered (vault asset : Address) (minGas : Nat) (m : Machine) : Prop :=
   (m.frame.msg.value ≠ 0 ∧ 100 ≤ m.frame.gasLeft) ∨
   (FundedCall vault minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m ∨
-    ((∃ c, PermitData vault asset m c) ∧ PermitFrame m)))
+    ((∃ c, PermitData vault asset m c) ∧ PermitFrame m) ∨ UnknownData vault asset m))
 
 /-- **The model calls a frame commits are admitted**: the modelled call it executes, and the
 approval a `permit` commits on success (`PermitData`: the owner's approval), whose owner's
@@ -126,10 +142,11 @@ theorem frameOk_of_covered (hmin : 250000 ≤ minGas)
   · exact frameOk_value hv hdep hval hg
   · have h : FrameHyp crypto vault asset Act minGas m :=
       ⟨hv, hdep, hinv, hcr, ⟨hf.value, hf.gas, hlt, hf.depth, hf.size⟩, hs⟩
-    rcases hx with ⟨c, hx⟩ | hx | ⟨⟨c, hx⟩, hp⟩
+    rcases hx with ⟨c, hx⟩ | hx | ⟨⟨c, hx⟩, hp⟩ | hx
     · exact frameOk_of_executes hmin hk h hx (hadm.calls c hx)
     · exact frameOk_view (by omega) h hx
     · exact frameOk_permit (by omega) h hp hx (hadm.permits c hx).1 (hadm.permits c hx).2
+    · exact frameOk_unknown hv hdep hf.value hf.size (by have := hf.gas; omega) hx
 
 /-- The gas of a dangerous frame is below `2⁶⁴` when the transaction's is. -/
 theorem DangerStart.gasLt {Good : World → Prop} {G : Nat} {m : Machine}
@@ -405,5 +422,50 @@ theorem solvent_any_tx (hmin : 250000 ≤ minGas)
   have := Solmate.solvent _ hi
   rw [Finsupp.sum_fintype _ _ (fun _ => by simp)] at this
   simpa only [abs_sharesOf, abs_totalAssets', abs_totalSupply'] using this
+
+/-- One covered transaction is a `TxTrace`. -/
+theorem txTrace_single {w : World} {ctx : Context} {tr : TransientStorage} {msg : Message}
+    {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hmsg : TopOk (Prot vault asset) w msg) (hgas : msg.gas < 2 ^ 64)
+    (hok : TxOk vault asset minGas Act K ctx w tr msg)
+    (hr : processMessageCall fuel ctx w tr msg = .ok r) :
+    TxTrace crypto vault asset minGas Act K w r.world :=
+  Relation.ReflTransGen.single (.call hcr hdeleg hmsg hgas hok hr)
+
+/-- **Invariants transfer, after one arbitrary covered transaction.** -/
+theorem invariant_any_tx (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {I : State Address → Prop}
+    (hI : ∀ s op s', Solmate.Inv s → I s → step s op = some s' → I s')
+    (hIa : ∀ s t, AgreeOn (ActorPairs Act) s t → I s → I t)
+    {w₀ : World} (hdep : Deployed w₀ vault asset)
+    (hinv : Solmate.Inv (abs crypto w₀ vault asset)) {ctx : Context} {tr : TransientStorage}
+    {msg : Message} {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hmsg : TopOk (Prot vault asset) w₀ msg) (hgas : msg.gas < 2 ^ 64)
+    (hok : TxOk vault asset minGas Act K ctx w₀ tr msg)
+    (hr : processMessageCall fuel ctx w₀ tr msg = .ok r) (hI₀ : I (abs crypto w₀ vault asset)) :
+    I (abs crypto r.world vault asset) :=
+  invariant_nested hmin hk hs hI hIa hdep hinv (txTrace_single hcr hdeleg hmsg hgas hok hr) hI₀
+
+/-- **Price monotonicity, after one arbitrary covered transaction** whose committed vault/asset
+calls are user operations: unless a prefix of the committed calls empties the vault, the share
+price `T/S` read from storage did not decrease. -/
+theorem price_mono_any_tx (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ : World} (hdep : Deployed w₀ vault asset)
+    (hinv : Solmate.Inv (abs crypto w₀ vault asset)) {ctx : Context} {tr : TransientStorage}
+    {msg : Message} {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hmsg : TopOk (Prot vault asset) w₀ msg) (hgas : msg.gas < 2 ^ 64)
+    (hok : TxOk vault asset minGas Act (fun c => UserOp vault c.op) ctx w₀ tr msg)
+    (hr : processMessageCall fuel ctx w₀ tr msg = .ok r) :
+    ∃ cs : List VCall, (∀ c ∈ cs, (∀ a ∈ c.actors, a ∈ Act) ∧ UserOp vault c.op) ∧
+      ((∀ k ≤ cs.length,
+          (Solmate.exec (abs crypto w₀ vault asset) ((cs.take k).map VCall.op)).totalSupply ≠ 0) →
+        (assetsAt crypto w₀ vault asset : ℚ) / supplyAt w₀ vault ≤
+          (assetsAt crypto r.world vault asset : ℚ) / supplyAt r.world vault) :=
+  price_mono_nested hmin hk hs hdep hinv (txTrace_single hcr hdeleg hmsg hgas hok hr)
 
 end EvmLeanSpecs.Refinement.Nested

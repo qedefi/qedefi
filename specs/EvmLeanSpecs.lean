@@ -95,6 +95,9 @@ import EvmLeanSpecs.Refinement.PermitVault
 import EvmLeanSpecs.Refinement.PermitCall
 import EvmLeanSpecs.Refinement.PermitSpec
 import EvmLeanSpecs.Refinement.PermitEvents
+import EvmLeanSpecs.Refinement.ViewsRest
+import EvmLeanSpecs.Refinement.UnknownSelectors
+import EvmLeanSpecs.Refinement.NestedPermit
 
 /-!
 # EvmLeanSpecs

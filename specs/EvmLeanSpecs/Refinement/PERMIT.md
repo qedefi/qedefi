@@ -107,24 +107,32 @@ real Keccak (`lake exe difftest` runs `permit` against anvil with `Crypto.real`)
 
 ## Integration into the trace system
 
-`Invariants.system` abstracts worlds to `Solmate.State`, which has no nonces. To admit permit
-calls (`VCall.permit c owner spender value deadline v r s`, `.assetPermit …`):
+Done for the any-transaction theorems (`NestedPermit.lean`, `INVARIANTS.md` §6.3). The
+abstraction is **not** extended with nonces (no invariant mentions them); instead the nonce
+write is shown invisible to `abs`, and a `permit` frame commits the owner's approval:
 
-1. extend the abstract state with the nonces of both tokens (e.g. `abs'` returning
-   `(abs …, noncesView crypto w vault, noncesView crypto w asset)`, or `permitView` per token);
-   the existing calls keep the nonces when their written slots avoid the nonce slots (add the
-   nonce slots of the actors to `SlotsOk`: fresh among `AddressKeyed [3, 4, 5]`, ≠ 0, 1, 2, 6,
-   7, distinct from the actors' allowance slots — then `PermitAllowances`/`PermitNonces` cover
-   all actor pairs and actors);
-2. the model step of a permit is `PermitToken.permit … (validAt crypto ds ts …)`: validity
-   depends on `ctx.block.timestamp` and on `domainSeparator` (chain id, `w.sload token 0`), so
-   the `VCall` should carry the timestamp/chain id of its context, or the step takes them from
-   the `CallStep`'s context;
-3. the per-call obligation is `asset_permit_opRefines` / `vault_permit_opRefines`
-   (`PermitCallRefines`: the represented ledger on actor pairs, the nonces, every other slot and
-   every code unchanged; or `w' = w`), with `Deployed` preserved by `code_permitWorld`;
-4. events: `permit_logs` / `PermitResult` give `res.logs`; `Solmate.events` needs an
-   `approval` event for a successful permit (`Approval(owner, spender, value)` by the token).
+1. `NonceSlotOk crypto Act owner` (owner's nonce slot fresh among `AddressKeyed [3, 4, 5]`,
+   ≠ 2, 6, 7, no actor pair's allowance slot) with the trace's `SlotsOk` gives
+   `PermitSlotsOk` and `PermitAllowances` for every actor pair, so
+   `abs (permitWorld w token owner spender value) ≈ approve(owner → spender, value)` on that
+   token (`agree_permitWorld_vault`, `agree_permitWorld_asset`);
+2. `frameOk_permit`: a funded frame running `permit` (`PermitData`) with `PermitFrame`
+   (`DomainOk`, `0x01` not delegated, depth < 1024) satisfies `FrameOk`, the committed call
+   being `.approve owner spender value` / `.assetApprove owner spender value` (its `caller` is
+   the owner); success iff `PermitValid` (`*_permit_halts`), otherwise a revert that commits
+   nothing;
+3. `TxOk`'s `Covered` admits such frames, `FrameAdmitted` requires the approval admitted and
+   `NonceSlotOk` of the owner; `follows_tx`, `lift_any_tx`, `supply_eq_sum_any_tx`,
+   `solvent_any_tx`, `price_mono_*` (approvals are `UserOp`s) cover them with unchanged
+   statements;
+4. `DOMAIN_SEPARATOR()` and `nonces` are covered views (`ViewData`).
+
+The top-level traces of `Invariants.lean` do not get a `permit` `VCall`: their `OpRefinesAt`
+relates a call to one model operation from the abstraction alone, and a permit's success
+depends on the nonce, timestamp and chain id (not in the abstraction). Direct top-level permit
+transactions are covered by the any-transaction theorems (`txOk_direct`). Events: the model's
+`approve` events are the permit's (`Approval(owner, spender, value)`); the top-level event
+stream `trace_logs` is unchanged.
 
 ## Build
 

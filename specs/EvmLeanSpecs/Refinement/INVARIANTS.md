@@ -8,7 +8,8 @@ transactions by arbitrary callers. Files: `Lift.lean` (generic), `InvariantsAgre
 (per-call obligations proved today), `Invariants.lean` (headlines), `InvariantsFinal.lean`
 (every call kind); for arbitrary transactions with nested calls: `EvmLeanProofs/Program/
 NestedExtra*.lean` (generic simulation), `NestedSystem.lean`, `NestedCalls.lean`,
-`NestedViews.lean`, `NestedInvariants.lean`, `SharesFrame*.lean` (§6).
+`NestedViews.lean`, `NestedPermit.lean`, `NestedInvariants.lean`, `SharesFrame*.lean`,
+`ViewsRest.lean`, `UnknownSelectors.lean` (§6).
 Every theorem uses only `propext`, `Classical.choice`, `Quot.sound`; no `sorry`.
 
 ## 1. The concrete system (`InvariantsSystem.lean`)
@@ -144,9 +145,13 @@ restriction.
 * **Transaction layer.** Steps are `processMessageCall`; the surrounding `processTransaction`
   bookkeeping changes no storage of the vault/asset (stated, not proved; an environment step).
   EIP-7702: contexts are before Prague or carry no authorizations.
-* **Unmodelled functions**: `permit` (vault and asset), `name`/`symbol`, `nonces`,
-  `DOMAIN_SEPARATOR`, the hook counters, the asset's views other than `balanceOf`, and calldata
-  not encoding a function (§6.5).
+* **Unmodelled functions** in the top-level traces: `permit` (vault and asset), `name`/`symbol`,
+  `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the asset's views other than `balanceOf`,
+  and calldata not encoding a function. All of these are covered by §6 (which includes direct
+  top-level transactions, `txOk_direct`), except the cases listed in §6.5. `permit` is not
+  added to the top-level `VCall`s: their per-call obligation `OpRefinesAt` relates a call to
+  *one* model operation from the abstraction alone, and whether a permit succeeds depends on
+  the nonce, the block timestamp and the chain id, which the abstraction does not hold (§6.3).
 * **Allowances of non-actor pairs** are only related to the model up to Keccak collisions
   (see §1); every headline is insensitive to them.
 
@@ -226,18 +231,64 @@ dangerous frame it reaches.
   `< 2⁶⁴` gas, for the vault depth `< 1024` — it calls the asset —, calldata `< 2⁶⁴` bytes), for all twelve call kinds, from the
   frame-level refinement theorems (`deposit_refines`, `mint_refines`, `withdraw_refines`,
   `redeem_refines`, `shares*_refines`, `asset*_refines`).
-* `frameOk_view`: the vault's twelve ERC-4626 views, its four share-token views and the asset's
-  `balanceOf` (world unchanged).
+* `frameOk_view` (`NestedViews.lean`, world unchanged): **every view of both contracts** —
+  the vault's twelve ERC-4626 views, its share-token views `totalSupply`, `balanceOf`,
+  `allowance`, `decimals`, its hook counters `beforeWithdrawHookCalledCounter`,
+  `afterDepositHookCalledCounter` (`ViewsRest.lean`) and `nonces` (`PermitVaultDS.lean`); the
+  asset's `balanceOf`, `totalSupply`, `allowance`, `decimals` (`ViewsRest.lean`) and `nonces`;
+  for both tokens `name()`/`symbol()` (`Strings*Spec.lean`, with the gas the stored string's
+  length needs, `Str.getterGas`: long strings cost more than `minGas` may cover) and
+  `DOMAIN_SEPARATOR()` (`Permit*DS.lean`) in the cases `DomainOk` admits — `block.chainid` is
+  the token's deployment chain id (immutable), or its name is stored in short form (< 32
+  bytes; both canonical names are). **Not covered**: `DOMAIN_SEPARATOR()` on another chain
+  with a name of 32 bytes or more (the out-of-place string encoder is not verified).
+* `frameOk_permit` (`NestedPermit.lean`): `permit(owner, spender, value, deadline, v, r, s)` of
+  either token (`PermitData`, calldata as the decoder reads it), see below.
 * `frameOk_value`: calls with value revert (`vault_value_reverts`, `asset_value_reverts`: the
   dispatcher's `CALLVALUE` check), with at least 100 gas.
+* `frameOk_unknown` (`UnknownSelectors.lean`): calldata shorter than four bytes, or a selector
+  that is none of the contract's functions (`vaultSelectors`, `assetSelectors`, checked
+  against the ABI's `SolmateVault.selectors` / `SolmateAsset.selectors`), reverts in the
+  dispatcher (`vault_unknown_reverts`, `vault_short_reverts`, `asset_*`: symbolic execution of
+  the whole selector tree for a symbolic selector), with at least 1000 gas.
+
+**`permit` as a modelled call.** The abstraction has no nonces and no invariant mentions them,
+so they are not added to it. Instead (`NestedPermit.lean`):
+
+* the nonce write is **invisible to `abs`**: under `NonceSlotOk crypto Act owner` — the owner's
+  nonce slot `keccak(owner ‖ 5)` is fresh among the address-keyed preimages of slots 3, 4, 5
+  (one target against `3 · 2¹⁶⁰` candidates; so it is no balance slot), is not slot 2, 6 or 7,
+  and is no actor pair's allowance slot (finitely many hashes) — `abs (permitWorld w token
+  owner spender value)` agrees (up to non-actor allowances) with the model's `approve(owner →
+  spender, value)` on that token applied to `abs w` (`agree_permitWorld_vault`,
+  `agree_permitWorld_asset`, from `Permit.rep_permitWorld`);
+* a `permit` frame therefore **commits the owner's approval**: on success, the model call
+  `.approve owner spender value` (vault) or `.assetApprove owner spender value` (asset), the
+  `VCall` whose `caller` is the owner — its model operation is exactly the allowance write.
+  The frame succeeds **iff** the bytecode's validity predicate `Permit.PermitValid` holds at the
+  stored nonce (`v < 256`, deadline not passed, `ecrecover` of the EIP-712 digest is the owner,
+  owner ≠ 0, for the context's `Crypto`; `vault_permit_halts` / `asset_permit_halts`), and
+  otherwise reverts, committing nothing. Nothing about ECDSA unforgeability is assumed
+  (`PERMIT.md`).
+* frame conditions (`PermitFrame`): `DomainOk` (as for `DOMAIN_SEPARATOR()`), the
+  `ECRECOVER` precompile's address `0x01` not EIP-7702-delegated (always true before Prague; on
+  a real chain nobody holds the key of `0x01`), depth below 1024 (room for the precompile
+  call), at least 100000 gas (below `minGas`).
+* The events of a permit are the model's `approve` events (`Approval(owner, spender, value)` by
+  the token, `PermitEvents.lean`); the event-stream theorem `trace_logs` is about top-level
+  traces of `VCall`s and is unchanged.
 
 ### 6.4 Headlines (`NestedInvariants.lean`)
 
 A transaction is **covered** (`TxOk vault asset minGas Act K ctx w tr msg`) when every
 non-static frame of the vault's or the asset's code that **unprotected code** starts during it
 (`Reaches`, `VaultStart`, no non-static vault/asset frame below it — the vault's own calls into
-the asset are inside the vault's frame summary) is `Covered` (value with `≥ 100` gas, or
-funded and executing a modelled call or a covered view) and executes an admitted call.
+the asset are inside the vault's frame summary) is `Covered` and the model calls it commits are
+admitted (`FrameAdmitted`: the executed modelled call, or for a `permit` the owner's approval
+together with the owner's `NonceSlotOk`). `Covered` = value with `≥ 100` gas, or funded
+(`FundedCall`: no value, `≥ minGas` gas, for the vault depth `< 1024`, calldata `< 2⁶⁴` bytes)
+and one of: executing a modelled call (`Executes`), a covered view (`ViewData`), `permit` with
+`PermitFrame`, or calldata selecting no function (`UnknownData`).
 **Actors** are thus required per executed call — callers (routers included), receivers,
 owners, spenders, sources — not fixed before the transaction. `txOk_direct`: a direct
 transaction to the vault or the asset is covered as soon as its own frame is (proved with the
@@ -248,23 +299,31 @@ which is dangerous, below it).
 |---|---|
 | `follows_tx`, `follows_trace` | one covered transaction / any `TxTrace` (covered transactions and `EnvStep`s) keeps `Follows w₀` |
 | `follows_tx_pending` | the same with the uncovered frames' summaries as hypothesis (`PendingFrames`) |
-| `lift_any_tx`, `lift_nested` | deployed, `Inv`, and `abs w ≈ Solmate.exec (abs w₀) (cs.map op)` for some admitted `cs` (the committed calls) |
-| `invariant_nested` | every model invariant insensitive to non-actor allowances holds |
+| `lift_any_tx`, `lift_nested` | deployed, `Inv`, and `abs w ≈ Solmate.exec (abs w₀) (cs.map op)` for some admitted `cs` (the committed calls; a permit commits the owner's approval) |
+| `invariant_any_tx`, `invariant_nested` | every model invariant insensitive to non-actor allowances holds |
 | `supply_eq_sum_any_tx`, `supply_eq_sum_nested` | `totalSupply` = Σ balances, shares and asset, read from storage |
 | `solvent_any_tx`, `solvent_nested` | `Σₐ ⌊shares[a]·T/S⌋ ≤ T` |
-| `price_mono_nested` | with `K = UserOp`: for the committed calls `cs`, unless a prefix empties the vault, `T₀/S₀ ≤ T/S` |
+| `price_mono_any_tx`, `price_mono_nested` | with `K = UserOp`: for the committed calls `cs`, unless a prefix empties the vault, `T₀/S₀ ≤ T/S` (permits included: approvals are user operations) |
 
 Hypotheses: `hmin : 250000 ≤ minGas`; `hk` (no balance slot is 2, 6, 7); `SlotsOk crypto vault
 Act`; `Deployed w₀`, `Inv (abs w₀)`; per transaction `ctx.crypto = crypto`, before Prague or no
-authorizations, `TopOk` (sender without code), gas `< 2⁶⁴`, `TxOk`. The donation attack stays a
+authorizations, `TopOk` (sender without code), gas `< 2⁶⁴`, `TxOk`. These statements are
+unchanged by the `permit`/views/unknown-selector integration; what changed is the definition of
+`TxOk` (more frames covered; admission is `FrameAdmitted`, which adds the `permit` clause) and
+the type of `txOk_direct`'s / `follows_tx_pending`'s admission hypotheses. The donation attack stays a
 statement about a top-level trace (`donation_attack_deployed`): with nested calls the committed
 calls are only known to exist.
 
 ### 6.5 What remains (pending frame summaries, `PendingFrames`)
 
+Every frame of the vault's or the asset's code started by other code during a transaction is
+now covered, except:
+
 * **Low gas** (part 2): frames with less than `minGas` gas, the vault at depth 1024 (its call
-  into the asset fails), value with `< 100` gas. A frame either succeeds or rolls back; what is
-  missing is that a *successful* low-gas frame commits the high-gas outcome.
+  into the asset fails), value with `< 100` gas; `name()`/`symbol()` with less gas than the
+  stored string needs (`Str.getterGas`), the asset's `permit` at depth 1024. A frame either
+  succeeds or rolls back; what is missing is that a *successful* low-gas frame commits the
+  high-gas outcome.
   - Proved (`EvmLeanProofs/Program/NestedExtraGas.lean`, `exec_bump`): **every instruction
     except `GAS`, `CALL*`, `CREATE*` commutes with adding gas** — a successful instruction
     succeeds identically with more gas (one theorem for all opcodes, via a total-WP calculus).
@@ -283,15 +342,19 @@ calls are only known to exist.
     proofs with it, adding the child-failure branches of `totalAssets`, `safeTransferFrom`,
     `safeTransfer`; or (b) instrumenting the frame proofs to record the call targets and
     executed opcodes so that the lockstep simulation applies.
-* **Unmodelled selectors**: `permit` (permit work package; it needs a model operation),
-  `name`/`symbol` (frame forms now on `main`, `Strings*.lean`: to be added to `ViewData`), `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the
-  asset's `totalSupply`/`allowance`/`decimals`, unknown selectors and malformed calldata
-  (dirty address words, short calldata: solc's decoder reverts — not proved). Views only need
-  "success ⇒ world unchanged".
+* **`DOMAIN_SEPARATOR()` and `permit` outside `DomainOk`**: on a chain other than the token's
+  deployment chain, with a name of 32 bytes or more (the out-of-place encoding loop of
+  `abi_encode_t_string_storage` is not verified); `permit` with `0x01` EIP-7702-delegated.
+* **Malformed calldata for a known selector**: arguments missing (calldata shorter than
+  `4 + 32·k`) or an `address` argument with dirty high bytes — the function's ABI decoder
+  reverts (solc's `abi_decode_*` size check and `validator_revert_t_address`), not proved.
+  (Unknown selectors and calldata shorter than a selector *are* covered, `frameOk_unknown`;
+  a `uint8 v` above 255 in `permit` is covered: it fails `PermitValid`.)
 * **Calldata of `2⁶⁴` bytes or more** (impossible within `2⁶⁴` gas: memory expansion).
 * **Transaction layer**: `processTransaction` around `processMessageCall` as an `EnvStep`
   (stated, not proved).
 
-Extension points: new model operations (e.g. `permit`) plug in as new `VCall` constructors with
-a `frameOk_*` theorem and a `CallData` case; `Follows`/`FrameOk` are parametric in the
+Extension points: new model operations plug in as new `VCall` constructors with a `frameOk_*`
+theorem and a `CallData` case (or, like `permit`, as a frame committing an existing `VCall`,
+with a `Covered` disjunct and a `FrameAdmitted` clause); `Follows`/`FrameOk` are parametric in the
 admitted-call predicate `K`, and the machine-level simulation is generic in `P` and `Good`.
