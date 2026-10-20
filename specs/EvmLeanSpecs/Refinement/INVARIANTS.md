@@ -284,7 +284,7 @@ calls are only known to exist.
     `safeTransfer`; or (b) instrumenting the frame proofs to record the call targets and
     executed opcodes so that the lockstep simulation applies.
 * **Unmodelled selectors**: `permit` (permit work package; it needs a model operation),
-  `name`/`symbol` (strings work package), `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the
+  `name`/`symbol` (frame forms now on `main`, `Strings*.lean`: to be added to `ViewData`), `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the
   asset's `totalSupply`/`allowance`/`decimals`, unknown selectors and malformed calldata
   (dirty address words, short calldata: solc's decoder reverts — not proved). Views only need
   "success ⇒ world unchanged".
