@@ -13,8 +13,7 @@ inductive Fork where
   | cancun
   /-- Prague (Pectra, May 2025): EIP-7702, 2537, 2935, 6110, 7002, 7251, 7623, 7685, 7691. -/
   | prague
-  /-- Osaka (Fusaka, December 2025): EIP-7939 (`CLZ`), 7823, 7825, 7883, 7918, 7934, 7951, and
-  the per-transaction blob limit. -/
+  /-- Osaka (Fusaka, Dec 2025): EIP-7939 `CLZ`, 7823, 7825, 7883, 7918, 7934, 7951, tx blob cap. -/
   | osaka
   deriving DecidableEq, Repr, Inhabited
 

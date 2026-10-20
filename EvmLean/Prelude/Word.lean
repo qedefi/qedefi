@@ -1,22 +1,10 @@
 /-!
 # Machine words
 
-The EVM operates on 256-bit words. We model them as `BitVec 256`, which gives us
-Lean core's `BitVec` API and its automation (`bv_decide`, `bv_omega`, `grind`).
-
-Inside `namespace Word`, dot notation on a `Word` resolves to `Word.*` first, so `BitVec`
-operations whose names we reuse are called as `BitVec.f x y`.
-
-Where `BitVec` semantics differ from the EVM's we define a wrapper here; every
-EVM arithmetic opcode has exactly one definition in this file.
-
-| Opcode       | `BitVec` behaviour         | EVM behaviour              |
-|--------------|----------------------------|----------------------------|
-| `MOD`        | `x % 0 = x`                | `x % 0 = 0`                |
-| `SMOD`       | `x.srem 0 = x`             | `0`                        |
-| `EXP`        | `^` iterates `e` times     | `Nat.powMod`               |
-| `SHL`        | huge `Nat` amount panics   | clamp to 256               |
-| `SIGNEXTEND` | width-changing             | byte-index argument        |
+Words are `BitVec 256`. Every EVM arithmetic opcode has one definition here, wrapping
+`BitVec` where semantics differ (`MOD`/`SMOD` by zero, `EXP`, `SHL` clamping, `SIGNEXTEND`).
+Inside `namespace Word`, dot notation resolves to `Word.*` first, so reused names are
+called as `BitVec.f x y`.
 -/
 
 namespace EvmLean
@@ -44,8 +32,7 @@ def div (x y : Word) : Word := x / y
 /-- `MOD`: unsigned remainder; modulo zero yields zero. -/
 def mod (x y : Word) : Word := if y = 0 then 0 else x % y
 
-/-- `SDIV`: signed division truncating toward zero. `SDIV(-2²⁵⁵, -1) = -2²⁵⁵` and
-division by zero yields zero, both exactly as `BitVec.sdiv`. -/
+/-- `SDIV`: signed, truncating; `SDIV(-2²⁵⁵, -1) = -2²⁵⁵`, `/0 = 0` (as `BitVec.sdiv`). -/
 def sdiv (x y : Word) : Word := BitVec.sdiv x y
 
 /-- `SMOD`: signed remainder with the sign of the dividend; modulo zero yields zero. -/
@@ -59,12 +46,10 @@ def addmod (x y n : Word) : Word :=
 def mulmod (x y n : Word) : Word :=
   if n = 0 then 0 else BitVec.ofNat 256 ((x.toNat * y.toNat) % n.toNat)
 
-/-- `EXP`: `b ^ e` modulo `2²⁵⁶`. `Nat.powMod` is square-and-multiply in the kernel and
-GMP-backed at runtime (never use `^` on words: it iterates `e` times). -/
+/-- `EXP`: `b ^ e mod 2²⁵⁶` via `Nat.powMod` (`^` on words iterates `e` times). -/
 def exp (b e : Word) : Word := BitVec.ofNat 256 (Nat.powMod b.toNat e.toNat (2 ^ 256))
 
-/-- `SIGNEXTEND`: extend the sign of byte `b` (counting from the least significant byte).
-For `b ≥ 31` the word is unchanged. -/
+/-- `SIGNEXTEND`: extend the sign of byte `b` (from the LSB); unchanged for `b ≥ 31`. -/
 def signextend (b x : Word) : Word :=
   if b.toNat < 31 then (x.setWidth (8 * (b.toNat + 1))).signExtend 256 else x
 
@@ -72,8 +57,7 @@ def signextend (b x : Word) : Word :=
 def byte (i x : Word) : Word :=
   if i.toNat < 32 then (x >>> (8 * (31 - i.toNat))) &&& 0xff else 0
 
-/-- `SHL`: shift left; shifts of 256 or more yield zero. The amount is clamped first:
-shifting by a huge `Nat` panics the runtime. -/
+/-- `SHL`: shifts ≥ 256 yield zero; clamped first since a huge `Nat` shift panics at runtime. -/
 def shl (shift x : Word) : Word := if shift.toNat < 256 then x <<< shift.toNat else 0
 
 /-- `SHR`: logical shift right; shifts of 256 or more yield zero. -/

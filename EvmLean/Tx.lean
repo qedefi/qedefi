@@ -6,29 +6,9 @@ import EvmLean.Tx.Codec
 /-!
 # Transactions
 
-Validation, intrinsic gas and execution of a single transaction, following
-`ethereum/execution-specs` (`src/ethereum/forks/{cancun,prague,osaka}/`). Fork differences:
-
-* Prague: set-code transactions (EIP-7702: authorization cost, empty-list check, delegated
-  senders allowed by EIP-3607), the calldata floor (EIP-7623), blob parameters (EIP-7691).
-* Osaka: the transaction gas limit cap `2²⁴` (EIP-7825) and at most six blobs per
-  transaction (`BLOB_COUNT_LIMIT`, EIP-7594).
-
-The table maps definitions to the reference:
-
-| Lean                 | execution-specs                                      |
-|----------------------|------------------------------------------------------|
-| `intrinsicGas`       | `calculate_intrinsic_cost` (`transactions.py`)       |
-| `validate`           | `validate_transaction` (`transactions.py`)           |
-| `chainIdOf`          | `chain_id` (`transactions.py`)                       |
-| `resolveSender`      | `recover_sender` (`transactions.py`)                 |
-| `check`              | `check_transaction` (`fork.py`)                      |
-| `process`            | `process_transaction` + `prepare_message` (`fork.py`, `utils/message.py`) |
-
-Every rejection is a constructor of `InvalidTx`; fee arithmetic is in `Nat`, so a huge
-`gas * maxFeePerGas` is simply a large number that fails the balance check, never a
-wrapped-around one. State changes use the interpreter's `modify_state` helpers
-(`Interpreter.modifyState` …), so an account left empty by a change is deleted (EIP-161).
+Validation, intrinsic gas and execution of a single transaction (`transactions.py`,
+`fork.py`). Every rejection is an `InvalidTx`; fee arithmetic is in `Nat`, so huge fees fail
+the balance check rather than wrap.
 -/
 
 namespace EvmLean.Tx
@@ -37,8 +17,7 @@ namespace EvmLean.Tx
 
 /-- `TX_BASE`: base cost of every transaction. -/
 def txBase : Nat := 21000
-/-- `TX_DATA_TOKEN_STANDARD`: gas per calldata token (a zero byte is one token, a non-zero
-byte four, so this is Cancun's 4 per zero / 16 per non-zero byte). -/
+/-- `TX_DATA_TOKEN_STANDARD`: gas per calldata token (i.e. 4 per zero / 16 per non-zero byte). -/
 def txDataTokenStandard : Nat := 4
 /-- `TX_DATA_TOKEN_FLOOR` (EIP-7623, Prague): floor gas per calldata token. -/
 def txDataTokenFloor : Nat := 10
@@ -61,8 +40,7 @@ structure BlobParams where
   /-- `MAX_BLOB_GAS_PER_BLOCK`. -/
   maxGasPerBlock : Nat
 
-/-- Blob parameters of `fork`. Cancun: target 3 blobs, max 6 (`cancun/vm/gas.py`,
-`cancun/fork.py`). Prague and Osaka: target 6, max 9 (EIP-7691). -/
+/-- Blob parameters: Cancun target 3 / max 6 blobs; Prague+ target 6 / max 9 (EIP-7691). -/
 def blobParams : Fork → BlobParams
   | .cancun => { targetGasPerBlock := 393216, maxGasPerBlock := 786432 }
   | .prague => { targetGasPerBlock := 786432, maxGasPerBlock := 1179648 }
@@ -86,11 +64,7 @@ structure IntrinsicGas where
   calldataFloor : Nat
   deriving DecidableEq, Repr, Inhabited
 
-/-- Gas charged before execution starts. Mirrors `calculate_intrinsic_cost`: base cost,
-calldata (4 per token, i.e. 4 per zero byte and 16 per non-zero byte), creation (32000 plus
-the EIP-3860 init-code charge), access list (2400 per address, 1900 per storage key) and
-EIP-7702 authorizations (25000 each); plus the EIP-7623 floor `21000 + 10 · tokens`, which
-`validate` and `process` only use from Prague. -/
+/-- `calculate_intrinsic_cost`; the EIP-7623 floor is only used from Prague. -/
 def intrinsicGas (tx : Transaction) : IntrinsicGas :=
   let tokens := calldataTokens tx.data
   let dataCost := tokens * txDataTokenStandard
@@ -120,8 +94,7 @@ inductive SignatureError where
   | recoveryFailed
   deriving DecidableEq, Repr, Inhabited
 
-/-- Why a transaction is invalid, i.e. cannot be included in a block. Constructor names
-follow the reference's exception classes. -/
+/-- Why a transaction cannot be included in a block (after the reference's exceptions). -/
 inductive InvalidTx where
   /-- `TransactionTypeError`: a transaction type the fork does not know. -/
   | unsupportedType (ty : Nat)
@@ -149,8 +122,7 @@ inductive InvalidTx where
   | invalidSignature (e : SignatureError)
   /-- `InsufficientMaxFeePerGasError`: max fee per gas below the base fee. -/
   | insufficientMaxFeePerGas (maxFee baseFee : Nat)
-  /-- Legacy/EIP-2930 gas price below the base fee (a bare `InvalidBlock` in the
-  reference). -/
+  /-- Legacy/EIP-2930 gas price below the base fee (a bare `InvalidBlock` in the reference). -/
   | gasPriceBelowBaseFee (gasPrice baseFee : Nat)
   /-- `NoBlobDataError`: blob transaction without blobs. -/
   | noBlobData
@@ -196,8 +168,7 @@ instance : ToString InvalidTx := ⟨InvalidTx.toString⟩
 
 /-! ## Validation -/
 
-/-- Max fee and max priority fee of an EIP-1559-style transaction
-(`FeeMarketCapableTransaction`), if it is one. -/
+/-- `(maxFee, maxPriorityFee)` of a fee-market transaction, if it is one. -/
 def feeCaps? : Transaction → Option (Nat × Nat)
   | .legacy _ => none
   | .eip2930 _ => none
@@ -205,15 +176,12 @@ def feeCaps? : Transaction → Option (Nat × Nat)
   | .eip4844 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
   | .eip7702 t => some (t.maxFeePerGas, t.maxPriorityFeePerGas)
 
-/-- Is the transaction's type known to `fork`? Set-code transactions start in Prague (before
-it, `decode_transaction` raises `TransactionTypeError`). -/
+/-- Is the transaction's type known to `fork`? (Set-code from Prague.) -/
 def typeSupported (fork : Fork) : Transaction → Bool
   | .legacy _ | .eip2930 _ | .eip1559 _ | .eip4844 _ => true
   | .eip7702 _ => fork ≥ .prague
 
-/-- Stateless validity; returns the intrinsic gas. Mirrors `validate_transaction`: the gas
-limit must cover the intrinsic cost (and, from Prague, the calldata floor); from Osaka it
-must not exceed `2²⁴`. -/
+/-- Stateless validity (`validate_transaction`); returns the intrinsic gas. -/
 def validate (fork : Fork) (tx : Transaction) : Except InvalidTx IntrinsicGas := do
   if !typeSupported fork tx then throw (.unsupportedType tx.typeByte)
   let intrinsic := intrinsicGas tx
@@ -230,8 +198,7 @@ def validate (fork : Fork) (tx : Transaction) : Except InvalidTx IntrinsicGas :=
   | none => pure ()
   return intrinsic
 
-/-- The chain id a transaction commits to, if any. Mirrors `chain_id`: legacy transactions
-with `v ∈ {27, 28}` predate EIP-155 and commit to none. -/
+/-- `chain_id`: the committed chain id; none for pre-EIP-155 legacy (`v ∈ {27, 28}`). -/
 def chainIdOf : Transaction → Except InvalidTx (Option Nat)
   | .legacy t =>
     if t.v = 27 ∨ t.v = 28 then .ok none
@@ -259,15 +226,11 @@ def recoveryId : Transaction → Except InvalidTx Nat
   | .eip4844 t => yParityId t.yParity
   | .eip7702 t => yParityId t.yParity
 
-/-- The address controlled by an uncompressed 64-byte public key: the low 20 bytes of its
-Keccak. -/
+/-- Address of a 64-byte public key: low 20 bytes of its Keccak. -/
 def addressOfPublicKey (crypto : Crypto) (pub : ByteArray) : Address :=
   Word.toAddress (crypto.keccak256 pub)
 
-/-- The transaction sender. Mirrors `recover_sender`: checks `r`, `s` (EIP-2 low-`s`) and
-`v`/y-parity, then recovers the signer's key from the signing hash. When `hint` is given
-(the conformance fixtures record each transaction's sender) the signature checks are still
-performed but the address is taken from the hint instead of being recovered. -/
+/-- `recover_sender`; with a `hint` (fixture sender) checks still run but recovery is skipped. -/
 def resolveSender (crypto : Crypto) (tx : Transaction) (hint : Option Address) :
     Except InvalidTx Address := do
   let n := Secp256k1.n
@@ -294,9 +257,7 @@ structure Checked where
   blobGasUsed : Nat
   deriving DecidableEq, Inhabited
 
-/-- Effective gas price and maximum execution-gas fee (`check_transaction`). Fee-market
-transactions pay `min(maxPriorityFee, maxFee - baseFee) + baseFee`; others pay their gas
-price. Either way the price must cover the base fee. -/
+/-- Effective gas price and max execution-gas fee (`check_transaction`). -/
 def gasPricing (baseFee : Nat) : Transaction → Except InvalidTx (Nat × Nat)
   | .legacy t => fixed t.gasPrice t.gas
   | .eip2930 t => fixed t.gasPrice t.gas
@@ -316,9 +277,7 @@ where
 /-- The version byte of a blob versioned hash (its most significant byte). -/
 def versionByte (h : Word) : Nat := h.toNat / 2 ^ 248
 
-/-- EIP-4844 checks of `check_transaction` for a blob transaction; returns the maximum
-blob-gas fee to add to the balance requirement (zero for other types). From Osaka a
-transaction carries at most `BLOB_COUNT_LIMIT` blobs. -/
+/-- EIP-4844 checks of `check_transaction`; returns the max blob-gas fee (zero for non-blob). -/
 def blobChecks (fork : Fork) (env : BlockEnv) : Transaction → Except InvalidTx Nat
   | .legacy _ => .ok 0
   | .eip2930 _ => .ok 0
@@ -335,10 +294,7 @@ def blobChecks (fork : Fork) (env : BlockEnv) : Transaction → Except InvalidTx
       throw (.insufficientMaxFeePerBlobGas t.maxFeePerBlobGas price)
     return totalBlobGas (.eip4844 t) * t.maxFeePerBlobGas
 
-/-- Whether `tx` can be included given the block environment, the gas and blob gas still
-available in the block, and the current world. Mirrors `check_transaction`, in the same
-order of checks. From Prague a set-code transaction needs a non-empty authorization list,
-and a sender whose code is a delegation designator counts as an EOA (EIP-7702). -/
+/-- `check_transaction`, same check order; from Prague a delegated sender counts as an EOA. -/
 def check (crypto : Crypto) (fork : Fork) (env : BlockEnv) (gasAvailable blobGasAvailable : Nat)
     (world : World) (tx : Transaction) (senderHint : Option Address) :
     Except InvalidTx Checked := do
@@ -369,21 +325,17 @@ def check (crypto : Crypto) (fork : Fork) (env : BlockEnv) (gasAvailable blobGas
 
 /-! ## Execution -/
 
-/-- Credit `amount` wei to `a` (`create_ether`); an account left empty is deleted
-(`modify_state`, EIP-161). The sum is reduced modulo 2²⁵⁶, which
-cannot happen for real ether amounts. -/
+/-- Credit `amount` wei to `a` (`create_ether`), deleting it if left empty; wraps mod 2²⁵⁶. -/
 def creditBalance (w : World) (a : Address) (amount : Nat) : World :=
   Interpreter.modifyState w a fun acc => { acc with balance := BitVec.ofNat 256 (acc.balance.toNat + amount) }
 
-/-- Delete every touched account that exists and is empty (EIP-161,
-`destroy_touched_empty_accounts`). -/
+/-- `destroy_touched_empty_accounts` (EIP-161). -/
 def destroyTouchedEmpty (w : World) (touched : AddressSet) : World :=
   touched.foldl (fun w a => match w.account? a with
     | some acc => if acc.isEmpty then w.erase a else w
     | none => w) w
 
-/-- Precompile addresses of `fork` (all lie in `0x01 … 0x100` up to Osaka), pre-warmed by
-every transaction (EIP-2929). Uses `Precompile.isPrecompile` as the single source of truth. -/
+/-- Precompile addresses of `fork` (all in `0x01 … 0x100` up to Osaka), pre-warmed (EIP-2929). -/
 def precompileAddresses (fork : Fork) : List Address :=
   (List.range 0x101).filterMap fun i =>
     let a : Address := BitVec.ofNat 160 i
@@ -424,9 +376,7 @@ structure TxOutput where
   succeeded : Bool
   deriving Inhabited
 
-/-- The top-level message of `tx` sent by `sender` (`prepare_message`). `world` is the state
-after the nonce increment and gas purchase; `senderNonce` the nonce before the increment,
-which determines the address of a created contract. -/
+/-- `prepare_message`; `senderNonce` is the pre-increment nonce (determines a created address). -/
 def prepareMessage (crypto : Crypto) (fork : Fork) (env : BlockEnv) (world : World)
     (tx : Transaction) (sender : Address) (senderNonce gas : Nat) : Message :=
   let (currentTarget, data, code, codeAddress) := match tx.to with
@@ -443,15 +393,7 @@ def prepareMessage (crypto : Crypto) (fork : Fork) (env : BlockEnv) (world : Wor
     shouldTransferValue := true, isStatic := false,
     accessedAddresses := warmAddresses, accessedStorageKeys := warmKeys }
 
-/-- Execute `tx` in `world`. Mirrors `process_transaction`: validate and check, buy gas
-(execution and blob gas), increment the nonce, run the top-level message (pre-warming the
-origin, the target or new contract address, the precompiles, the coinbase (EIP-3651) and
-the access list), refund unused gas plus the capped refund counter (EIP-3529: at most a
-fifth of the gas used; from Prague at least the EIP-7623 calldata floor is charged), pay
-the priority fee to the coinbase, delete self-destructed accounts and touched empty
-accounts. A set-code transaction's authorizations travel in `TxEnv.authorizations` and are
-applied by the interpreter (`Interpreter.applyTopLevelDelegation`). Transient storage starts empty and is discarded
-afterwards (EIP-1153). `fuel` bounds interpreter steps. -/
+/-- `process_transaction`; authorizations are applied by the interpreter. `fuel` bounds steps. -/
 def process (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (gasAvailable blobGasAvailable : Nat) (world : World) (tx : Transaction)
     (senderHint : Option Address) : Except TxError TxOutput := do

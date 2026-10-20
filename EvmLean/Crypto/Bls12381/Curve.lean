@@ -4,18 +4,9 @@ import EvmLean.Prelude.Bytes
 /-!
 # BLS12-381 curve groups `G1` and `G2`
 
-* `G1 ⊂ E(𝔽ₚ)`,   `E  : y² = x³ + 4`
-* `G2 ⊂ E'(𝔽ₚ²)`, `E' : y² = x³ + 4(1 + u)` (the M-type sextic twist)
-
-Points are handled in two forms. `Affine α` is the user-facing form (with an explicit point at
-infinity). `Jac α` holds Jacobian coordinates `(X, Y, Z) ↦ (X/Z², Y/Z³)` and is used for scalar
-multiplication so that no field inversion is needed per step. The group law is written once,
-generically over `FieldOps`, for curves `y² = x³ + b` (`a = 0`), using the standard
-`dbl-2009-l` / `add-2007-bl` formulas from the Explicit-Formulas Database.
-
-Also here: ZCash-format compressed `G1` decoding with all the checks that EIP-4844's
-`validate_kzg_g1` / py_ecc `pubkey_to_G1` + `KeyValidate` perform, and the generator and
-trusted-setup constants.
+`G1 ⊂ E(𝔽ₚ) : y² = x³ + 4` and `G2 ⊂ E'(𝔽ₚ²) : y² = x³ + 4(1 + u)`. The `a = 0` group law
+(EFD `dbl-2009-l` / `add-2007-bl`) is written once over `FieldOps`, in Jacobian coordinates.
+Also: ZCash compressed `G1` decoding (`validate_kzg_g1`), generators and the KZG `[τ]G2`.
 -/
 
 namespace EvmLean.Bls12381
@@ -30,8 +21,7 @@ inductive Affine (α : Type) where
   | point (x y : α)
   deriving DecidableEq, Repr, Inhabited
 
-/-- A curve point in Jacobian coordinates, representing `(X/Z², Y/Z³)`; `Z = 0` is the point
-at infinity. -/
+/-- A curve point in Jacobian coordinates `(X/Z², Y/Z³)`; `Z = 0` is the point at infinity. -/
 structure Jac (α : Type) where
   /-- `X = x·Z²`. -/
   x : α
@@ -86,8 +76,7 @@ def double (p : Jac α) : Jac α :=
     let yz := p.y * p.z
     ⟨x3, y3, yz + yz⟩
 
-/-- Point addition (EFD `add-2007-bl`), falling back to `double` when the inputs are equal and
-returning infinity when they are opposite. -/
+/-- Point addition (EFD `add-2007-bl`), handling the doubling and inverse cases. -/
 def add (p q : Jac α) : Jac α :=
   if isZero p.z then q
   else if isZero q.z then p
@@ -110,8 +99,7 @@ def add (p q : Jac α) : Jac α :=
       let y3 := r * (v - x3) - s1 * hhh
       ⟨x3, y3, p.z * q.z * h⟩
 
-/-- Scalar multiplication `[k] p` by double-and-add over the bits of `k`, most significant
-first (`k = 0` gives infinity). -/
+/-- Scalar multiplication `[k] p` by double-and-add, most significant bit first. -/
 def mul (p : Jac α) (k : Nat) : Jac α :=
   if _h : k = 0 then infinity
   else
@@ -136,8 +124,7 @@ def isOnCurve (b : α) : Affine α → Bool
   | .infinity => true
   | .point x y => decide (y * y = x * x * x + b)
 
-/-- Is `p` in the order-`r` subgroup, i.e. `[r] p = ∞`? This is the subgroup check of
-py_ecc's `KeyValidate` (`subgroup_check`). -/
+/-- Is `[r] p = ∞`? The subgroup check of py_ecc's `KeyValidate`. -/
 def inSubgroup (p : Affine α) : Bool := (Jac.mul (Jac.ofAffine p) R).isInfinity
 
 /-- Scalar multiplication `[k] p`. -/
@@ -168,11 +155,7 @@ def g2Gen : Affine Fp2 :=
     ⟨⟨0x0ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801⟩,
      ⟨0x0606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be⟩⟩
 
-/-- `[τ] G2` from the mainnet KZG ceremony: `KZG_SETUP_G2_MONOMIAL[1]`, whose compressed form
-is `KZG_SETUP_G2_MONOMIAL_1` in execution-specs `crypto/kzg.py` (and line 2 of the G2 section
-of c-kzg-4844's `trusted_setup.txt`):
-`b5bfd7dd…a20c1def2`. Stored decompressed so no `𝔽ₚ²` square root is needed at runtime;
-the test suite checks that it lies on the twist, is in `G2`, and compresses to those bytes. -/
+/-- `[τ]G2` (`KZG_SETUP_G2_MONOMIAL_1`), stored decompressed; tests check it compresses back. -/
 def tauG2 : Affine Fp2 :=
   .point
     ⟨⟨0x185cbfee53492714734429b7b38608e23926c911cceceac9a36851477ba4c60b087041de621000edc98edada20c1def2⟩,
@@ -183,14 +166,7 @@ def tauG2 : Affine Fp2 :=
 /-- `2³⁸¹`: the three top bits of a 48-byte compressed point are flags, the rest is `x`. -/
 def pow2_381 : Nat := 1 <<< 381
 
-/-- Decode a 48-byte ZCash-format compressed `G1` point, as py_ecc `decompress_G1`, followed
-by the subgroup check of `KeyValidate`. Mirrors `validate_kzg_g1` + `pubkey_to_G1` in
-execution-specs `crypto/kzg.py` (which accept the point at infinity).
-
-`none` when: the length is not 48; the compression flag (bit 383) is clear; the infinity flag
-(bit 382) disagrees with whether the 381 low bits are all zero; the infinity flag is set
-together with the sign flag (bit 381); `x ≥ p`; `x³ + 4` is not a square (not on the curve);
-or the point is not in the order-`r` subgroup. -/
+/-- Decode a compressed `G1` point with all `validate_kzg_g1` checks (infinity is accepted). -/
 def decompressG1 (bytes : ByteArray) : Option (Affine Fp) :=
   if bytes.size ≠ 48 then none
   else

@@ -1,20 +1,17 @@
 import EvmTest.TxSupport
 
 /-!
-Integration tests for the transaction layer, blocks and tries that need the real
-primitives (`Crypto.real`: Keccak, secp256k1) and, for the end-to-end block, the
-interpreter.
+# Transaction, block and trie integration tests
 
-Vectors: `TrieTests/trieanyorder.json` and `trieanyorder_secureTrie.json` from
-`ethereum/tests`, the execution-specs constants `EMPTY_TRIE_ROOT` / `EMPTY_OMMER_HASH`, and
-the BlockchainTests fixture `bcEIP4844-blobtransactions/blockWithAllTransactionTypes`.
+With `Crypto.real`. Vectors: `ethereum/tests` `TrieTests/trieanyorder{,_secureTrie}.json`, the
+execution-specs `EMPTY_TRIE_ROOT` / `EMPTY_OMMER_HASH`, and the BlockchainTests fixture
+`bcEIP4844-blobtransactions/blockWithAllTransactionTypes`.
 -/
 
 open EvmLean EvmTest
 
 namespace EvmTest.TxIntegration
 
-/-- The real Keccak-256. -/
 def keccak : ByteArray → Word := Crypto.real.keccak256
 
 /-! ## Constants -/
@@ -30,28 +27,20 @@ def keccak : ByteArray → Word := Crypto.real.keccak256
 /-- Key or value bytes as the trie tests write them: hex if `0x`-prefixed, else ASCII. -/
 def enc (s : String) : ByteArray := if s.startsWith "0x" then hx s else s.toUTF8
 
-/-- Root of a test trie. -/
 def plain (kvs : List (String × String)) : Word :=
   Trie.root keccak (kvs.map fun (k, v) => (enc k, enc v))
 
-/-- Root of a secured test trie. -/
 def secured (kvs : List (String × String)) : Word :=
   Trie.securedRoot keccak (kvs.map fun (k, v) => (enc k, enc v))
 
-/-- `singleItem`. -/
 def singleItem : List (String × String) := [("A", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-/-- `dogs`. -/
 def dogs : List (String × String) := [("doe", "reindeer"), ("dog", "puppy"), ("dogglesworth", "cat")]
-/-- `puppy`. -/
 def puppy : List (String × String) :=
   [("do", "verb"), ("horse", "stallion"), ("doge", "coin"), ("dog", "puppy")]
-/-- `foo`. -/
 def foo : List (String × String) := [("foo", "bar"), ("food", "bass")]
-/-- `smallValues`. -/
 def smallValues : List (String × String) := [("be", "e"), ("dog", "puppy"), ("bed", "d")]
-/-- `testy`. -/
 def testy : List (String × String) := [("test", "test"), ("te", "testy")]
-/-- `hex`. -/
+/-- Vector `hex`. -/
 def hexKeys : List (String × String) := [("0x0045", "0x0123456789"), ("0x4500", "0x9876543210")]
 
 #guard plain singleItem = hw "0xd23786fb4a010da3ce639d66d5e904a11dbc02746d1ce25029e53290cabf28ab"

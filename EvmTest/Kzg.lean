@@ -3,14 +3,9 @@ import EvmLean.Crypto.Kzg
 /-!
 # Tests for `EvmLean.Crypto.Kzg` and the BLS12-381 code under `EvmLean/Crypto/Bls12381/`
 
-* Curve constants: generators and `[τ]G2` are on their curves and in the order-`r` subgroups,
-  and `[τ]G2` compresses to the ceremony's `KZG_SETUP_G2_MONOMIAL_1` bytes.
-* Frobenius maps and the optimized final exponentiation against plain exponentiation.
-* Pairing: non-degenerate, of order `r`, bilinear on small multiples.
-* `G1` decoding edge cases (flags, `x ≥ p`, off-subgroup points).
-* `verifyProof`: vectors from c-kzg-4844 `tests/verify_kzg_proof/kzg-mainnet`
-  (the consensus-spec-tests `verify_kzg_proof` suite), covering valid-true, valid-false and
-  invalid-input cases.
+Curve constants (including `[τ]G2` against the ceremony bytes), Frobenius and final
+exponentiation, pairing properties, `G1` decoding edge cases, and `verifyProof` against
+c-kzg-4844 `tests/verify_kzg_proof/kzg-mainnet`.
 -/
 
 open EvmLean EvmLean.Bls12381
@@ -184,9 +179,7 @@ def eGen : Fp12 := pairing g1Gen g2Gen
 
 /-- `z`, `y` and `proof` of the `invalid_commitment_*` cases (from correct_proof_2_1). -/
 def zOne : ByteArray := hex 32 1
-/-- See `zOne`. -/
 def y21 : ByteArray := hex 32 0x1824b159acc5056f998c4fefecbc4ff55884b7fa0003480200000001fffffffe
-/-- See `zOne`. -/
 def proof21 : ByteArray :=
   hex 48 0xb0c829a8d2d3405304fecbea193e6c67f7c3912a6adc7c3737ad3f8a3b750425c1531a7426f03033a3994bc82a10609f
 /-- The commitment of correct_proof_2_1, used by the `invalid_proof_*` cases. -/

@@ -1,10 +1,10 @@
 import EvmTest.TxSupport
 
 /-!
-Unit tests for `EvmLean.Interpreter.Delegation` (EIP-7702): delegation designators,
-authority recovery (with a signed authorization taken from the execution-spec-tests
-fixture `prague/eip7702_set_code_tx/test_set_code_to_sstore.json`, whose signer the fixture
-records), and the state changes of `setDelegation`.
+# Tests for EIP-7702 delegation
+
+Designators, authority recovery (authorization from the execution-spec-tests fixture
+`prague/eip7702_set_code_tx/test_set_code_to_sstore.json`), and `setDelegation` state changes.
 -/
 
 open EvmLean EvmLean.Interpreter EvmTest
@@ -68,11 +68,11 @@ def applied (w : World) (auths : List Authorization := [auth]) : World × Addres
 #guard (applied ((∅ : World).insert signer { balance := 1 })).2.2 = 12500
 -- The second (now stale-nonce) copy of the same authorization is skipped.
 #guard (applied ∅ [auth, auth]).1.account signer = { nonce := 1, code := delegationCode auth.address }
+
 /-- A stand-in crypto whose recovery always yields the zero public key, so that every
 well-formed authorization is signed by `fakeAuthority` (`fakeKeccak` of 64 zero bytes). -/
 def anySigner : Crypto := { fakeCrypto with ecrecover := fun _ _ _ _ => some (Bytes.zeros 64) }
 
-/-- The authority under `anySigner`. -/
 def fakeAuthority : Address := 64
 
 #guard recoverAuthority anySigner auth = some fakeAuthority

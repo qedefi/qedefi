@@ -5,15 +5,9 @@ import EvmLean.Interpreter.State
 /-!
 # The instruction monad
 
-A single instruction is a computation `M α := StateT Machine (Except ExceptionalHalt)`: it
-reads and updates the machine (normally only the executing frame, the world and transient
-storage) and may halt exceptionally. On an exceptional halt the updated machine is
-discarded; `step` finishes the frame from the pre-instruction machine, which is sound
-because a failing frame keeps nothing but its snapshot (`process_message`'s
-`except ExceptionalHalt` branch).
-
-The primitives mirror `cancun/vm/stack.py` (`pop`, `push`), `cancun/vm/gas.py`
-(`charge_gas`) and the access-list bookkeeping repeated in the instruction files.
+`M α := StateT Machine (Except ExceptionalHalt)`, plus stack, gas, memory and access-set
+primitives. On an exceptional halt the updated machine is discarded and `step` finishes the
+frame from the pre-instruction machine: a failing frame keeps only its snapshot anyway.
 -/
 
 namespace EvmLean.Interpreter
@@ -36,8 +30,7 @@ abbrev M := StateT Machine (Except ExceptionalHalt)
 @[inline] def modifySub (f : Substate → Substate) : M Unit :=
   modifyFrame fun fr => { fr with sub := f fr.sub }
 
-/-- Subtract `amount` from the frame's gas, halting with `outOfGas` if there is not enough.
-Mirrors `charge_gas`. -/
+/-- Subtract `amount` from the frame's gas, halting with `outOfGas` if short. -/
 def charge (amount : Nat) : M Unit := do
   let g := (← getFrame).gasLeft
   if g < amount then throw .outOfGas
@@ -47,7 +40,7 @@ def charge (amount : Nat) : M Unit := do
 def refundGas (amount : Nat) : M Unit :=
   modifyFrame fun fr => { fr with gasLeft := fr.gasLeft + amount }
 
-/-- Pop the top of the stack, halting with `stackUnderflow` if it is empty. Mirrors `pop`. -/
+/-- Pop the top of the stack, halting with `stackUnderflow` if empty. -/
 def pop : M Word := do
   match (← getFrame).stack with
   | [] => throw .stackUnderflow
@@ -61,8 +54,7 @@ def popNat : M Nat := return (← pop).toNat
 /-- Pop a word as an address (its low 160 bits, `to_address_masked`). -/
 def popAddress : M Address := return Word.toAddress (← pop)
 
-/-- Push a word, halting with `stackOverflow` if the stack already holds 1024 items.
-Mirrors `push`. -/
+/-- Push a word, halting with `stackOverflow` if the stack already holds 1024 items. -/
 def push (w : Word) : M Unit := do
   if (← getFrame).stack.length ≥ Gas.stackLimit then throw .stackOverflow
   modifyFrame fun fr => { fr with stack := w :: fr.stack }
@@ -74,31 +66,26 @@ def advance (n : Nat := 1) : M Unit := modifyFrame fun fr => { fr with pc := fr.
 def requireNonStatic : M Unit := do
   if (← getFrame).msg.isStatic then throw .writeInStaticContext
 
-/-- Memory expansion needed for the given `(offset, length)` accesses, computed from the
-current memory size. Nothing is allocated. Mirrors `calculate_gas_extend_memory`. -/
+/-- Expansion cost of the `(offset, length)` accesses; allocates nothing. -/
 def memoryExpansion (exts : List (Nat × Nat)) : M Gas.ExtendMemory := do
   return Gas.extendMemory (← getFrame).memory.size exts
 
-/-- Expand memory to cover the given accesses. Only call after charging the expansion
-cost (the size is then bounded by the available gas). -/
+/-- Expand memory to cover the accesses. Call only after charging (bounds the size by gas). -/
 def expandMemory (exts : List (Nat × Nat)) : M Unit :=
   modifyFrame fun fr =>
     { fr with memory := exts.foldl (fun mem (off, len) => mem.expand off len) fr.memory }
 
-/-- Write `data` to memory at `off` (memory must already cover the range). Empty writes are
-no-ops whatever the offset. Mirrors `memory_write`. -/
+/-- Write `data` at `off` (already expanded); empty writes are no-ops at any offset. -/
 def writeMemory (off : Nat) (data : ByteArray) : M Unit :=
   if data.size = 0 then pure ()
   else modifyFrame fun fr => { fr with memory := fr.memory.write off data }
 
-/-- `len` bytes of `b` from `off`, zero-padded (`buffer_read`). Equal to
-`Bytes.readPadded b off len`, but offsets at or past the end short-circuit to zeros: offsets
-come from 256-bit words, and the runtime's `ByteArray.extract` aborts (out of memory) on
-offsets that do not fit a machine word, even for empty ranges. -/
+/-- `Bytes.readPadded b off len`, short-circuiting offsets past the end: `ByteArray.extract`
+aborts on offsets ≥ 2⁶⁴ even for empty ranges. -/
 def readBytes (b : ByteArray) (off len : Nat) : ByteArray :=
   if b.size ≤ off then Bytes.zeros len else Bytes.readPadded b off len
 
-/-- Read `len` bytes of memory at `off` (zero-padded). Mirrors `memory_read_bytes`. -/
+/-- Read `len` bytes of memory at `off` (zero-padded). -/
 def readMemory (off len : Nat) : M ByteArray := return readBytes (← getFrame).memory.bytes off len
 
 /-- Mark `a` warm, returning whether it already was (EIP-2929). -/

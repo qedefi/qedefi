@@ -3,23 +3,8 @@ import EvmLean.Prelude.Bytes
 /-!
 # BLAKE2b compression function `F` (EIP-152), for precompile `0x09`
 
-Source: RFC 7693 (*The BLAKE2 Cryptographic Hash and Message Authentication Code*),
-§3.1 (mixing function `G`) and §3.2 (compression function `F`), with EIP-152's
-generalisation to a caller-chosen number of rounds. Mirrors `Blake2.compress` in the
-execution specs (`src/ethereum/crypto/blake2.py`).
-
-## Algorithm
-
-* Initialise the 16-word work vector `v` with the state `h` and the BLAKE2b IV, XOR the
-  offset counters `t₀ t₁` into `v₁₂ v₁₃`, and invert `v₁₄` for the final block.
-* Each round applies `G` to the four columns and then the four diagonals of `v` (viewed
-  as a 4×4 matrix), feeding message words in the order given by the permutation
-  `σ[r mod 10]`. BLAKE2b proper uses 12 rounds; EIP-152 lets the caller pick any number
-  (including 0), the schedule wrapping around every 10 rounds.
-* The new state is `h[i] ⊕ v[i] ⊕ v[i+8]`.
-
-`G`'s rotation constants for BLAKE2b are `(32, 24, 16, 63)`. Message words are indexed by
-`σ` entries typed `Fin 16`, so there are no bounds checks or fallbacks.
+RFC 7693 §3.2 with EIP-152's caller-chosen round count (any number, including 0; the
+schedule `σ` wraps every 10 rounds). Mirrors `Blake2.compress` in `ethereum/crypto/blake2.py`.
 -/
 
 namespace EvmLean.Blake2
@@ -45,12 +30,7 @@ def sigma : Vector (Vector (Fin 16) 16) 10 :=
 /-- Rotate right by `n` bits, `0 < n < 64`. -/
 @[inline] def rotr (x : UInt64) (n : UInt64) : UInt64 := (x >>> n) ||| (x <<< (64 - n))
 
-/-- Run `n` rounds starting at round index `r` on the work vector `v0 … v15`. Each round
-applies the mixing function `G` (RFC 7693, §3.1; rotations 32, 24, 16, 63) to the four
-columns and then the four diagonals of `v`, with message words permuted by
-`s = σ[r mod 10]`. `G` is unrolled (`vi_k` is the `k`-th update of `v[i]` in the round), and
-the work vector lives in the arguments of this tail-recursive function, so the compiled
-loop keeps it in unboxed registers and allocates only the final `Vector`. -/
+/-- Run `n` rounds from round `r`; `G` is unrolled and `v` lives in arguments (stays unboxed). -/
 def rounds (m : Vector UInt64 16) (n r : Nat)
     (v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 : UInt64) : Vector UInt64 16 :=
   match n with
@@ -134,8 +114,7 @@ def rounds (m : Vector UInt64 16) (n r : Nat)
       v12_4 v13_4 v14_4 v15_4
 
 
-/-- BLAKE2b `F` with a caller-chosen number of rounds: state `h`, message block `m`,
-offset counters `t₀ t₁`, final-block flag. -/
+/-- BLAKE2b `F` with a caller-chosen number of rounds. -/
 def compress (rounds : Nat) (h : Vector UInt64 8) (m : Vector UInt64 16)
     (t₀ t₁ : UInt64) (final : Bool) : Vector UInt64 8 :=
   let v := Blake2.rounds m rounds 0 h[0] h[1] h[2] h[3] h[4] h[5] h[6] h[7]

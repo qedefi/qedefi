@@ -4,9 +4,8 @@ import EvmTest.HashUtil
 /-!
 # Tests for `EvmLean.Crypto.Ripemd160`
 
-The test vectors from the RIPEMD-160 paper (Dobbertin, Bosselaers, Preneel), plus `seq n`
-inputs (bytes `0, 1, …, n-1`) at the 55/56/64-byte padding boundaries, checked against
-Python's `hashlib.new("ripemd160")`.
+Vectors from the RIPEMD-160 paper, plus `seq n` inputs at the 55/56/64-byte padding
+boundaries checked against Python's `hashlib`.
 -/
 
 open EvmLean EvmTest.HashUtil

@@ -1,19 +1,8 @@
 /-!
 # secp256r1 (NIST P-256) ECDSA verification, for EIP-7951 `P256VERIFY`
 
-`verify` mirrors `p256verify` in execution-specs `osaka/vm/precompiled_contracts/p256verify.py`
-after its length check: the input bounds and the curve-membership test
-(`is_on_curve_secp256r1`), then ECDSA verification as `secp256r1_verify` performs it through
-the `cryptography` package (SEC 1 §4.1.4 with a pre-hashed 32-byte digest):
-
-  `e = H`, `w = s⁻¹ mod n`, `u₁ = e·w`, `u₂ = r·w (mod n)`, `R = [u₁]G + [u₂]Q`;
-  valid iff `R ≠ ∞` and `R.x mod n = r`.
-
-The curve is `y² = x³ − 3x + b` over `𝔽ₚ`, `p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1`, of prime order
-`n` (cofactor 1). Since `a = −3 ≠ 0`, the `a = 0` group law of `Crypto/Bls12381/Curve.lean`
-does not apply; points use Jacobian coordinates with the EFD `dbl-2001-b` doubling (for
-`a = −3`) and `add-2007-bl` addition. Field elements are `Nat`s reduced mod `p`; inversion is
-Fermat (`Nat.powMod`).
+Mirrors `p256verify` + `secp256r1_verify` (SEC 1 §4.1.4, pre-hashed digest). Since `a = −3`,
+points use Jacobian coordinates with EFD `dbl-2001-b` doubling and `add-2007-bl` addition.
 -/
 
 namespace EvmLean.P256
@@ -81,8 +70,7 @@ def double (q : Jac) : Jac :=
     let y3 := fsub (fmul alpha (fsub (fmul 4 beta) x3)) (fmul 8 (fmul gamma gamma))
     ⟨x3, y3, z3⟩
 
-/-- Addition (EFD `add-2007-bl`), doubling equal inputs and returning infinity for opposite
-ones. -/
+/-- Addition (EFD `add-2007-bl`), handling the doubling and inverse cases. -/
 def add (q₁ q₂ : Jac) : Jac :=
   if q₁.z = 0 then q₂
   else if q₂.z = 0 then q₁
@@ -123,10 +111,7 @@ def affineX (q : Jac) : Option Nat :=
 
 end Jac
 
-/-- EIP-7951 `P256VERIFY` on the decoded 160-byte input `hash ‖ r ‖ s ‖ qx ‖ qy`:
-`true` iff `0 < r < n`, `0 < s < n`, `qx, qy < p`, `(qx, qy) ≠ (0, 0)`, the point is on the
-curve, and the ECDSA signature `(r, s)` of the 32-byte digest `hash` verifies under `Q`.
-Mirrors `p256verify` + `secp256r1_verify`. -/
+/-- `true` iff the inputs are in range, `Q ≠ (0, 0)` is on the curve, and `(r, s)` verifies. -/
 def verify (hash : ByteArray) (r s qx qy : Nat) : Bool :=
   if r = 0 || r ≥ n || s = 0 || s ≥ n then false
   else if qx ≥ p || qy ≥ p || (qx = 0 && qy = 0) then false

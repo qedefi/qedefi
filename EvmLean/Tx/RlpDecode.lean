@@ -3,19 +3,10 @@ import EvmLean.Prelude.Rlp
 /-!
 # RLP decoding
 
-A strict, total RLP decoder: the inverse of `Rlp.encode` on canonical encodings. Blocks and
-typed transactions arrive as RLP, and invalid blocks in the conformance suite are often only
-given in that form, so the decoder must reject exactly what the reference rejects:
-
-* truncated input, and trailing bytes after the top-level item;
-* non-canonical encodings: a single byte below `0x80` wrapped in a length prefix, a long-form
-  length below 56, or a length with leading zero bytes;
-* (via the typed accessors below) integers with leading zero bytes, integers wider than
-  their reference type, and fixed-size byte strings of the wrong width.
-
-Recursion is on explicit structural fuel. Every call consumes at least one input byte or
-descends one level, so `2 * size + 2` fuel always suffices (`decode` supplies it); running
-out is nevertheless reported as an explicit error rather than a fake result.
+A strict, total RLP decoder, inverse of `Rlp.encode` on canonical encodings. It must reject
+exactly what the reference rejects (truncation, trailing bytes, non-canonical prefixes, and
+via typed accessors bad integer/width encodings). Recursion uses structural fuel;
+`2 * size + 2` always suffices.
 -/
 
 namespace EvmLean.Rlp
@@ -48,8 +39,7 @@ instance : ToString DecodeError := ⟨DecodeError.toString⟩
 def byteAt? (b : ByteArray) (i : Nat) : Option UInt8 :=
   if h : i < b.size then some b[i] else none
 
-/-- Big-endian length field of `n` bytes at `pos`, rejecting leading zeros and lengths
-below 56 (which must use the short form). -/
+/-- Long-form length of `n` bytes at `pos`; rejects leading zeros and lengths below 56. -/
 def readLongLength (b : ByteArray) (pos n limit : Nat) : Except DecodeError Nat :=
   if pos + n > limit then .error .truncated
   else
@@ -61,8 +51,7 @@ def readLongLength (b : ByteArray) (pos n limit : Nat) : Except DecodeError Nat 
       if len < 56 then .error (.nonCanonical "long-form length below 56") else .ok len
 
 mutual
-/-- Decode one item starting at `pos`, which must end at or before `limit`. Returns the item
-and the position just after it. -/
+/-- Decode one item at `pos` ending by `limit`; returns it and the next position. -/
 def decodeItem : Nat → ByteArray → Nat → Nat → Except DecodeError (Rlp × Nat)
   | 0, _, _, _ => .error .outOfFuel
   | fuel + 1, b, pos, limit =>
@@ -107,8 +96,7 @@ def decodeItem : Nat → ByteArray → Nat → Nat → Except DecodeError (Rlp �
             | .error e => .error e
             | .ok items => .ok (.list items, start + len)
 
-/-- Decode consecutive items filling exactly `[pos, limit)`; `acc` holds the items decoded
-so far, in reverse. -/
+/-- Decode items filling exactly `[pos, limit)`; `acc` is reversed. -/
 def decodeItems : Nat → ByteArray → Nat → Nat → List Rlp → Except DecodeError (List Rlp)
   | 0, _, _, _, _ => .error .outOfFuel
   | fuel + 1, b, pos, limit, acc =>
@@ -124,9 +112,7 @@ def decode (b : ByteArray) : Except DecodeError Rlp :=
   | .error e => .error e
   | .ok (item, next) => if next = b.size then .ok item else .error .trailingBytes
 
-/-! ## Typed accessors
-
-These mirror how `ethereum_rlp.decode_to` interprets an item as a field of a given type. -/
+/-! ## Typed accessors (mirror `ethereum_rlp.decode_to`) -/
 
 /-- The item as a byte string. -/
 def asBytes (what : String) : Rlp → Except DecodeError ByteArray
@@ -138,16 +124,14 @@ def asList (what : String) : Rlp → Except DecodeError (List Rlp)
   | .list l => .ok l
   | .bytes _ => .error (.unexpected s!"{what}: expected list, got bytes")
 
-/-- The item as an unsigned integer of at most `maxBytes` bytes, rejecting leading zeros.
-Use `maxBytes := 8` for `U64`, `32` for `U256`, and `uintMaxBytes` for `Uint`. -/
+/-- An unsigned integer of at most `maxBytes` bytes, rejecting leading zeros. -/
 def asNat (what : String) (maxBytes : Nat) (r : Rlp) : Except DecodeError Nat := do
   let b ← asBytes what r
   if byteAt? b 0 = some 0 then throw (.nonCanonical s!"{what}: integer with leading zero")
   if b.size > maxBytes then throw (.unexpected s!"{what}: integer wider than {maxBytes} bytes")
   return Bytes.toNat b
 
-/-- Width bound used for the reference's unbounded `Uint` fields. RLP itself caps payloads
-far below this, so it never rejects anything. -/
+/-- Width bound for unbounded `Uint` fields (never binding in practice). -/
 def uintMaxBytes : Nat := 2 ^ 64
 
 /-- A `U64` field. -/

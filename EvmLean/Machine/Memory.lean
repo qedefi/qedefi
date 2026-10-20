@@ -25,8 +25,7 @@ def size (m : Memory) : Nat := m.bytes.size
 /-- Active size in 32-byte words. -/
 def words (m : Memory) : Nat := m.size / 32
 
-/-- Active words after an access to `[off, off + len)`. Zero-length accesses never expand
-memory, whatever the offset. -/
+/-- Active words after an access to `[off, off + len)`; zero-length accesses never expand. -/
 def wordsAfter (words off len : Nat) : Nat :=
   if len = 0 then words else max words ((off + len + 31) / 32)
 

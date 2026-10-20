@@ -4,9 +4,7 @@ import EvmLean.Crypto.Real
 /-! Contract-address derivation with the real Keccak (interpreter tests use a stand-in hash). -/
 
 namespace EvmTest.AddressReal
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 -- `CREATE`: well-known examples for sender 0x6ac7…dbf0.
 #guard createAddress Crypto.real.keccak256 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0 0

@@ -5,17 +5,10 @@ import EvmLean.Interpreter.Delegation
 /-!
 # Instruction semantics
 
-`exec op` executes one instruction in the instruction monad. Each case follows the
-reference implementation in `cancun/vm/instructions/*.py` step by step, including the order
-of stack pops, gas charges, checks and memory expansion (the order decides *which*
-exceptional halt is reported and whether an access was warmed).
-
-`exec` matches exhaustively on `Opcode`: there is no wildcard arm, so a new opcode is a
-compile error here until its semantics is written.
-
-Instructions that end the frame return `Action.stop`/`Action.revert`; the `CALL*` and
-`CREATE*` families do all of their checks and charges here and then return
-`Action.call`/`Action.create`, and `step` starts the child.
+`exec op` executes one instruction. Each case follows `vm/instructions/*.py` step by step,
+including the order of pops, gas charges, checks and memory expansion (it decides which
+halt is reported and whether an access was warmed). `CALL*`/`CREATE*` return a request that
+`step` starts. The match is exhaustive, so a new opcode fails to compile until defined.
 -/
 
 namespace EvmLean.Interpreter
@@ -61,8 +54,7 @@ def ofNat (n : Nat) : Word := BitVec.ofNat 256 n
 
 /-! ## Copy-style instructions -/
 
-/-- Shared shape of `CALLDATACOPY`/`CODECOPY`: pop `(memOffset, srcOffset, size)`, charge
-`3 + copy + expansion`, copy `size` zero-padded bytes of `src` to memory. -/
+/-- Shared shape of `CALLDATACOPY`/`CODECOPY`: copy `size` zero-padded bytes of `src` to memory. -/
 def copyToMemory (src : Machine → ByteArray) : M Action := do
   let memOff ← popNat
   let srcOff ← popNat
@@ -105,9 +97,7 @@ structure CallParams where
   /-- Output window size. -/
   outSize : Nat
 
-/-- Core of the `CALL*` family after gas has been charged and memory expanded: enforce the
-depth limit, then request the child call. Mirrors `generic_call` (the child itself runs as
-a new frame; `resume` in `Step` is the part after `process_message` returns). -/
+/-- Depth check, then request the child call. Mirrors `generic_call` up to `process_message`. -/
 def genericCall (p : CallParams) : M Action := do
   setReturnData .empty
   let fr ← getFrame
@@ -146,11 +136,7 @@ inductive CallKind where
   | staticcall
   deriving DecidableEq
 
-/-- `CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`. Mirrors `call`, `callcode`,
-`delegatecall` and `staticcall` in `instructions/system.py`. From Prague the code address
-goes through `accessDelegation` right after the target is warmed (EIP-7702): a delegated
-account runs its delegate's code and the delegate's access cost is added to the call's
-access cost. -/
+/-- `CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`, with EIP-7702 delegate resolution and cost. -/
 def execCall (kind : CallKind) : M Action := do
   let gas ← popNat
   let target ← popAddress
@@ -209,11 +195,8 @@ def execCall (kind : CallKind) : M Action := do
 
 /-! ## Creation (`instructions/system.py`) -/
 
-/-- `CREATE` and `CREATE2`. Mirrors `create`, `create2` and `generic_create`.
-
-The contract address is computed after the soft-failure checks rather than before
-`generic_create`: computing it has no effect, so this only avoids hashing on paths that do
-not use it. -/
+/-- `CREATE`/`CREATE2`. Mirrors `generic_create`, but computes the address after the soft-failure
+checks (it is pure, so this only skips hashing). -/
 def execCreate (isCreate2 : Bool) : M Action := do
   let endowment ← pop
   let off ← popNat
@@ -266,8 +249,7 @@ def execCreate (isCreate2 : Bool) : M Action := do
     accessedAddresses := fr.sub.accessedAddresses
     accessedStorageKeys := fr.sub.accessedStorageKeys }
 
-/-- `RETURN` and `REVERT`: pop `(offset, size)`, charge expansion, read the output.
-Mirrors `return_` and `revert`. -/
+/-- `RETURN`/`REVERT` output: pop `(offset, size)`, charge expansion, read memory. -/
 def readOutput : M ByteArray := do
   let off ← popNat
   let size ← popNat
@@ -276,8 +258,7 @@ def readOutput : M ByteArray := do
   expandMemory [(off, size)]
   readMemory off size
 
-/-- `SELFDESTRUCT` (EIP-6780: the account is only deleted if it was created in the same
-transaction; otherwise only its balance moves). Mirrors `selfdestruct`. -/
+/-- `SELFDESTRUCT`; deletes only accounts created in this transaction (EIP-6780). -/
 def execSelfdestruct : M Action := do
   let beneficiary ← popAddress
   let warm ← accessAddress beneficiary
@@ -345,8 +326,7 @@ def execLog (n : Nat) : M Action := do
 
 /-! ## Block (`instructions/block.py`) -/
 
-/-- `BLOCKHASH` value: the hash of one of the 256 most recent complete blocks, else zero.
-`blockHashes` is most-recent-first. Mirrors `block_hash`. -/
+/-- `BLOCKHASH` value: hash of one of the 256 most recent blocks, else zero. -/
 def blockHashValue (env : BlockEnv) (n : Nat) : Word :=
   if env.number ≤ n ∨ env.number > n + 256 then 0
   else env.blockHashes[env.number - n - 1]?.getD 0

@@ -3,23 +3,16 @@ import EvmLean.Crypto.Bn254
 import EvmTest.PrecompileHex
 
 /-!
-Unit tests for `EvmLean.Precompile`.
+# Tests for `EvmLean.Precompile`
 
-The hash and KZG implementations are owned by other modules, so these tests run the
-precompiles against `testCrypto`: real secp256k1 and BN254, and stub hash/KZG functions that
-answer from small tables of known digests (computed with Python's `hashlib`). This checks gas
-formulas, input parsing and padding, failure modes and output framing independently of the
-hash implementations.
-
-Vectors: go-ethereum `core/vm/testdata/precompiles/` (`ecRecover`, `modexp_eip2565`,
-`modexp_eip7883`, `bn256Add`, `bn256ScalarMul`, `bn256Pairing`, `blake2F`, `fail-blake2f`,
-`pointEvaluation`).
+Runs against `testCrypto` (real secp256k1 and BN254; hash/KZG stubs answering from tables of
+known digests) to check gas, parsing, padding, failure modes and output framing independently of
+the hashes. Vectors: go-ethereum `core/vm/testdata/precompiles/`.
 -/
 
 open EvmLean EvmTest.Precompile
 
 namespace EvmTest.Precompile.Run
-open EvmLean
 
 /-- Public key of the test account `0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b`. -/
 def testPub : ByteArray :=
@@ -79,7 +72,6 @@ def testCrypto : Crypto where
   bls12MapFp2ToG2 := fun _ => none
   p256Verify := fun _ _ _ _ _ => false
 
-/-- Run precompile `addr`. -/
 def runAt (fork : Fork) (addr : Nat) (input : ByteArray) (gas : Nat) : Precompile.Result :=
   Precompile.run testCrypto fork (BitVec.ofNat 160 addr) input gas
 

@@ -4,14 +4,9 @@ import EvmTest.HashUtil
 /-!
 # Tests for `EvmLean.Crypto.Blake2f`
 
-The valid EIP-152 test vectors 4–7 (inputs in the precompile's 213-byte encoding:
-`rounds` big-endian, `h`, `m`, `t₀ t₁` little-endian, final flag). Vector 8
-(`rounds = 2³² − 1`) is omitted: it needs ~4·10⁹ rounds and is far too slow for a unit
-test. Vectors 0–3 test the precompile's length/flag validation, which is not part of `F`.
-
-The extra round counts 10, 11, 20 and 23 exercise the wrap-around of the `σ` schedule;
-their expected values come from an independent Python transcription of RFC 7693 (the same
-script reproduces EIP-152 vectors 4–7).
+EIP-152 vectors 4–7 in the precompile's 213-byte encoding. Vector 8 (`rounds = 2³² − 1`) is
+too slow; vectors 0–3 test precompile input validation, not `F`. Round counts 10, 11, 20, 23
+exercise the `σ` schedule wrap-around (values from a Python transcription of RFC 7693).
 -/
 
 open EvmLean EvmTest.HashUtil

@@ -3,8 +3,8 @@ import EvmTest.InterpreterUtil
 /-!
 # Interpreter unit tests: calls, creation, self-destruct
 
-Multi-frame programs: `contract` (A) calls or creates; `other` (B) and `third` (C) are
-callees. All hashes are FAKE (`fakeKeccak`).
+`contract` (A) calls or creates; `other` (B) and `third` (C) are callees. Hashes are fake
+(`fakeKeccak`).
 -/
 
 open EvmLean EvmLean.Interpreter EvmTest EvmTest.InterpreterUtil
@@ -376,8 +376,7 @@ def stackProbeWorld : World := mkWorld stackProbe [(other, acct [.push 1])]
 
 /-! ## Recursion -/
 
-/-- Calls itself with all available gas, counting the depth in slot 0 of `contract`
-via DELEGATECALL-free recursion: each level increments the counter, then recurses. -/
+/-- Increments slot 0 of `contract`, then calls itself with all available gas. -/
 def recurse : List Asm :=
   [.push 0, .op .sload, .push 1, .op .add, .push 0, .op .sstore]
     ++ callAsm (2 ^ 255) contract 0 0 0 0 0

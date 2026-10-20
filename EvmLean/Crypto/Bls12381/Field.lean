@@ -1,22 +1,9 @@
 /-!
 # BLS12-381 field tower
 
-The base field `𝔽ₚ` of BLS12-381 and the extension tower used by the pairing:
-
-* `Fp2  = 𝔽ₚ[u] / (u² + 1)`
-* `Fp6  = Fp2[v] / (v³ − ξ)` with `ξ = u + 1`
-* `Fp12 = Fp6[w] / (w² − v)`
-
-This is the tower of the IETF pairing-friendly-curves draft, zkcrypto/bls12_381 and blst.
-(py_ecc instead represents `𝔽ₚ¹²` as a degree-12 polynomial ring; the two are isomorphic and
-the pairing-check result does not depend on the representation.)
-
-Elements are plain `Nat`s kept reduced modulo `p`. `Nat` arithmetic is GMP-backed at runtime,
-and inversion uses Fermat's little theorem through `Nat.powMod`, so everything here is plain,
-total Lean that the kernel can also unfold.
-
-`FieldOps` is a small interface (zero, one, inverse, zero test) that lets the curve code in
-`Curve.lean` be written once for `Fp` (the group `G1`) and `Fp2` (the twist group `G2`).
+`𝔽ₚ`, `Fp2 = 𝔽ₚ[u]/(u² + 1)`, `Fp6 = Fp2[v]/(v³ − ξ)` with `ξ = u + 1`, `Fp12 = Fp6[w]/(w² − v)`
+(the tower of blst and zkcrypto; py_ecc's flat `𝔽ₚ¹²` is isomorphic). Elements are reduced
+`Nat`s with Fermat inverses. `FieldOps` lets `Curve.lean` serve both `G1` and `G2`.
 -/
 
 namespace EvmLean.Bls12381
@@ -42,8 +29,7 @@ class FieldOps (α : Type) extends Add α, Sub α, Mul α, Neg α where
 
 /-! ## The base field `𝔽ₚ` -/
 
-/-- An element of `𝔽ₚ`, represented by its canonical residue `val < p`. All operations below
-preserve that invariant, so the derived equality is field equality. -/
+/-- An element of `𝔽ₚ` as its canonical residue `val < p`, so derived `=` is field equality. -/
 structure Fp where
   /-- The canonical residue in `[0, p)`. -/
   val : Nat
@@ -85,12 +71,10 @@ def inv (a : Fp) : Fp := a.pow (P - 2)
 /-- Is this element zero? -/
 def isZero (a : Fp) : Bool := a.val == 0
 
-/-- Candidate square root `a ^ ((p + 1) / 4)`, valid because `p ≡ 3 (mod 4)`. It is a square
-root of `a` exactly when `a` is a square; callers must check `sqrt a * sqrt a = a`. -/
+/-- Candidate square root `a ^ ((p + 1) / 4)` (`p ≡ 3 mod 4`); callers must check its square. -/
 def sqrtCandidate (a : Fp) : Fp := a.pow ((P + 1) / 4)
 
-/-- `y` is the "lexicographically largest" of `±y`, i.e. `y > (p − 1) / 2`. This is the sign
-convention of the ZCash point compression used by Ethereum (`(y * 2) // q` in py_ecc). -/
+/-- `y > (p − 1) / 2`: the ZCash compression sign bit (`(y * 2) // q` in py_ecc). -/
 def isLargest (a : Fp) : Bool := decide (a.val * 2 ≥ P)
 
 /-- `𝔽ₚ` addition. -/
@@ -141,8 +125,7 @@ protected def sub (a b : Fp2) : Fp2 := ⟨a.c0 - b.c0, a.c1 - b.c1⟩
 /-- Component-wise negation. -/
 protected def neg (a : Fp2) : Fp2 := ⟨-a.c0, -a.c1⟩
 
-/-- `(a0 + a1 u)(b0 + b1 u) = (a0 b0 − a1 b1) + (a0 b1 + a1 b0) u`, with one reduction per
-coefficient (lazy reduction: the unreduced products are combined first). -/
+/-- Multiplication with one (lazy) reduction per coefficient. -/
 protected def mul (a b : Fp2) : Fp2 :=
   let t0 := a.c0.val * b.c0.val
   let t1 := a.c1.val * b.c1.val
@@ -179,8 +162,7 @@ def pow (a : Fp2) (e : Nat) : Fp2 :=
 termination_by e
 decreasing_by omega
 
-/-- The sign of an `𝔽ₚ²` element in the ZCash compression convention: the sign of `c1`, or of
-`c0` when `c1 = 0` (py_ecc `compress_G2`). -/
+/-- ZCash compression sign: that of `c1`, or of `c0` when `c1 = 0` (py_ecc `compress_G2`). -/
 def isLargest (a : Fp2) : Bool :=
   if a.c1.isZero then a.c0.isLargest else a.c1.isLargest
 
@@ -287,8 +269,7 @@ protected def mul (a b : Fp12) : Fp12 :=
   let t1 := a.c1 * b.c1
   ⟨t0 + Fp6.mulV t1, (a.c0 + a.c1) * (b.c0 + b.c1) - t0 - t1⟩
 
-/-- Squaring with 2 `Fp6` products:
-`(a + b w)² = (a + b)(a + v b) − a b − v a b + 2 a b w`. -/
+/-- Squaring with 2 `Fp6` products. -/
 def sq (a : Fp12) : Fp12 :=
   let ab := a.c0 * a.c1
   ⟨(a.c0 + a.c1) * (a.c0 + Fp6.mulV a.c1) - ab - Fp6.mulV ab, ab + ab⟩
@@ -310,9 +291,7 @@ def frobGamma1 : Fp2 := Fp2.pow ⟨⟨1⟩, ⟨1⟩⟩ ((P - 1) / 6)
 /-- `ξ^((p² − 1)/6)`, so that `w^(p²) = γ₂·w`. (It lies in `𝔽ₚ`; the tests check this.) -/
 def frobGamma2 : Fp2 := Fp2.pow ⟨⟨1⟩, ⟨1⟩⟩ ((P * P - 1) / 6)
 
-/-- Frobenius-type map: writing `a = Σₖ aₖ wᵏ` (`k < 6`, `aₖ ∈ 𝔽ₚ²`; recall `v = w²`), return
-`Σₖ σ(aₖ)·γᵏ·wᵏ`. With `σ = conj`, `γ = γ₁` this is `a ↦ aᵖ`; with `σ = id`, `γ = γ₂` it is
-`a ↦ a^(p²)`. -/
+/-- `Σₖ aₖwᵏ ↦ Σₖ σ(aₖ)·γᵏ·wᵏ`; the Frobenius for `(conj, γ₁)`, its square for `(id, γ₂)`. -/
 def frobeniusWith (σ : Fp2 → Fp2) (γ : Fp2) (a : Fp12) : Fp12 :=
   let g2 := Fp2.sq γ
   let g3 := g2 * γ

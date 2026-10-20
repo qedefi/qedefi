@@ -4,13 +4,8 @@ import EvmLean.Tx.RlpDecode
 /-!
 # Transaction encoding, decoding and signing hashes
 
-* `Transaction.encode` is `encode_transaction` followed by RLP for legacy transactions: the
-  bytes that go into the transactions trie and whose Keccak is the transaction hash.
-* `Transaction.ofRlp` is `decode_transaction` applied to an item of a block body: a list is a
-  legacy transaction, a byte string is an EIP-2718 typed envelope `type ‖ rlp(fields)`.
-* `Transaction.signingMessage` is the preimage of `signing_hash_pre155`, `signing_hash_155`,
-  `signing_hash_2930`, `signing_hash_1559`, `signing_hash_4844` or `signing_hash_7702`; hashing it is left to the
-  caller's `Crypto`, so this module never depends on a hash implementation.
+Canonical encoding (`encode_transaction`), block-body decoding (`decode_transaction`) and
+signing preimages (`signing_hash_*`). Hashing is left to the caller's `Crypto`.
 -/
 
 namespace EvmLean
@@ -59,9 +54,7 @@ def fieldsRlp : Transaction → Rlp
 /-- `type ‖ payload` for a typed transaction. -/
 def typed (ty : UInt8) (payload : ByteArray) : ByteArray := ⟨#[ty]⟩ ++ payload
 
-/-- Canonical encoding: RLP for legacy transactions, `type ‖ rlp(fields)` otherwise. These
-are the transactions-trie values, and the transaction hash is their Keccak
-(`encode_transaction`, `get_transaction_hash`). -/
+/-- `encode_transaction`: RLP for legacy, `type ‖ rlp(fields)` otherwise; Keccak is the tx hash. -/
 def encode (tx : Transaction) : ByteArray :=
   match tx with
   | .legacy _ => tx.fieldsRlp.encode
@@ -70,8 +63,7 @@ def encode (tx : Transaction) : ByteArray :=
   | .eip4844 _ => typed 3 tx.fieldsRlp.encode
   | .eip7702 _ => typed 4 tx.fieldsRlp.encode
 
-/-- How a transaction appears inside a block body: a list for legacy transactions, an opaque
-byte string for typed ones. -/
+/-- Block-body form: a list for legacy, an opaque byte string for typed transactions. -/
 def bodyRlp (tx : Transaction) : Rlp :=
   match tx with
   | .legacy _ => tx.fieldsRlp
@@ -80,9 +72,7 @@ def bodyRlp (tx : Transaction) : Rlp :=
 /-- The EIP-155 chain id encoded in a legacy `v ≥ 35`. -/
 def legacyChainId (v : Nat) : Nat := (v - 35) / 2
 
-/-- The message whose Keccak the sender signed. For a legacy transaction, `v ∈ {27, 28}`
-selects the pre-EIP-155 form and any other `v` the EIP-155 form with chain id
-`legacyChainId v` (`recover_sender` validates `v` before using this). -/
+/-- Signing preimage; legacy `v ∈ {27, 28}` is pre-EIP-155, any other `v` is EIP-155. -/
 def signingMessage : Transaction → ByteArray
   | .legacy t =>
     let base := [Rlp.nat t.nonce, .nat t.gasPrice, .nat t.gas, toRlp t.to, .nat t.value,
@@ -119,8 +109,7 @@ def decodeAccessList (r : Rlp) : Except DecodeError (List AccessListItem) := do
     | _ => throw (.unexpected "accessList entry must have 2 fields")
 
 open Rlp in
-/-- Decode an EIP-7702 authorization list with the reference widths: `U256` chain id, `U64`
-nonce, `U8` y-parity, `U256` `r` and `s`. -/
+/-- Decode an EIP-7702 authorization list with the reference field widths. -/
 def decodeAuthorizations (r : Rlp) : Except DecodeError (List Authorization) := do
   let items ← asList "authorizationList" r
   items.mapM fun item => do
@@ -196,14 +185,12 @@ def decodeEnvelope (b : ByteArray) : Except Rlp.DecodeError Transaction :=
   | none => .error (.unexpected "empty typed transaction")
   | some ty => decodeTyped ty.toNat (b.extract 1 b.size)
 
-/-- Decode a block-body transaction item (`decode_transaction`): a list is a legacy
-transaction, a byte string a typed envelope. -/
+/-- Decode a block-body transaction item (`decode_transaction`). -/
 def ofRlp : Rlp → Except Rlp.DecodeError Transaction
   | .list items => decodeLegacy items
   | .bytes b => decodeEnvelope b
 
-/-- Decode a transaction from its canonical encoding (`encode`'s inverse): RLP lists start
-at `0xc0`, typed envelopes with their type byte. -/
+/-- Decode a canonical encoding (inverse of `encode`). -/
 def decode (b : ByteArray) : Except Rlp.DecodeError Transaction :=
   match Rlp.byteAt? b 0 with
   | some p => if p ≥ 0xc0 then do decodeLegacy (← Rlp.asList "transaction" (← Rlp.decode b))

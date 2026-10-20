@@ -4,11 +4,9 @@ import EvmTest.HashUtil
 /-!
 # Tests for `EvmLean.Crypto.Keccak`
 
-Expected digests are from OpenSSL 3 (`openssl dgst -keccak-256`) and Python's
-`hashlib.sha3_256`. Inputs `seq n` are the bytes `0, 1, …, n-1` (mod 256); the lengths
-cover the 136-byte rate boundaries (135 puts both padding bits in one byte, 136 needs a
-whole padding block). The SHA3-256 checks run the same sponge with FIPS 202's domain byte
-`0x06`, which pins down the permutation independently of the Keccak padding.
+Digests from OpenSSL 3 and Python's `hashlib.sha3_256`. `seq n` lengths cover the 136-byte rate
+boundaries (135 puts both padding bits in one byte, 136 needs a whole padding block). SHA3-256
+(domain byte `0x06`) pins down the permutation independently of the Keccak padding.
 -/
 
 open EvmLean EvmTest.HashUtil

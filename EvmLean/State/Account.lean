@@ -4,12 +4,8 @@ import EvmLean.Prelude.Word
 /-!
 # Accounts and world state
 
-The world state is a finite map from addresses to accounts. We use `Std.ExtTreeMap`,
-which is extensional (`m₁ = m₂ ↔ ∀ k, m₁[k]? = m₂[k]?`), so states can be compared
-for equality in proofs and in tests.
-
-Storage maps never contain zero values: writing zero erases the slot. Absent and zero
-slots are therefore indistinguishable, as in the EVM, and equal storages are `=`.
+World state and storage are extensional `Std.ExtTreeMap`s, so equal maps are `=`.
+Storage never holds zero values (writing zero erases the slot), so absent and zero coincide.
 -/
 
 namespace EvmLean
@@ -91,8 +87,7 @@ def sstore (w : World) (a : Address) (k v : Word) : World :=
 def incrementNonce (w : World) (a : Address) : World :=
   w.modify a fun acc => { acc with nonce := acc.nonce + 1 }
 
-/-- Move `v` wei from `src` to `dst`. Returns `none` if `src` has insufficient balance.
-A self-transfer leaves balances unchanged (but still creates the account if absent). -/
+/-- Move `v` wei from `src` to `dst`; `none` on insufficient balance. Self-transfer is a no-op. -/
 def transfer (w : World) (src dst : Address) (v : Word) : Option World :=
   let b := w.balance src
   if v.toNat ≤ b.toNat then

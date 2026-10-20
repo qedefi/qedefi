@@ -29,16 +29,13 @@ structure BlockEnv where
   prevRandao : Word := 0
   /-- EIP-4844 excess blob gas of this block, from which `BLOBBASEFEE` is derived. -/
   excessBlobGas : Nat := 0
-  /-- Hashes of ancestor blocks, most recent first: `blockHashes[0]` is block `number - 1`.
-  Only the most recent 256 are consulted (`BLOCKHASH`). -/
+  /-- Ancestor block hashes, most recent first: `blockHashes[0]` is block `number - 1`. -/
   blockHashes : List Word := []
   /-- EIP-4788 parent beacon block root. -/
   parentBeaconBlockRoot : Word := 0
   deriving Inhabited
 
-/-- An EIP-7702 authorization tuple: the signer (the *authority*) allows its account to
-delegate to the code at `address`. Mirrors `Authorization` in `prague/fork_types.py`; the
-integer widths (`U256` chain id, `U64` nonce, `U8` y-parity) are enforced when decoding. -/
+/-- An EIP-7702 authorization tuple; integer widths are enforced when decoding. -/
 structure Authorization where
   /-- Chain id the authorization is valid on (`0` for every chain). -/
   chainId : Nat
@@ -62,15 +59,12 @@ structure TxEnv where
   gasPrice : Nat := 0
   /-- EIP-4844 blob versioned hashes (`BLOBHASH`). -/
   blobVersionedHashes : Array Word := #[]
-  /-- EIP-7702 authorizations of a set-code transaction (Prague), processed by
-  `process_message_call` before the top-level message runs. -/
+  /-- EIP-7702 authorizations, applied before the top-level message runs. -/
   authorizations : List Authorization := []
   deriving Inhabited
 
-/-- The cryptographic primitives the EVM depends on. The semantics is parameterised by
-them: theorems quantify over every `Crypto` (hashes stay uninterpreted), and the tests
-instantiate `Crypto.real`. Deliberately not `Inhabited`: a default would silently be a
-fake hash function. -/
+/-- The cryptographic primitives, kept abstract for proofs. Not `Inhabited`: a default would
+be a fake hash. -/
 structure Crypto where
   /-- Keccak-256. -/
   keccak256 : ByteArray → Word
@@ -104,8 +98,7 @@ structure Crypto where
   bls12MapFpToG1 : ByteArray → Option ByteArray
   /-- Map a 128-byte `𝔽ₚ²` element to `G2` (EIP-2537). -/
   bls12MapFp2ToG2 : ByteArray → Option ByteArray
-  /-- secp256r1 (P-256) ECDSA verification `(hash, r, s, qx, qy)` with the bounds and
-  on-curve checks of EIP-7951. -/
+  /-- P-256 ECDSA verification `(hash, r, s, qx, qy)` with EIP-7951's checks. -/
   p256Verify : ByteArray → Nat → Nat → Nat → Nat → Bool
 
 /-- Everything constant during a transaction. -/
@@ -144,8 +137,7 @@ structure Message where
   caller : Address
   /-- `some a` for a call to `a`; `none` for a contract creation. -/
   target : Option Address
-  /-- The account whose storage and balance are in use (`ADDRESS`); for a creation, the
-  new contract's address. -/
+  /-- The account whose storage and balance are in use (`ADDRESS`); the new contract on create. -/
   currentTarget : Address
   /-- Gas available to the message. -/
   gas : Nat
@@ -167,8 +159,7 @@ structure Message where
   accessedAddresses : AddressSet
   /-- Warm storage keys at message start. -/
   accessedStorageKeys : StorageKeySet
-  /-- EIP-7702 (Prague): the code was reached through a delegation designator, so a
-  precompile at `codeAddress` is *not* run (`Message.disable_precompiles`). -/
+  /-- Reached through an EIP-7702 delegation: a precompile at `codeAddress` is not run. -/
   disablePrecompiles : Bool := false
   deriving Inhabited
 

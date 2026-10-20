@@ -3,22 +3,9 @@ import EvmLean.Prelude.Bytes
 /-!
 # RIPEMD-160, for precompile `0x03`
 
-Source: H. Dobbertin, A. Bosselaers, B. Preneel, *RIPEMD-160: A Strengthened Version of
-RIPEMD* (FSE 1996), and its pseudocode appendix "The hash function RIPEMD-160".
-
-## Algorithm
-
-* Padding is MD4-style: `0x80`, zeros, then the 64-bit **little-endian** bit length, to a
-  multiple of 64 bytes.
-* Each 64-byte block is read as 16 little-endian words `X` and processed by two parallel
-  lines of 80 steps (five rounds of 16). Step `j` of the left line computes
-  `T = rotl (A + f j B C D + X[r j] + K j) (s j) + E`, then shifts the registers:
-  `(A, B, C, D, E) := (E, T, B, rotl C 10, D)`. The right line is identical but uses
-  `r'`, `s'`, `K'` and the boolean functions in reverse order (`f (79 - j)`).
-* The two lines are combined into the chaining value with a rotation (see `compress`).
-* The digest is the 5 state words, little-endian.
-
-Table reads go through `getD`, whose fallback is never taken (all indices are below 80).
+Dobbertin, Bosselaers, Preneel, *RIPEMD-160* (FSE 1996): MD4-style padding with a
+little-endian length, two parallel lines of 80 steps per block, little-endian digest.
+Table reads use `getD`, whose fallback is never taken (all indices are below 80).
 -/
 
 namespace EvmLean.Ripemd160
@@ -82,8 +69,7 @@ def kR : Array UInt32 := #[0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x000
   byteAt b o ||| (byteAt b (o + 1) <<< 8) ||| (byteAt b (o + 2) <<< 16) |||
   (byteAt b (o + 3) <<< 24)
 
-/-- Process the 64-byte block at offset `o` of `b`: both lines of 80 steps, then the
-combination `h' = (h₁+C+D', h₂+D+E', h₃+E+A', h₄+A+B', h₀+B+C')`. -/
+/-- Process the 64-byte block at offset `o`: both lines of 80 steps, then combine. -/
 def compress (h : Vector UInt32 5) (b : ByteArray) (o : Nat) : Vector UInt32 5 := Id.run do
   let x : Array UInt32 := Array.ofFn (n := 16) fun i => wordAt b (o + 4 * i.val)
   let mut al := h[0]
@@ -125,8 +111,7 @@ def iv : Vector UInt32 5 := #v[0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0
 /-- `n` as 8 little-endian bytes. -/
 def le64 (n : Nat) : ByteArray := ⟨Array.ofFn (n := 8) fun i => (n >>> (8 * i.val)).toUInt8⟩
 
-/-- The padded message: `data ‖ 0x80 ‖ 0…0 ‖ bitlen` (64-bit little-endian), a multiple
-of 64 bytes long. -/
+/-- The padded message `data ‖ 0x80 ‖ 0…0 ‖ bitlen` (64-bit LE), a multiple of 64 bytes. -/
 def pad (data : ByteArray) : ByteArray :=
   let zeros := (119 - data.size % 64) % 64
   data ++ ⟨#[0x80]⟩ ++ Bytes.zeros zeros ++ le64 (8 * data.size)

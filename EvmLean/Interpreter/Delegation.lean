@@ -5,37 +5,20 @@ import EvmLean.Interpreter.Monad
 /-!
 # EIP-7702 delegation (Prague)
 
-Mirrors `prague/vm/eoa_delegation.py` in `ethereum/execution-specs`:
-
-| Lean                       | execution-specs               |
-|----------------------------|-------------------------------|
-| `isValidDelegation`        | `is_valid_delegation`         |
-| `delegatedAddress?`        | `get_delegated_code_address`  |
-| `recoverAuthority`         | `recover_authority`           |
-| `validateAuthorization`    | `validate_authorization`      |
-| `setDelegation`            | `set_delegation`              |
-| `accessDelegation`         | `access_delegation`           |
-| `applyTopLevelDelegation`  | the delegation part of `process_message_call` |
-
-An account delegates by holding the 23-byte *delegation designator* `0xef0100 ‖ address`.
-Calling it runs the code of `address` in the context of the delegating account; the
-precompile at `address`, if any, is not run (`Message.disablePrecompiles`). Delegation is
-followed one level only: the delegate's own code is run even if it is a designator (which
-then halts on the invalid `0xef` opcode).
-
-Everything here is inert before Prague: the callers gate on the fork, so a Cancun account
-whose code happens to start with `0xef0100` is executed as ordinary code.
+Mirrors `prague/vm/eoa_delegation.py`. An account delegates by holding the designator
+`0xef0100 ‖ address`; calling it runs `address`'s code (never its precompile), one level deep.
+Inert before Prague: callers gate on the fork.
 -/
 
 namespace EvmLean.Interpreter
 
-/-- `EOA_DELEGATION_MARKER`: the prefix `0xef0100` of a delegation designator. -/
+/-- `EOA_DELEGATION_MARKER`: the designator prefix `0xef0100`. -/
 def eoaDelegationMarker : ByteArray := ⟨#[0xef, 0x01, 0x00]⟩
 
-/-- `EOA_DELEGATED_CODE_LENGTH`: a designator is the marker plus a 20-byte address. -/
+/-- `EOA_DELEGATED_CODE_LENGTH`: marker plus a 20-byte address. -/
 def eoaDelegatedCodeLength : Nat := 23
 
-/-- `SET_CODE_TX_MAGIC`: the domain-separation byte of authorization signatures. -/
+/-- `SET_CODE_TX_MAGIC`: domain-separation byte of authorization signatures. -/
 def setCodeTxMagic : UInt8 := 0x05
 
 /-- `GasCosts.AUTH_PER_EMPTY_ACCOUNT`: intrinsic cost per authorization. -/
@@ -61,8 +44,7 @@ def authorizationSigningMessage (auth : Authorization) : ByteArray :=
   ⟨#[setCodeTxMagic]⟩ ++
     (Rlp.list [.nat auth.chainId, .bytes (Bytes.ofAddress auth.address), .nat auth.nonce]).encode
 
-/-- The signer of an authorization, if the signature is well-formed and recovery succeeds.
-Mirrors `recover_authority`: y-parity 0 or 1, `0 < r < n`, `0 < s ≤ n/2` (EIP-2). -/
+/-- The authorization's signer, if y-parity ≤ 1, `0 < r < n` and `0 < s ≤ n/2` (EIP-2). -/
 def recoverAuthority (crypto : Crypto) (auth : Authorization) : Option Address :=
   let n := Secp256k1.n
   if auth.yParity > 1 then none
@@ -74,9 +56,8 @@ def recoverAuthority (crypto : Crypto) (auth : Authorization) : Option Address :
     | some pub => some (Word.toAddress (crypto.keccak256 pub))
     | none => none
 
-/-- Check one authorization against the current state. Returns the authority if it is valid,
-and the warm address set (the authority is warmed as soon as its signature recovers, even if
-a later check fails). Mirrors `validate_authorization`. -/
+/-- The authority if valid, plus the warm set (warmed once recovered, even if later checks fail).
+Mirrors `validate_authorization`. -/
 def validateAuthorization (crypto : Crypto) (chainId : Nat) (w : World) (warm : AddressSet)
     (auth : Authorization) : Option Address × AddressSet :=
   if auth.chainId ≠ chainId ∧ auth.chainId ≠ 0 then (none, warm)
@@ -91,10 +72,8 @@ def validateAuthorization (crypto : Crypto) (chainId : Nat) (w : World) (warm : 
       else if acc.nonce ≠ auth.nonce then (none, warm)
       else (some authority, warm)
 
-/-- Apply the authorizations in order: for each valid one, set the authority's code to the
-designator (or clear it for the zero address) and increment its nonce; an authority that
-already exists earns a refund of `25000 − 12500`. Returns the world, the warm set and the
-refund. Mirrors `set_delegation` (without the final code refresh, done by the caller). -/
+/-- Apply authorizations in order, returning world, warm set and refund. Mirrors `set_delegation`
+minus the final code refresh. -/
 def setDelegation (crypto : Crypto) (chainId : Nat) (auths : List Authorization)
     (w : World) (warm : AddressSet) : World × AddressSet × Int :=
   auths.foldl (fun (w, warm, refund) auth =>
@@ -109,16 +88,12 @@ def setDelegation (crypto : Crypto) (chainId : Nat) (auths : List Authorization)
       let w := incrementNonce (setCode w authority code) authority
       (w, warm, refund)) (w, warm, 0)
 
-/-- The code a delegation to `d` runs: none for a precompile address, whose precompile is
-disabled under delegation (`disable_precompiles`), else the code of `d`. -/
+/-- The code a delegation to `d` runs: empty for a precompile address (precompiles disabled). -/
 def delegateCode (isPrecompile : Address → Bool) (w : World) (d : Address) : ByteArray :=
   if isPrecompile d then .empty else w.code d
 
-/-- The delegation steps of `process_message_call` for a top-level call (Prague onward):
-apply the transaction's authorizations, refresh the code, and if the target's code is a
-designator, run the delegate's code with precompiles disabled and the delegate warm.
-Returns the world, the message to run and the authorization refund (which is kept even if
-the message fails). Creations and pre-Prague forks are unchanged. -/
+/-- The delegation part of `process_message_call` for a top-level call: returns world, message
+and authorization refund. -/
 def applyTopLevelDelegation (ctx : Context) (isPrecompile : Address → Bool) (w : World)
     (msg : Message) : World × Message × Int :=
   if ctx.fork < .prague then (w, msg, 0)
@@ -140,10 +115,8 @@ def applyTopLevelDelegation (ctx : Context) (isPrecompile : Address → Bool) (w
                        disablePrecompiles := true, accessedAddresses := warm.insert d },
          refund)
 
-/-- Resolve the code a `CALL*` to `a` runs. Before Prague, or if `a` holds no designator:
-`a`'s code, no extra cost. Otherwise the delegate `d` is warmed, its access cost (warm 100,
-cold 2600) is returned, and precompiles are disabled. Returns
-`(disablePrecompiles, codeAddress, code, extraAccessCost)`. Mirrors `access_delegation`. -/
+/-- `(disablePrecompiles, codeAddress, code, extraAccessCost)` for a `CALL*` to `a`, warming the
+delegate. Mirrors `access_delegation`. -/
 def accessDelegation (a : Address) : M (Bool × Address × ByteArray × Nat) := do
   let m ← get
   let code := m.world.code a

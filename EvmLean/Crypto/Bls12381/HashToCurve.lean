@@ -3,29 +3,10 @@ import EvmLean.Crypto.Bls12381.Curve
 /-!
 # BLS12-381 map-to-curve (RFC 9380) for EIP-2537
 
-The EIP-2537 precompiles `MAP_FP_TO_G1` (`0x10`) and `MAP_FP2_TO_G2` (`0x11`) compute
-`clear_cofactor(map_to_curve(u))` from RFC 9380 (the `BLS12381G1_XMD:SHA-256_SSWU_RO_` and
-`BLS12381G2_XMD:SHA-256_SSWU_RO_` suites), without the hash-to-field step. execution-specs
-calls py_ecc's `map_to_curve_G1/G2` and `clear_cofactor_G1/G2`
-(`py_ecc/bls/hash_to_curve.py`, `py_ecc/optimized_bls12_381/optimized_swu.py`); this file
-mirrors them step by step, and all constants are copied from py_ecc's
-`optimized_bls12_381/constants.py`:
-
-1. **Simplified SWU** onto an isogenous curve `E' : y² = x³ + A'x + B'` (11-isogenous to `E`
-   for `G1`, 3-isogenous to the twist for `G2`), as in Wahby–Boneh (ePrint 2019/403, §4):
-   `x₁ = B'(Z²u⁴ + Zu² + 1) / (−A'(Z²u⁴ + Zu²))` (or `B'/(ZA')` when the denominator
-   vanishes); if `g(x₁)` is not a square, `x₂ = Zu²·x₁` is used instead. The sign of `y` is
-   fixed by `sgn0(y) = sgn0(u)`.
-2. **Isogeny map** `(x, y) ↦ (xNum(x)/xDen(x), y·yNum(x)/yDen(x))` back to `E` (resp. the
-   twist). A vanishing denominator gives the point at infinity.
-3. **Cofactor clearing** by scalar multiplication with `h_eff` (py_ecc
-   `multiply_clear_cofactor_G1/G2`; it does not use the endomorphism shortcut).
-
-py_ecc carries homogeneous projective coordinates through steps 1–2. Every point has a
-unique affine form and the final result is normalized, so computing in affine coordinates
-here (with one inversion per step) gives bit-identical outputs. Square roots follow py_ecc's
-`sqrt_division_FQ` (exponent `(p − 3)/4`, since `p ≡ 3 mod 4`) and `sqrt_division_FQ2`
-(exponent `(p² − 9)/16` and the four "positive" eighth roots of unity).
+`MAP_FP_TO_G1`/`MAP_FP2_TO_G2` compute `clear_cofactor(map_to_curve(u))`: simplified SWU onto
+an 11- (resp. 3-) isogenous curve, the isogeny map, then `[h_eff]`. Mirrors py_ecc step by
+step (constants from `optimized_bls12_381/constants.py`); affine instead of py_ecc's
+projective coordinates gives bit-identical results.
 -/
 
 namespace EvmLean.Bls12381
@@ -37,18 +18,14 @@ open FieldOps
 /-- RFC 9380 `sgn0` on `𝔽ₚ`: the parity of the canonical residue (py_ecc `FQ.sgn0`). -/
 def Fp.sgn0 (a : Fp) : Bool := a.val % 2 == 1
 
-/-- RFC 9380 `sgn0` on `𝔽ₚ²`: the parity of `c0`, or of `c1` when `c0 = 0`
-(py_ecc `FQ2.sgn0`). -/
+/-- RFC 9380 `sgn0` on `𝔽ₚ²`: the parity of `c0`, or of `c1` when `c0 = 0`. -/
 def Fp2.sgn0 (a : Fp2) : Bool := a.c0.val % 2 == 1 || (a.c0.val == 0 && a.c1.val % 2 == 1)
 
-/-- Evaluate the polynomial with coefficients `cs` (constant term first) at `x`, by Horner's
-rule. -/
+/-- Evaluate the polynomial `cs` (constant term first) at `x` by Horner's rule. -/
 def polyEval {α : Type} [FieldOps α] (cs : List α) (x : α) : α :=
   cs.foldr (fun c acc => acc * x + c) zero
 
-/-- Apply a rational isogeny map given by its four coefficient tables (constant terms first):
-`(x, y) ↦ (xNum(x)/xDen(x), y·yNum(x)/yDen(x))`, with one inversion. A zero denominator gives
-the point at infinity, as py_ecc's projective `iso_map_G1/G2` then produces `z = 0`. -/
+/-- `(x, y) ↦ (xNum(x)/xDen(x), y·yNum(x)/yDen(x))`; a zero denominator gives infinity. -/
 def isoMap {α : Type} [FieldOps α] (xNum xDen yNum yDen : List α) (x y : α) : Affine α :=
   let xd := polyEval xDen x
   let yd := polyEval yDen x
@@ -71,8 +48,7 @@ def isoA1 : Fp :=
 def isoB1 : Fp :=
   ⟨0x12e2908d11688030018b12e8753eee3b2016c1f0f24f4070a0b9c14fcef35ef55a23215a316ceaa5d1cc48e98e172be0⟩
 
-/-- `√(−11³)` (py_ecc `SQRT_MINUS_11_CUBED`), which turns a square root of `−g(x₁)` into one
-of `g(x₂) = Z³u⁶·g(x₁)`. -/
+/-- `√(−11³)` (py_ecc `SQRT_MINUS_11_CUBED`): turns `√(−g(x₁))` into `√g(x₂)`. -/
 def sqrtMinus11Cubed : Fp :=
   ⟨0x3d689d1e0e762cef9f2bec6130316806b4c80eda6fc10ce77ae83eab1ea8b8b8a407c9c6db195e06f2dbeabc2baeff5⟩
 
@@ -146,8 +122,7 @@ def iso11YDen : List Fp :=
    ⟨0xe0fa1d816ddc03e6b24255e0d7819c171c40f65e273b853324efcd6356caa205ca2f570f13497804415473a1d634b8f⟩,
    ⟨1⟩]
 
-/-- py_ecc `sqrt_division_FQ`: `y = uv·(uv³)^((p − 3)/4)`, together with whether `y² v = u`.
-When `u/v` is not a square, `y² = −u/v` instead. -/
+/-- py_ecc `sqrt_division_FQ`: `y = uv·(uv³)^((p − 3)/4)` and whether `y²v = u` (else `−u`). -/
 def sqrtDivFp (u v : Fp) : Bool × Fp :=
   let t := u * v
   let y := t * (t * (v * v)).pow ((P - 3) / 4)
@@ -175,8 +150,7 @@ def mapToCurveG1 (t : Fp) : Affine Fp :=
   let (x, y) := swuG1 t
   isoMap iso11XNum iso11XDen iso11YNum iso11YDen x y
 
-/-- `MAP_FP_TO_G1`: `clear_cofactor_G1(map_to_curve_G1(t))`, i.e. `[h_eff]` of the mapped
-point. -/
+/-- `MAP_FP_TO_G1`: `clear_cofactor_G1(map_to_curve_G1(t))`. -/
 def mapFpToG1 (t : Fp) : Affine Fp :=
   (Jac.mul (Jac.ofAffine (mapToCurveG1 t)) hEffG1).toAffine
 
@@ -198,8 +172,7 @@ def pMinus9Div16 : Nat := (P * P - 9) / 16
 def rv1 : Nat :=
   1028732146235106349975324479215795277384839936929757896155643118032610843298655225875571310552543014690878354869257
 
-/-- py_ecc `POSITIVE_EIGHTH_ROOTS_OF_UNITY`: `1, u, RV1(1 + u), RV1(1 − u)`. The order of the
-list matters: the first root that works is used. -/
+/-- py_ecc `POSITIVE_EIGHTH_ROOTS_OF_UNITY`; order matters (first match is used). -/
 def eighthRoots : List Fp2 :=
   [⟨⟨1⟩, ⟨0⟩⟩, ⟨⟨0⟩, ⟨1⟩⟩, ⟨⟨rv1⟩, ⟨rv1⟩⟩, ⟨⟨rv1⟩, ⟨P - rv1⟩⟩]
 
@@ -216,8 +189,7 @@ def ev3 : Nat :=
 def ev4 : Nat :=
   1637752706019426886789797193293828301565549384974986623510918743054325021588194075665960171838131772227885159387073
 
-/-- py_ecc `ETAS`: the constants `η` with `η²·Z³` an eighth root of unity, used to turn the
-square-root candidate for `x₁` into one for `x₂ = Z t² x₁`. Order matters (first match). -/
+/-- py_ecc `ETAS`: turn the root candidate for `x₁` into one for `x₂`; order matters. -/
 def etas : List Fp2 :=
   [⟨⟨ev1⟩, ⟨ev2⟩⟩, ⟨⟨P - ev2⟩, ⟨ev1⟩⟩, ⟨⟨ev3⟩, ⟨ev4⟩⟩, ⟨⟨P - ev4⟩, ⟨ev3⟩⟩]
 
@@ -243,8 +215,7 @@ def iso3XNum : List Fp2 :=
     ⟨1334136518407222464472596608578634718852294273313002628444019378708010550163612621480895876376338554679298090853261⟩⟩,
    ⟨⟨3557697382419259905260257622876359250272784728834673675850718343221361467102966990615722337003569479144794908942033⟩, ⟨0⟩⟩]
 
-/-- 3-isogeny `x` denominator coefficients (py_ecc `ISO_3_X_DENOMINATOR`, whose trailing zero
-coefficient is dropped: it does not change the polynomial). -/
+/-- 3-isogeny `x` denominator coefficients (py_ecc `ISO_3_X_DENOMINATOR`, trailing zero dropped). -/
 def iso3XDen : List Fp2 :=
   [⟨⟨0⟩, ⟨4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559715⟩⟩,
    ⟨⟨12⟩, ⟨4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559775⟩⟩,
@@ -265,9 +236,7 @@ def iso3YDen : List Fp2 :=
    ⟨⟨18⟩, ⟨4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559769⟩⟩,
    ⟨⟨1⟩, ⟨0⟩⟩]
 
-/-- py_ecc `sqrt_division_FQ2`: `γ = uv⁷·(uv¹⁵)^((p² − 9)/16)`, then the first eighth root of
-unity `ζ` (in `eighthRoots` order) with `(ζγ)²v = u`. Returns whether one was found, and
-`ζγ` (or `γ` when none was). -/
+/-- py_ecc `sqrt_division_FQ2`: `ζγ` for the first eighth root `ζ` with `(ζγ)²v = u`, if any. -/
 def sqrtDivFp2 (u v : Fp2) : Bool × Fp2 :=
   let v2 := Fp2.sq v
   let v4 := Fp2.sq v2
@@ -279,9 +248,7 @@ def sqrtDivFp2 (u v : Fp2) : Bool × Fp2 :=
   | some z => (true, z * gamma)
   | none => (false, gamma)
 
-/-- Simplified SWU onto `E₂'`, as affine `(x, y)`. Mirrors py_ecc `optimized_swu_G2`.
-`none` only in the case py_ecc reports as unreachable (no square root for either `x₁` or
-`x₂`), which cannot happen because `Z` is not a square in `𝔽ₚ²`. -/
+/-- Simplified SWU onto `E₂'` (py_ecc `optimized_swu_G2`); `none` is unreachable in practice. -/
 def swuG2 (t : Fp2) : Option (Fp2 × Fp2) :=
   let t2 := Fp2.sq t
   let zt2 := isoZ2 * t2
@@ -309,8 +276,7 @@ def swuG2 (t : Fp2) : Option (Fp2 × Fp2) :=
 def mapToCurveG2 (t : Fp2) : Option (Affine Fp2) :=
   (swuG2 t).map fun (x, y) => isoMap iso3XNum iso3XDen iso3YNum iso3YDen x y
 
-/-- `MAP_FP2_TO_G2`: `clear_cofactor_G2(map_to_curve_G2(t))`, i.e. `[h_eff]` of the mapped
-point (py_ecc `multiply_clear_cofactor_G2`). -/
+/-- `MAP_FP2_TO_G2`: `clear_cofactor_G2(map_to_curve_G2(t))`. -/
 def mapFp2ToG2 (t : Fp2) : Option (Affine Fp2) :=
   (mapToCurveG2 t).map fun q => (Jac.mul (Jac.ofAffine q) hEffG2).toAffine
 

@@ -1,21 +1,11 @@
 import EvmLean.Prelude.Bytes
 
 /-!
-# secp256k1 public-key recovery, for `ECRECOVER` (precompile `0x01`).
+# secp256k1 public-key recovery, for `ECRECOVER` (precompile `0x01`)
 
-The curve is `y² = x³ + 7` over `𝔽ₚ` with `p = 2²⁵⁶ − 2³² − 977` (SEC 2, §2.4.1). Recovery
-follows SEC 1 v2, §4.1.6, specialised to recovery ids `0` and `1` (the only ones Ethereum
-uses): the nonce point is `R = (r, y)` with the parity of `y` given by `recId`, and the key
-is `Q = r⁻¹ · (s·R − e·G)` where `e` is the message hash reduced modulo `n`.
-
-This mirrors `secp256k1_recover` in `ethereum/crypto/elliptic_curve.py`, which first checks
-that `r³ + 7` is a square and then defers to libsecp256k1's recovery; a recovered point at
-infinity is an invalid signature. The `r, s ∈ [1, n)` range checks live both here (so the
-function is meaningful on its own) and in the precompile wrapper.
-
-Field elements are plain `Nat`s reduced modulo `p` (GMP-backed at runtime). Points use
-Jacobian coordinates `(X : Y : Z)` ↦ `(X/Z², Y/Z³)`, with `Z = 0` the point at infinity;
-inverses are Fermat inverses via `Nat.powMod`, and square roots use `p ≡ 3 (mod 4)`.
+SEC 1 v2 §4.1.6 for recovery ids `0`/`1`: `Q = r⁻¹ · (s·R − e·G)`. Mirrors
+`secp256k1_recover` in `ethereum/crypto/elliptic_curve.py`; a recovered point at infinity is an
+invalid signature. Jacobian coordinates over `Nat` mod `p`; square roots use `p ≡ 3 (mod 4)`.
 -/
 
 namespace EvmLean.Secp256k1
@@ -35,8 +25,7 @@ def gx : Nat := 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817
 /-- Affine `y` coordinate of the generator `G`. -/
 def gy : Nat := 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
 
-/-- A point in Jacobian coordinates; `z = 0` is the point at infinity. Coordinates are
-reduced modulo `p`. -/
+/-- A point in Jacobian coordinates (reduced mod `p`); `z = 0` is infinity. -/
 structure Point where
   /-- Jacobian `X`. -/
   x : Nat
@@ -118,9 +107,7 @@ end Point
 /-- The generator `G`. -/
 def g : Point := .ofAffine gx gy
 
-/-- Recover the 64-byte uncompressed public key (`x ‖ y`, no `0x04` prefix) from a
-32-byte message hash, recovery id `recId ∈ {0, 1}` and signature `(r, s)`.
-`none` if the signature is invalid or the point is not on the curve. -/
+/-- Recover the 64-byte public key `x ‖ y` (no `0x04` prefix); `none` if invalid. -/
 def recover (hash : ByteArray) (recId : Nat) (r s : Nat) : Option ByteArray :=
   if recId > 1 || r = 0 || r ≥ n || s = 0 || s ≥ n then none
   else

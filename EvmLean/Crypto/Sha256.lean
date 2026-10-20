@@ -3,21 +3,8 @@ import EvmLean.Prelude.Bytes
 /-!
 # SHA-256 (FIPS 180-4), for precompile `0x02`
 
-Source: NIST FIPS 180-4, *Secure Hash Standard*, §4.1.2 (functions), §4.2.2 (constants),
-§5.1.1 (padding), §5.3.3 (initial hash value) and §6.2 (computation).
-
-## Algorithm
-
-* Pad the message with `0x80`, zeros, and the 64-bit big-endian bit length, to a multiple
-  of 64 bytes.
-* For each 64-byte block, expand the 16 big-endian message words into the 64-word
-  schedule `W`, run the 64 compression rounds on the working variables `a … h`, and add
-  them into the hash state.
-* The digest is the 8 state words, big-endian.
-
 All arithmetic is on `UInt32` (wrapping mod `2³²`, as the standard requires). Table and
-schedule reads go through `getD`, whose fallback is never taken because every index is
-below 64.
+schedule reads use `getD`, whose fallback is never taken (every index is below 64).
 -/
 
 namespace EvmLean.Sha256
@@ -62,8 +49,7 @@ def iv : Vector UInt32 8 :=
   (byteAt b o <<< 24) ||| (byteAt b (o + 1) <<< 16) ||| (byteAt b (o + 2) <<< 8) |||
   byteAt b (o + 3)
 
-/-- The message schedule `W₀ … W₆₃` of the 64-byte block at offset `o`
-(FIPS 180-4, §6.2.2 step 1). -/
+/-- The message schedule `W₀ … W₆₃` of the 64-byte block at offset `o` (§6.2.2 step 1). -/
 def schedule (b : ByteArray) (o : Nat) : Array UInt32 := Id.run do
   let mut w : Array UInt32 := Array.emptyWithCapacity 64
   for i in [0:16] do
@@ -102,8 +88,7 @@ def compressBlocks (b : ByteArray) : (n : Nat) → (o : Nat) → Vector UInt32 8
   | 0, _, h => h
   | n + 1, o, h => compressBlocks b n (o + 64) (compress h b o)
 
-/-- The padded message (FIPS 180-4, §5.1.1): `data ‖ 0x80 ‖ 0…0 ‖ bitlen` (64-bit
-big-endian), a multiple of 64 bytes long. -/
+/-- The padded message `data ‖ 0x80 ‖ 0…0 ‖ bitlen` (64-bit BE), a multiple of 64 bytes. -/
 def pad (data : ByteArray) : ByteArray :=
   let zeros := (119 - data.size % 64) % 64
   data ++ ⟨#[0x80]⟩ ++ Bytes.zeros zeros ++ Bytes.ofNatBE 8 (8 * data.size)

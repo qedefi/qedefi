@@ -3,17 +3,14 @@ import EvmLogic.AbsInt.Check
 /-!
 # Tests: the certified abstract interpreter
 
-`certify` on small programs: constant jumps resolve, a jump to an unknown target or a call to a
-disallowed target makes the exploration fail, creations are rejected, loops terminate (the
-abstract state repeats), and the scan reads `PUSHn` immediates and the listed symbolic
-`PUSH32`s.
+`certify` on small programs: constant jumps resolve; unknown jump targets, disallowed call
+targets and creations fail; loops terminate; symbolic `PUSH32` immutables are tracked.
 -/
 
 namespace EvmTest.AbsInt
 
 open EvmLean EvmLogic EvmLogic.AbsInt
 
-/-- A code from its bytes. -/
 def code (l : List UInt8) : ByteArray := ⟨l.toArray⟩
 
 /-- Calls to `0x01` only. -/

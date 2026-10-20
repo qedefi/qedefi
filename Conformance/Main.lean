@@ -8,18 +8,10 @@ lake exe conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING]
                  [--fork Cancun|Prague|Osaka|all] [--parse-only] [--results FILE] [--fuel N]
 ```
 
-Walks each `<dir>` (default `tests/fixtures/BlockchainTests`) for `*.json` BlockchainTests fixtures, runs them on `--threads` worker
-threads with `Crypto.real`, prints a summary (PASSED / FAILED / SKIPPED / UNPARSEABLE, in total
-and per network, with the names of unparseable tests and the first failures) and writes every test's status and
-reason to the results file (default `conformance-results.txt`). The exit code is non-zero
-iff some test FAILED or was UNPARSEABLE.
-
-`--fork F` (default `Cancun`) runs the tests whose network is `F` or a transition network
-ending in `F` (e.g. `CancunToPragueAtTime15k` for `Prague`); `--fork all` runs every network
-built from supported forks. Fixtures may be `ethereum/tests` BlockchainTests or
-execution-spec-tests `blockchain_tests` (e.g. `tests/fixtures-eest/fixtures/blockchain_tests`).
-`--filter` keeps the tests whose `file::name` contains the substring. `--parse-only`
-decodes and cross-checks every fixture without executing it.
+Runs BlockchainTests fixtures (`ethereum/tests` or EEST `blockchain_tests`; default dir
+`tests/fixtures/BlockchainTests`) with `Crypto.real`, prints a summary and writes per-test
+results. Exit code is non-zero iff some test FAILED or was UNPARSEABLE. `--fork F` (default
+`Cancun`) also selects transition networks ending in `F`. `--parse-only` decodes without executing.
 -/
 
 namespace Conformance
@@ -30,21 +22,16 @@ open EvmLean Lean
 structure Config where
   /-- Fixture directories or files (default `tests/fixtures/BlockchainTests`). -/
   roots : Array System.FilePath := #[]
-  /-- Worker threads. -/
   threads : Nat := 8
   /-- Substring filter on `file::name`. -/
   filter : Option String := none
-  /-- Results file. -/
   results : System.FilePath := "conformance-results.txt"
-  /-- Runner options. -/
   opts : Options := {}
 
-/-- Usage text. -/
 def usage : String :=
   "usage: conform [<dir-or-file> …] [--threads N] [--filter SUBSTRING] [--fork NAME|all] " ++
   "[--parse-only] [--results FILE] [--fuel N]"
 
-/-- Parse the command line. -/
 def parseArgs : List String → Config → Except String Config
   | [], c => .ok c
   | "--threads" :: n :: rest, c => match n.toNat? with
@@ -64,7 +51,6 @@ def parseArgs : List String → Config → Except String Config
     if arg.startsWith "--" then .error s!"unknown option {arg}"
     else parseArgs rest { c with roots := c.roots.push arg }
 
-/-- Does `needle` occur in `haystack`? -/
 def containsSubstr (haystack needle : String) : Bool :=
   (haystack.splitOn needle).length > 1
 
@@ -90,8 +76,7 @@ def runFile (cfg : Config) (path : System.FilePath) : IO (Array TestResult) := d
   catch e =>
     return #[{ file, name := "<file>", status := .unparseable, reason := s!"I/O: {e}" }]
 
-/-- Run `work` over `files` on `threads` dedicated worker threads. Workers pull the next
-file index from a shared counter. -/
+/-- Run `work` over `files` on `threads` dedicated threads pulling from a shared counter. -/
 def runPool (files : Array System.FilePath) (threads : Nat)
     (work : System.FilePath → IO (Array TestResult)) : IO (Array TestResult) := do
   let next ← IO.mkRef 0
@@ -119,7 +104,6 @@ def runPool (files : Array System.FilePath) (threads : Nat)
       results := results.push r
   return results
 
-/-- Entry point. -/
 def runMain (args : List String) : IO UInt32 := do
   let cfg ← match parseArgs args {} with
     | .ok c => pure c

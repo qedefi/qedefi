@@ -1,21 +1,14 @@
 /-!
 # Jump destination analysis
 
-`validJumpDests code` is a bitmap marking the `JUMPDEST` (`0x5b`) bytes of `code` that are
-real instructions, not immediate data of a `PUSH1`–`PUSH32` (`0x60`–`0x7f`). Mirrors
-`get_valid_jump_destinations` in `cancun/vm/runtime.py`.
-
-The scan is fork-independent: every byte outside `0x60`–`0x7f` advances by one (including
-undefined opcodes, which the spec skips as one byte as well).
-
-The definition uses explicit structural fuel (`code.size + 1`, which suffices because each
-iteration advances `pc` by at least one), so it reduces in the kernel.
+`validJumpDests code` marks the `JUMPDEST` bytes of `code` that are not `PUSH` immediate
+data. Mirrors `get_valid_jump_destinations`. Fork-independent; uses structural fuel
+(`code.size + 1`) so it reduces in the kernel.
 -/
 
 namespace EvmLean.Interpreter
 
-/-- Scan `code` from `pc`, marking valid jump destinations in `acc` (`acc.size = code.size`).
-`fuel` bounds the number of instructions still to scan. -/
+/-- Scan `code` from `pc`, marking valid jump destinations in `acc`; `fuel` bounds the steps. -/
 def jumpDestLoop (code : ByteArray) : Nat → Nat → Array Bool → Array Bool
   | 0, _, acc => acc
   | fuel + 1, pc, acc =>
@@ -27,13 +20,11 @@ def jumpDestLoop (code : ByteArray) : Nat → Nat → Array Bool → Array Bool
       else jumpDestLoop code fuel (pc + 1) acc
     else acc
 
-/-- The valid jump destinations of `code`, as a bitmap of size `code.size`.
-Mirrors `get_valid_jump_destinations`. -/
+/-- The valid jump destinations of `code`, as a bitmap of size `code.size`. -/
 def validJumpDests (code : ByteArray) : Array Bool :=
   jumpDestLoop code (code.size + 1) 0 (Array.replicate code.size false)
 
-/-- Is `dest` a valid jump destination according to the bitmap? Out-of-range destinations
-(including ones beyond `2⁶⁴`) are invalid. -/
+/-- Is `dest` a valid jump destination? Out-of-range destinations are invalid. -/
 def isValidJumpDest (bitmap : Array Bool) (dest : Nat) : Bool := bitmap[dest]?.getD false
 
 /-- The scan preserves the bitmap size. -/
@@ -78,9 +69,8 @@ theorem jumpDestLoop_true (code : ByteArray) (fuel pc : Nat) (acc : Array Bool) 
       · split at h <;> exact ih _ _ h
     · exact .inl h
 
-/-- Soundness: every valid jump destination is a `JUMPDEST` (`0x5b`) byte of the code.
-(That `0x5b` bytes inside `PUSH` data are excluded is checked by `#guard`s in
-`EvmLeanTest/Interpreter.lean`.) -/
+/-- Soundness: every valid jump destination is a `0x5b` byte (PUSH-data exclusion is tested in
+`EvmTest/Interpreter.lean`). -/
 theorem validJumpDests_true (code : ByteArray) (i : Nat)
     (h : (validJumpDests code)[i]? = some true) : code[i]? = some 0x5b := by
   rcases jumpDestLoop_true code _ _ _ i h with h' | h'

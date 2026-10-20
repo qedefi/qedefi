@@ -12,7 +12,6 @@ def hexDigit (c : Char) : Nat :=
   else if 'A' ≤ c ∧ c ≤ 'F' then c.toNat - 'A'.toNat + 10
   else 0
 
-/-- Pair up hex digits into bytes. -/
 def hexBytes : List Char → List UInt8
   | hi :: lo :: rest => (hexDigit hi * 16 + hexDigit lo).toUInt8 :: hexBytes rest
   | _ => []

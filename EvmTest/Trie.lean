@@ -1,9 +1,10 @@
 import EvmTest.TxSupport
 
 /-!
-Unit tests for `EvmLean.Trie`: hex-prefix encoding (vectors from the Ethereum wiki /
-Yellow Paper appendix C) and the node structure built by `patricialize`, with a stand-in
-hash. Root hashes against official vectors are in `EvmTest/TxIntegration.lean`.
+# Tests for `EvmLean.Trie`
+
+Hex-prefix encoding (Yellow Paper appendix C vectors) and `patricialize` node structure with a
+stand-in hash. Root hashes against official vectors are in `EvmTest/TxIntegration.lean`.
 -/
 
 open EvmLean EvmLean.Trie EvmTest

@@ -4,19 +4,10 @@ import Conformance.Hex
 /-!
 # BlockchainTests fixtures
 
-Parsing of BlockchainTests JSON (`ethereum/tests`, and the `blockchain_tests` fixtures of
-`ethereum/execution-spec-tests`) into Lean values:
-
-* `pre` / `postState` become `World`s (zero storage values dropped, matching the canonical
-  storage representation);
-* every block is kept as its raw `rlp` (the authoritative encoding; invalid blocks are often
-  given only in this form), together with `expectException`, the per-transaction `sender`
-  hints, and — when present — the JSON `blockHeader` and `transactions`, which `--parse-only`
-  cross-checks against the decoded RLP;
-* the expected outcome is `postState` (exact world) or `postStateHash` (state root), plus
-  `lastblockhash`.
-
-All failures are `Except String` errors, reported by the runner as UNPARSEABLE.
+Parses BlockchainTests JSON (`ethereum/tests` and EEST) into Lean values. Blocks are kept as raw
+`rlp` (authoritative; invalid blocks often exist only in this form); the JSON `blockHeader` and
+`transactions` are parsed only to cross-check it. Failures are `Except String` errors, which the
+runner reports as UNPARSEABLE.
 -/
 
 namespace Conformance
@@ -36,41 +27,33 @@ def field? (j : Json) (k : String) : Option Json :=
   | .ok v => some v
   | .error _ => none
 
-/-- A string field. -/
 def strField (j : Json) (k : String) : Except String String := do
   match (← field j k).getStr? with
   | .ok s => pure s
   | .error _ => throw s!"field \"{k}\" is not a string"
 
-/-- A hex-number field. -/
 def natField (j : Json) (k : String) : Except String Nat := do
   (parseHexNat (← strField j k)).mapError (s!"{k}: " ++ ·)
 
-/-- A word field. -/
 def wordField (j : Json) (k : String) : Except String Word := do
   (parseWord (← strField j k)).mapError (s!"{k}: " ++ ·)
 
-/-- An address field. -/
 def addressField (j : Json) (k : String) : Except String Address := do
   (parseAddress (← strField j k)).mapError (s!"{k}: " ++ ·)
 
-/-- A hex-bytes field. -/
 def bytesField (j : Json) (k : String) : Except String ByteArray := do
   (parseHexBytes (← strField j k)).mapError (s!"{k}: " ++ ·)
 
-/-- The entries of a JSON object. -/
 def objEntries (j : Json) : Except String (List (String × Json)) :=
   match j.getObj? with
   | .ok m => .ok m.toList
   | .error _ => .error "expected a JSON object"
 
-/-- The elements of a JSON array. -/
 def arrElems (j : Json) : Except String (Array Json) :=
   match j.getArr? with
   | .ok a => .ok a
   | .error _ => .error "expected a JSON array"
 
-/-- Parse one account of a `pre`/`postState` map. -/
 def parseAccount (j : Json) : Except String Account := do
   let storage ← (← objEntries (← field j "storage")).foldlM (init := (∅ : Storage))
     fun s (k, v) => do
@@ -84,15 +67,13 @@ def parseAccount (j : Json) : Except String Account := do
   return { nonce := ← natField j "nonce", balance := BitVec.ofNat 256 balance,
            code := ← bytesField j "code", storage }
 
-/-- Parse a world state (`pre`, `postState`). -/
 def parseWorld (j : Json) : Except String World := do
   (← objEntries j).foldlM (init := (∅ : World)) fun w (addr, acc) => do
     let a ← parseAddress addr
     let acc ← (parseAccount acc).mapError (s!"account {addr}: " ++ ·)
     pure (w.insert a acc)
 
-/-- Parse a JSON block header into a `Header` (used to cross-check decoded RLP).
-`requestsHash` is present from Prague. -/
+/-- `requestsHash` is present from Prague. -/
 def parseHeader (j : Json) : Except String Header := do
   let requestsHash ← match field? j "requestsHash" with
     | some _ => pure (some (← wordField j "requestsHash"))
@@ -112,7 +93,6 @@ def parseHeader (j : Json) : Except String Header := do
     blobGasUsed := ← natField j "blobGasUsed", excessBlobGas := ← natField j "excessBlobGas",
     parentBeaconBlockRoot := ← wordField j "parentBeaconBlockRoot" }
 
-/-- Parse a JSON access list. -/
 def parseAccessList (j : Json) : Except String (List AccessListItem) := do
   (← arrElems j).toList.mapM fun e => do
     let keys ← (← arrElems (← field e "storageKeys")).toList.mapM fun k =>
@@ -121,7 +101,7 @@ def parseAccessList (j : Json) : Except String (List AccessListItem) := do
       | .error _ => .error "storage key is not a string"
     return { address := ← addressField e "address", storageKeys := keys }
 
-/-- Parse a JSON EIP-7702 authorization list. The y-parity is `yParity` (or `v`). -/
+/-- The y-parity is `yParity` (or `v`). -/
 def parseAuthorizations (j : Json) : Except String (List Authorization) := do
   (← arrElems j).toList.mapM fun e => do
     let yParity ← match field? e "yParity" with
@@ -131,12 +111,11 @@ def parseAuthorizations (j : Json) : Except String (List Authorization) := do
              nonce := ← natField e "nonce", yParity, r := ← natField e "r",
              s := ← natField e "s" }
 
-/-- Parse the `to` field: empty for a contract creation. -/
+/-- `to` is empty for a contract creation. -/
 def parseTo (j : Json) : Except String (Option Address) := do
   let s ← strField j "to"
   if stripHexPrefix s = "" then return none else return some (← parseAddress s)
 
-/-- Parse a JSON transaction into a `Transaction` (used to cross-check decoded RLP). -/
 def parseTransaction (j : Json) : Except String Transaction := do
   let ty ← match field? j "type" with
     | none => pure 0
@@ -198,49 +177,35 @@ def parseTransaction (j : Json) : Except String Transaction := do
 
 /-- One entry of a fixture's `blocks` array. -/
 structure BlockFixture where
-  /-- The block's RLP, if its hex parsed (the fixtures include deliberately malformed
-  RLP, but always as valid hex). -/
+  /-- Raw RLP (may be deliberately malformed, but is always valid hex). -/
   rlp : ByteArray
   /-- `expectException`: the block must be rejected. -/
   expectException : Option String
-  /-- Per-transaction senders from the JSON `transactions` (if given). -/
+  /-- Per-transaction `sender` hints from the JSON `transactions`. -/
   senders : List (Option Address)
-  /-- The JSON `blockHeader`, if given. -/
   header : Option Header
-  /-- The JSON `transactions`, if given. -/
   transactions : Option (List Transaction)
 
-/-- The expected final state. -/
 inductive PostCheck where
   /-- `postState`: the exact world. -/
   | state (w : World)
   /-- `postStateHash`: the state root. -/
   | hash (root : Word)
 
-/-- A parsed BlockchainTests test case. -/
 structure TestCase where
-  /-- Test name (the JSON key). -/
   name : String
   /-- `network` (fork name). -/
   network : String
-  /-- Pre-state. -/
   pre : World
-  /-- Genesis block RLP. -/
   genesisRlp : ByteArray
-  /-- Genesis header from JSON. -/
   genesisHeader : Header
-  /-- Genesis block hash from JSON. -/
   genesisHash : Word
-  /-- Blocks to import, in order. -/
   blocks : Array BlockFixture
-  /-- Expected final state. -/
   post : PostCheck
-  /-- Expected hash of the final head. -/
   lastBlockHash : Word
   /-- Chain id (`config.chainid`; `1` when absent, as in `ethereum/tests`). -/
   chainId : Nat
 
-/-- Parse one block entry. -/
 def parseBlock (j : Json) : Except String BlockFixture := do
   let expectException ← match field? j "expectException" with
     | none => pure none
@@ -267,11 +232,9 @@ def parseBlock (j : Json) : Except String BlockFixture := do
     | _, _ => pure none
   return { rlp := ← bytesField j "rlp", expectException, senders, header, transactions }
 
-/-- Parse a test case. Returns the network first so that tests of other forks can be
-skipped without parsing the rest. -/
+/-- Read first, so tests of other forks are skipped without parsing the rest. -/
 def parseNetwork (j : Json) : Except String String := strField j "network"
 
-/-- Parse a full test case. -/
 def parseTestCase (name : String) (j : Json) : Except String TestCase := do
   let post ← match field? j "postState", field? j "postStateHash" with
     | some p, _ => pure (.state (← (parseWorld p).mapError ("postState: " ++ ·)))

@@ -3,9 +3,7 @@ import EvmLean.Prelude.Word
 /-!
 # Byte strings
 
-Total, kernel-reducible helpers on `ByteArray`. Everything here is defined in plain
-Lean (no `@[extern]`, no `opaque`), so the kernel can evaluate and reason about it.
-Big-endian is the EVM's byte order throughout.
+Total, kernel-reducible helpers on `ByteArray`. Big-endian throughout.
 -/
 
 namespace EvmLean.Bytes
@@ -13,8 +11,7 @@ namespace EvmLean.Bytes
 /-- `n` zero bytes. -/
 def zeros (n : Nat) : ByteArray := ⟨Array.replicate n 0⟩
 
-/-- Read `len` bytes of `b` starting at `off`, reading zeros past the end of `b`.
-This is how the EVM reads calldata, code and return data. -/
+/-- `len` bytes of `b` from `off`, zero-padded past the end (calldata/code/returndata reads). -/
 def readPadded (b : ByteArray) (off len : Nat) : ByteArray :=
   -- `ByteArray.extract` panics at runtime for offsets ≥ 2⁶⁴ even on empty ranges, so
   -- offsets past the end (which may be arbitrary stack words) never reach it.
@@ -38,9 +35,7 @@ def toNatChunks (b : ByteArray) (acc i : Nat) : (k : Nat) → Nat
   | 0 => acc
   | k + 1 => toNatChunks b ((acc <<< 64) ||| (chunk64 b i).toNat) (i + 8) k
 
-/-- Interpret bytes as a big-endian natural number. The leading `size % 8` bytes are
-folded bytewise, the rest in 64-bit chunks (one bignum operation per 8 bytes). Equal to
-`b.foldl (fun acc x => acc * 256 + x.toNat) 0`. -/
+/-- Big-endian bytes as a `Nat`, folded in 64-bit chunks (one bignum op per 8 bytes). -/
 def toNat (b : ByteArray) : Nat :=
   let head := b.size % 8
   let acc := (b.extract 0 head).foldl (fun acc x => acc * 256 + x.toNat) 0
@@ -63,8 +58,7 @@ def ofAddress (a : Address) : ByteArray := ofNatBE 20 a.toNat
 def ofNatMinimal (n : Nat) : ByteArray :=
   if n = 0 then .empty else ofNatBE ((n.log2 / 8) + 1) n
 
-/-- Overwrite `dst` at `off` with `src`. The caller guarantees `off + src.size ≤ dst.size`
-(memory is expanded before it is written). -/
+/-- Overwrite `dst` at `off` with `src`; caller ensures `off + src.size ≤ dst.size`. -/
 def write (dst : ByteArray) (off : Nat) (src : ByteArray) : ByteArray :=
   src.copySlice 0 dst off src.size
 

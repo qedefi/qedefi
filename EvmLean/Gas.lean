@@ -3,18 +3,9 @@ import EvmLean.Fork
 /-!
 # Gas schedule
 
-Gas constants and cost functions, mirroring `cancun/vm/gas.py` (`GasCosts`,
-`calculate_memory_gas_cost`, `calculate_gas_extend_memory`, `calculate_message_call_gas`,
-`max_message_call_gas`, `init_code_cost`, `calculate_blob_gas_price`) and the inline cost
-computations of the instruction implementations in `cancun/vm/instructions/*.py`.
-
-All quantities are `Nat`: gas never overflows, and cost functions may be evaluated on
-astronomically large offsets (taken from 256-bit stack words) without allocating anything.
-A huge memory access simply has a huge cost and then fails the gas check.
-
-Constants that are identical in every modelled fork are plain definitions. Constants that a
-later fork changes take a `Fork` and match on it exhaustively, so adding a fork forces a
-decision at every fork-dependent value.
+Gas constants and cost functions, mirroring `vm/gas.py` and the inline costs in
+`vm/instructions/*.py`. All quantities are `Nat`, so huge offsets just yield huge costs that
+fail the gas check. Fork-dependent constants match on `Fork` exhaustively.
 -/
 
 namespace EvmLean.Gas
@@ -50,8 +41,7 @@ def coldStorageWrite : Nat := 5000
 /-- `GasCosts.REFUND_STORAGE_CLEAR` (EIP-3529). -/
 def refundStorageClear : Int := 4800
 
-/-- `GasCosts.CALL_STIPEND`. Also the EIP-2200 `SSTORE` sentry: `SSTORE` fails unless more
-than this much gas is left. -/
+/-- `GasCosts.CALL_STIPEND`; also the EIP-2200 `SSTORE` sentry (needs more than this left). -/
 def callStipend : Nat := 2300
 /-- `GasCosts.CALL_VALUE`. -/
 def callValue : Nat := 9000
@@ -110,8 +100,7 @@ def maxCodeSize : Fork → Nat
 /-- `MAX_INIT_CODE_SIZE` (EIP-3860): twice the maximum code size. -/
 def maxInitCodeSize (fork : Fork) : Nat := 2 * maxCodeSize fork
 
-/-- The largest nonce a creating account may have before `CREATE` fails (`2⁶⁴ − 1`,
-EIP-2681). -/
+/-- Largest nonce before `CREATE` fails (EIP-2681). -/
 def maxNonce : Nat := 2 ^ 64 - 1
 
 /-! ## Helpers -/
@@ -124,8 +113,7 @@ def words (n : Nat) : Nat := (n + 31) / 32
 
 /-! ## Memory (`calculate_memory_gas_cost`, `calculate_gas_extend_memory`) -/
 
-/-- Total cost of a memory of `sizeInBytes` bytes (rounded up to whole words):
-`3·w + w²/512`. Mirrors `calculate_memory_gas_cost`. -/
+/-- `calculate_memory_gas_cost`: `3·w + w²/512` for `w` words. -/
 def memoryCost (sizeInBytes : Nat) : Nat :=
   let w := words sizeInBytes
   memoryPerWord * w + w * w / 512
@@ -138,9 +126,7 @@ structure ExtendMemory where
   newSize : Nat
   deriving Repr, DecidableEq
 
-/-- Cost of extending a memory of `currentSize` bytes so that it covers every
-`(offset, length)` access in `extensions`. Zero-length accesses never expand memory.
-Mirrors `calculate_gas_extend_memory` (which returns `expand_by`; we return the new size). -/
+/-- `calculate_gas_extend_memory`, returning the new size; zero-length accesses never expand. -/
 def extendMemory (currentSize : Nat) (extensions : List (Nat × Nat)) : ExtendMemory :=
   extensions.foldl
     (fun acc (start, size) =>
@@ -165,10 +151,8 @@ structure MessageCallGas where
   subCall : Nat
   deriving Repr, DecidableEq
 
-/-- Mirrors `calculate_message_call_gas`: cap the requested `gas` at all-but-1/64 of what
-is left after `memoryCost` and `extraGas`; add the stipend when value is transferred.
-If even `extraGas + memoryCost` is unaffordable, the uncapped amounts are returned and the
-subsequent gas charge fails. -/
+/-- `calculate_message_call_gas`: cap `gas` at all-but-1/64, add stipend on value transfer.
+Uncapped if `extraGas + memoryCost` is unaffordable (the charge then fails). -/
 def messageCallGas (value : Nat) (gas gasLeft memoryCost extraGas : Nat)
     (stipend : Nat := callStipend) : MessageCallGas :=
   let stipend := if value = 0 then 0 else stipend
@@ -204,8 +188,7 @@ def expCost (exponent : Nat) : Nat := expBase + expPerByte * byteLength exponent
 /-- `KECCAK256` static part: `30 + 6 · words`. Mirrors `keccak`. -/
 def keccak256Cost (size : Nat) : Nat := keccak256Base + keccak256PerWord * words size
 
-/-- Copy cost of `size` bytes (`CALLDATACOPY`, `CODECOPY`, `EXTCODECOPY`, `RETURNDATACOPY`,
-`MCOPY`): `3 · words`. -/
+/-- Copy cost of `size` bytes for the `*COPY` opcodes: `3 · words`. -/
 def copyCost (size : Nat) : Nat := copyPerWord * words size
 
 /-- `LOGn` static part: `375 + 8 · size + 375 · n`. Mirrors `log_n`. -/
@@ -214,9 +197,7 @@ def logCost (size topics : Nat) : Nat := logBase + logDataPerByte * size + logTo
 /-- EIP-2929 account access cost. -/
 def accessCost (warm : Bool) : Nat := if warm then warmAccess else coldAccountAccess
 
-/-- `SSTORE` gas cost and refund-counter delta (EIP-2200 with EIP-2929 and EIP-3529),
-given the slot's `original` value (at transaction start), `current` value, the `new` value,
-and whether the slot was already warm. Mirrors `sstore` in `instructions/storage.py`. -/
+/-- `SSTORE` cost and refund delta (EIP-2200/2929/3529); `original` is the value at tx start. -/
 def sstoreCostRefund (original current new : Nat) (warm : Bool) : Nat × Int :=
   let coldCost := if warm then 0 else coldStorageAccess
   let writeCost :=
@@ -236,8 +217,7 @@ def sstoreCostRefund (original current new : Nat) (warm : Bool) : Nat × Int :=
     else 0
   (coldCost + writeCost, refund)
 
-/-- `SELFDESTRUCT` cost: base, plus cold access, plus `NEW_ACCOUNT` when value moves to a
-dead beneficiary. Mirrors `selfdestruct` in `instructions/system.py`. -/
+/-- `SELFDESTRUCT` cost: base + cold access + `NEW_ACCOUNT` if value moves to a dead account. -/
 def selfdestructCost (beneficiaryWarm beneficiaryAlive originatorHasBalance : Bool) : Nat :=
   selfdestructBase
     + (if beneficiaryWarm then 0 else coldAccountAccess)
@@ -253,8 +233,7 @@ def blobBaseFeeUpdateFraction : Fork → Nat
   | .cancun => 3338477
   | .prague | .osaka => 5007716
 
-/-- The Taylor-series loop of `fake_exponential`, with explicit structural fuel.
-`acc` is the current series term (times `denominator`), `output` the running sum. -/
+/-- Taylor-series loop of `fake_exponential`; `acc` is the term (× `denominator`). -/
 def fakeExponentialLoop (numerator denominator : Nat) : Nat → Nat → Nat → Nat → Nat
   | 0, _, output, _ => output
   | fuel + 1, i, output, acc =>
@@ -262,27 +241,20 @@ def fakeExponentialLoop (numerator denominator : Nat) : Nat → Nat → Nat → 
     else fakeExponentialLoop numerator denominator fuel (i + 1) (output + acc)
       (acc * numerator / (denominator * i))
 
-/-- Fuel that provably suffices for `fakeExponentialLoop`. With `M = numerator/denominator`
-and `N₀ = 2(M+1)`: for `i ≥ N₀` each term at most halves (`denominator·i > 2·numerator`),
-and up to step `N₀` the term is at most `factor·denominator·numerator^N₀`, whose bit length
-is at most `log₂(factor·denominator) + 1 + N₀·(log₂ numerator + 1)`. So the term reaches
-zero within `N₀ + bitlength + 1` iterations. -/
+/-- Sufficient fuel for `fakeExponentialLoop`: past `N₀ = 2(num/den + 1)` terms at least
+halve, so `N₀ + bitlength(term at N₀) + 1` steps reach zero. -/
 def fakeExponentialFuel (factor numerator denominator : Nat) : Nat :=
   let n₀ := 2 * (numerator / denominator + 1)
   n₀ + (factor * denominator).log2 + 1 + n₀ * (numerator.log2 + 1) + 2
 
-/-- `factor · e^(numerator/denominator)` approximated by a Taylor series, exactly as the
-spec's `taylor_exponential` (EIP-4844 `fake_exponential`). Total by explicit fuel that is
-sufficient (`fakeExponentialFuel`). A zero denominator yields `0` (the spec would divide
-by zero; the protocol never does this). -/
+/-- EIP-4844 `fake_exponential` (`taylor_exponential`); zero denominator yields `0`. -/
 def fakeExponential (factor numerator denominator : Nat) : Nat :=
   if denominator = 0 then 0
   else
     fakeExponentialLoop numerator denominator (fakeExponentialFuel factor numerator denominator)
       1 0 (factor * denominator) / denominator
 
-/-- Blob base fee from the block's excess blob gas (`BLOBBASEFEE`). Mirrors
-`calculate_blob_gas_price`. -/
+/-- Blob base fee from excess blob gas (`calculate_blob_gas_price`). -/
 def blobGasPrice (fork : Fork) (excessBlobGas : Nat) : Nat :=
   fakeExponential blobMinGasPrice excessBlobGas (blobBaseFeeUpdateFraction fork)
 

@@ -6,27 +6,16 @@ import EvmLean.Crypto.Bls12381.HashToCurve
 /-!
 # EIP-2537 BLS12-381 precompiles: byte-level operations
 
-The cryptographic part of the seven EIP-2537 precompiles (Prague), on raw input bytes.
-Gas and the precompile wrappers live elsewhere; here `none` means "invalid input, the
-precompile fails" (execution-specs raises `InvalidParameter`), including a wrong length.
-Mirrors `prague/vm/precompiled_contracts/bls12_381/` in execution-specs:
-
-* `𝔽ₚ` element: 64 bytes big-endian, value `< p` (`bytes_to_fq`; this also forces the top 16
-  bytes to be zero).
-* `G1` point: `x ‖ y` (128 bytes). `G2` point: `x.c0 ‖ x.c1 ‖ y.c0 ‖ y.c1` (256 bytes).
-  The all-zero encoding is the point at infinity; any other point must be on the curve
-  (`bytes_to_g1` / `bytes_to_g2`). Outputs use the same encoding (`g1_to_bytes` /
-  `g2_to_bytes`).
-* `ADD` does no subgroup check; `MSM` and `PAIRING` check every point (`[r]P = ∞`).
-* `MSM` scalars are full 32-byte big-endian integers, not reduced.
+Mirrors `prague/vm/precompiled_contracts/bls12_381/`; `none` means invalid input. `𝔽ₚ` is 64
+bytes big-endian `< p`; the all-zero point is infinity. `ADD` does no subgroup check, `MSM` and
+`PAIRING` check every point; `MSM` scalars are not reduced. Gas lives in `Precompile.lean`.
 -/
 
 namespace EvmLean.Bls12381
 
 /-! ## Encoding -/
 
-/-- Decode the 64-byte big-endian `𝔽ₚ` element at `off` (`bytes_to_fq`); `none` if `≥ p`.
-The caller guarantees `off + 64 ≤ b.size`. -/
+/-- Decode the 64-byte `𝔽ₚ` element at `off` (`bytes_to_fq`); caller ensures `off + 64 ≤ size`. -/
 def decodeFp (b : ByteArray) (off : Nat) : Option Fp :=
   let n := Bytes.toNat (b.extract off (off + 64))
   if n < P then some ⟨n⟩ else none
@@ -37,8 +26,7 @@ def decodeFp2 (b : ByteArray) (off : Nat) : Option Fp2 := do
   let c1 ← decodeFp b (off + 64)
   pure ⟨c0, c1⟩
 
-/-- Decode the 128-byte `G1` point at `off` (`bytes_to_g1` without subgroup check): `(0, 0)`
-is infinity, anything else must lie on `y² = x³ + 4`. -/
+/-- Decode the 128-byte `G1` point at `off` (`bytes_to_g1`, on-curve check only). -/
 def decodeG1 (b : ByteArray) (off : Nat) : Option (Affine Fp) := do
   let x ← decodeFp b off
   let y ← decodeFp b (off + 64)
@@ -47,8 +35,7 @@ def decodeG1 (b : ByteArray) (off : Nat) : Option (Affine Fp) := do
     let pt := Affine.point x y
     if pt.isOnCurve b1 then pure pt else none
 
-/-- Decode the 256-byte `G2` point at `off` (`bytes_to_g2` without subgroup check): `(0, 0)`
-is infinity, anything else must lie on `y² = x³ + 4(1 + u)`. -/
+/-- Decode the 256-byte `G2` point at `off` (`bytes_to_g2`, on-curve check only). -/
 def decodeG2 (b : ByteArray) (off : Nat) : Option (Affine Fp2) := do
   let x ← decodeFp2 b off
   let y ← decodeFp2 b (off + 128)
@@ -76,8 +63,7 @@ def encodeG2 : Affine Fp2 → ByteArray
 
 /-! ## The operations -/
 
-/-- `BLS12_G1ADD` (`0x0b`): 256 bytes (two `G1` points, no subgroup check) to 128 bytes.
-Mirrors `bls12_g1_add`. -/
+/-- `BLS12_G1ADD` (`0x0b`): two `G1` points (no subgroup check) to their sum. -/
 def g1AddBytes (input : ByteArray) : Option ByteArray :=
   if input.size ≠ 256 then none
   else do
@@ -85,8 +71,7 @@ def g1AddBytes (input : ByteArray) : Option ByteArray :=
     let q ← decodeG1 input 128
     pure (encodeG1 (Affine.add p q))
 
-/-- `BLS12_G2ADD` (`0x0d`): 512 bytes (two `G2` points, no subgroup check) to 256 bytes.
-Mirrors `bls12_g2_add`. -/
+/-- `BLS12_G2ADD` (`0x0d`): two `G2` points (no subgroup check) to their sum. -/
 def g2AddBytes (input : ByteArray) : Option ByteArray :=
   if input.size ≠ 512 then none
   else do
@@ -94,10 +79,7 @@ def g2AddBytes (input : ByteArray) : Option ByteArray :=
     let q ← decodeG2 input 256
     pure (encodeG2 (Affine.add p q))
 
-/-- Naive multi-scalar multiplication over `k` records of `stride` bytes, each a point
-(decoded by `decode` at the record start, then subgroup-checked) followed by a 32-byte
-big-endian scalar at offset `stride − 32`. Mirrors the loop of `bls12_g1_msm` /
-`bls12_g2_msm`: `Σ [mᵢ] Pᵢ`. -/
+/-- Naive MSM `Σ [mᵢ] Pᵢ` over `k` records of `stride` bytes (point ‖ 32-byte scalar). -/
 def msm {α : Type} [FieldOps α] [DecidableEq α] (decode : ByteArray → Nat → Option (Affine α))
     (stride : Nat) (input : ByteArray) (k : Nat) : Option (Affine α) := do
   let acc ← (List.range k).foldlM (init := (Jac.infinity : Jac α)) fun acc i => do
@@ -107,22 +89,17 @@ def msm {α : Type} [FieldOps α] [DecidableEq α] (decode : ByteArray → Nat �
     pure (Jac.add acc (Jac.mul (Jac.ofAffine p) m))
   pure acc.toAffine
 
-/-- `BLS12_G1MSM` (`0x0c`): `k ≥ 1` records of 160 bytes (`G1` point ‖ 32-byte scalar) to
-128 bytes. Mirrors `bls12_g1_msm`. -/
+/-- `BLS12_G1MSM` (`0x0c`): `k ≥ 1` records of 160 bytes. -/
 def g1MsmBytes (input : ByteArray) : Option ByteArray :=
   if input.size = 0 || input.size % 160 ≠ 0 then none
   else (msm decodeG1 160 input (input.size / 160)).map encodeG1
 
-/-- `BLS12_G2MSM` (`0x0e`): `k ≥ 1` records of 288 bytes (`G2` point ‖ 32-byte scalar) to
-256 bytes. Mirrors `bls12_g2_msm`. -/
+/-- `BLS12_G2MSM` (`0x0e`): `k ≥ 1` records of 288 bytes. -/
 def g2MsmBytes (input : ByteArray) : Option ByteArray :=
   if input.size = 0 || input.size % 288 ≠ 0 then none
   else (msm decodeG2 288 input (input.size / 288)).map encodeG2
 
-/-- `BLS12_PAIRING_CHECK` (`0x0f`): `k ≥ 1` records of 384 bytes (`G1` point ‖ `G2` point,
-both on-curve and subgroup-checked); `some true` iff `∏ e(Pᵢ, Qᵢ) = 1` (pairs with a point
-at infinity contribute `1`). Mirrors `bls12_pairing`, which multiplies fully
-final-exponentiated pairings; one shared final exponentiation gives the same verdict. -/
+/-- `BLS12_PAIRING_CHECK` (`0x0f`): `some true` iff `∏ e(Pᵢ, Qᵢ) = 1` (shared final exp). -/
 def pairingCheckBytes (input : ByteArray) : Option Bool :=
   if input.size = 0 || input.size % 384 ≠ 0 then none
   else do
@@ -132,14 +109,12 @@ def pairingCheckBytes (input : ByteArray) : Option Bool :=
       pure (p, q)
     pure (pairingCheck pairs)
 
-/-- `BLS12_MAP_FP_TO_G1` (`0x10`): a 64-byte `𝔽ₚ` element to a 128-byte `G1` point.
-Mirrors `bls12_map_fp_to_g1`. -/
+/-- `BLS12_MAP_FP_TO_G1` (`0x10`): a 64-byte `𝔽ₚ` element to a `G1` point. -/
 def mapFpToG1Bytes (input : ByteArray) : Option ByteArray :=
   if input.size ≠ 64 then none
   else (decodeFp input 0).map fun t => encodeG1 (mapFpToG1 t)
 
-/-- `BLS12_MAP_FP2_TO_G2` (`0x11`): a 128-byte `𝔽ₚ²` element to a 256-byte `G2` point.
-Mirrors `bls12_map_fp2_to_g2`. -/
+/-- `BLS12_MAP_FP2_TO_G2` (`0x11`): a 128-byte `𝔽ₚ²` element to a `G2` point. -/
 def mapFp2ToG2Bytes (input : ByteArray) : Option ByteArray :=
   if input.size ≠ 128 then none
   else do

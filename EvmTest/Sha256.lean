@@ -4,10 +4,8 @@ import EvmTest.HashUtil
 /-!
 # Tests for `EvmLean.Crypto.Sha256`
 
-NIST FIPS 180-4 example vectors (`""`, `"abc"`, the 448-bit and 896-bit messages), plus
-`seq n` inputs (bytes `0, 1, …, n-1`) at the padding boundaries: 55 bytes is the longest
-message whose length fits in the same block, 56 forces an extra block, 64 is exactly one
-block. Expected values for the `seq` inputs are from Python's `hashlib.sha256`.
+NIST FIPS 180-4 example vectors, plus `seq n` inputs at the padding boundaries (55 bytes fits
+one block with the length, 56 forces an extra block). `seq` values are from Python's `hashlib`.
 -/
 
 open EvmLean EvmTest.HashUtil

@@ -3,33 +3,10 @@ import EvmLean.Prelude.Bytes
 /-!
 # Keccak-256
 
-The pre-standard Keccak-256 used by Ethereum (domain padding byte `0x01`, not FIPS 202
-SHA3's `0x06`), implemented in plain Lean.
-
-Source: the Keccak team's reference specification ("The Keccak reference", version 3.0,
-Bertoni, Daemen, Peeters, Van Assche), with the permutation Keccak-f[1600] as specified
-in FIPS 202 §3.
-
-## Algorithm
-
-* The state is 25 little-endian 64-bit lanes, lane `(x, y)` at index `x + 5 * y`.
-* The sponge has rate `r = 136` bytes (17 lanes) and capacity 512 bits.
-* Absorbing XORs each 136-byte block into the first 17 lanes and applies Keccak-f[1600]
-  (24 rounds of θ, ρ, π, χ, ι).
-* Padding is `pad10*1` with the Keccak domain bits: after the message, the byte `0x01` is
-  XORed in, and `0x80` into the last byte of the block (both land in the same byte, `0x81`,
-  when the remainder is 135 bytes).
-* The digest is the first 32 bytes of the state (lanes 0–3, little-endian), which
-  `hash256` reads as a big-endian 256-bit word, the EVM's convention for `KECCAK256`.
-
-## Implementation notes
-
-The round function is fully unrolled, with the 25 lanes held in the arguments of the
-tail-recursive `rounds`, so it needs no bounds checks or runtime proofs and compiles to a
-loop over unboxed `UInt64`s. Message bytes are read straight from the input
-(`byteAt` reads zero past the end), so the final, padded block is never materialised: its
-padding bits are XORed directly into the state. Every recursion is structural, so the
-kernel can evaluate the hash (see `EvmLeanTest/Keccak.lean`).
+The pre-standard Keccak-256 used by Ethereum (domain byte `0x01`, not SHA3's `0x06`). The
+round function is unrolled with the 25 lanes held in arguments, so it compiles to a loop over
+unboxed `UInt64`s; the padded final block is never materialised. Every recursion is
+structural, so the kernel can evaluate the hash (see `EvmTest/Keccak.lean`).
 -/
 
 namespace EvmLean.Keccak
@@ -49,13 +26,7 @@ def roundConstants : List UInt64 :=
    0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
 
-/-- The rounds of Keccak-f[1600] for the given round constants, on the 25 lanes passed as
-arguments `a0 … a24` (lane `(x, y)` is `a{x + 5y}`). Each round is θ (column parities `c`,
-mixing terms `d`), then ρ and π combined (`b[y, 2x+3y] = rotl (a[x, y] ^ d[x]) r[x, y]`),
-then χ, and ι on lane 0. Unrolled, with the rotation offsets of the Keccak reference §1.2.
-
-Keeping the lanes in arguments of a tail-recursive function lets the compiler hold them in
-unboxed registers across all 24 rounds; only the final `Vector` is allocated. -/
+/-- One Keccak-f[1600] round (θ, ρ+π, χ, ι) per constant, on lanes `a0 … a24`, unrolled. -/
 def rounds (rcs : List UInt64)
     (a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23
       a24 : UInt64) : State :=
@@ -132,8 +103,7 @@ def permute (s : State) : State :=
 /-- The sponge rate of Keccak-256, in bytes. -/
 def rate : Nat := 136
 
-/-- XOR the 136-byte block of `b` at offset `o` (zero-padded past the end of `b`) into
-the 17 rate lanes of `s`. -/
+/-- XOR the 136-byte block of `b` at `o` (zero-padded) into the 17 rate lanes of `s`. -/
 def xorBlock (s : State) (b : ByteArray) (o : Nat) : State :=
   #v[s[0] ^^^ laneAt b o, s[1] ^^^ laneAt b (o + 8), s[2] ^^^ laneAt b (o + 16),
     s[3] ^^^ laneAt b (o + 24), s[4] ^^^ laneAt b (o + 32), s[5] ^^^ laneAt b (o + 40),
@@ -153,15 +123,12 @@ def absorb (b : ByteArray) : (n : Nat) → (o : Nat) → State → State
   | 0, _, s => s
   | n + 1, o, s => absorb b n (o + rate) (permute (xorBlock s b o))
 
-/-- The Keccak sponge with rate 136 bytes and domain-padding byte `delim` (`0x01` for
-Keccak, `0x06` for FIPS 202 SHA3-256), returning the full state after absorbing; the
-digest is its first 32 bytes. -/
+/-- The sponge with domain byte `delim` (`0x01` Keccak, `0x06` SHA3-256); returns the state. -/
 def sponge (delim : UInt64) (b : ByteArray) : State :=
   let full := b.size / rate
   let s := absorb b full 0 (Vector.replicate 25 0)
   let o := full * rate
   let rem := b.size - o
-  -- The final block holds the `rem < 136` remaining bytes, then the padding.
   let s := xorBlock s b o
   let s := xorLane s (rem / 8) (delim <<< (8 * (rem % 8)).toUInt64)
   let s := xorLane s 16 0x8000000000000000

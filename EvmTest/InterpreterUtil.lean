@@ -3,26 +3,17 @@ import EvmLean.Interpreter
 /-!
 # Test utilities for the interpreter
 
-* `fakeCrypto`: a **FAKE** `Crypto` built from trivial stand-in functions. It is *not*
-  cryptography; it exists so that interpreter tests can run while the real hash
-  implementations are developed elsewhere (`Crypto.real` cannot be evaluated until then).
-  Only `keccak256` is exercised, as a deterministic, injective-enough mixing function.
-* `testPrecompiles`: an identity precompile at `0x04` (the real gas formula) and
-  always-failing precompiles at `0x01` and `0x03`; nothing else.
-* `Asm`: a tiny assembler for hand-written bytecode.
-* World/message builders and runners.
+A fake `Crypto` (only `keccak256` is exercised, as a cheap mixing function), minimal test
+precompiles, a tiny assembler `Asm`, and world/message builders and runners.
 -/
 
 namespace EvmTest.InterpreterUtil
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-- FAKE Keccak-256 stand-in (polynomial mixing modulo 2²⁵⁶). Not a hash function. -/
 def fakeKeccak (b : ByteArray) : Word :=
   BitVec.ofNat 256 (b.foldl (fun acc x => (acc * 257 + x.toNat + 1) % 2 ^ 256) 1)
 
-/-- A **FAKE** crypto bundle for tests. Every field is a trivial stand-in. -/
 def fakeCrypto : Crypto where
   keccak256 := fakeKeccak
   sha256 := fun _ => Bytes.zeros 32
@@ -55,7 +46,6 @@ def testPrecompiles : PrecompileImpl where
 
 /-! ## Assembler -/
 
-/-- An assembly item. -/
 inductive Asm where
   /-- A plain opcode (for `push`, use `Asm.push`/`Asm.pushN`). -/
   | op (o : Opcode)
@@ -63,20 +53,17 @@ inductive Asm where
   | push (v : Nat)
   /-- Push `v` as exactly `n` bytes. -/
   | pushN (n : Nat) (v : Nat)
-  /-- Raw bytes. -/
   | raw (bytes : List UInt8)
 
 /-- Encode `PUSHn v`. -/
 def encodePush (n v : Nat) : List UInt8 := (0x5f + n).toUInt8 :: (Bytes.ofNatBE n v).toList
 
-/-- Encode one item. -/
 def Asm.encode : Asm → List UInt8
   | .op o => [o.toByte]
   | .push v => encodePush (Gas.byteLength v) v
   | .pushN n v => encodePush n v
   | .raw bs => bs
 
-/-- Assemble a program. -/
 def asm (xs : List Asm) : ByteArray := ⟨(xs.flatMap Asm.encode).toArray⟩
 
 /-- Byte length of an assembled program (for computing jump targets). -/
@@ -93,20 +80,14 @@ def stores (vs : List Nat) : List Asm := vs.flatMap fun v => [.push v, .push 0, 
 
 /-! ## Worlds, messages, runners -/
 
-/-- Transaction sender. -/
 def sender : Address := 0xCA11
-/-- The contract under test. -/
 def contract : Address := 0xC0DE
-/-- A second contract. -/
 def other : Address := 0xB0B
-/-- A third contract. -/
 def third : Address := 0x7171
 
-/-- Address set from a list. -/
 def addrSet (xs : List Address) : AddressSet := xs.foldl (fun s a => s.insert a) ∅
 
-/-- A world with a funded sender and `contract` holding `code` and 1000 wei, plus extra
-accounts. -/
+/-- A world with a funded `sender`, `contract` holding `code` and 1000 wei, and `extra`. -/
 def mkWorld (code : ByteArray) (extra : List (Address × Account) := []) : World :=
   let w : World := (∅ : World).insert sender { nonce := 1, balance := 1000000000 }
   let w := w.insert contract { nonce := 1, balance := 1000, code }
@@ -169,14 +150,11 @@ def outWord (r : Option MessageResult) : Word :=
 /-- Gas used by the top-level message (`gas - gasLeft`). -/
 def gasUsed (gas : Nat) (r : Option MessageResult) : Option Nat := r.map fun r => gas - r.gasLeft
 
-/-- Storage slot `k` of `a` after the message. -/
 def slot (r : Option MessageResult) (a : Address) (k : Word) : Option Word :=
   r.map fun r => r.world.sload a k
 
-/-- Did the message succeed? -/
 def succeeded (r : Option MessageResult) : Bool := (r.map (·.success)).getD false
 
-/-- The error of the message. -/
 def errorOf (r : Option MessageResult) : Option ExceptionalHalt := r.bind (·.error)
 
 /-- Machine after `n` steps from the initial machine of `msg` (or the final result). -/
@@ -185,7 +163,6 @@ def stepN (msg : Message) (world : World) (n : Nat) : Option Machine :=
   | .inl _ => none
   | .inr m => go n m
 where
-  /-- Iterate. -/
   go : Nat → Machine → Option Machine
     | 0, m => some m
     | k + 1, m => match step m with

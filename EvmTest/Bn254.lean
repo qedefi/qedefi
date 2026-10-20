@@ -2,19 +2,15 @@ import EvmLean.Crypto.Bn254
 import EvmTest.PrecompileHex
 
 /-!
-Unit tests for `EvmLean.Crypto.Bn254`.
+# Tests for `EvmLean.Crypto.Bn254`
 
-Vectors: all of go-ethereum's `core/vm/testdata/precompiles/{bn256Add,bn256ScalarMul,
-bn256Pairing}.json`, plus algebraic sanity checks (tower arithmetic, bilinearity, the
-final-exponentiation decomposition against a naive exponentiation) and invalid-input cases
-(coordinates `≥ p`, points off the curve, a twist point outside `G₂`, bad lengths).
+All go-ethereum `precompiles/{bn256Add,bn256ScalarMul,bn256Pairing}.json` vectors, plus algebraic
+sanity checks and invalid-input cases (coordinates `≥ p`, off-curve, outside `G₂`, bad lengths).
 -/
 
 open EvmLean EvmTest.Precompile
 
 namespace EvmTest.Bn254
-open EvmLean
-
 open EvmLean.Bn254
 
 /-! ## Parameters and field towers -/

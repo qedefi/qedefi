@@ -6,28 +6,15 @@ import EvmLean.Interpreter.JumpDest
 /-!
 # Frames and the machine
 
-The interpreter is a small-step machine with an explicit call stack.
-
-* A `Frame` is one executing message: the reference's `Evm` object (code, valid jump
-  destinations, pc, stack, memory, gas, return data, accrued substate), plus the
-  `(World, TransientStorage)` snapshot to restore if the frame fails, plus a `FrameKind`
-  telling how the parent consumes the result (the output window of a `CALL*`, or the new
-  address of a `CREATE*`).
-* A `Machine` is the transaction-wide state: the `Context`, the current world and transient
-  storage, the data needed by `SSTORE` and `SELFDESTRUCT` (`originalWorld`,
-  `createdAccounts`), the precompile implementation, and the non-empty frame stack
-  (`frame :: parents`).
-
-The reference's recursion (`generic_call` → `process_message` → `execute_code` → …) is
-replaced by pushing and popping frames, so `step` (in `EvmLean.Interpreter.Step`) is a total,
-non-recursive function.
+A `Frame` is one executing message (the spec's `Evm` plus a rollback snapshot and a
+`FrameKind` saying how the parent consumes the result). A `Machine` is the transaction-wide
+state with the non-empty frame stack `frame :: parents`; pushing and popping frames replaces
+the spec's recursion, so `step` is total and non-recursive.
 -/
 
 namespace EvmLean.Interpreter
 
-/-- How the precompiled contracts are provided to the machine. `processMessageCall` uses
-`PrecompileImpl.standard` (`EvmLean.Precompile`); keeping it a field lets the interpreter be
-run and reasoned about with any precompile implementation. -/
+/-- The precompiled contracts, a parameter so the interpreter works with any implementation. -/
 structure PrecompileImpl where
   /-- Is this address a precompile? -/
   isPrecompile : Address → Bool
@@ -39,8 +26,7 @@ def PrecompileImpl.standard (ctx : Context) : PrecompileImpl where
   isPrecompile := Precompile.isPrecompile ctx.fork
   run := Precompile.run ctx.crypto ctx.fork
 
-/-- Substate accrued by a frame, merged into the parent on success
-(`incorporate_child_on_success`) and discarded on failure. -/
+/-- Substate accrued by a frame: merged into the parent on success, discarded on failure. -/
 structure Substate where
   /-- Logs emitted (`Evm.logs`). -/
   logs : Array Log := #[]
@@ -58,17 +44,13 @@ structure Substate where
 
 /-- How the parent consumes a frame's result. -/
 inductive FrameKind where
-  /-- A message call (`CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`, or a top-level
-  call): on return, up to `retSize` bytes of output are written to the parent's memory at
-  `retOffset`, and `1`/`0` is pushed. -/
+  /-- A message call: output goes to the parent's memory window, then `1`/`0` is pushed. -/
   | call (retOffset retSize : Nat)
-  /-- A contract creation (`CREATE`, `CREATE2`, or a creation transaction): on success the
-  code is deposited and the new address (`msg.currentTarget`) is pushed, else `0`. -/
+  /-- A contract creation: on success the code is deposited and the new address pushed, else `0`. -/
   | create
   deriving Inhabited, Repr, DecidableEq
 
-/-- One executing message: the reference's `Evm` plus rollback snapshot and return
-continuation. -/
+/-- One executing message: the spec's `Evm` plus rollback snapshot and return continuation. -/
 structure Frame where
   /-- The message being executed (`Evm.message`). -/
   msg : Message
@@ -93,8 +75,7 @@ structure Frame where
   /-- How the parent consumes this frame's result. -/
   kind : FrameKind
 
-/-- A fresh frame for `msg` (mirrors the `Evm(...)` construction in `process_message`):
-empty stack and memory, all of `msg.gas`, warm sets taken from the message. -/
+/-- A fresh frame for `msg`: empty stack and memory, all of `msg.gas`, warm sets from `msg`. -/
 def Frame.init (msg : Message) (kind : FrameKind) (snapshot : World × TransientStorage) :
     Frame where
   msg := msg
@@ -106,8 +87,7 @@ def Frame.init (msg : Message) (kind : FrameKind) (snapshot : World × Transient
   snapshot := snapshot
   kind := kind
 
-/-- The transaction-wide machine state. The frame stack is `frame :: parents`, so it is
-non-empty by construction; `frame` is the one executing. -/
+/-- The transaction-wide machine state; the frame stack is `frame :: parents`. -/
 structure Machine where
   /-- Block and transaction environment, fork, crypto. -/
   ctx : Context
@@ -117,11 +97,9 @@ structure Machine where
   world : World
   /-- Current transient storage. -/
   transient : TransientStorage
-  /-- The world at the start of the message call; source of `SSTORE`'s original values
-  (`get_storage_original`). -/
+  /-- The world at the start of the message call (`SSTORE` original values). -/
   originalWorld : World
-  /-- Accounts created during the transaction (`TransactionState.created_accounts`); never
-  rolled back. -/
+  /-- Accounts created during the transaction; never rolled back. -/
   createdAccounts : AddressSet
   /-- The executing frame. -/
   frame : Frame
@@ -147,8 +125,7 @@ structure ChildResult where
   reverted : Bool
   /-- Output (revert data on revert, empty on exceptional halt). -/
   output : ByteArray
-  /-- The child's substate (only merged on success; its touched set matters for the
-  RIPEMD-160 quirk on failure). -/
+  /-- The child's substate (merged on success; touched set used by the RIPEMD-160 quirk). -/
   sub : Substate
   /-- The child's `msg.currentTarget`. -/
   target : Address
@@ -165,8 +142,7 @@ inductive StepResult where
   /-- The top-level frame finished. -/
   | done (r : MessageResult)
 
-/-- A pending child message call, produced by a `CALL*` instruction after all its checks
-and gas charges; `step` then runs the precompile or pushes the child frame. -/
+/-- A pending child call from a `CALL*` instruction, after all its checks and gas charges. -/
 structure CallRequest where
   /-- The child message. -/
   msg : Message

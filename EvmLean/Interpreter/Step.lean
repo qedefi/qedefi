@@ -3,24 +3,14 @@ import EvmLean.Interpreter.Instructions
 /-!
 # Small-step execution
 
-`step` advances the machine by one transition and is total and non-recursive:
-
-* execute one instruction of the executing frame (`exec`), or
-* finish the executing frame (normal halt, `REVERT`, exceptional halt, or running off the end
-  of the code), deposit code for creations, roll back on failure, and either resume the
-  parent (`resume`, the tail of `generic_call`/`generic_create`) or return the final
-  `MessageResult` if it was the top-level frame, or
-* start a child: run a precompile to completion immediately, or push a new frame
-  (`launchCall`/`launchCreate`, the head of `process_message`/`process_create_message`).
-
-`run` iterates `step` with fuel; fuel exhaustion is reported as `OutOfFuel` and never mixes
-with EVM state.
+`step` is total and non-recursive: it executes one instruction, finishes the executing frame
+(deposit code, roll back on failure, resume the parent or return the result), or starts a
+child (precompiles run to completion at once). `run` iterates `step` with fuel.
 -/
 
 namespace EvmLean.Interpreter
 
-/-- Fuel ran out before execution finished. This is not an EVM outcome: with enough fuel
-every message terminates (gas strictly bounds execution). -/
+/-- Fuel ran out before execution finished (not an EVM outcome; gas bounds execution). -/
 structure OutOfFuel where
   deriving Inhabited, Repr
 
@@ -34,11 +24,8 @@ def AddressSet.union (s t : AddressSet) : AddressSet := t.foldl (fun acc a => ac
 def Substate.ofMessage (msg : Message) : Substate :=
   { accessedAddresses := msg.accessedAddresses, accessedStorageKeys := msg.accessedStorageKeys }
 
-/-- Resume the parent (`m.frame`) after a child finished with result `r`, in world
-`m.world` (already rolled back if the child failed). Mirrors the code after the child call
-in `generic_call` / `generic_create`, with `incorporate_child_on_success` and
-`incorporate_child_on_error` (including the RIPEMD-160 touched-account quirk of the
-pre-`state_tracker` specification). -/
+/-- Resume the parent `m.frame` with child result `r`, incl. the RIPEMD-160 touched quirk.
+Mirrors the tail of `generic_call`/`generic_create`. -/
 def resume (m : Machine) (r : ChildResult) : Machine :=
   let p := m.frame
   let ok := r.success
@@ -72,16 +59,13 @@ def resume (m : Machine) (r : ChildResult) : Machine :=
       gasLeft := p.gasLeft + r.gasLeft
       sub := sub
       returnData := returnData
-      -- The `CALL*`/`CREATE*` instruction popped at least three items, so this push
-      -- cannot overflow.
+      -- Cannot overflow: the `CALL*`/`CREATE*` instruction popped at least three items.
       stack := result :: p.stack
       memory := memory
       pc := p.pc + 1 } }
 
-/-- Code-deposit checks of a successful creation: EIP-3541 (`0xEF` prefix), the 200
-gas/byte deposit cost, EIP-170 (code size). Returns the gas left after the deposit.
-Mirrors the `try` block of `process_create_message` (which reports the size limit as
-`OutOfGasError`; we use the more precise `contractSizeExceeded`). -/
+/-- Code-deposit checks (EIP-3541, deposit cost, EIP-170); the spec reports the size limit as
+`OutOfGasError`, here `contractSizeExceeded`. -/
 def depositCode (fork : Fork) (gasLeft : Nat) (code : ByteArray) : Except ExceptionalHalt Nat :=
   if code[0]? = some 0xef then .error .invalidContractPrefix
   else
@@ -90,10 +74,7 @@ def depositCode (fork : Fork) (gasLeft : Nat) (code : ByteArray) : Except Except
     else if code.size > Gas.maxCodeSize fork then .error .contractSizeExceeded
     else .ok (gasLeft - cost)
 
-/-- The `MessageResult` of the top-level message. Mirrors `process_message_call`: on any
-failure (including `REVERT`) logs, deletions, touched accounts and refunds are dropped.
-`target` is the top-level `msg.target`; a call target that exists and is empty is touched
-(EIP-161). -/
+/-- Top-level `MessageResult`; on failure (incl. `REVERT`) the substate is dropped. -/
 def topLevelResult (target : Option Address) (world : World) (transient : TransientStorage)
     (r : ChildResult) : MessageResult :=
   if r.success then
@@ -125,10 +106,7 @@ def topLevelResult (target : Option Address) (world : World) (transient : Transi
       world := world
       transientStorage := transient }
 
-/-- Finish the executing frame with outcome `o`: deposit code for a successful creation,
-roll back to the frame's snapshot on failure (zeroing gas on exceptional halt), then resume
-the parent or produce the final result. Mirrors the tail of `process_message` and
-`process_create_message`. -/
+/-- Finish the executing frame with outcome `o`, then resume the parent or produce the result. -/
 def finishFrame (m : Machine) (o : Outcome) : StepResult :=
   let f := m.frame
   let target := f.msg.currentTarget
@@ -155,8 +133,7 @@ def finishFrame (m : Machine) (o : Outcome) : StepResult :=
   | [] => .done (topLevelResult f.msg.target world transient r)
   | p :: ps => .running (resume { m with frame := p, parents := ps, world, transient } r)
 
-/-- The precompile to run for `msg`, if its code address is one and precompiles are not
-disabled by an EIP-7702 delegation (`disable_precompiles` in `process_message`). -/
+/-- The precompile to run for `msg`, unless disabled by an EIP-7702 delegation. -/
 def precompileOf (pre : PrecompileImpl) (msg : Message) : Option Address :=
   if msg.disablePrecompiles then none
   else
@@ -164,9 +141,7 @@ def precompileOf (pre : PrecompileImpl) (msg : Message) : Option Address :=
     | some a => if pre.isPrecompile a then some a else none
     | none => none
 
-/-- Run precompile `a` for `msg` in `world` (value already transferred). Returns the child
-result and the world afterwards (`snapshot` restored on failure). Mirrors the precompile
-branch of `process_message`. -/
+/-- Run precompile `a` for `msg` (value already transferred); restores `snapshot` on failure. -/
 def runPrecompile (pre : PrecompileImpl) (a : Address) (msg : Message) (kind : FrameKind)
     (world : World) (transient : TransientStorage) (snapshot : World × TransientStorage) :
     ChildResult × World × TransientStorage :=
@@ -185,8 +160,7 @@ def transferValue (w : World) (msg : Message) : World :=
     moveEther w msg.caller msg.currentTarget msg.value
   else w
 
-/-- Start a child message call: snapshot, transfer value, then run a precompile to
-completion or push a new frame. Mirrors the head of `process_message`. -/
+/-- Start a child call: snapshot, transfer value, then run a precompile or push a frame. -/
 def launchCall (m : Machine) (req : CallRequest) : Machine :=
   let msg := req.msg
   let snapshot := (m.world, m.transient)
@@ -199,16 +173,13 @@ def launchCall (m : Machine) (req : CallRequest) : Machine :=
   | none =>
     { m with world, frame := Frame.init msg kind snapshot, parents := m.frame :: m.parents }
 
-/-- The state changes at the start of a creation: mark the account created, set its nonce
-to one, transfer the endowment. Mirrors the head of `process_create_message` and
-`process_message`. -/
+/-- Start of a creation: mark the account created, increment its nonce, transfer the value. -/
 def beginCreate (world : World) (created : AddressSet) (msg : Message) : World × AddressSet :=
   let created := created.insert msg.currentTarget
   let world := incrementNonce world msg.currentTarget
   (transferValue world msg, created)
 
-/-- Start a child creation (`msg.target = none`): push a new frame whose rollback snapshot
-is the state before the nonce increment. -/
+/-- Start a child creation; the frame's snapshot predates the nonce increment. -/
 def launchCreate (m : Machine) (msg : Message) : Machine :=
   let snapshot := (m.world, m.transient)
   let (world, createdAccounts) := beginCreate m.world m.createdAccounts msg

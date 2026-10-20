@@ -1,34 +1,11 @@
 import EvmLean.Prelude.Bytes
 
 /-!
-# alt_bn128 (BN254) curve operations, for precompiles `0x06`–`0x08` (EIP-196/197).
+# alt_bn128 (BN254) for precompiles `0x06`–`0x08` (EIP-196/197)
 
-* **EIP-196** (`ECADD`, `ECMUL`): the group `G₁` is `y² = x³ + 3` over `𝔽ₚ`. Inputs are
-  big-endian 32-byte coordinates, `(0, 0)` encodes the point at infinity, and coordinates
-  `≥ p` or points off the curve are invalid. Short inputs are zero-padded and extra bytes are
-  ignored.
-* **EIP-197** (`ECPAIRING`): `G₂` is the order-`r` subgroup of the sextic twist
-  `y² = x³ + 3/(9 + i)` over `𝔽ₚ₂ = 𝔽ₚ[i]/(i² + 1)`. A `G₂` coordinate `a + b·i` is encoded
-  imaginary part first (`b ‖ a`). The check is `∏ e(Pᵢ, Qᵢ) = 1`.
-
-This mirrors `alt_bn128.py` in `cancun/vm/precompiled_contracts/`, which uses py_ecc's
-`optimized_bn128`. As there, every `G₂` point must satisfy `r · Q = O` (the twist has a large
-cofactor), while `G₁` has cofactor one so being on the curve suffices.
-
-## Implementation
-
-Field elements are `Nat`s reduced modulo `p` (GMP-backed at runtime), with Fermat inverses
-via `Nat.powMod`. `𝔽ₚ₁₂` is the usual tower `𝔽ₚ₆ = 𝔽ₚ₂[v]/(v³ − ξ)`, `𝔽ₚ₁₂ = 𝔽ₚ₆[w]/(w² − v)`
-with `ξ = 9 + i`, so `w⁶ = ξ` and the twist map is `(x, y) ↦ (x·w², y·w³)`.
-
-The pairing is the optimal ate pairing: a Miller loop over the bits of `6u + 2` with `Q` in
-affine twist coordinates (lines evaluated directly at `P`, vertical lines dropped since they
-lie in `𝔽ₚ₆` and vanish under the final exponentiation), two Frobenius correction steps, and
-a final exponentiation `(p¹² − 1)/r`, split into the easy part `(p⁶ − 1)(p² + 1)` and the hard
-part `(p⁴ − p² + 1)/r = λ₀ + λ₁p + λ₂p² + λ₃p³` with the `u`-polynomial coefficients of
-Scott et al., "On the final exponentiation for calculating pairings on ordinary elliptic
-curves" (2009). The decomposition is checked by a unit test. Only the predicate "the product
-is one" is observable, and any correct reduced pairing gives the same answer.
+Mirrors `alt_bn128.py`. `G₂` coordinates are encoded imaginary part first and must pass the
+subgroup check `r · Q = O`. The pairing is optimal ate over the tower
+`𝔽ₚ₂ → 𝔽ₚ₆ → 𝔽ₚ₁₂`; the hard part of the final exponentiation follows Scott et al. (2009).
 -/
 
 namespace EvmLean.Bn254
@@ -49,8 +26,7 @@ def ateLoopCount : Nat := 29793968203157093288
 
 namespace Fp
 
-/-- Addition modulo `p` (arguments reduced; a conditional subtraction is much cheaper than
-a division). -/
+/-- Addition modulo `p` (arguments reduced; conditional subtraction, no division). -/
 def add (a b : Nat) : Nat := let s := a + b; if s < p then s else s - p
 
 /-- Subtraction modulo `p` (arguments reduced). -/
@@ -189,8 +165,7 @@ def mul (a b : Fp6) : Fp6 :=
   let c2 := (((a.c0.add a.c2).mul (b.c0.add b.c2)).sub (t0.add t2)).add t1
   ⟨c0, c1, c2⟩
 
-/-- Multiplication by a sparse element `b + c·v` (5 `𝔽ₚ₂` products):
-`(x₀ + x₁v + x₂v²)(b + cv) = (x₀b + ξx₂c) + (x₀c + x₁b)v + (x₁c + x₂b)v²`. -/
+/-- Multiplication by a sparse element `b + c·v` (5 `𝔽ₚ₂` products). -/
 def mulBC (a : Fp6) (b c : Fp2) : Fp6 :=
   let t0 := a.c0.mul b
   let t1 := a.c1.mul c
@@ -233,8 +208,7 @@ def mul (a b : Fp12) : Fp12 :=
   let t1 := a.g1.mul b.g1
   ⟨t0.add t1.mulV, ((a.g0.add a.g1).mul (b.g0.add b.g1)).sub (t0.add t1)⟩
 
-/-- Multiplication by a line value `a + (b + c·v)·w` with `a ∈ 𝔽ₚ` (as produced by
-`lineValue`), exploiting its sparsity. Equal to `mul` with the full element. -/
+/-- Multiplication by a sparse line value `a + (b + c·v)·w` with `a ∈ 𝔽ₚ`. -/
 def mulLine (f : Fp12) (a : Nat) (b c : Fp2) : Fp12 :=
   let t0 : Fp6 := ⟨f.g0.c0.mulFp a, f.g0.c1.mulFp a, f.g0.c2.mulFp a⟩
   let t1 := f.g1.mulBC b c
@@ -247,8 +221,7 @@ def sqr (a : Fp12) : Fp12 :=
   let c0 := ((a.g0.add a.g1).mul (a.g0.add a.g1.mulV)).sub (t.add t.mulV)
   ⟨c0, t.add t⟩
 
-/-- Conjugation `g0 + g1·w ↦ g0 − g1·w`, the Frobenius `x ↦ x^(p⁶)`; it inverts elements of
-the cyclotomic subgroup. -/
+/-- Conjugation `x ↦ x^(p⁶)`; inverts elements of the cyclotomic subgroup. -/
 def conj (a : Fp12) : Fp12 := ⟨a.g0, a.g1.neg⟩
 
 /-- Inverse `(g0 − g1·w)/(g0² − v·g1²)` (`inv 0 = 0`). -/
@@ -272,8 +245,7 @@ def powAux : Nat → Fp12 → Nat → Fp12 → Fp12
 /-- `aᵏ` for `k < 2²⁵⁶` (used with `k = u` and small constants). -/
 def pow (a : Fp12) (k : Nat) : Fp12 := powAux 256 a k one
 
-/-- Generic `aᵏ` for exponents below `2^fuel`; only used to cross-check the fast final
-exponentiation in tests. -/
+/-- Generic `aᵏ` for `k < 2^fuel`; used by tests to cross-check `finalExp`. -/
 def powBig (fuel : Nat) (a : Fp12) (k : Nat) : Fp12 := powAux fuel a k one
 
 end Fp12
@@ -442,8 +414,7 @@ end G2
 
 /-! ## The optimal ate pairing -/
 
-/-- A line function value `a + b·w + c·w³` with `a ∈ 𝔽ₚ` and `b, c ∈ 𝔽ₚ₂`: the shape of every
-line through points of `ψ(G₂)` evaluated at a point of `G₁`. -/
+/-- A line value `a + b·w + c·w³` (`a ∈ 𝔽ₚ`): a line through `ψ(G₂)` points evaluated on `G₁`. -/
 structure Line where
   /-- Coefficient of `1` (in `𝔽ₚ`). -/
   a : Nat
@@ -465,13 +436,11 @@ end Line
 /-- `f · l` using the sparsity of `l`. -/
 def Fp12.mulBy (f : Fp12) (l : Line) : Fp12 := f.mulLine l.a l.b l.c
 
-/-- The line through the untwisted points `ψ(T)` and `ψ(T')` with twist slope `λ`,
-evaluated at `P = (xP, yP)`: `yP − λxP·w + (λxT − yT)·w³`. -/
+/-- The line with twist slope `λ` through `ψ(T)`, at `P`: `yP − λxP·w + (λxT − yT)·w³`. -/
 def lineValue (lam xT yT : Fp2) (xP yP : Nat) : Line :=
   ⟨yP, (lam.mulFp xP).neg, (lam.mul xT).sub yT⟩
 
-/-- Tangent line at `T` evaluated at `P`, and `2T`. Vertical tangents (only at infinity or
-2-torsion, impossible in `G₂`) contribute `1`. -/
+/-- Tangent line at `T` evaluated at `P`, and `2T`; vertical tangents contribute `1`. -/
 def lineDouble (t : Affine Fp2) (xP yP : Nat) : Line × Affine Fp2 :=
   match t with
   | .infinity => (.one, .infinity)
@@ -518,8 +487,7 @@ def affineNeg : Affine Fp2 → Affine Fp2
   | .infinity => .infinity
   | .point x y => .point x y.neg
 
-/-- The optimal ate Miller loop `f_{6u+2,Q}(P) · l_{T,π(Q)}(P) · l_{T',−π²(Q)}(P)` for a
-finite `P = (xP, yP) ∈ G₁` and `Q ∈ G₂` (before the final exponentiation). -/
+/-- Optimal ate Miller loop `f_{6u+2,Q}(P) · l_{T,π(Q)}(P) · l_{T',−π²(Q)}(P)`, finite `P`. -/
 def miller (q : Affine Fp2) (xP yP : Nat) : Fp12 :=
   match q with
   | .infinity => .one
@@ -571,8 +539,7 @@ def decodeG1 (input : ByteArray) (off : Nat) : Option (Affine Nat) :=
 /-- Is `(x, y)` on the twist `y² = x³ + 3/ξ`? -/
 def onCurveG2 (x y : Fp2) : Bool := y.sqr = (x.sqr.mul x).add twistB
 
-/-- Decode a twist point from 128 bytes at `off` (`bytes_to_g2`): each coordinate is
-`imaginary ‖ real`. On-curve check only; the subgroup check is separate. -/
+/-- Decode a twist point (`imaginary ‖ real` per coordinate); on-curve check only. -/
 def decodeG2 (input : ByteArray) (off : Nat) : Option (Affine Fp2) :=
   let x1 := readWord input off
   let x0 := readWord input (off + 32)
@@ -618,8 +585,7 @@ def pairingAux (input : ByteArray) : Nat → Nat → Fp12 → Option Fp12
         | .point xP yP => f.mul (miller q xP yP)
       pairingAux input count (i + 1) f
 
-/-- `ECPAIRING`: input is a multiple of 192 bytes; `some true` iff the pairing product is
-one; `none` on invalid input. -/
+/-- `ECPAIRING`: `some true` iff the pairing product is one; `none` on invalid input. -/
 def pairingCheck (input : ByteArray) : Option Bool :=
   if input.size % 192 ≠ 0 then none
   else (pairingAux input (input.size / 192) 0 .one).map fun f => finalExp f = .one

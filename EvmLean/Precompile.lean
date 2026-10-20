@@ -4,42 +4,10 @@ import EvmLean.Crypto.Secp256k1
 /-!
 # Precompiled contracts
 
-Addresses `0x01`–`0x0a` (Cancun), `0x0b`–`0x11` (Prague) and `0x100` (Osaka). Each
-precompile charges its gas, then either succeeds with output or fails exceptionally,
-consuming all gas. Mirrors `{cancun,prague,osaka}/vm/precompiled_contracts/*.py` in
-`ethereum/execution-specs`:
-
-| Address | Precompile | Gas | Spec |
-|---|---|---|---|
-| `0x01` | `ECRECOVER` | `3000` | Yellow Paper App. E |
-| `0x02` | `SHA256` | `60 + 12·words` | Yellow Paper App. E |
-| `0x03` | `RIPEMD160` | `600 + 120·words` | Yellow Paper App. E |
-| `0x04` | `IDENTITY` | `15 + 3·words` | Yellow Paper App. E |
-| `0x05` | `MODEXP` | `max(200, ⌊mult·iter/3⌋)` | EIP-198, EIP-2565 |
-| `0x06` | `ECADD` | `150` | EIP-196, EIP-1108 |
-| `0x07` | `ECMUL` | `6000` | EIP-196, EIP-1108 |
-| `0x08` | `ECPAIRING` | `45000 + 34000·k` | EIP-197, EIP-1108 |
-| `0x09` | `BLAKE2F` | `rounds` | EIP-152 |
-| `0x0a` | `POINT_EVALUATION` | `50000` | EIP-4844 |
-| `0x0b` | `BLS12_G1ADD` | `375` | EIP-2537 (Prague) |
-| `0x0c` | `BLS12_G1MSM` | `k·12000·discount(k)/1000` | EIP-2537 (Prague) |
-| `0x0d` | `BLS12_G2ADD` | `600` | EIP-2537 (Prague) |
-| `0x0e` | `BLS12_G2MSM` | `k·22500·discount(k)/1000` | EIP-2537 (Prague) |
-| `0x0f` | `BLS12_PAIRING_CHECK` | `37700 + 32600·k` | EIP-2537 (Prague) |
-| `0x10` | `BLS12_MAP_FP_TO_G1` | `5500` | EIP-2537 (Prague) |
-| `0x11` | `BLS12_MAP_FP2_TO_G2` | `23800` | EIP-2537 (Prague) |
-| `0x100` | `P256VERIFY` | `6900` | EIP-7951 (Osaka) |
-
-All cryptography goes through the `Crypto` record (`crypto.*`), never through a concrete
-implementation, so the semantics stays parameterised. `MODEXP` uses plain `Nat` arithmetic
-(`Nat.powMod`) with arbitrary-length base, exponent and modulus.
-
-## Forks
-
-`ofAddress` maps `(fork, address)` to a `Kind`, matching exhaustively on `Fork`: Prague adds
-the BLS12-381 precompiles (EIP-2537), Osaka `P256VERIFY` (EIP-7951) and the `MODEXP`
-changes (EIP-7823 input bounds, EIP-7883 repricing, following
-`osaka/vm/precompiled_contracts/modexp.py`).
+Addresses `0x01`–`0x0a` (Cancun), `0x0b`–`0x11` (Prague, EIP-2537) and `0x100` (Osaka,
+EIP-7951). Each precompile charges gas, then succeeds with output or fails consuming all gas.
+Mirrors `vm/precompiled_contracts/*.py`. Cryptography goes through the `Crypto` record, so the
+semantics stays parameterised; `MODEXP` uses plain `Nat` arithmetic.
 -/
 
 namespace EvmLean.Precompile
@@ -148,8 +116,7 @@ def leftPad32 (b : ByteArray) : ByteArray := Bytes.zeros (32 - b.size) ++ b
 /-- The big-endian word at `off`, zero-padded (`U256.from_be_bytes(buffer_read(…, 32))`). -/
 def readWord (input : ByteArray) (off : Nat) : Nat := Bytes.toNat (Bytes.readPadded input off 32)
 
-/-- Big-endian value of `b[lo, hi)` by balanced splitting, so that long inputs decode in
-quasi-linear time (`Bytes.toNat` is quadratic). `fuel` bounds the recursion depth. -/
+/-- Big-endian value of `b[lo, hi)` by balanced splitting (`Bytes.toNat` is quadratic). -/
 def natOfSlice (b : ByteArray) : Nat → Nat → Nat → Nat
   | 0, lo, hi => Bytes.toNat (b.extract lo hi)
   | fuel + 1, lo, hi =>
@@ -158,16 +125,14 @@ def natOfSlice (b : ByteArray) : Nat → Nat → Nat → Nat
       let mid := (lo + hi) / 2
       (natOfSlice b fuel lo mid <<< (8 * (hi - mid))) + natOfSlice b fuel mid hi
 
-/-- `Uint.from_be_bytes(buffer_read(b, off, len))`: the big-endian value of `len` bytes of
-`b` at `off`, reading zeros past the end. Computed without materialising the padding. -/
+/-- `Uint.from_be_bytes(buffer_read(b, off, len))`, without materialising the zero padding. -/
 def readNat (b : ByteArray) (off len : Nat) : Nat :=
   if off ≥ b.size then 0
   else
     let hi := min b.size (off + len)
     natOfSlice b 64 off hi <<< (8 * (off + len - hi))
 
-/-- `n` as exactly `len` big-endian bytes (high bytes beyond `len` dropped), by balanced
-splitting (`Bytes.ofNatBE` is quadratic in `len`). `fuel` bounds the recursion depth. -/
+/-- `n` as exactly `len` big-endian bytes by balanced splitting (`Bytes.ofNatBE` is quadratic). -/
 def bytesOfNat : Nat → Nat → Nat → ByteArray
   | 0, len, n => Bytes.ofNatBE len n
   | fuel + 1, len, n =>
@@ -178,8 +143,7 @@ def bytesOfNat : Nat → Nat → Nat → ByteArray
 
 /-! ## `ECRECOVER`, `SHA256`, `RIPEMD160`, `IDENTITY` -/
 
-/-- `ECRECOVER` (`ecrecover.py`): an invalid signature is a *successful* call with empty
-output; the output is the signer address left-padded to 32 bytes. -/
+/-- `ECRECOVER`: an invalid signature is a *successful* call with empty output. -/
 def ecrecover (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   if gas < 3000 then fail
   else
@@ -218,9 +182,7 @@ def identity (input : ByteArray) (gas : Nat) : Result :=
 
 /-! ## `MODEXP` (EIP-198, EIP-2565; EIP-7823 and EIP-7883 from Osaka) -/
 
-/-- `iterations` in `modexp.py`: an estimate of the number of squarings, where
-`expHead` is the first (at most) 32 bytes of the exponent. `lengthMultiplier` is `8` before
-Osaka and `16` from Osaka (EIP-7883). `Nat.log2 x` is `bit_length(x) − 1` (and `0` for `0`). -/
+/-- `iterations` in `modexp.py`; `expHead` is the exponent's first ≤32 bytes, multiplier 8 or 16. -/
 def modexpIterations (lengthMultiplier expLen expHead : Nat) : Nat :=
   let count :=
     if expLen ≤ 32 then Nat.log2 expHead
@@ -238,8 +200,7 @@ def modexpGas (fork : Fork) (baseLen modLen expLen expHead : Nat) : Nat :=
     -- EIP-2565.
     max 200 (words * words * modexpIterations 8 expLen expHead / 3)
 
-/-- `MODEXP` (`modexp.py`): `base ^ exp % modulus` for arbitrary-length operands, output
-left-padded to the modulus length (all zeros for a zero modulus). -/
+/-- `MODEXP`: `base ^ exp % modulus`, padded to the modulus length (zeros for a zero modulus). -/
 def modexp (fork : Fork) (input : ByteArray) (gas : Nat) : Result :=
   let baseLen := readWord input 0
   let expLen := readWord input 32
@@ -247,8 +208,7 @@ def modexp (fork : Fork) (input : ByteArray) (gas : Nat) : Result :=
   -- EIP-7823 (Osaka): each length is at most 1024 bytes.
   if fork ≥ .osaka && (baseLen > 1024 || expLen > 1024 || modLen > 1024) then fail
   else
-    -- Before Osaka a huge `baseLen` puts the exponent past the end of the input, where it
-    -- reads as zero; `readNat` returns `0` for any offset past the end.
+    -- Before Osaka a huge `baseLen` puts the exponent past the input end, where it reads as 0.
     let expHead := readNat input (96 + baseLen) (min 32 expLen)
     let cost := modexpGas fork baseLen modLen expLen expHead
     if gas < cost then fail
@@ -280,8 +240,7 @@ def ecMul (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
     | none => fail
     | some out => { success := true, gasLeft := gas - 6000, output := out }
 
-/-- `ECPAIRING` (`alt_bn128_pairing_check`): gas is charged for `⌊len/192⌋` pairs before
-the length is checked; the output is the word `1` or `0`. -/
+/-- `ECPAIRING`: gas for `⌊len/192⌋` pairs is charged before the length is checked. -/
 def ecPairing (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   let cost := 45000 + 34000 * (input.size / 192)
   if gas < cost then fail
@@ -305,8 +264,7 @@ def le64 (b : ByteArray) (off : Nat) : UInt64 :=
 def le64Bytes (h : Vector UInt64 8) : ByteArray :=
   ⟨(h.toList.flatMap fun w => (List.range 8).map fun j => (w >>> (8 * j).toUInt64).toUInt8).toArray⟩
 
-/-- `BLAKE2F` (`blake2f.py`): exactly 213 bytes `rounds(4, BE) ‖ h(64, LE) ‖ m(128, LE) ‖
-t(16, LE) ‖ f(1)`, with `f ∈ {0, 1}`; one gas per round. -/
+/-- `BLAKE2F`: 213 bytes `rounds(4,BE) ‖ h(64,LE) ‖ m(128,LE) ‖ t(16,LE) ‖ f(1)`; gas = rounds. -/
 def blake2f (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   if input.size ≠ 213 then fail
   else
@@ -333,9 +291,7 @@ def blsModulus : Nat :=
 /-- `VERSIONED_HASH_VERSION_KZG`. -/
 def versionedHashVersionKzg : UInt8 := 0x01
 
-/-- `POINT_EVALUATION` (`point_evaluation.py`): input `versioned_hash ‖ z ‖ y ‖ commitment ‖
-proof` (192 bytes). The versioned hash must be `0x01 ‖ sha256(commitment)[1:]`, `z` and `y`
-canonical field elements (`bytes_to_bls_field` in `verify_kzg_proof`), and the proof valid. -/
+/-- `POINT_EVALUATION`: 192 bytes `versioned_hash ‖ z ‖ y ‖ commitment ‖ proof`. -/
 def pointEvaluation (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   if input.size ≠ 192 then fail
   else if gas < 50000 then fail
@@ -385,15 +341,12 @@ def g1MaxDiscount : Nat := 519
 /-- `G2_MAX_DISCOUNT`: the discount for more than 128 pairs. -/
 def g2MaxDiscount : Nat := 524
 
-/-- MSM gas: `k · mulCost · discount(k) / 1000`, the discount taken from `table` for
-`k ≤ 128` and `maxDiscount` above (`bls12_g1_msm`, `bls12_g2_msm`). -/
+/-- MSM gas `k · mulCost · discount(k) / 1000`; `maxDiscount` applies above 128 pairs. -/
 def msmGas (table : Array Nat) (maxDiscount mulCost k : Nat) : Nat :=
   let discount := if k ≤ 128 then table.getD (k - 1) maxDiscount else maxDiscount
   k * mulCost * discount / 1000
 
-/-- A fixed-gas BLS operation on an input of exactly `len` bytes (`bls12_g1_add`,
-`bls12_g2_add`, `bls12_map_fp_to_g1`, `bls12_map_fp2_to_g2`): the length is checked first,
-then the gas is charged; invalid encodings fail. -/
+/-- A fixed-gas BLS operation on exactly `len` bytes; the length is checked before gas. -/
 def blsFixed (len cost : Nat) (op : ByteArray → Option ByteArray) (input : ByteArray)
     (gas : Nat) : Result :=
   if input.size ≠ len then fail
@@ -415,8 +368,7 @@ def blsMsm (pairLen : Nat) (table : Array Nat) (maxDiscount mulCost : Nat)
       | some out => { success := true, gasLeft := gas - cost, output := out }
       | none => fail
 
-/-- `BLS12_PAIRING_CHECK` (`bls12_pairing`): a non-empty multiple of 384 bytes
-(`G1 ‖ G2` pairs), gas `37700 + 32600·k`, output the word `1` or `0`. -/
+/-- `BLS12_PAIRING_CHECK`: a non-empty multiple of 384-byte `G1 ‖ G2` pairs; outputs `1` or `0`. -/
 def blsPairing (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   if input.size = 0 || input.size % 384 ≠ 0 then fail
   else
@@ -430,9 +382,7 @@ def blsPairing (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
 
 /-! ## `P256VERIFY` (EIP-7951, Osaka) -/
 
-/-- `P256VERIFY` (`p256verify.py`): charge 6900; an input that is not exactly 160 bytes
-(`hash ‖ r ‖ s ‖ qx ‖ qy`) or an invalid signature is a *successful* call with empty
-output; a valid one returns the word `1`. -/
+/-- `P256VERIFY`: a bad length or invalid signature is a *successful* call with empty output. -/
 def p256Verify (crypto : Crypto) (input : ByteArray) (gas : Nat) : Result :=
   if gas < 6900 then fail
   else
@@ -467,8 +417,7 @@ def runKind (crypto : Crypto) (fork : Fork) (k : Kind) (input : ByteArray) (gas 
   | .blsMapFp2ToG2 => blsFixed 128 23800 crypto.bls12MapFp2ToG2 input gas
   | .p256Verify => p256Verify crypto input gas
 
-/-- Run the precompile at `a` on `input` with `gas` available. Callers must first check
-`isPrecompile`; a non-precompile address yields `fail`. -/
+/-- Run the precompile at `a`; a non-precompile address yields `fail`. -/
 def run (crypto : Crypto) (fork : Fork) (a : Address) (input : ByteArray) (gas : Nat) : Result :=
   match ofAddress fork a with
   | some k => runKind crypto fork k input gas

@@ -1,8 +1,9 @@
 import EvmTest.TxSupport
 
 /-!
-Unit tests for `EvmLean.Tx` (intrinsic gas, validation, `check_transaction`, blob fees) and
-the RLP decoder / transaction codec. None of these need real hashing.
+# Tests for `EvmLean.Tx`, RLP and the transaction codec
+
+Intrinsic gas, validation, `check_transaction` and blob fees. None of these need real hashing.
 -/
 
 open EvmLean EvmLean.Tx EvmTest
@@ -162,7 +163,6 @@ def withParity (yParity : Nat) : Transaction :=
 
 /-! ## `check_transaction` -/
 
-/-- The test sender. -/
 def alice : Address := 0xa11ce
 
 /-- A world where `alice` has `balance` wei and nonce `nonce`. -/

@@ -4,31 +4,14 @@ import EvmLean.Machine.Types
 /-!
 # Transaction types
 
-The five transaction formats (four in Cancun, plus Prague's set-code transaction), mirroring
-the dataclasses in `ethereum/execution-specs` (`src/ethereum/forks/prague/transactions.py`):
-
-| Lean            | execution-specs          | EIP          |
-|-----------------|--------------------------|--------------|
-| `LegacyTx`      | `LegacyTransaction`      | pre-2718     |
-| `AccessListTx`  | `AccessListTransaction`  | EIP-2930     |
-| `FeeMarketTx`   | `FeeMarketTransaction`   | EIP-1559     |
-| `BlobTx`        | `BlobTransaction`        | EIP-4844     |
-| `SetCodeTx`     | `SetCodeTransaction`     | EIP-7702     |
-
-All integer fields are `Nat`. The bounds of the reference types (`U64`, `U256`) are enforced
-when transactions are decoded (`EvmLean.Tx.Codec`), so values built from the wire always
-respect them; `Uint` fields (gas, gas prices) are unbounded, exactly as in the reference.
-Fee and balance arithmetic is therefore done in `Nat`, with no wrap-around.
-
-A blob or set-code transaction's `to` is an `Address`, not an `Option`: as in the reference,
-these transactions cannot create a contract, and an empty `to` fails to decode. Which types
-a fork accepts is decided by `Tx.validate` (set-code transactions only from Prague).
+The five transaction formats, mirroring `prague/transactions.py`. Integer fields are `Nat`;
+`U64`/`U256` bounds are enforced by the decoder (`Tx.Codec`), so fee arithmetic never wraps.
+Blob and set-code transactions cannot create, so their `to` is an `Address`.
 -/
 
 namespace EvmLean
 
-/-- One access-list entry (EIP-2930): an address and storage keys to pre-warm. Mirrors
-`Access` in `cancun/transactions.py`. -/
+/-- One EIP-2930 access-list entry (`Access`). -/
 structure AccessListItem where
   /-- The account to pre-warm. -/
   address : Address
@@ -174,8 +157,7 @@ structure SetCodeTx where
   s : Nat
   deriving DecidableEq, Inhabited
 
-/-- A transaction of any type. Mirrors the `Transaction` union in
-`prague/transactions.py`. -/
+/-- A transaction of any type (the `Transaction` union). -/
 inductive Transaction where
   /-- Legacy transaction. -/
   | legacy (tx : LegacyTx)

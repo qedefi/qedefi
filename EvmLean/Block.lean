@@ -4,38 +4,13 @@ import EvmLean.Trie
 /-!
 # Blocks
 
-Block processing for Cancun, Prague and Osaka, following `src/ethereum/forks/*/fork.py`,
-`blocks.py`, `bloom.py` and `requests.py` in `ethereum/execution-specs`:
-
-| Lean                      | execution-specs                                   |
-|---------------------------|---------------------------------------------------|
-| `Header`, `Block`, …      | `Header`, `Block`, `Withdrawal`, `Receipt`, `Log` |
-| `Header.hash`             | `keccak256(rlp.encode(header))`                   |
-| `logsBloom`               | `logs_bloom`                                      |
-| `calcExcessBlobGas`       | `calculate_excess_blob_gas`                       |
-| `calcBaseFeePerGas`       | `calculate_base_fee_per_gas`                      |
-| `checkGasLimit`           | `check_gas_limit`                                 |
-| `validateHeader`          | `validate_header`                                 |
-| `systemCall`              | `process_unchecked_system_transaction`            |
-| `checkedSystemCall`       | `process_checked_system_transaction` (Prague)     |
-| `parseDepositRequests`    | `parse_deposit_requests` (EIP-6110)               |
-| `computeRequestsHash`     | `compute_requests_hash` (EIP-7685)                |
-| `applyBody`               | `apply_body` + `process_withdrawals` + `process_general_purpose_requests` |
-| `stateTransition`         | `state_transition`                                |
-
-Fork differences: Prague adds the header's `requestsHash`, the EIP-2935 block-hash history
-system call, and the EIP-7002/EIP-7251 request system calls and EIP-6110 deposit requests
-committed to by `requestsHash`; Osaka bounds the excess blob gas by the execution cost
-(EIP-7918) and the RLP size of a block (EIP-7934).
-
-All hashing goes through the `Crypto` passed in. Blocks are decoded from their RLP
-(`Block.decode`), which is also how the conformance fixtures provide invalid blocks.
+Block processing for Cancun, Prague and Osaka, following execution-specs `fork.py`,
+`blocks.py`, `bloom.py` and `requests.py`. All hashing goes through the `Crypto` passed in.
 -/
 
 namespace EvmLean
 
-/-- A block header. Mirrors `Header` in `cancun/blocks.py`; `requestsHash` is Prague's
-21st field (`none` for a Cancun header). -/
+/-- A block header (`Header`); `requestsHash` is Prague's 21st field. -/
 structure Header where
   /-- Keccak of the parent header's RLP. -/
   parentHash : Word
@@ -93,8 +68,7 @@ structure Withdrawal where
   amount : Nat
   deriving DecidableEq, Inhabited
 
-/-- A block. Mirrors `Block`. Ommers are kept as raw RLP: post-merge blocks must have none,
-so their contents are never inspected. -/
+/-- A block. Ommers stay raw RLP: post-merge blocks must have none. -/
 structure Block where
   /-- The header. -/
   header : Header
@@ -130,9 +104,7 @@ def elasticityMultiplier : Nat := 2
 def limitAdjustmentFactor : Nat := 1024
 /-- `LIMIT_MINIMUM`. -/
 def limitMinimum : Nat := 5000
-/-- Maximum block gas limit `2⁶³ - 1` (EIP-1985; geth's `MaxGasLimit`). Not checked by
-execution-specs' `validate_header`, but every client rejects larger limits and the
-conformance suite expects it (`GasLimitHigherThan2p63m1`). -/
+/-- Max block gas limit (EIP-1985); not in execution-specs but expected by the test suite. -/
 def maxGasLimit : Nat := 2 ^ 63 - 1
 /-- `SYSTEM_ADDRESS` (`0xff…fe`): caller of system transactions. -/
 def systemAddress : Address := 0xfffffffffffffffffffffffffffffffffffffffe
@@ -187,8 +159,7 @@ def toRlp (b : Block) : Rlp :=
     .list (b.withdrawals.map fun w => .list [.nat w.index, .nat w.validatorIndex,
       Transaction.addressRlp w.address, .nat w.amount])]
 
-/-- `encode_receipt`: the receipts-trie value; typed receipts are prefixed by the
-transaction type, like typed transactions. -/
+/-- `encode_receipt`: the receipts-trie value, type-prefixed for typed transactions. -/
 def receiptEncode (txType : Nat) (r : Receipt) : ByteArray :=
   let body := (Rlp.list [.bytes (if r.succeeded then ⟨#[1]⟩ else .empty), .nat r.cumulativeGasUsed,
     .bytes r.bloom, .list (r.logs.toList.map logRlp)]).encode
@@ -197,9 +168,7 @@ def receiptEncode (txType : Nat) (r : Receipt) : ByteArray :=
 /-! ## Decoding -/
 
 open Rlp in
-/-- Decode a header with the reference field types: `Hash32`/`Root` are 32 bytes, `Bloom`
-256, `Bytes8` 8; `U64`/`U256` are width-checked. A Cancun header has 20 fields, a Prague or
-Osaka one 21 (`requestsHash`); which one the fork requires is checked by `stateTransition`. -/
+/-- Decode a 20- or 21-field header with reference widths; `stateTransition` checks the shape. -/
 def decodeHeader (r : Rlp) : Except DecodeError Header := do
   let fields ← asList "header" r
   let (cancunFields, requestsHash) ← match fields with
@@ -266,9 +235,7 @@ def decode (b : ByteArray) : Except Rlp.DecodeError Block := do ofRlp (← Rlp.d
 
 /-! ## Blooms -/
 
-/-- The three bloom bits of an entry (`add_to_bloom`): the low 11 bits of each of the first
-three 16-bit words of its Keccak. Bit `i` here is bit `i` of the bloom read as a big-endian
-2048-bit number, i.e. the reference's `bit_index = 0x7FF - i`. -/
+/-- `add_to_bloom` bits, indexed into the bloom as a big-endian 2048-bit number. -/
 def bloomBits (keccak256 : ByteArray → Word) (entry : ByteArray) : Nat :=
   let h := (keccak256 entry).toNat
   [0, 2, 4].foldl (fun acc idx => acc ||| 1 <<< ((h >>> (240 - 8 * idx)) % 2048)) 0
@@ -285,10 +252,7 @@ def logsBloom (keccak256 : ByteArray → Word) (logs : Array Log) : ByteArray :=
 /-- `GasCosts.BLOB_BASE_COST` (EIP-7918, Osaka): the execution-gas price floor of a blob. -/
 def blobBaseCost : Nat := 2 ^ 13
 
-/-- `calculate_excess_blob_gas`: excess blob gas of a child of `parent`, with the target of
-the child's fork. From Osaka (EIP-7918), when the blob base fee is below the execution cost
-`BLOB_BASE_COST · baseFee` of a blob, the excess only grows, by
-`blobGasUsed · (max − target) / max` (with blob counts 9 and 6: `blobGasUsed · 3 / 9`). -/
+/-- `calculate_excess_blob_gas`, with the child fork's target (EIP-7918 floor from Osaka). -/
 def calcExcessBlobGas (fork : Fork) (parent : Header) : Nat :=
   let params := Tx.blobParams fork
   let parentBlobGas := parent.excessBlobGas + parent.blobGasUsed
@@ -301,15 +265,13 @@ def calcExcessBlobGas (fork : Fork) (parent : Header) : Nat :=
       / params.maxGasPerBlock
   else parentBlobGas - params.targetGasPerBlock
 
-/-- `check_gas_limit`: the gas limit moves by less than `parent / 1024` and stays at least
-`LIMIT_MINIMUM`. -/
+/-- `check_gas_limit`: moves by less than `parent / 1024`, stays ≥ `LIMIT_MINIMUM`. -/
 def checkGasLimit (gasLimit parentGasLimit : Nat) : Bool :=
   let delta := parentGasLimit / limitAdjustmentFactor
   gasLimit < parentGasLimit + delta && gasLimit + delta > parentGasLimit &&
     gasLimit ≥ limitMinimum
 
-/-- `calculate_base_fee_per_gas` (EIP-1559), assuming `check_gas_limit` holds: the base fee
-moves towards the parent's gas target by at most 1/8. -/
+/-- `calculate_base_fee_per_gas` (EIP-1559), assuming `check_gas_limit` holds. -/
 def calcBaseFeePerGas (parentGasLimit parentGasUsed parentBaseFee : Nat) : Nat :=
   let target := parentGasLimit / elasticityMultiplier
   if parentGasUsed = target then parentBaseFee
@@ -353,8 +315,7 @@ inductive HeaderError where
 /-- `EMPTY_OMMER_HASH = keccak256(rlp([]))`. -/
 def emptyOmmerHash (keccak256 : ByteArray → Word) : Word := keccak256 (Rlp.list []).encode
 
-/-- `validate_header`, given the parent header and its hash, in the reference's order, plus
-the EIP-1985 gas-limit cap. -/
+/-- `validate_header` in the reference's order, plus the EIP-1985 gas-limit cap. -/
 def validateHeader (keccak256 : ByteArray → Word) (fork : Fork) (parent : Header)
     (parentHash : Word) (h : Header) : Except HeaderError Unit := do
   if h.number < 1 then throw .numberZero
@@ -437,19 +398,14 @@ def BlockError.toString : BlockError → String
 
 instance : ToString BlockError := ⟨BlockError.toString⟩
 
-/-- The block environment for executing `h` on chain `chainId`, with ancestor hashes
-(most recent, i.e. the parent, first). -/
+/-- The block environment for `h`; `ancestorHashes` is parent-first. -/
 def blockEnv (chainId : Nat) (h : Header) (ancestorHashes : List Word) : BlockEnv :=
   { chainId, coinbase := h.coinbase, number := h.number, timestamp := h.timestamp,
     gasLimit := h.gasLimit, baseFee := h.baseFeePerGas, prevRandao := h.prevRandao,
     excessBlobGas := h.excessBlobGas, blockHashes := ancestorHashes.take 256,
     parentBeaconBlockRoot := h.parentBeaconBlockRoot }
 
-/-- A system transaction (`process_unchecked_system_transaction`): `SYSTEM_ADDRESS` calls
-`target` with `data` and 30M gas, without fees, nonce change or value transfer, and
-regardless of the outcome. Touched empty accounts are then removed (EIP-161). Used for the
-EIP-4788 beacon roots, the EIP-2935 block-hash history and the EIP-7002/EIP-7251 request
-contracts. Returns the world and the call's result. -/
+/-- `process_unchecked_system_transaction`: fee-less call from `SYSTEM_ADDRESS`, outcome ignored. -/
 def systemCall (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv) (world : World)
     (target : Address) (data : ByteArray) : Except Interpreter.OutOfFuel (World × MessageResult) := do
   let msg : Message := {
@@ -462,16 +418,13 @@ def systemCall (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv) (wo
   let res ← Interpreter.processMessageCall fuel ctx world ∅ msg
   return (Tx.destroyTouchedEmpty res.world res.touchedAccounts, res)
 
-/-- The EIP-4788 beacon-roots system call: the parent beacon block root to
-`BEACON_ROOTS_ADDRESS`. -/
+/-- The EIP-4788 beacon-roots system call. -/
 def beaconRootsCall (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (world : World) : Except Interpreter.OutOfFuel World := do
   return (← systemCall fuel crypto fork env world beaconRootsAddress
     (Bytes.ofWord env.parentBeaconBlockRoot)).1
 
-/-- `process_checked_system_transaction` (Prague): like `systemCall`, but the block is
-invalid if `target` has no code or the call fails (exceptional halt or revert). Returns the
-world and the call's output. -/
+/-- `process_checked_system_transaction`: the block is invalid if `target` is empty or fails. -/
 def checkedSystemCall (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (world : World) (target : Address) (data : ByteArray) :
     Except BlockError (World × ByteArray) := do
@@ -490,9 +443,7 @@ def withdrawalRequestType : UInt8 := 0x01
 /-- `CONSOLIDATION_REQUEST_TYPE` (EIP-7251). -/
 def consolidationRequestType : UInt8 := 0x02
 
-/-- `extract_deposit_data`: check the fixed ABI layout of a 576-byte `DepositEvent` payload
-(five offsets `160, 256, 320, 384, 512` and sizes `48, 32, 8, 96, 8`) and return the
-concatenated fields `pubkey ‖ withdrawal_credentials ‖ amount ‖ signature ‖ index`. -/
+/-- `extract_deposit_data`: check the fixed 576-byte ABI layout and concatenate the fields. -/
 def extractDepositData (data : ByteArray) : Option ByteArray :=
   let word (off : Nat) : Nat := Bytes.toNat (data.extract off (off + 32))
   -- (offset position, expected offset, expected size) of each field.
@@ -503,8 +454,7 @@ def extractDepositData (data : ByteArray) : Option ByteArray :=
   else if fields.any (fun (_, off, size) => word off ≠ size) then none
   else some (fields.foldl (fun acc (_, off, size) => acc ++ data.extract (off + 32) (off + 32 + size)) .empty)
 
-/-- `parse_deposit_requests`: the concatenated deposit data of every log emitted by the
-deposit contract whose first topic is the `DepositEvent` signature, in block order. -/
+/-- `parse_deposit_requests`: concatenated deposit data of the deposit contract's logs. -/
 def parseDepositRequests (logs : Array Log) : Except BlockError ByteArray :=
   logs.foldlM (init := ByteArray.empty) fun acc l =>
     if l.address = depositContractAddress && l.topics[0]? = some depositEventSignatureHash then
@@ -513,14 +463,11 @@ def parseDepositRequests (logs : Array Log) : Except BlockError ByteArray :=
       | none => .error .invalidDepositLog
     else .ok acc
 
-/-- `compute_requests_hash`: `sha256(sha256(r₁) ‖ sha256(r₂) ‖ …)` over the type-prefixed
-requests. -/
+/-- `compute_requests_hash`: `sha256(sha256(r₁) ‖ sha256(r₂) ‖ …)`. -/
 def computeRequestsHash (sha256 : ByteArray → ByteArray) (requests : List ByteArray) : Word :=
   Bytes.toWord (sha256 (requests.foldl (fun acc r => acc ++ sha256 r) .empty))
 
-/-- `process_general_purpose_requests`: deposit requests from the block's logs, then the
-withdrawal and consolidation request system calls (each must succeed). Each non-empty
-request list is prefixed by its type; empty ones are omitted. -/
+/-- `process_general_purpose_requests`; empty request lists are omitted. -/
 def generalPurposeRequests (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv)
     (world : World) (logs : Array Log) : Except BlockError (World × List ByteArray) := do
   let deposits ← parseDepositRequests logs
@@ -551,8 +498,7 @@ structure BodyOutput where
   requests : List ByteArray := []
   deriving Inhabited
 
-/-- Process the transactions in order (`apply_body`'s loop), accumulating gas, blob gas,
-receipts and logs. `hints` gives an optional known sender per transaction. -/
+/-- `apply_body`'s transaction loop, with an optional known sender per transaction. -/
 def applyTxs (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv) :
     Nat → List (Transaction × Option Address) → BodyOutput → Except BlockError BodyOutput
   | _, [], out => .ok out
@@ -572,13 +518,11 @@ def applyTxs (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv) :
         receiptValues := out.receiptValues.push (receiptEncode tx.typeByte receipt),
         logs := out.logs ++ r.logs }
 
-/-- `process_withdrawals`: credit each withdrawal's amount (gwei) in wei; an account left
-empty (a zero withdrawal to an empty account) is removed, as by `create_ether`. -/
+/-- `process_withdrawals`: credit gwei amounts in wei, deleting accounts left empty. -/
 def applyWithdrawals (world : World) (ws : List Withdrawal) : World :=
   ws.foldl (fun w wd => Tx.creditBalance w wd.address (wd.amount * weiPerGwei)) world
 
-/-- `apply_body`: the beacon-roots system call, (Prague) the EIP-2935 history system call
-with the parent hash, the transactions, the withdrawals, then (Prague) the requests. -/
+/-- `apply_body`: system calls, transactions, withdrawals, then (Prague) requests. -/
 def applyBody (fuel : Nat) (crypto : Crypto) (fork : Fork) (env : BlockEnv) (world : World)
     (txs : List (Transaction × Option Address)) (withdrawals : List Withdrawal) :
     Except BlockError BodyOutput := do
@@ -613,11 +557,7 @@ def genesisHead (keccak256 : ByteArray → Word) (genesis : Header) (world : Wor
   let hash := headerHash keccak256 genesis
   { header := genesis, hash, world, ancestorHashes := [hash] }
 
-/-- `state_transition`: (Osaka) check the RLP size limit, validate `block` against `head`,
-execute it and check every header commitment (gas used, transactions root, state root,
-receipts root, logs bloom, withdrawals root, blob gas used and, from Prague, the requests
-hash). Returns the new head and the receipts. `senderHints[i]`, if present,
-is a known sender of transaction `i`; `fuel` bounds each message call. -/
+/-- `state_transition`: validate, execute and check every header commitment. -/
 def stateTransition (fuel : Nat) (crypto : Crypto) (fork : Fork) (chainId : Nat)
     (head : ChainHead) (block : Block) (senderHints : List (Option Address)) :
     Except BlockError (ChainHead × Array Receipt) := do

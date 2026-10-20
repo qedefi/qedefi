@@ -17,20 +17,6 @@ import EvmLean.Interpreter.Step
 
 Executes a `Message` to completion. Internally a small-step machine with an explicit
 call stack: `step` is a total, non-recursive function, `run` iterates it with fuel.
-
-| Module | Contents | Reference |
-|---|---|---|
-| `Interpreter.JumpDest` | jump destination bitmap | `vm/runtime.py` |
-| `Interpreter.State` | world/transient operations, addresses | `state_tracker.py`, `utils/address.py` |
-| `Interpreter.Delegation` | EIP-7702 delegation (Prague) | `vm/eoa_delegation.py` |
-| `Interpreter.Frame` | `Frame`, `Machine`, results | `vm/__init__.py` (`Evm`) |
-| `Interpreter.Monad` | stack, gas, memory primitives | `vm/stack.py`, `vm/gas.py`, `vm/memory.py` |
-| `Interpreter.Instructions` | `exec : Opcode → M Action` | `vm/instructions/*.py` |
-| `Interpreter.Step` | `step`, `run`, `OutOfFuel` | `vm/interpreter.py`, `generic_call`, `generic_create` |
-| this file | `processMessageCall` | `process_message_call` |
-
-The frozen entry points are `OutOfFuel` (in `Interpreter.Step`), `processMessageCall`
-(here), and `createAddress` / `create2Address` (in `Interpreter.State`).
 -/
 
 namespace EvmLean.Interpreter
@@ -42,13 +28,8 @@ def failureResult (e : ExceptionalHalt) (world : World) (transient : TransientSt
     touchedAccounts := ∅, error := some e, reverted := false, output := .empty,
     world, transientStorage := transient }
 
-/-- Set up the machine for a top-level message, or return its result directly if it
-completes without executing code (address collision, precompile call, impossible depth or
-value). Mirrors `process_message_call` up to the execution loop.
-
-The reference asserts that the caller can afford the value (the transaction layer has
-checked it); here an unaffordable value is reported as `insufficientFunds` without any
-state change. -/
+/-- Set up the machine for a top-level message, or return its result if no code runs.
+An unaffordable value (asserted away by the spec) yields `insufficientFunds`, state unchanged. -/
 def initMachine (pre : PrecompileImpl) (ctx : Context) (world : World)
     (transient : TransientStorage) (msg : Message) : MessageResult ⊕ Machine :=
   let snapshot := (world, transient)
@@ -74,10 +55,8 @@ def initMachine (pre : PrecompileImpl) (ctx : Context) (world : World)
         .inl (topLevelResult msg.target w t r)
       | none => .inr (mk world' ∅ (.call 0 0))
 
-/-- `processMessageCall` with an explicit precompile implementation. From Prague, a call
-first applies the transaction's EIP-7702 authorizations and resolves a delegated target
-(`applyTopLevelDelegation`); those state changes are not rolled back if the message fails,
-and the authorization refund is kept even then (`process_message_call`). -/
+/-- `processMessageCall` with explicit precompiles. EIP-7702 authorizations and their refund
+persist even if the message fails. -/
 def processMessageCallWith (pre : PrecompileImpl) (fuel : Nat) (ctx : Context) (world : World)
     (transient : TransientStorage) (msg : Message) : Except OutOfFuel MessageResult :=
   let (world, msg, authRefund) := applyTopLevelDelegation ctx pre.isPrecompile world msg
@@ -87,8 +66,8 @@ def processMessageCallWith (pre : PrecompileImpl) (fuel : Nat) (ctx : Context) (
   | .inl r => .ok (withRefund r)
   | .inr m => (run fuel m).map withRefund
 
-/-- Execute a top-level message (call or creation) to completion. Mirrors
-`process_message_call` in `ethereum/execution-specs`. Each unit of `fuel` is one `step`. -/
+/-- Execute a top-level message to completion; one unit of `fuel` per `step`. Mirrors
+`process_message_call`. -/
 def processMessageCall (fuel : Nat) (ctx : Context) (world : World)
     (transient : TransientStorage) (msg : Message) : Except OutOfFuel MessageResult :=
   processMessageCallWith (PrecompileImpl.standard ctx) fuel ctx world transient msg

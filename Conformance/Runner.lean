@@ -3,19 +3,10 @@ import Conformance.Fixture
 /-!
 # Running BlockchainTests
 
-`runTest` imports a test's blocks into a chain starting at its genesis, exactly as a client
-would: each block's RLP is decoded, attached to the block whose hash is its `parentHash`,
-and run through `Block.stateTransition` (header validation, execution, and every header
-commitment). A block with `expectException` must be rejected; any other block must be
-accepted. Finally the head must have hash `lastblockhash` and the expected post-state
-(compared exactly, or by state root for `postStateHash`).
-
-The fork of each block follows the test's `network`: a single fork, or a transition network
-such as `CancunToPragueAtTime15k` (the second fork from timestamp 15000 on).
-
-`parseTest` is the `--parse-only` mode: it decodes every RLP in the test and cross-checks
-the decoded headers and transactions against their JSON forms, without executing anything
-(and without any hashing, so it works before the crypto is implemented).
+`execTest` imports a test's blocks as a client would: each block's RLP is decoded, attached to
+its parent by hash, and run through `Block.stateTransition`. Blocks with `expectException` must
+be rejected, all others accepted; the head must match `lastblockhash` and the post-state.
+`parseTest` (`--parse-only`) only decodes and cross-checks against the JSON, without hashing.
 -/
 
 namespace Conformance
@@ -26,7 +17,6 @@ open EvmLean Lean
 inductive Status where
   /-- The test passed (or, in `--parse-only` mode, parsed). -/
   | passed
-  /-- The test failed. -/
   | failed
   /-- The test targets another fork. -/
   | skipped
@@ -34,7 +24,6 @@ inductive Status where
   | unparseable
   deriving DecidableEq, Repr, Inhabited
 
-/-- Label used in reports. -/
 def Status.label : Status → String
   | .passed => "PASSED"
   | .failed => "FAILED"
@@ -43,37 +32,28 @@ def Status.label : Status → String
 
 /-- The result of one test. -/
 structure TestResult where
-  /-- Fixture file. -/
   file : String
-  /-- Test name. -/
   name : String
   /-- The test's `network` (empty if unknown). -/
   network : String := ""
-  /-- Outcome. -/
   status : Status
   /-- Explanation (empty for plain passes). -/
   reason : String := ""
   deriving Inhabited
 
-/-- Runner options. -/
 structure Options where
   /-- Only decode and cross-check, do not execute. -/
   parseOnly : Bool := false
-  /-- The fork to run (`none`: every supported network); tests whose network ends in
-  another fork are skipped. -/
+  /-- `none`: every supported network; tests whose network ends in another fork are skipped. -/
   fork : Option Fork := some .cancun
   /-- Interpreter fuel per message call. -/
   fuel : Nat := 2 ^ 40
 
-/-- The forks of a test network: `first` until the block timestamp reaches `switchAt`, then
-`next`. -/
+/-- The forks of a test network: `first`, then `next` from its activation timestamp. -/
 structure Schedule where
-  /-- The fork at genesis. -/
   first : Fork
-  /-- The fork transition, if any: the new fork and its activation timestamp. -/
   next : Option (Fork × Nat) := none
 
-/-- The fork active at `timestamp`. -/
 def Schedule.forkAt (s : Schedule) (timestamp : Nat) : Fork :=
   match s.next with
   | some (f, t) => if timestamp ≥ t then f else s.first
@@ -85,8 +65,7 @@ def Schedule.final (s : Schedule) : Fork :=
   | some (f, _) => f
   | none => s.first
 
-/-- The schedule of a fixture `network`: a fork name, or a transition network
-`<A>To<B>AtTime15k` between two supported forks. -/
+/-- A fork name, or a transition network `<A>To<B>AtTime15k` between two supported forks. -/
 def parseSchedule (network : String) : Option Schedule :=
   match Fork.ofName? network with
   | some f => some { first := f }
@@ -100,7 +79,6 @@ def parseSchedule (network : String) : Option Schedule :=
 
 /-! ## World comparison -/
 
-/-- First difference between two accounts, if any. -/
 def accountDiff (a : Address) (got expected : Account) : Option String :=
   let addr := hexOfAddress a
   if got.nonce ≠ expected.nonce then
@@ -118,7 +96,6 @@ def accountDiff (a : Address) (got expected : Account) : Option String :=
         some s!"{addr}: storage[{hexOfWord k}] = {hexOfWord g}, expected {hexOfWord e}"
       else none
 
-/-- First difference between two worlds, if any. -/
 def worldDiff (got expected : World) : Option String :=
   let addrs := got.keys ++ expected.keys
   addrs.findSome? fun a =>
@@ -130,7 +107,6 @@ def worldDiff (got expected : World) : Option String :=
 
 /-! ## Parse-only mode -/
 
-/-- Cross-check a decoded block against its JSON form. -/
 def crossCheckBlock (i : Nat) (fx : BlockFixture) (b : Block) : Option String :=
   let headerCheck := match fx.header with
     | some h => if h = b.header then none else some s!"block {i}: decoded header ≠ JSON header"
@@ -162,7 +138,6 @@ def parseTest (t : TestCase) : Status × String :=
 
 /-! ## Execution -/
 
-/-- Import the blocks of `t` in order. Returns the final head, or the failure reason. -/
 def importBlocks (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : TestCase)
     (genesis : Block.ChainHead) : Except String Block.ChainHead := do
   let mut store : Std.TreeMap Word Block.ChainHead compare := Std.TreeMap.empty.insert genesis.hash genesis
@@ -190,7 +165,6 @@ def importBlocks (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : T
             head := newHead
   return head
 
-/-- Run one test: import its blocks and compare the outcome with the expectation. -/
 def execTest (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : TestCase) :
     Status × String :=
   match Block.decode t.genesisRlp with
@@ -215,8 +189,7 @@ def execTest (opts : Options) (crypto : Crypto) (schedule : Schedule) (t : TestC
             if Trie.stateRoot keccak head.world = root then (.passed, "")
             else (.failed, "post-state root mismatch")
 
-/-- Run (or, with `parseOnly`, parse) every test of a fixture file's JSON. `select` says
-which test names to run. -/
+/-- Run (or, with `parseOnly`, parse) every test of a fixture file selected by `select`. -/
 def runFileJson (opts : Options) (crypto : Crypto) (file : String) (select : String → Bool)
     (j : Json) : Array TestResult :=
   match objEntries j with

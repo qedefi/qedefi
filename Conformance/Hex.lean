@@ -11,14 +11,12 @@ namespace Conformance
 
 open EvmLean
 
-/-- The value of a hex digit. -/
 def hexDigit? (c : Char) : Option Nat :=
   if '0' ≤ c ∧ c ≤ '9' then some (c.toNat - '0'.toNat)
   else if 'a' ≤ c ∧ c ≤ 'f' then some (c.toNat - 'a'.toNat + 10)
   else if 'A' ≤ c ∧ c ≤ 'F' then some (c.toNat - 'A'.toNat + 10)
   else none
 
-/-- Strip an optional `0x`/`0X` prefix. -/
 def stripHexPrefix (s : String) : String :=
   if s.startsWith "0x" || s.startsWith "0X" then s.drop 2 |>.toString else s
 
@@ -31,16 +29,13 @@ def parseHexNat (s : String) : Except String Nat := do
     | some d => pure (n * 16 + d)
     | none => throw s!"invalid hex digit '{c}' in \"{s}\""
 
-/-- Parse a hex number that must fit in `bits` bits. -/
 def parseHexBounded (bits : Nat) (s : String) : Except String Nat := do
   let n ← parseHexNat s
   if n < 2 ^ bits then pure n else throw s!"value {s} exceeds {bits} bits"
 
-/-- Parse a 256-bit word. -/
 def parseWord (s : String) : Except String Word := do
   return BitVec.ofNat 256 (← parseHexBounded 256 s)
 
-/-- Parse a 160-bit address. -/
 def parseAddress (s : String) : Except String Address := do
   return BitVec.ofNat 160 (← parseHexBounded 160 s)
 

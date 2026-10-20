@@ -3,17 +3,14 @@ import EvmLean.Fork
 /-!
 # Opcodes
 
-The instruction set, and its byte encoding. Decoding is total: every byte decodes to
-an opcode, unassigned bytes (and opcodes not yet active in the given fork) decode to
-`invalid`, which halts exceptionally.
+The instruction set and its byte encoding. Decoding is total: unassigned bytes (and opcodes
+not yet active in the fork) decode to `invalid`.
 -/
 
 namespace EvmLean
 
 set_option linter.missingDocs false in
-/-- EVM instructions. Families are parameterised: `push n` pushes `n` immediate bytes
-(`PUSH0` is `push 0`), `dup n` is `DUP(n+1)`, `swap n` is `SWAP(n+1)`, `log n` is `LOGn`.
-Constructor names are the lower-cased mnemonics. -/
+/-- EVM instructions (lower-cased mnemonics); `push n` is `PUSHn`, `dup n` is `DUP(n+1)`. -/
 inductive Opcode where
   | stop | add | mul | sub | div | sdiv | mod | smod | addmod | mulmod | exp | signextend
   | lt | gt | slt | sgt | eq | iszero | and | or | xor | not | byte | shl | shr | sar | clz

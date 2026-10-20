@@ -1,9 +1,9 @@
 import EvmTest.TxSupport
 
 /-!
-Unit tests for `EvmLean.Block`: header decoding/encoding, base fee and excess blob gas
-formulas, gas-limit bounds, header validation order, blooms and receipt encoding. Hashing
-is stubbed; checks that need real Keccak live in `EvmTest/TxIntegration.lean`.
+# Tests for `EvmLean.Block`
+
+Hashing is stubbed; checks that need real Keccak live in `EvmTest/TxIntegration.lean`.
 -/
 
 open EvmLean EvmLean.Block EvmTest
@@ -52,7 +52,6 @@ namespace EvmTest.BlockTest
 
 /-! ## `calculate_excess_blob_gas` (EIP-4844) -/
 
-/-- A header with the given blob gas fields. -/
 def withBlobs (excess used : Nat) : Header :=
   { genesisBlock.header with excessBlobGas := excess, blobGasUsed := used }
 
@@ -118,7 +117,6 @@ def bloomHash (_ : ByteArray) : Word := hw "0x0001000208030000000000000000000000
   Bytes.zeros 255 ++ ⟨#[0x0e]⟩
 #guard (logsBloom fakeKeccak #[{ address := 1, topics := #[5, 6], data := .empty }]).size = 256
 
-/-- A successful receipt with no logs. -/
 def okReceipt : Receipt := { succeeded := true, cumulativeGasUsed := 21000,
                              bloom := Bytes.zeros 256, logs := #[] }
 
@@ -146,7 +144,6 @@ def pragueHeader : Header := { genesisBlock.header with requestsHash := some 0x1
 #guard calcExcessBlobGas .osaka { withBlobs 0 917504 with baseFeePerGas := 0 } = 131072
 #guard calcExcessBlobGas .osaka (withBlobs 0 786431) = 0
 
-/-- A 32-byte big-endian word. -/
 def w32 (n : Nat) : ByteArray := Bytes.ofNatBE 32 n
 
 /-- `b` right-padded with zeros to `n` bytes (Solidity ABI). -/
@@ -157,15 +154,11 @@ def depositData (pk wc amount sig index : ByteArray) : ByteArray :=
   w32 160 ++ w32 256 ++ w32 320 ++ w32 384 ++ w32 512 ++ w32 48 ++ rpad pk 64 ++ w32 32 ++ wc
     ++ w32 8 ++ rpad amount 32 ++ w32 96 ++ sig ++ w32 8 ++ rpad index 32
 
-/-- Sample deposit fields. -/
 def pk : ByteArray := Bytes.ofNatBE 48 1
-/-- Sample withdrawal credentials. -/
 def wc : ByteArray := Bytes.ofNatBE 32 2
-/-- Sample amount (little-endian gwei in the real contract; opaque here). -/
+/-- Little-endian gwei in the real contract; opaque here. -/
 def amt : ByteArray := Bytes.ofNatBE 8 3
-/-- Sample signature. -/
 def sig : ByteArray := Bytes.ofNatBE 96 4
-/-- Sample index. -/
 def idx : ByteArray := Bytes.ofNatBE 8 5
 
 #guard (depositData pk wc amt sig idx).size = 576
@@ -173,7 +166,6 @@ def idx : ByteArray := Bytes.ofNatBE 8 5
 #guard extractDepositData ((depositData pk wc amt sig idx).extract 0 575) = none
 #guard extractDepositData (w32 161 ++ (depositData pk wc amt sig idx).extract 32 576) = none
 
-/-- A deposit-contract log. -/
 def depositLog (data : ByteArray) (topic : Word := depositEventSignatureHash) : Log :=
   { address := depositContractAddress, topics := #[topic], data }
 

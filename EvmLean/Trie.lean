@@ -4,22 +4,8 @@ import EvmLean.State.Account
 /-!
 # Merkle-Patricia trie roots
 
-The root hash of a Modified Merkle-Patricia Trie over a finite key/value map, following
-`src/ethereum/merkle_patricia_trie.py` in `ethereum/execution-specs`:
-
-* keys are split into nibbles (`bytes_to_nibble_list`) and stored in nodes with hex-prefix
-  encoding (`nibble_list_to_compact`);
-* `patricialize` builds leaf, extension and branch nodes;
-* `encode_internal_node` RLP-encodes a node and replaces it by its Keccak when the encoding
-  is at least 32 bytes (shorter nodes are inlined in their parent);
-* the root is the Keccak of the RLP encoding of the root node (for the empty trie,
-  `keccak(rlp(b"")) = 0x56e8…b421`).
-
-We compute roots directly from the full map (no incremental trie). Everything is
-parameterised over the Keccak function, so roots are meaningful for any `Crypto`.
-
-Secured tries (state, storage) hash their keys first; the transactions, receipts and
-withdrawals tries are keyed by `rlp(index)`.
+Root hashes computed from the full key/value map (no incremental trie), following
+execution-specs `merkle_patricia_trie.py`. Parameterised over the Keccak function.
 -/
 
 namespace EvmLean.Trie
@@ -34,8 +20,7 @@ def packNibbles : List Nat → List UInt8
   | [a] => [(16 * a).toUInt8]
   | [] => []
 
-/-- Hex-prefix encoding (`nibble_list_to_compact`): a flag nibble (bit 1: leaf, bit 0: odd
-length), then the nibbles packed two per byte. -/
+/-- Hex-prefix encoding (`nibble_list_to_compact`): flag nibble (bit 1 leaf, bit 0 odd). -/
 def compact (key : List Nat) (isLeaf : Bool) : ByteArray :=
   let flag := if isLeaf then 2 else 0
   match key with
@@ -54,18 +39,13 @@ def sharedPrefixLength : List (List Nat × ByteArray) → Nat
   | [] => 0
   | (k, _) :: rest => rest.foldl (fun n (k', _) => min n (commonPrefixLength k k')) k.length
 
-/-- `encode_internal_node`: how a child node is referenced from its parent — inline if its
-encoding is shorter than 32 bytes, otherwise by its Keccak. -/
+/-- `encode_internal_node`: inline a child if its encoding is < 32 bytes, else its Keccak. -/
 def reference (keccak256 : ByteArray → Word) (node : Rlp) : Rlp :=
   let enc := node.encode
   if enc.size < 32 then node else .bytes (Bytes.ofWord (keccak256 enc))
 
-/-- `patricialize`: the (unhashed) node for `entries`, whose keys are the nibbles not yet
-consumed by ancestors. Keys must be distinct. The empty trie is `b""`.
-
-Each recursive call consumes at least one nibble of every key it passes on (an extension
-consumes the shared prefix, a branch one nibble; keys exhausted at a branch become its
-value), so `fuel = 1 + max key length` suffices (`root` supplies it). -/
+/-- `patricialize`: the unhashed node for distinct keys; each call consumes ≥ 1 nibble, so
+`fuel = 1 + max key length` suffices. -/
 def patricialize (keccak256 : ByteArray → Word) :
     Nat → List (List Nat × ByteArray) → Rlp
   | _, [] => .bytes .empty
@@ -86,8 +66,7 @@ def patricialize (keccak256 : ByteArray → Word) :
           | [] => none))
       .list ((List.range 16).map branch ++ [.bytes value])
 
-/-- `root`: the root hash of the trie mapping each key to its (already encoded) value.
-Keys must be distinct and values non-empty. -/
+/-- Root hash of the trie of (already encoded) values; keys distinct, values non-empty. -/
 def root (keccak256 : ByteArray → Word) (entries : List (ByteArray × ByteArray)) : Word :=
   let entries := entries.map fun (k, v) => (nibbles k, v)
   let fuel := entries.foldl (fun n (k, _) => max n k.length) 0 + 1
@@ -104,8 +83,7 @@ def indexedRoot (keccak256 : ByteArray → Word) (values : List ByteArray) : Wor
 /-- `EMPTY_TRIE_ROOT`, given the hash function: `keccak(rlp(b""))`. -/
 def emptyRoot (keccak256 : ByteArray → Word) : Word := root keccak256 []
 
-/-- Root of an account's storage trie: `keccak(slot) ↦ rlp(value)`. Storage never holds
-zero values, matching the reference's removal of default values. -/
+/-- Root of an account's storage trie: `keccak(slot) ↦ rlp(value)`. -/
 def storageRoot (keccak256 : ByteArray → Word) (s : Storage) : Word :=
   securedRoot keccak256 (s.toList.map fun (k, v) => (Bytes.ofWord k, (Rlp.nat v.toNat).encode))
 

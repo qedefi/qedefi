@@ -2,19 +2,15 @@ import EvmLean.Crypto.Secp256k1
 import EvmTest.PrecompileHex
 
 /-!
-Unit tests for `EvmLean.Crypto.Secp256k1`.
+# Tests for `EvmLean.Crypto.Secp256k1`
 
-Vectors: go-ethereum `core/vm/testdata/precompiles/ecRecover.json` (the `ValidKey` vector
-recovers the key of the well-known test account `0xa94f5374…ebf0b`, private key
-`0x45a915e4…5ff2d8`; its keccak-256 address was checked against the vector's output), plus
-signatures over keccak-256 digests made with that key and an independent reference
-implementation.
+Vectors from go-ethereum `ecRecover.json` (`ValidKey` recovers the well-known test account
+`0xa94f…ebf0b`), plus signatures with that key made by an independent implementation.
 -/
 
 open EvmLean EvmTest.Precompile
 
 namespace EvmTest.Secp256k1
-open EvmLean
 
 /-- The uncompressed public key of the test account `0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b`. -/
 def testPub : ByteArray :=
