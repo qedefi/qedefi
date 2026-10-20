@@ -72,6 +72,8 @@ theorem lt_sub_chain {L G c bc : Nat} (l bs : List Nat) (hb : BoundedBy l bs) (h
   Nat.lt_of_le_of_lt hc (le_sub_chain' (c := bc + 1) l bs hb hL
     (by have := Nat.le_of_ble_eq_true h; omega))
 
+theorem le_of_le_add {L X G c : Nat} (h1 : L ≤ X) (h2 : X ≤ G + c) : L - c ≤ G := by omega
+
 theorem sub_sub_lit (G n k s : Nat) (h : n + k = s) : G - n - k = G - s := by
   rw [Nat.sub_sub, h]
 
@@ -107,7 +109,8 @@ def closedNat? (c : Expr) : MetaM (Option Nat) := do
 
 /-- An upper bound `b` of a gas cost `e` (a numeral expression) and a proof of `e ≤ b`:
 closed costs, `sloadCost`, `SSTORE` costs, sums of these. -/
-def costBound : Nat → Expr → MetaM (Option (Expr × Expr))
+def costBound (norm : Expr → MetaM (Option (Expr × Option Expr))) :
+    Nat → Expr → MetaM (Option (Expr × Expr))
   | 0, _ => return none
   | fuel + 1, e => do
     if let some _ ← closedNat? e then
@@ -122,13 +125,20 @@ def costBound : Nat → Expr → MetaM (Option (Expr × Expr))
         return some (mkNatLit 22100, mkApp4 (mkConst ``Gas.sstoreCostRefund_fst_le) o c n w)
       | _ => return none
     | HAdd.hAdd _ _ _ _ a b =>
-      let some (ba, pa) ← costBound fuel a | return none
-      let some (bb, pb) ← costBound fuel b | return none
+      let some (ba, pa) ← costBound norm fuel a | return none
+      let some (bb, pb) ← costBound norm fuel b | return none
       return some (← mkAdd ba bb, mkAppN (mkConst ``Nat.add_le_add) #[a, ba, b, bb, pa, pb])
-    | _ => return none
+    | _ =>
+      -- memory expansion and the like: normalize the cost alone to a numeral
+      let some (v, p) ← norm e | return none
+      let some _ ← closedNat? v | return none
+      match p with
+      | some p => return some (v, ← mkAppM ``Nat.le_of_eq #[p])
+      | none => return some (v, mkApp (mkConst ``Nat.le_refl) v)
 
 /-- The gas field as `G - a₁ - … - aₖ` with bounded `aᵢ`: `(G, [aᵢ], [bᵢ], proof of BoundedBy)`. -/
-def gasChain (g : Expr) : MetaM (Option (Expr × Array Expr × Array Expr × Expr)) := do
+def gasChain (norm : Expr → MetaM (Option (Expr × Option Expr))) (g : Expr) :
+    MetaM (Option (Expr × Array Expr × Array Expr × Expr)) := do
   let mut cur := g.consumeMData
   let mut subs : Array (Expr × Expr × Expr) := #[]
   for _ in [0:100000] do
@@ -141,7 +151,7 @@ def gasChain (g : Expr) : MetaM (Option (Expr × Array Expr × Array Expr × Exp
         pf ← mkAppM ``And.intro #[p, pf]
       return some (cur, ordered.map (·.1), ordered.map (·.2.1), pf)
     let_expr HSub.hSub _ _ _ _ x a := cur | return none
-    let some (b, p) ← costBound 16 a | return none
+    let some (b, p) ← costBound norm 4096 a | return none
     subs := subs.push (a, b, p)
     cur := x.consumeMData
   return none
@@ -155,26 +165,44 @@ def gasShape (g : Expr) : MetaM (Option (Expr × Nat)) := do
   unless G.isFVar do return none
   return some (G, n)
 
-/-- A hypothesis `L ≤ G` with a numeral `L`. -/
+/-- A lower bound `L ≤ G` (numeral `L`) with its proof: a hypothesis `L ≤ G`, or `L - c` from
+hypotheses `L ≤ X` and `X ≤ G + c` (the gas returned by a summary). -/
 def gasBound (G : Expr) : MetaM (Option (Expr × Nat)) := do
+  let mut best : Option (Expr × Nat) := none
   for decl in ← getLCtx do
     if decl.isImplementationDetail then continue
     let ty ← instantiateMVars decl.type
     let_expr LE.le _ _ L G' := ty | continue
-    unless G' == G do continue
-    let some l ← (evalNat L).run | continue
-    return some (decl.toExpr, l)
-  return none
+    if G' == G then
+      let some l ← (evalNat L).run | continue
+      if best.all (·.2 < l) then best := some (decl.toExpr, l)
+      continue
+    -- `X ≤ G + c`
+    let_expr HAdd.hAdd _ _ _ _ G'' c := G' | continue
+    unless G'' == G do continue
+    let some cv ← (evalNat c).run | continue
+    for d2 in ← getLCtx do
+      if d2.isImplementationDetail then continue
+      let t2 ← instantiateMVars d2.type
+      let_expr LE.le _ _ L2 X := t2 | continue
+      unless X == L do continue
+      let some l ← (evalNat L2).run | continue
+      if l ≤ cv then continue
+      if best.all (·.2 < l - cv) then
+        let pf := mkAppN (mkConst ``le_of_le_add) #[L2, X, G, c, d2.toExpr, decl.toExpr]
+        best := some (← mkExpectedTypeHint pf (← mkLE (mkNatLit (l - cv)) G), l - cv)
+  return best
 
 /-- Close `c ≤ gas` or `c < gas` for a bounded cost `c` and a gas field `G - a₁ - … - aₖ`
 with bounded `aᵢ`, from a hypothesis `L ≤ G`. -/
-def gasFact? (t gas : Expr) : MetaM (Option Expr) := do
+def gasFact? (norm : Expr → MetaM (Option (Expr × Option Expr))) (t gas : Expr) :
+    MetaM (Option Expr) := do
   let (isLt, c) ← match_expr t with
     | LE.le _ _ c _ => pure (false, c)
     | LT.lt _ _ c _ => pure (true, c)
     | _ => return none
-  let some (bc, hc) ← costBound 16 c | return none
-  let some (G, subs, bs, hb) ← gasChain gas | return none
+  let some (bc, hc) ← costBound norm 4096 c | return none
+  let some (G, subs, bs, hb) ← gasChain norm gas | return none
   let some (hL, L) ← gasBound G | return none
   let some bcv ← closedNat? bc | return none
   let mut total := bcv
@@ -307,9 +335,30 @@ def normField (cfg : Cfg) (m e : Expr) : MetaM (Expr × Option Expr) := do
   let (r, _) ← Meta.simp e' cfg.simpCtx cfg.simprocs
   return (r.expr, r.proof?)
 
+/-- `of_decide_eq_true rfl` for a closed proposition whose `decide` evaluates to `true` in the
+elaborator (small facts only: numerals, `Word` comparisons); the kernel re-checks it. -/
+def closedDecide? (ty : Expr) : MetaM (Option Expr) := do
+  if ty.approxDepth > 24 then return none
+  if ty.getUsedConstants.any (· == ``isValidJumpDest) then return none
+  try
+    let inst ← synthInstance (mkApp (mkConst ``Decidable) ty)
+    let d ← withTransparency .default <| whnf (mkApp2 (mkConst ``Decidable.decide) ty inst)
+    unless d.isConstOf ``Bool.true do return none
+    let rflTrue := mkApp2 (mkConst ``Eq.refl [1]) (mkConst ``Bool) (mkConst ``Bool.true)
+    return some (mkApp3 (mkConst ``of_decide_eq_true) ty inst (mkExpectedPropHint rflTrue
+      (← mkEq (mkApp2 (mkConst ``Decidable.decide) ty inst) (mkConst ``Bool.true))))
+  catch _ => return none
+
 /-- Discharge the hypotheses of an instantiated step lemma. `false` if one fails. -/
-def dischHyps (cfg : Cfg) (code : Expr) (pc : Nat) (b : UInt8) (stack gas : Expr)
+def dischHyps (cfg : Cfg) (m code : Expr) (pc : Nat) (b : UInt8) (stack gas : Expr)
     (xs : Array Expr) : TacticM Bool := do
+  -- costs normalized alone (memory expansion over a literal memory size)
+  let norm : Expr → MetaM (Option (Expr × Option Expr)) := fun e => do
+    let e1 ← if e.isAppOf ``memoryCost then
+        pure ((← withTransparency .default <| unfoldDefinition? e).getD e)
+      else pure e
+    let (v, p) ← normField cfg m e1
+    return some (v, p)
   -- First the structural ones: code byte, stack shape, stack reads, pushed immediates.
   let mut rest : Array Expr := #[]
   for x in xs do
@@ -364,7 +413,12 @@ def dischHyps (cfg : Cfg) (code : Expr) (pc : Nat) (b : UInt8) (stack gas : Expr
     if let some pf ← stackBound? ty then
       x.mvarId!.assign pf
       continue
-    match ← gasFact? ty gas with
+    -- small closed facts (`JUMPI` conditions on numerals): evaluate `decide` here
+    if !ty.hasFVar && !ty.hasMVar then
+      if let some pf ← closedDecide? ty then
+        x.mvarId!.assign pf
+        continue
+    match ← gasFact? norm ty gas with
     | some pf =>
       x.mvarId!.assign pf
       continue
@@ -472,7 +526,15 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
   let p1 ← pk.mapM (mkCongrArg subOld ·)
   if !cfg.foldGas then return (v', sub old k', p1)
   let some kv ← (evalNat k').run | fallback
-  let some (G, n) ← gasShape old | fallback
+  let some (G, n) ← gasShape old | do
+    -- `G - A - k = G - (A + k)` (`Nat.sub_sub`, as `wp_step`'s simp set leaves it)
+    let_expr HSub.hSub _ _ _ _ G A := old.consumeMData | fallback
+    unless G.isFVar do return ← fallback
+    let p2 := mkApp3 (mkConst ``Nat.sub_sub) G A k'
+    let pf ← match p1 with
+      | some p => mkEqTrans p p2
+      | none => pure p2
+    return (v', sub G (← mkAdd A k'), some pf)
   if n == 0 then return (v', sub G (mkNatLit kv), p1)
   let s := n + kv
   let h ← mkEqRefl (mkNatLit s)
@@ -509,7 +571,7 @@ def stepCore (cfg : Cfg) (m : Expr) : TacticM (Option (Expr × Expr)) := do
         -- `step_push_val (n : Nat) (hn : n < 33)`
         let some xn ← xs.findM? (fun x => return (← inferType x).isConstOf ``Nat) | do trace[EvmLean.wp] "fast step: core check 7"; return none
         xn.mvarId!.assign (mkNatLit n)
-      unless ← dischHyps cfg code pc b fs[4]! fs[6]! xs do return none
+      unless ← dischHyps cfg m code pc b fs[4]! fs[6]! xs do return none
       let_expr StepResult.running rhs := rhs | do trace[EvmLean.wp] "fast step: core check 8"; return none
       let rhs ← instantiateMVars rhs
       if rhs.hasExprMVar then
