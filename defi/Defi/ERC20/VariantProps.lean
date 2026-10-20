@@ -89,9 +89,10 @@ theorem bnb_decoded_transfer (s : VState A) (c d : A) (v : ℕ) :
 /-- A caller ignoring the return data continues, unchanged, after a call that "failed" by
 returning `false`: it proceeds as if the tokens had moved. -/
 theorem unchecked_call_returnFalse (s : VState A) (c : A) (op : Call A)
-    (hf : V.arithFail = .returnFalse) (hg : V.guardOk s c op = true) (hs : V.step s c op = none) :
+    (hf : V.arithFail = .returnFalse) (hg : V.guardOk s c op = true)
+    (ho : V.overflows s c op = false) (hs : V.step s c op = none) :
     (V.call s c op).unchecked = some s := by
-  simp [call, hs, hg, hf, failWith, Result.unchecked]
+  simp [call, failKind, hs, hg, ho, hf, failWith, Result.unchecked]
 
 /-- USDT fails with `INVALID` (all gas consumed) on an insufficient balance, once its guards
 (pause, blacklist) pass. -/
@@ -100,7 +101,9 @@ theorem usdt_call_invalid (s : VState A) (c d : A) (v : ℕ)
     (usdt : Variant A).call s c (.transfer d v) = .halt .invalid := by
   have hs : (usdt : Variant A).step s c (.transfer d v) = none := by
     simp [step, transfer, move, units, usdt, standard, hb]
-  simp only [call, hs, guardOk, hg, ↓reduceIte]
+  have ho : (usdt : Variant A).overflows s c (.transfer d v) = false := by
+    simp [overflows, units, usdt, standard, hb]
+  simp only [call, failKind, hs, guardOk, hg, ho, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
   rfl
 
 /-- BNB's fallback accepts every unknown selector (a "phantom" `permit(…)`): success, empty
@@ -145,31 +148,35 @@ theorem credit_fields (s : VState A) (src dst : A) (v : ℕ) :
     (V.credit s src dst v).scale = s.scale ∧ (V.credit s src dst v).ether = s.ether ∧
       (V.credit s src dst v).allowance = s.allowance ∧ (V.credit s src dst v).admin = s.admin ∧
       (V.credit s src dst v).self = s.self ∧ (V.credit s src dst v).feeBps = s.feeBps ∧
-      (V.credit s src dst v).feeMax = s.feeMax := by
+      (V.credit s src dst v).feeMax = s.feeMax ∧ (V.credit s src dst v).frozen = s.frozen ∧
+      (V.credit s src dst v).paused = s.paused ∧
+      (V.credit s src dst v).blacklisted = s.blacklisted := by
   unfold credit
   split_ifs
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-  · cases V.feeSink <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · cases V.feeSink <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem move_eq_some {s s' : VState A} {src dst : A} {v : ℕ} :
     V.move s src dst v = some s' ↔
-      V.units s v ≤ s.bal src ∧ V.feeOf s v ≤ v ∧ s' = V.credit s src dst v := by
+      V.units s v ≤ s.bal src ∧ V.feeOverflow s v = false ∧ V.feeOf s v ≤ v ∧
+        s' = V.credit s src dst v := by
   unfold move
-  split_ifs with h1 h2
+  split_ifs with h1 h2 h3
   · simp only [false_iff, not_and]; omega
-  · simp only [false_iff, not_and]; omega
+  · simp [h2]
+  · simp only [false_iff, not_and]; intros; omega
   · simp only [Option.some.injEq]
     constructor
-    · rintro rfl; exact ⟨by omega, by omega, rfl⟩
-    · rintro ⟨-, -, rfl⟩; rfl
+    · rintro rfl; exact ⟨by omega, by simpa using h2, by omega, rfl⟩
+    · rintro ⟨-, -, -, rfl⟩; rfl
 
 /-- What `spend` changes: only allowances. -/
 theorem spend_eq_some {s s' : VState A} {o sp : A} {v : ℕ} (h : V.spend s o sp v = some s') :
     s'.bal = s.bal ∧ s'.supply = s.supply ∧ s'.scale = s.scale ∧ s'.ether = s.ether ∧
       s'.admin = s.admin ∧ s'.self = s.self ∧ s'.feeBps = s.feeBps ∧ s'.feeMax = s.feeMax ∧
-      s'.paused = s.paused ∧ s'.blacklisted = s.blacklisted := by
+      s'.paused = s.paused ∧ s'.blacklisted = s.blacklisted ∧ s'.frozen = s.frozen := by
   unfold spend at h
-  split_ifs at h <;> cases h <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  split_ifs at h <;> cases h <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem transferFrom_eq_some {s s' : VState A} {c src dst : A} {v : ℕ}
     (h : V.transferFrom s c src dst v = some s') :
@@ -191,7 +198,7 @@ theorem balanceOf_of_not_rebasing (hr : V.rebasing = false) (s : VState A) (a : 
 theorem move_exact {s s' : VState A} {src dst : A} {v : ℕ} (hr : V.rebasing = false)
     (hf : V.feeOf s v = 0) (h : V.move s src dst v = some s') :
     v ≤ s.bal src ∧ s'.bal = s.bal - single src v + single dst v ∧ s'.supply = s.supply := by
-  obtain ⟨h1, -, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨h1, -, -, rfl⟩ := (V.move_eq_some).1 h
   rw [units_of_not_rebasing V hr] at h1
   have hb : (V.credit s src dst v).bal = s.bal - single src v + single dst v := by
     simp only [credit, hf, ↓reduceIte, units_of_not_rebasing V hr]
@@ -206,7 +213,7 @@ theorem move_balanceOf {s s' : VState A} {src dst : A} {v : ℕ} (hf : V.feeOf s
       (src ≠ dst → V.balanceOf s' dst = V.balanceOf s dst + v) ∧
       (∀ x, x ≠ src → x ≠ dst → V.balanceOf s' x = V.balanceOf s x) ∧
       (src = dst → V.balanceOf s' src = V.balanceOf s src) := by
-  obtain ⟨h1, -, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨h1, -, -, rfl⟩ := (V.move_eq_some).1 h
   have hsc := (V.credit_fields s src dst v).1
   have hb : (V.credit s src dst v).bal = s.bal - single src (V.units s v) + single dst (V.units s v) := by
     simp only [credit, hf, ↓reduceIte]
@@ -235,7 +242,7 @@ theorem move_fee_dst {s s' : VState A} {src dst : A} {v : ℕ} (hr : V.rebasing 
     (h : V.move s src dst v = some s') (hsd : src ≠ dst)
     (hda : V.feeSink = .owner → dst ≠ s.admin) :
     s'.bal dst = s.bal dst + v - V.feeOf s v := by
-  obtain ⟨-, -, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨-, -, -, rfl⟩ := (V.move_eq_some).1 h
   simp only [credit, units_of_not_rebasing V hr]
   split_ifs with hf
   · rw [hf, move_apply_dst _ _ hsd]; rfl
@@ -254,7 +261,7 @@ theorem move_fee_src {s s' : VState A} {src dst : A} {v : ℕ} (hr : V.rebasing 
     (h : V.move s src dst v = some s') (hsd : src ≠ dst)
     (hsa : V.feeSink = .owner → src ≠ s.admin) :
     s'.bal src = s.bal src - v := by
-  obtain ⟨-, -, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨-, -, -, rfl⟩ := (V.move_eq_some).1 h
   simp only [credit, units_of_not_rebasing V hr]
   split_ifs with hf
   · rw [move_apply_src _ _ hsd]
@@ -272,7 +279,7 @@ theorem move_fee_src {s s' : VState A} {src dst : A} {v : ℕ} (hr : V.rebasing 
 theorem move_fee_supply {s s' : VState A} {src dst : A} {v : ℕ}
     (h : V.move s src dst v = some s') :
     s'.supply = s.supply - (if V.feeSink = .burn then V.feeOf s v else 0) := by
-  obtain ⟨-, -, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨-, -, -, rfl⟩ := (V.move_eq_some).1 h
   by_cases hf : V.feeOf s v = 0
   · simp [credit, hf]
   · cases hk : V.feeSink <;> simp [credit, hf, hk]
@@ -298,11 +305,11 @@ def WF (s : VState A) : Prop :=
     total s.bal = V.totalGons ∧ 0 < s.supply ∧ s.supply ≤ V.maxSupply ∧
       s.scale = V.totalGons / s.supply
   else if V.supply = .ether then total s.bal ≤ s.ether
-  else total s.bal = s.supply ∧ s.supply ≤ MAX
+  else total s.bal + total s.frozen = s.supply ∧ s.supply ≤ MAX
 
 /-- Policy combinations under which `WF` is an invariant: a rebasing token has no fee, no
 mint/burn, no blacklist burn, a stored supply and a positive cap with `cap² ≤ TOTAL_GONS`; an
-ether-backed token has no mint. -/
+ether-backed token has no mint; freezing and withdrawing ether need a stored supply. -/
 structure Sane : Prop where
   /-- Rebasing tokens charge no fee. -/
   rebasing_fee : V.rebasing = true → V.fee = .none
@@ -318,14 +325,22 @@ structure Sane : Prop where
   rebasing_cap : V.rebasing = true → 0 < V.maxSupply ∧ V.maxSupply ^ 2 ≤ V.totalGons
   /-- Ether-backed tokens cannot mint. -/
   ether_mint : V.supply = .ether → V.mintAuth = .nobody
+  /-- A freezable token stores its supply and does not rebase. -/
+  freeze_stored : V.freezable = true → V.supply = .stored ∧ V.rebasing = false
+  /-- A token whose owner can take its ether does not report the ether as its supply. -/
+  etherWithdraw_stored : V.etherWithdraw = true → V.supply = .stored
+  /-- Rebasing tokens have no `destroyFrom`. -/
+  rebasing_burnFrom : V.rebasing = true → V.hasBurnFrom = false
 
 theorem WF_congr {s s' : VState A} (h1 : s'.bal = s.bal) (h2 : s'.supply = s.supply)
-    (h3 : s'.scale = s.scale) (h4 : s'.ether = s.ether) (hw : V.WF s) : V.WF s' := by
-  unfold WF at *; rw [h1, h2, h3, h4]; exact hw
+    (h3 : s'.scale = s.scale) (h4 : s'.ether = s.ether) (h5 : s'.frozen = s.frozen)
+    (hw : V.WF s) : V.WF s' := by
+  unfold WF at *; rw [h1, h2, h3, h4, h5]; exact hw
 
 theorem WF_ether_le {s s' : VState A} (h1 : s'.bal = s.bal) (h2 : s'.supply = s.supply)
-    (h3 : s'.scale = s.scale) (h4 : s.ether ≤ s'.ether) (hw : V.WF s) : V.WF s' := by
-  unfold WF at *; rw [h1, h2, h3]
+    (h3 : s'.scale = s.scale) (h4 : s.ether ≤ s'.ether) (h5 : s'.frozen = s.frozen)
+    (hw : V.WF s) : V.WF s' := by
+  unfold WF at *; rw [h1, h2, h3, h5]
   split_ifs at hw ⊢
   · exact hw
   · exact le_trans hw h4
@@ -345,7 +360,7 @@ theorem le_move_dst {b : A →₀ ℕ} {src dst : A} {g : ℕ} (h : g ≤ b src)
 
 theorem WF_credit {s : VState A} {src dst : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
     (h1 : V.units s v ≤ s.bal src) (h2 : V.feeOf s v ≤ v) : V.WF (V.credit s src dst v) := by
-  obtain ⟨hsc, het, -⟩ := V.credit_fields s src dst v
+  obtain ⟨hsc, het, -, -, -, -, -, hfz, -⟩ := V.credit_fields s src dst v
   by_cases hr : V.rebasing = true
   · have hf : V.feeOf s v = 0 := by simp [feeOf, hV.rebasing_fee hr]
     have hb : (V.credit s src dst v).bal =
@@ -361,7 +376,7 @@ theorem WF_credit {s : VState A} {src dst : A} {v : ℕ} (hV : V.Sane) (hw : V.W
     have hfd := le_trans h2 hd
     have hle := le_total (s.bal - single src v + single dst v) dst
     unfold WF at hw ⊢; simp only [hr', Bool.false_eq_true, ↓reduceIte] at hw ⊢
-    rw [het]
+    rw [het, hfz]
     rcases V.credit_cases hr' s src dst v with ⟨hb, hs⟩ | ⟨hb, hs⟩
     · rw [hb, hs, total_add_single, total_sub_single hfd, htot]
       split_ifs at hw ⊢ <;> omega
@@ -370,13 +385,13 @@ theorem WF_credit {s : VState A} {src dst : A} {v : ℕ} (hV : V.Sane) (hw : V.W
 
 theorem WF_move {s s' : VState A} {src dst : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
     (h : V.move s src dst v = some s') : V.WF s' := by
-  obtain ⟨h1, h2, rfl⟩ := (V.move_eq_some).1 h
+  obtain ⟨h1, -, h2, rfl⟩ := (V.move_eq_some).1 h
   exact V.WF_credit hV hw h1 h2
 
 theorem WF_spend {s s' : VState A} {o sp : A} {v : ℕ} (hw : V.WF s)
     (h : V.spend s o sp v = some s') : V.WF s' := by
-  obtain ⟨h1, h2, h3, h4, -⟩ := V.spend_eq_some h
-  exact V.WF_congr h1 h2 h3 h4 hw
+  obtain ⟨h1, h2, h3, h4, -, -, -, -, -, -, h5⟩ := V.spend_eq_some h
+  exact V.WF_congr h1 h2 h3 h4 h5 hw
 
 theorem WF_transfer {s s' : VState A} {c d : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
     (h : V.transfer s c d v = some s') : V.WF s' := by
@@ -394,7 +409,7 @@ theorem WF_approve {s s' : VState A} {c sp : A} {v : ℕ} (hw : V.WF s)
   unfold approve at h
   split_ifs at h
   cases h
-  exact V.WF_congr rfl rfl rfl rfl hw
+  exact V.WF_congr rfl rfl rfl rfl rfl hw
 
 theorem WF_deposit {s s' : VState A} {c : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
     (h : V.deposit s c v = some s') : V.WF s' := by
@@ -430,8 +445,15 @@ theorem WF_fallbackCall {s s' : VState A} {c : A} {v : ℕ} (hV : V.Sane) (hw : 
   unfold fallbackCall at h
   cases hk : V.fallback <;> simp only [hk, reduceCtorEq] at h
   · cases h
-    exact V.WF_ether_le (s := s) rfl rfl rfl (Nat.le_add_right _ _) hw
+    exact V.WF_ether_le (s := s) rfl rfl rfl (Nat.le_add_right _ _) rfl hw
   · exact V.WF_deposit hV hw h
+
+theorem WF_permit {s s' : VState A} {c o sp : A} {v : ℕ} {live : Bool} {rec : ℕ → A}
+    (hV : V.Sane) (hw : V.WF s) (h : V.permit s c o sp v live rec = some s') : V.WF s' := by
+  unfold permit at h
+  split_ifs at h
+  · exact V.WF_fallbackCall hV hw h
+  · cases h; exact V.WF_congr rfl rfl rfl rfl rfl hw
 
 theorem WF_step {s s' : VState A} {c : A} {op : Call A} (hV : V.Sane) (hw : V.WF s)
     (h : V.step s c op = some s') : V.WF s' := by
@@ -440,6 +462,7 @@ theorem WF_step {s s' : VState A} {c : A} {op : Call A} (hV : V.Sane) (hw : V.WF
   | transferFrom src d v => exact V.WF_transferFrom hV hw h
   | approve sp v => exact V.WF_approve hw h
   | other v => exact V.WF_fallbackCall hV hw h
+  | permit o sp v live rec => exact V.WF_permit hV hw h
 
 theorem WF_mint {s s' : VState A} {c d : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
     (h : V.mint s c d v = some s') : V.WF s' := by
@@ -504,21 +527,105 @@ theorem WF_setPaused {s s' : VState A} {c : A} {b : Bool} (hw : V.WF s)
   unfold setPaused at h
   split_ifs at h
   cases h
-  exact V.WF_congr (s := s) rfl rfl rfl rfl hw
+  exact V.WF_congr (s := s) rfl rfl rfl rfl rfl hw
 
 theorem WF_setBlacklisted {s s' : VState A} {c u : A} {b : Bool} (hw : V.WF s)
     (h : V.setBlacklisted s c u b = some s') : V.WF s' := by
   unfold setBlacklisted at h
   split_ifs at h
   cases h
-  exact V.WF_congr (s := s) rfl rfl rfl rfl hw
+  exact V.WF_congr (s := s) rfl rfl rfl rfl rfl hw
 
 theorem WF_setParams {s s' : VState A} {c : A} {b m : ℕ} (hw : V.WF s)
     (h : V.setParams s c b m = some s') : V.WF s' := by
   unfold setParams at h
   split_ifs at h
   cases h
-  exact V.WF_congr (s := s) rfl rfl rfl rfl hw
+  exact V.WF_congr (s := s) rfl rfl rfl rfl rfl hw
+
+theorem WF_freeze {s s' : VState A} {c : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
+    (h : V.freeze s c v = some s') : V.WF s' := by
+  unfold freeze at h
+  split_ifs at h with h0 h1 h2 h3
+  cases h
+  have hf : V.freezable = true := by simpa using h0
+  obtain ⟨hs, hr⟩ := hV.freeze_stored hf
+  have := le_total s.bal c
+  unfold WF at hw ⊢
+  simp only [hr, hs, Bool.false_eq_true, ↓reduceIte, reduceCtorEq] at hw ⊢
+  rw [total_sub_single (by omega), total_add_single]
+  omega
+
+theorem WF_unfreeze {s s' : VState A} {c : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
+    (h : V.unfreeze s c v = some s') : V.WF s' := by
+  unfold unfreeze at h
+  split_ifs at h with h0 h1 h2 h3
+  cases h
+  have hf : V.freezable = true := by simpa using h0
+  obtain ⟨hs, hr⟩ := hV.freeze_stored hf
+  have := le_total s.frozen c
+  unfold WF at hw ⊢
+  simp only [hr, hs, Bool.false_eq_true, ↓reduceIte, reduceCtorEq] at hw ⊢
+  rw [total_sub_single (by omega), total_add_single]
+  omega
+
+theorem WF_withdrawEther {s s' : VState A} {c : A} {v : ℕ} {ok : Bool} (hV : V.Sane)
+    (hw : V.WF s) (h : V.withdrawEther s c v ok = some s') : V.WF s' := by
+  unfold withdrawEther at h
+  split_ifs at h with h0 h1 h2
+  cases h
+  have he : V.etherWithdraw = true := by
+    cases he : V.etherWithdraw
+    · simp [he] at h0
+    · rfl
+  have hs := hV.etherWithdraw_stored he
+  unfold WF at hw ⊢
+  simp only [hs, reduceCtorEq, ↓reduceIte] at hw ⊢
+  exact hw
+
+theorem WF_adjustAllowance {s s' : VState A} {c sp : A} {up : Bool} {x : ℕ} (hw : V.WF s)
+    (h : V.adjustAllowance s c sp up x = some s') : V.WF s' := by
+  unfold adjustAllowance at h
+  cases hk : V.helpers <;> simp only [hk, reduceCtorEq] at h <;> split_ifs at h <;> cases h <;>
+    exact V.WF_congr rfl rfl rfl rfl rfl hw
+
+theorem WF_burnFrom {s s' : VState A} {c src : A} {v : ℕ} (hV : V.Sane) (hw : V.WF s)
+    (h : V.burnFrom s c src v = some s') : V.WF s' := by
+  unfold burnFrom at h
+  split_ifs at h with h0 h1 h2 h3
+  cases h
+  have hr : V.rebasing = false := by
+    cases hr : V.rebasing
+    · rfl
+    · rw [hV.rebasing_burnFrom hr] at h0; simp at h0
+  have h3' : v ≤ s.bal src := by simpa [units, hr] using h3
+  have := le_total s.bal src
+  unfold WF at hw ⊢
+  simp only [hr, Bool.false_eq_true, ↓reduceIte, units, VState.setAllowance] at hw ⊢
+  rw [total_sub_single h3']
+  split_ifs at hw ⊢ <;> omega
+
+theorem WF_moveAll {s : VState A} {src dst : A} (hw : V.WF s) :
+    V.WF { s with bal := s.bal - single src (s.bal src) + single dst (s.bal src) } := by
+  have ht := total_move (b := s.bal) (src := src) (dst := dst) (le_refl (s.bal src))
+  unfold WF at hw ⊢
+  simp only at hw ⊢
+  rw [ht]
+  exact hw
+
+theorem WF_transferAll {s s' : VState A} {c d : A} (hw : V.WF s)
+    (h : V.transferAll s c d = some s') : V.WF s' := by
+  unfold transferAll at h
+  split_ifs at h
+  cases h
+  exact V.WF_moveAll hw
+
+theorem WF_transferAllFrom {s s' : VState A} {c src d : A} (hw : V.WF s)
+    (h : V.transferAllFrom s c src d = some s') : V.WF s' := by
+  unfold transferAllFrom at h
+  split_ifs at h
+  obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
+  exact V.WF_moveAll (V.WF_spend hw h1)
 
 /-- `WF` is preserved by every operation of a `Sane` variant. -/
 theorem WF_stepOp {s s' : VState A} {op : Op A} (hV : V.Sane) (hw : V.WF s)
@@ -529,12 +636,20 @@ theorem WF_stepOp {s s' : VState A} {op : Op A} (hV : V.Sane) (hw : V.WF s)
   | burn c src v => exact V.WF_burn hV hw h
   | deposit c v => exact V.WF_deposit hV hw h
   | withdraw c w ok => exact V.WF_withdraw hV hw h
-  | receiveEther v => cases h; exact V.WF_ether_le (s := s) rfl rfl rfl (Nat.le_add_right _ _) hw
+  | receiveEther v =>
+    cases h; exact V.WF_ether_le (s := s) rfl rfl rfl (Nat.le_add_right _ _) rfl hw
   | setPaused c b => exact V.WF_setPaused hw h
   | setBlacklisted c u b => exact V.WF_setBlacklisted hw h
   | destroyBlackFunds c u => exact V.WF_destroyBlackFunds hV hw h
   | setParams c b m => exact V.WF_setParams hw h
   | rebase c S => exact V.WF_rebase hV hw h
+  | freeze c v => exact V.WF_freeze hV hw h
+  | unfreeze c v => exact V.WF_unfreeze hV hw h
+  | withdrawEther c v ok => exact V.WF_withdrawEther hV hw h
+  | adjustAllowance c sp up x => exact V.WF_adjustAllowance hw h
+  | burnFrom c src v => exact V.WF_burnFrom hV hw h
+  | transferAll c d => exact V.WF_transferAll hw h
+  | transferAllFrom c src d => exact V.WF_transferAllFrom hw h
 
 /-- **Supply invariant.** Any sequence of operations, by any callers, preserves `WF`. -/
 theorem WF_exec {s : VState A} (hV : V.Sane) (hw : V.WF s) (ops : List (Op A)) :
@@ -597,10 +712,7 @@ theorem rebase_balanceOf {s s' : VState A} {c : A} {S : ℕ} (hr : V.rebasing = 
 approvals, forced ether, unknown selectors) keeps `Σ balanceOf ≤ address(this).balance`. -/
 theorem weth9_backed_exec {s : VState A} (hw : total s.bal ≤ s.ether) (ops : List (Op A)) :
     total ((weth9 : Variant A).exec s ops).bal ≤ ((weth9 : Variant A).exec s ops).ether := by
-  have hV : (weth9 : Variant A).Sane :=
-    ⟨by simp [weth9, standard], by simp [weth9, standard], by simp [weth9, standard],
-      by simp [weth9, standard], by simp [weth9, standard], by simp [weth9, standard],
-      fun _ => rfl⟩
+  have hV : (weth9 : Variant A).Sane := by constructor <;> simp [weth9, standard]
   have h := (weth9 : Variant A).WF_exec hV (s := s)
     (by unfold WF; simpa [weth9, standard] using hw) ops
   unfold WF at h
@@ -630,44 +742,31 @@ theorem weth9_withdraw {s : VState A} {c : A} {wad : ℕ} (hw : total s.bal ≤ 
 
 /-! ## The instances are sane -/
 
-theorem standard_sane : (standard : Variant A).Sane :=
-  ⟨by simp [standard], by simp [standard], by simp [standard], by simp [standard],
-    by simp [standard], by simp [standard], by simp [standard]⟩
+theorem standard_sane : (standard : Variant A).Sane := by constructor <;> simp [standard]
 
-theorem oz_sane : (oz : Variant A).Sane :=
-  ⟨by simp [oz, standard], by simp [oz, standard], by simp [oz, standard],
-    by simp [oz, standard], by simp [oz, standard], by simp [oz, standard],
-    by simp [oz, standard]⟩
+theorem oz_sane : (oz : Variant A).Sane := by constructor <;> simp [oz, standard]
 
-theorem solady_sane (p : A) : (solady p).Sane :=
-  ⟨by simp [solady, standard], by simp [solady, standard], by simp [solady, standard],
-    by simp [solady, standard], by simp [solady, standard], by simp [solady, standard],
-    by simp [solady, standard]⟩
+theorem solady_sane (p : A) : (solady p).Sane := by constructor <;> simp [solady, standard]
 
-theorem weth9_sane : (weth9 : Variant A).Sane :=
-  ⟨by simp [weth9, standard], by simp [weth9, standard], by simp [weth9, standard],
-    by simp [weth9, standard], by simp [weth9, standard], by simp [weth9, standard],
-    fun _ => rfl⟩
+theorem weth9_sane : (weth9 : Variant A).Sane := by constructor <;> simp [weth9, standard]
 
-theorem usdt_sane : (usdt : Variant A).Sane :=
-  ⟨by simp [usdt, standard], by simp [usdt, standard], by simp [usdt, standard],
-    by simp [usdt, standard], by simp [usdt, standard], by simp [usdt, standard],
-    by simp [usdt, standard]⟩
+theorem usdt_sane : (usdt : Variant A).Sane := by constructor <;> simp [usdt, standard]
 
-theorem bnb_sane : (bnb : Variant A).Sane :=
-  ⟨by simp [bnb, standard], by simp [bnb, standard], by simp [bnb, standard],
-    by simp [bnb, standard], by simp [bnb, standard], by simp [bnb, standard],
-    by simp [bnb, standard]⟩
+theorem bnb_sane : (bnb : Variant A).Sane := by constructor <;> simp [bnb, standard]
 
-theorem sta_sane : (sta : Variant A).Sane :=
-  ⟨by simp [sta, standard], by simp [sta, standard], by simp [sta, standard],
-    by simp [sta, standard], by simp [sta, standard], by simp [sta, standard],
-    by simp [sta, standard]⟩
+theorem sta_sane : (sta : Variant A).Sane := by constructor <;> simp [sta, standard]
 
-theorem ampl_sane : (ampl : Variant A).Sane :=
-  ⟨fun _ => rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl,
-    fun _ => ⟨by norm_num [ampl], by norm_num [ampl, amplTotalGons, MAX]⟩,
-    by simp [ampl, standard]⟩
+theorem ampl_sane : (ampl : Variant A).Sane where
+  rebasing_fee _ := rfl
+  rebasing_mint _ := rfl
+  rebasing_burn _ := rfl
+  rebasing_blacklist _ := rfl
+  rebasing_stored _ := rfl
+  rebasing_cap _ := ⟨by norm_num [ampl], by norm_num [ampl, amplTotalGons, MAX]⟩
+  ether_mint := by simp [ampl, standard]
+  freeze_stored := by simp [ampl, standard]
+  etherWithdraw_stored := by simp [ampl, standard]
+  rebasing_burnFrom _ := rfl
 
 /-- STA's fee is `⌈v/100⌉`. -/
 theorem sta_feeOf (s : VState A) (v : ℕ) : (sta : Variant A).feeOf s v = (v + 99) / 100 := by

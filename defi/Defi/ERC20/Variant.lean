@@ -9,10 +9,15 @@ One parameterised token model for the deviations recorded in `docs/tokens.md`. A
 is a record of policies (data, not code): the return-data convention per entry point, how a
 failing check ends the call (`REVERT`, `INVALID`, or returning `false`), zero-address and
 zero-value checks, the USDT approve race guard, how infinite allowances are treated, a
-transfer fee (USDT's capped basis points paid to the owner, STA's burned `⌈v/100⌉`), pause and
-blacklist (USDT), rebasing balances stored as gons with a global scale (AMPL), owner-only or
-holder-only mint/burn, the fallback (BNB accepts every unknown selector, WETH9 deposits), and
-whether `totalSupply` is stored or the contract's ether balance (WETH9).
+transfer fee (USDT's capped basis points paid to the owner, STA's burned `⌈v/100⌉`) and the
+SafeMath overflow of its computation, pause and blacklist (USDT), rebasing balances stored as
+gons with a global scale (AMPL), owner-only or holder-only mint/burn, the fallback (BNB accepts
+every unknown selector, WETH9 deposits), whether `totalSupply` is stored or the contract's
+ether balance (WETH9), and the extra entry points: BNB's `freeze`/`unfreeze` ledger and
+owner-only `withdrawEther`, the allowance helpers (STA `upAllowance`/`downAllowance` with
+checked arithmetic, AMPL `increaseAllowance`/`decreaseAllowance` saturating at `0`), STA's
+`destroyFrom`, AMPL's `transferAll`/`transferAllFrom`, and EIP-2612 `permit` (Solmate, Solady,
+AMPL; on a token without it, a `permit` call hits the fallback).
 
 The storage `VState A` holds every field any variant uses; a variant ignores the fields its
 policies do not mention. Each operation returns `Option (VState A)` (`none`: the call fails);
@@ -21,14 +26,13 @@ policies do not mention. Each operation returns `Option (VState A)` (`none`: the
 
 `standard` is Solmate's `ERC20` as modelled by `Token` (`standard_transfer` … prove its
 operations are the `Token` operations), `oz` OpenZeppelin v5's (`oz_transfer` …: the `Token.oz*`
-operations). The other instances are WETH9, Solady (Permit2), USDT, BNB, STA and AMPL.
+operations). The other instances are WETH9, Solady (Permit2), USDT, BNB, STA and AMPL. USDT's
+deprecation forwarding is a two-contract system on top of this (`VariantDeprecation.lean`).
 
-Not modelled: events, gas, ABI decoding and short-payload checks, USDT's deprecation
-forwarding, BNB's `freeze`/`unfreeze` ledger and `withdrawEther`, STA's `upAllowance`/
-`downAllowance`/`destroyFrom`, `permit`, and the arithmetic overflow of fee computations
-(USDT `v·bps` for `v > MAX/20`, STA `v + 100` for `v > MAX − 100`).
+Not modelled: events, gas (WETH9's and BNB's ether sends are a success flag, see
+`VariantExtras.lean`), ABI decoding and short-payload checks, signatures (a `permit` takes the
+`ecrecover` result as a parameter).
 -/
-
 @[expose] public noncomputable section
 
 namespace Defi.ERC20
@@ -145,6 +149,30 @@ inductive SupplyKind
   | ether
   deriving DecidableEq
 
+/-- Entry points that raise or lower an allowance relative to its current value. -/
+inductive Helpers
+  /-- None. -/
+  | none
+  /-- STA `upAllowance`/`downAllowance`: `spender ≠ 0` (`REVERT`), then SafeMath `add`/`sub`,
+  whose `assert` fails with `INVALID` on overflow/underflow. -/
+  | checked
+  /-- AMPL `increaseAllowance` (SafeMath `add`, `REVERT` on overflow) and `decreaseAllowance`
+  (saturates at `0`, never fails); no spender check. -/
+  | saturating
+  deriving DecidableEq
+
+/-- EIP-2612 `permit`. -/
+inductive PermitRule
+  /-- No `permit`: the selector reaches the fallback. -/
+  | none
+  /-- `permit(owner, spender, value, deadline, v, r, s)`: requires `timestamp ≤ deadline` and
+  `ecrecover(digest(nonce[owner])) = owner`; `rejectZero`: also `owner ≠ 0` (Solmate's
+  `recovered ≠ address(0)`, Solady's comparison with the digest when recovery fails; AMPL has
+  no such check, so a failed recovery (`0`) passes for `owner = 0`); `wraps`: the nonce
+  increment is unchecked (Solmate, Solady) rather than SafeMath (AMPL, `REVERT` at `MAX`). -/
+  | eip2612 (rejectZero wraps : Bool)
+  deriving DecidableEq
+
 /-- An ERC-20 implementation, as a record of policies. -/
 structure Variant (A : Type) where
   /-- Return data of a successful `transfer`/`transferFrom`/`approve`. -/
@@ -197,6 +225,18 @@ structure Variant (A : Type) where
   fallback : Fallback
   /-- What `totalSupply()` returns. -/
   supply : SupplyKind
+  /-- `freeze(v)`/`unfreeze(v)` move the caller's tokens to and from a frozen ledger (BNB). -/
+  freezable : Bool
+  /-- `withdrawEther(v)` by the privileged account sends it the contract's ether (BNB). -/
+  etherWithdraw : Bool
+  /-- The allowance helpers. -/
+  helpers : Helpers
+  /-- `destroyFrom(src, v)`: burn against an allowance (STA). -/
+  hasBurnFrom : Bool
+  /-- `transferAll(to)`/`transferAllFrom(from, to)` move all internal units (AMPL). -/
+  hasTransferAll : Bool
+  /-- EIP-2612 `permit`. -/
+  permitRule : PermitRule
 
 /-- The storage of any of the variants. -/
 structure VState (A : Type) where
@@ -222,6 +262,10 @@ structure VState (A : Type) where
   feeMax : ℕ
   /-- The token contract's ether balance. -/
   ether : ℕ
+  /-- BNB `freezeOf`. -/
+  frozen : A →₀ ℕ
+  /-- EIP-2612 `nonces`. -/
+  nonces : A →₀ ℕ
 
 namespace VState
 
@@ -234,7 +278,8 @@ def toToken (s : VState A) : Token A := ⟨s.bal, s.supply, s.allowance⟩
 def withToken (s : VState A) (t : Token A) : VState A :=
   { s with bal := t.balanceOf, supply := t.totalSupply, allowance := t.allowance }
 
-/-- A `Token` as a variant state: unit scale, nothing paused or blacklisted, no fee, no ether. -/
+/-- A `Token` as a variant state: unit scale, nothing paused, blacklisted or frozen, no fee, no
+ether, all nonces `0`. -/
 def ofToken (t : Token A) (self admin : A) : VState A where
   self := self
   bal := t.balanceOf
@@ -247,6 +292,8 @@ def ofToken (t : Token A) (self admin : A) : VState A where
   feeBps := 0
   feeMax := 0
   ether := 0
+  frozen := 0
+  nonces := 0
 
 /-- `allowance[owner][spender] = v`. -/
 def setAllowance (s : VState A) (owner spender : A) (v : ℕ) : VState A :=
@@ -275,8 +322,12 @@ inductive Call (A : Type) where
   | transferFrom (src dst : A) (v : ℕ)
   /-- `approve(spender, v)`. -/
   | approve (spender : A) (v : ℕ)
-  /-- A selector the token does not implement (e.g. `permit` on BNB), with `value` wei. -/
+  /-- A selector the token does not implement, with `value` wei. -/
   | other (value : ℕ)
+  /-- EIP-2612 `permit(owner, spender, v, deadline, sig)` (no value): `live` is
+  `timestamp ≤ deadline`, `rec n` what `ecrecover` returns for the digest at nonce `n` (`0`
+  when recovery fails). -/
+  | permit (owner spender : A) (v : ℕ) (live : Bool) (rec : ℕ → A)
 
 /-- Why a call stopped without success. -/
 inductive Halt
@@ -354,6 +405,14 @@ def feeOf (s : VState A) (v : ℕ) : ℕ :=
   | .bpsCapped => min (v * s.feeBps / 10000) s.feeMax
   | .ceilPercent bp => (v + bp - 1) / bp * bp * bp / 10000
 
+/-- Whether computing the fee on `v` overflows a SafeMath step: USDT `v.mul(basisPointsRate)`;
+STA `ceil(v, bp) = mul(div(sub(add(v, bp), 1), bp), bp)`, then `.mul(bp)`. -/
+def feeOverflow (s : VState A) (v : ℕ) : Bool :=
+  match V.fee with
+  | .none => false
+  | .bpsCapped => decide (MAX < v * s.feeBps)
+  | .ceilPercent bp => decide (MAX < v + bp) || decide (MAX < (v + bp - 1) / bp * bp * bp)
+
 /-! ## Transfers and allowances -/
 
 /-- The guards of a transfer from `src` to `dst`: pause, blacklist, zero address, the token
@@ -378,9 +437,11 @@ def credit (s : VState A) (src dst : A) (v : ℕ) : VState A :=
                         single dst (V.units s (V.feeOf s v)),
                supply := s.supply - V.feeOf s v }
 
-/-- The balance update of a transfer: fails on an insufficient balance or a fee above `v`. -/
+/-- The balance update of a transfer: fails on an insufficient balance, an overflow in the fee
+computation, or a fee above `v`. -/
 def move (s : VState A) (src dst : A) (v : ℕ) : Option (VState A) :=
   if s.bal src < V.units s v then none
+  else if V.feeOverflow s v then none
   else if v < V.feeOf s v then none
   else some (V.credit s src dst v)
 
@@ -455,6 +516,104 @@ def fallbackCall (s : VState A) (caller : A) (value : ℕ) : Option (VState A) :
   | .accept => some { s with ether := s.ether + value }
   | .deposit => V.deposit s caller value
 
+/-! ## Extra entry points (BNB, STA, AMPL, EIP-2612) -/
+
+/-- BNB `freeze(v)` by `caller`: `v ≤ balance`, `v ≠ 0` (`REVERT`); moves `v` from the balance
+to `freezeOf` (SafeMath `add`, which cannot overflow under `WF`). -/
+def freeze (s : VState A) (caller : A) (v : ℕ) : Option (VState A) :=
+  if !V.freezable then none
+  else if s.bal caller < v then none
+  else if v = 0 then none
+  else if MAX < s.frozen caller + v then none
+  else some { s with bal := s.bal - single caller v, frozen := s.frozen + single caller v }
+
+/-- BNB `unfreeze(v)` by `caller`: `v ≤ freezeOf`, `v ≠ 0`; moves `v` back to the balance. -/
+def unfreeze (s : VState A) (caller : A) (v : ℕ) : Option (VState A) :=
+  if !V.freezable then none
+  else if s.frozen caller < v then none
+  else if v = 0 then none
+  else if MAX < s.bal caller + v then none
+  else some { s with frozen := s.frozen - single caller v, bal := s.bal + single caller v }
+
+/-- BNB `withdrawEther(v)`: only the owner; `owner.transfer(v)` (2300-gas stipend) reverts if
+the contract holds less than `v` or the owner's code rejects the ether (`sendOk = false`). -/
+def withdrawEther (s : VState A) (caller : A) (v : ℕ) (sendOk : Bool) : Option (VState A) :=
+  if !V.etherWithdraw || decide (caller ≠ s.admin) then none
+  else if s.ether < v then none
+  else if !sendOk then none
+  else some { s with ether := s.ether - v }
+
+/-- The allowance helpers by `caller`: raise (`up`) or lower `allowance[caller][sp]` by `x`
+(STA `upAllowance`/`downAllowance`, AMPL `increaseAllowance`/`decreaseAllowance`). -/
+def adjustAllowance (s : VState A) (caller sp : A) (up : Bool) (x : ℕ) : Option (VState A) :=
+  match V.helpers with
+  | .none => none
+  | .checked =>
+    if decide (sp = 0) then none
+    else if up then
+      (if MAX < s.allowance caller sp + x then none
+       else some (s.setAllowance caller sp (s.allowance caller sp + x)))
+    else if s.allowance caller sp < x then none
+    else some (s.setAllowance caller sp (s.allowance caller sp - x))
+  | .saturating =>
+    if up then
+      (if MAX < s.allowance caller sp + x then none
+       else some (s.setAllowance caller sp (s.allowance caller sp + x)))
+    else some (s.setAllowance caller sp (s.allowance caller sp - x))
+
+/-- How a failing allowance helper ends: STA's spender check reverts and its SafeMath `assert`
+is `INVALID`; AMPL's SafeMath `require` reverts. -/
+def adjustFail (sp : A) : OnFail :=
+  match V.helpers with
+  | .checked => if sp = 0 then .revert else .invalid
+  | _ => .revert
+
+/-- STA `destroyFrom(src, v)` by `caller`: `v ≤ allowance[src][caller]` (spent, even `MAX`),
+then `destroy`'s checks (`v ≠ 0`, `v ≤ balance`); burns `v`. All failures revert. -/
+def burnFrom (s : VState A) (caller src : A) (v : ℕ) : Option (VState A) :=
+  if !V.hasBurnFrom then none
+  else if s.allowance src caller < v then none
+  else if V.zeroBurnReverts && decide (v = 0) then none
+  else if s.bal src < V.units s v then none
+  else some { s.setAllowance src caller (s.allowance src caller - v) with
+              supply := s.supply - v, bal := s.bal - single src (V.units s v) }
+
+/-- AMPL `transferAll(dst)` by `caller`: after the recipient checks, moves all of `caller`'s
+internal units, dust included (`delete gons[caller]; gons[dst] += gonValue`). -/
+def transferAll (s : VState A) (caller dst : A) : Option (VState A) :=
+  if V.hasTransferAll && V.moveOk s caller dst (V.balanceOf s caller) then
+    some { s with bal := s.bal - single caller (s.bal caller) + single dst (s.bal caller) }
+  else none
+
+/-- AMPL `transferAllFrom(src, dst)` by `caller`: spends `balanceOf(src)` (the fragment value,
+dust excluded) of allowance, then moves all of `src`'s internal units. -/
+def transferAllFrom (s : VState A) (caller src dst : A) : Option (VState A) :=
+  if V.hasTransferAll && V.moveOk s src dst (V.balanceOf s src) then
+    (V.spend s src caller (V.balanceOf s src)).map fun s1 =>
+      { s1 with bal := s1.bal - single src (s1.bal src) + single dst (s1.bal src) }
+  else none
+
+/-- The checks of `permit(owner, sp, v)` on a token with EIP-2612: Solady's Permit2 rule, the
+deadline, the recovered signer, the zero owner, the checked nonce increment. -/
+def permitOk (s : VState A) (owner sp : A) (v : ℕ) (live : Bool) (rec : ℕ → A) : Bool :=
+  match V.permitRule with
+  | .none => false
+  | .eip2612 rejectZero wraps =>
+    !(decide (V.permit2 = some sp) && decide (v ≠ MAX)) && live &&
+    decide (rec (s.nonces owner) = owner) && !(rejectZero && decide (owner = 0)) &&
+    !(!wraps && decide (MAX ≤ s.nonces owner))
+
+/-- `permit(owner, sp, v, …)` by `caller`: on success `allowance[owner][sp] = v` and the owner's
+nonce is incremented modulo `2²⁵⁶` (a checked increment cannot wrap: `permitOk` requires
+`nonce < MAX` then). Without EIP-2612 the selector reaches the fallback, with no value. -/
+def permit (s : VState A) (caller owner sp : A) (v : ℕ) (live : Bool) (rec : ℕ → A) :
+    Option (VState A) :=
+  if V.permitRule = .none then V.fallbackCall s caller 0
+  else if V.permitOk s owner sp v live rec then
+    some { s.setAllowance owner sp v with
+           nonces := s.nonces.update owner ((s.nonces owner + 1) % U256) }
+  else none
+
 /-! ## Administration (USDT, AMPL) -/
 
 /-- USDT `pause()`/`unpause()` by `caller`. -/
@@ -495,6 +654,7 @@ def step (s : VState A) (caller : A) : Call A → Option (VState A)
   | .transferFrom src dst v => V.transferFrom s caller src dst v
   | .approve sp v => V.approve s caller sp v
   | .other value => V.fallbackCall s caller value
+  | .permit o sp v live rec => V.permit s caller o sp v live rec
 
 /-- Whether the call passes the guards (a failure after them is an arithmetic one). -/
 def guardOk (s : VState A) (caller : A) : Call A → Bool
@@ -502,6 +662,16 @@ def guardOk (s : VState A) (caller : A) : Call A → Bool
   | .transferFrom src dst v => V.moveOk s src dst v
   | .approve sp v => V.approveOk s caller sp v
   | .other _ => V.fallback != .revert
+  | .permit o sp v live rec =>
+    if V.permitRule = .none then V.fallback != .revert else V.permitOk s o sp v live rec
+
+/-- Whether a transfer fails in the fee computation: the balance (and allowance) checks pass and
+a SafeMath step of the fee overflows. -/
+def overflows (s : VState A) (caller : A) : Call A → Bool
+  | .transfer _ v => decide (V.units s v ≤ s.bal caller) && V.feeOverflow s v
+  | .transferFrom src _ v =>
+    (V.spend s src caller v).isSome && decide (V.units s v ≤ s.bal src) && V.feeOverflow s v
+  | _ => false
 
 /-- Return data of a successful call. -/
 def retData : Call A → RetData
@@ -509,6 +679,7 @@ def retData : Call A → RetData
   | .transferFrom _ _ _ => if V.returns .transferFrom = .bool then .word true else .empty
   | .approve _ _ => if V.returns .approve = .bool then .word true else .empty
   | .other _ => .empty
+  | .permit _ _ _ _ _ => .empty
 
 /-- A failure of kind `k` in state `s`. -/
 def failWith {σ : Type} (s : σ) : OnFail → Result σ
@@ -516,11 +687,19 @@ def failWith {σ : Type} (s : σ) : OnFail → Result σ
   | .invalid => .halt .invalid
   | .returnFalse => .ok s (.word false)
 
+/-- How a failing call ends: the guards' convention, `INVALID` for an overflow in the fee
+computation (a 0.4/0.5 SafeMath `assert`: USDT, STA), otherwise the arithmetic convention.
+(USDT computes the fee before its balance check, STA after; both kinds coincide on USDT.) -/
+def failKind (s : VState A) (caller : A) (c : Call A) : OnFail :=
+  if !V.guardOk s caller c then V.guardFail
+  else if V.overflows s caller c then .invalid
+  else V.arithFail
+
 /-- The observable outcome of a call by `caller`. -/
 def call (s : VState A) (caller : A) (c : Call A) : Result (VState A) :=
   match V.step s caller c with
   | Option.some s' => .ok s' (V.retData c)
-  | Option.none => failWith s (if V.guardOk s caller c then V.arithFail else V.guardFail)
+  | Option.none => failWith s (V.failKind s caller c)
 
 /-- Every state-changing operation of the variants. -/
 inductive Op (A : Type) where
@@ -546,6 +725,20 @@ inductive Op (A : Type) where
   | setParams (caller : A) (bps mx : ℕ)
   /-- AMPL `rebase`. -/
   | rebase (caller : A) (S : ℕ)
+  /-- BNB `freeze`. -/
+  | freeze (caller : A) (v : ℕ)
+  /-- BNB `unfreeze`. -/
+  | unfreeze (caller : A) (v : ℕ)
+  /-- BNB `withdrawEther`. -/
+  | withdrawEther (caller : A) (v : ℕ) (sendOk : Bool)
+  /-- The allowance helpers. -/
+  | adjustAllowance (caller sp : A) (up : Bool) (x : ℕ)
+  /-- STA `destroyFrom`. -/
+  | burnFrom (caller src : A) (v : ℕ)
+  /-- AMPL `transferAll`. -/
+  | transferAll (caller dst : A)
+  /-- AMPL `transferAllFrom`. -/
+  | transferAllFrom (caller src dst : A)
 
 /-- One operation; `none` = it fails. -/
 def stepOp (s : VState A) : Op A → Option (VState A)
@@ -560,6 +753,13 @@ def stepOp (s : VState A) : Op A → Option (VState A)
   | .destroyBlackFunds c u => V.destroyBlackFunds s c u
   | .setParams c b m => V.setParams s c b m
   | .rebase c S => V.rebase s c S
+  | .freeze c v => V.freeze s c v
+  | .unfreeze c v => V.unfreeze s c v
+  | .withdrawEther c v ok => V.withdrawEther s c v ok
+  | .adjustAllowance c sp up x => V.adjustAllowance s c sp up x
+  | .burnFrom c src v => V.burnFrom s c src v
+  | .transferAll c d => V.transferAll s c d
+  | .transferAllFrom c src d => V.transferAllFrom s c src d
 
 /-- A sequence of operations; a failed one leaves the state unchanged. -/
 def exec (s : VState A) : List (Op A) → VState A
@@ -602,60 +802,74 @@ def standard : Variant A where
   zeroBurnReverts := false
   fallback := .revert
   supply := .stored
+  freezable := false
+  etherWithdraw := false
+  helpers := .none
+  hasBurnFrom := false
+  hasTransferAll := false
+  permitRule := .eip2612 true true
 
 /-- OpenZeppelin `ERC20` v5 (`ERC20Mock`): deviates by zero-address checks on sender, receiver,
-approver and spender, also inside the allowance decrease (`_spendAllowance → _approve`), and
-treats allowances `≥ MAX` as infinite. -/
+approver and spender, also inside the allowance decrease (`_spendAllowance → _approve`),
+treats allowances `≥ MAX` as infinite, and has no `permit` (`ERC20Mock` is not `ERC20Permit`). -/
 def oz : Variant A :=
-  { standard with zero := ⟨true, true, true, true⟩, spendViaApprove := true, infinite := .geMax }
+  { standard with zero := ⟨true, true, true, true⟩, spendViaApprove := true, infinite := .geMax,
+                  permitRule := .none }
 
 /-- Solady `ERC20` (`SoladyToken`): deviates by the Permit2 spender `p`, whose allowance reads
-`MAX`, is never spent, and cannot be approved to anything but `MAX`. -/
+`MAX`, is never spent, and cannot be approved (or permitted) to anything but `MAX`. -/
 def solady (p : A) : Variant A := { (standard : Variant A) with permit2 := some p }
 
 /-- WETH9: deviates by `totalSupply() = address(this).balance`, `deposit`/`withdraw` (and a
 depositing fallback) instead of `mint`/`burn`, and `transferFrom` by the owner itself skipping
-the allowance. -/
+the allowance; no `permit` (the selector reaches the depositing fallback). -/
 def weth9 : Variant A :=
   { standard with selfSpendFree := true, mintAuth := .nobody, burnAuth := .nobody,
-                  fallback := .deposit, supply := .ether }
+                  fallback := .deposit, supply := .ether, permitRule := .none }
 
 /-- USDT (`TetherToken`): deviates by returning nothing, failing with `INVALID` on insufficient
 balance or allowance, the approve race guard, a capped basis-point fee paid to the owner,
-pause and blacklist on transfers, `destroyBlackFunds`, owner-only `issue`/`redeem`. -/
+pause and blacklist on transfers, `destroyBlackFunds`, owner-only `issue`/`redeem`; no
+`permit`. Deprecation forwarding: `VariantDeprecation.lean`. -/
 def usdt : Variant A :=
   { standard with returns := fun _ => .empty, arithFail := .invalid, approveGuard := true,
                   infinite := .geMax, fee := .bpsCapped, feeSink := .owner, feeUnit := 10 ^ 6,
                   pausable := true, blacklist := true, mintAuth := .owner, burnAuth := .owner,
-                  zeroMintReverts := true }
+                  zeroMintReverts := true, permitRule := .none }
 
 /-- BNB: deviates by `transfer` returning nothing, zero-value transfers/approvals/burns
 failing, transfers to `0` failing, infinite allowances spent, holder-only `burn`, no `mint`,
-and a payable fallback that accepts every unknown selector. -/
+a holder-level `freeze`/`unfreeze` ledger, owner-only `withdrawEther`, and a payable fallback
+that accepts every unknown selector (`permit` included). -/
 def bnb : Variant A :=
   { standard with returns := fun f => if f = .transfer then .empty else .bool,
                   zero := ⟨false, true, false, false⟩, zeroValueReverts := true,
                   infinite := .none, mintAuth := .nobody, burnAuth := .holder,
-                  zeroBurnReverts := true, fallback := .accept }
+                  zeroBurnReverts := true, fallback := .accept, freezable := true,
+                  etherWithdraw := true, permitRule := .none }
 
 /-- STA (Statera): deviates by burning `⌈v/100⌉` of every transfer (`basePercent = 100`),
 transfers to `0` and approvals of `0` failing, infinite allowances spent, holder-only
-`destroy`, no `mint`. -/
+`destroy` and allowance-based `destroyFrom`, checked `upAllowance`/`downAllowance`, no `mint`,
+no `permit`. -/
 def sta : Variant A :=
   { standard with zero := ⟨false, true, false, true⟩, infinite := .none,
                   fee := .ceilPercent 100, feeSink := .burn, mintAuth := .nobody,
-                  burnAuth := .holder, zeroBurnReverts := true }
+                  burnAuth := .holder, zeroBurnReverts := true, helpers := .checked,
+                  hasBurnFrom := true, permitRule := .none }
 
 /-- AMPL's `TOTAL_GONS = MAX − MAX mod INITIAL_FRAGMENTS_SUPPLY` (`5·10^16`). -/
 def amplTotalGons : ℕ := MAX - MAX % (5 * 10 ^ 16)
 
 /-- AMPL (`UFragments`): deviates by rebasing (balances are `gons / gonsPerFragment`, `rebase`
 by the monetary policy changes every balance), transfers to `0` or to the token failing,
-infinite allowances spent, no `mint`/`burn`. -/
+infinite allowances spent, no `mint`/`burn`, `transferAll`/`transferAllFrom`, saturating
+allowance helpers, and a `permit` without the zero-owner check and with a checked nonce. -/
 def ampl : Variant A :=
   { standard with zero := ⟨false, true, false, false⟩, rejectsSelf := true, infinite := .none,
                   rebasing := true, totalGons := amplTotalGons, maxSupply := 2 ^ 128 - 1,
-                  mintAuth := .nobody, burnAuth := .nobody }
+                  mintAuth := .nobody, burnAuth := .nobody, helpers := .saturating,
+                  hasTransferAll := true, permitRule := .eip2612 false false }
 
 end Variant
 
@@ -673,7 +887,7 @@ theorem standard_totalSupply (s : VState A) : (standard : Variant A).totalSupply
 theorem standard_move (s : VState A) (src dst : A) (v : ℕ) :
     (standard : Variant A).move s src dst v = (s.toToken.transfer src dst v).map s.withToken := by
   unfold move credit Token.transfer
-  simp only [units, feeOf, standard, Bool.false_eq_true, ↓reduceIte, Nat.not_lt_zero,
+  simp only [units, feeOf, feeOverflow, standard, Bool.false_eq_true, ↓reduceIte, Nat.not_lt_zero,
     VState.toToken]
   by_cases h : s.bal src < v <;> simp [h, VState.withToken]
 

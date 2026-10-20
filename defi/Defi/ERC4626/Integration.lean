@@ -206,12 +206,13 @@ the shares while its asset balance does not change (free shares). -/
 theorem unchecked_returnFalse_deposit {V : Variant A} {s : GSolmate.State (VState A) A} {c r : A}
     {a n : ℕ} (hf : V.arithFail = .returnFalse) (hp : GSolmate.convertToShares (unchecked V) s a = some n)
     (hn : n ≠ 0) (hg : V.guardOk s.asset s.self (.transferFrom c s.self a) = true)
+    (ho : V.overflows s.asset s.self (.transferFrom c s.self a) = false)
     (hs : V.transferFrom s.asset s.self c s.self a = none) {sh : Token A}
     (hm : s.shares.mint r n = some sh) (hb : s.afterDepositCount + 1 ≤ MAX) :
     GSolmate.deposit (unchecked V) s c a r =
       some ({ s with shares := sh, afterDepositCount := s.afterDepositCount + 1 }, n) := by
   have ht : (unchecked V).transferFrom s.asset s.self c s.self a = some s.asset :=
-    V.unchecked_call_returnFalse _ _ _ hf hg hs
+    V.unchecked_call_returnFalse _ _ _ hf hg ho hs
   have hb' : Solmate.bump s.afterDepositCount = Option.some (s.afterDepositCount + 1) := by
     have : ¬ MAX < s.afterDepositCount + 1 := by omega
     simp [Solmate.bump, checkedAdd, this]
@@ -237,7 +238,7 @@ theorem fee_deposit_totalAssets {V : Variant A} {s s' : GSolmate.State (VState A
   obtain ⟨s1, h1, h2⟩ := V.transferFrom_eq_some ha
   obtain ⟨e1, -, -, -, e5, -, e7, e8, -⟩ := V.spend_eq_some h1
   have hfe := Asset.feeOf_congr V e7 e8 a
-  obtain ⟨-, hfa, -⟩ := (V.move_eq_some).1 h2
+  obtain ⟨-, -, hfa, -⟩ := (V.move_eq_some).1 h2
   have hd := V.move_fee_dst hr h2 hc (fun hk => e5 ▸ hsink hk)
   rw [totalAssets_variant V hr, totalAssets_variant V hr, hself, hd, e1, hfe]
   rw [hfe] at hfa
@@ -310,7 +311,7 @@ theorem oz_fee_deposit_price_drop {V : Variant A} {δ : ℕ} {s s' : GOz.State (
   obtain ⟨s1, h1, h2⟩ := V.transferFrom_eq_some ha
   obtain ⟨e1, -, -, -, e5, -, e7, e8, -⟩ := V.spend_eq_some h1
   have hfe := Asset.feeOf_congr V e7 e8 a
-  obtain ⟨-, hfa, -⟩ := (V.move_eq_some).1 h2
+  obtain ⟨-, -, hfa, -⟩ := (V.move_eq_some).1 h2
   have hd := V.move_fee_dst hr h2 hc (fun hk => e5 ▸ hsink hk)
   rw [hfe] at hfa hd
   have hT : GOz.vT (Asset.variant V) s' + V.feeOf s.asset a = GOz.vT (Asset.variant V) s + a := by
@@ -348,6 +349,8 @@ def staAsset : VState ℕ where
   feeBps := 0
   feeMax := 0
   ether := 0
+  frozen := 0
+  nonces := 0
 
 /-- An empty Solmate vault at `10` over STA. -/
 def staVault : GSolmate.State (VState ℕ) ℕ := ⟨10, staAsset, ⟨0, 0, fun _ _ => 0⟩, 0, 0⟩
@@ -376,6 +379,7 @@ theorem sta_solmate_witness :
   simp [GSolmate.deposit, GSolmate.redeem, GSolmate.convertToShares, GSolmate.convertToAssets,
     GSolmate.totalAssets, GSolmate.totalSupply, staVault, staAsset, Asset.variant, safe_call,
     step, Variant.transferFrom, Variant.transfer, moveOk, spend, move, credit, units, feeOf,
+    feeOverflow,
     balanceOf, sta, standard, Infinite.test, VState.setAllowance, Token.mint, Token.burn,
     Solmate.spendIfNotOwner, Solmate.bump, checkedAdd, mulDivDown, Finsupp.add_apply,
     Function.update, MAX]
@@ -459,6 +463,8 @@ def amplAsset : VState ℕ where
   feeBps := 0
   feeMax := 0
   ether := 0
+  frozen := 0
+  nonces := 0
 
 /-- An empty Solmate vault at `10` over AMPL. -/
 def amplVault : GSolmate.State (VState ℕ) ℕ := ⟨10, amplAsset, ⟨0, 0, fun _ _ => 0⟩, 0, 0⟩
@@ -487,7 +493,8 @@ theorem ampl_rebase_witness :
   simp [GSolmate.deposit, GSolmate.withdraw, GSolmate.convertToShares, GSolmate.convertToAssets,
     GSolmate.previewWithdraw, GSolmate.totalAssets, GSolmate.totalSupply, amplVault, amplAsset,
     Asset.variant, safe_call, step, Variant.transferFrom, Variant.transfer, moveOk, spend, move,
-    credit, units, feeOf, balanceOf, rebase, ampl, standard, Infinite.test, VState.setAllowance,
+    credit, units, feeOf, feeOverflow, balanceOf, rebase, ampl, standard, Infinite.test,
+    VState.setAllowance,
     Token.mint, Token.burn, Solmate.spendIfNotOwner, Solmate.bump, checkedAdd, mulDivDown,
     mulDivUp, ceilDiv, Finsupp.add_apply, amplGpf, amplTotalGons, MAX]
 
@@ -503,17 +510,12 @@ theorem step_of_call_ok {V : Variant A} {s s' : VState A} {c : A} {op : Call A} 
   | none =>
     rw [hst] at h
     exfalso
-    cases hgo : V.guardOk s c op
-    · rw [hgo] at h
-      cases hk : V.guardFail
-      · rw [hk] at h; cases h
-      · rw [hk] at h; cases h
-      · exact hg hk
-    · rw [hgo] at h
-      cases hk : V.arithFail
-      · simp only [↓reduceIte, hk] at h; cases h
-      · simp only [↓reduceIte, hk] at h; cases h
-      · exact ha hk
+    have hk : V.failKind s c op = .returnFalse := by
+      revert h; cases V.failKind s c op <;> intro h <;> first | rfl | cases h
+    unfold failKind at hk
+    split_ifs at hk
+    · exact hg hk
+    · exact ha hk
 
 /-- An integration that approves `x` and then `y` (both nonzero, nothing in between) reverts
 (`REVERT`, not `INVALID`: the guard is a `require`). -/
@@ -528,7 +530,7 @@ theorem usdt_reapprove_reverts {s s1 : VState A} {c sp : A} {x y : ℕ} {ret : R
     simp [step, approve, approveOk, usdt, standard, hy, hal, hx]
   have hg : (usdt : Variant A).guardOk s1 c (.approve sp y) = false := by
     simp [guardOk, approveOk, usdt, standard, hy, hal, hx]
-  simp only [call, hst, hg, Bool.false_eq_true, ↓reduceIte]
+  simp only [call, failKind, hst, hg, Bool.not_false, ↓reduceIte]
   rfl
 
 /-- **The precise condition after a pull.** An integration approves `x` (`0 < x < MAX`), the
@@ -542,7 +544,7 @@ theorem usdt_reapprove_after_pull {s s1 s2 : VState A} {c sp d : A} {x x' y : �
   have hal : s1.allowance c sp = x := by
     unfold approve at h1; split_ifs at h1; cases h1; simp [VState.setAllowance]
   obtain ⟨s3, h3, h4⟩ := (usdt : Variant A).transferFrom_eq_some h2
-  obtain ⟨-, -, rfl⟩ := ((usdt : Variant A).move_eq_some).1 h4
+  obtain ⟨-, -, -, rfl⟩ := ((usdt : Variant A).move_eq_some).1 h4
   have hal3 : s3.allowance c sp = x - x' ∧ x' ≤ x := by
     unfold spend at h3
     have hinf : ¬ MAX ≤ x := by omega
