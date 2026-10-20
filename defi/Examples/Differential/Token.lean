@@ -149,6 +149,54 @@ def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call 
     else if (← below 100) < 3 then etherAmount (min ether 1000) else pure 0
   return tokenCall f sender sig args value
 
+/-- Check the storage layout against the token's own views, in evm-lean on world `w`:
+`balanceOf(a)` equals the word at `balanceSlot a`, `allowance(o, s)` the word at
+`allowanceSlot o s`, `totalSupply()` the word at `supplySlot` (or the token's ether balance if
+the supply is not stored). The differences, if any. -/
+def layoutCheck (f : TokenFamily) (w : World) : List String := Id.run do
+  let view (sig : String) (args : List Address) : Option Word :=
+    let sel := (selector? f.selectors sig).getD 0
+    match execTx Crypto.real { gasLimit := 30_000_000 } w (actors[0]?.getD 0) (some f.token)
+        (calldata sel (args.map Word.ofAddress)) gasLimit with
+    | .ok (o, _) => if o.success && o.output.size = 32 then some (Bytes.toWord o.output) else none
+    | .error _ => none
+  let who := (actors ++ f.extraAddresses).toList
+  let mut out := []
+  for a in who do
+    let v := view "balanceOf(address)" [a]
+    if v != some (w.sload f.token (f.balanceSlot a)) then
+      out := out ++ [s!"balanceOf({tokenAddrName f a}) = {v.map (·.toNat)} ≠ balance slot"]
+  for o in who do
+    for sp in actors.toList do
+      let v := view "allowance(address,address)" [o, sp]
+      if v != some (w.sload f.token (f.allowanceSlot o sp)) then
+        out := out ++ [s!"allowance({tokenAddrName f o}, {tokenAddrName f sp}) = " ++
+          s!"{v.map (·.toNat)} ≠ allowance slot"]
+  let sup := match f.supplySlot with
+    | some k => w.sload f.token k
+    | none => w.balance f.token
+  if view "totalSupply()" [] != some sup then out := out ++ ["totalSupply() ≠ supply slot"]
+  return out
+
+/-- Mint to two actors, approve, transfer and spend an allowance: a state in which every
+storage-layout row the views read is exercised. -/
+def erc20Scenario (f : TokenFamily) : Array Call :=
+  let a := actors[0]?.getD 0
+  let b := actors[1]?.getD 0
+  let c := actors[2]?.getD 0
+  let d := actors[3]?.getD 0
+  let addr (x : Address) : Word × String := (Word.ofAddress x, tokenAddrName f x)
+  let num (n : Nat) : Word × String := (BitVec.ofNat 256 n, toString n)
+  #[tokenCall f a "mint(address,uint256)" [addr a, num (10 ^ 20)],
+    tokenCall f a "mint(address,uint256)" [addr b, num 5],
+    tokenCall f a "approve(address,uint256)" [addr b, num 77],
+    tokenCall f c "approve(address,uint256)" [addr d, num (2 ^ 256 - 1)],
+    tokenCall f a "transfer(address,uint256)" [addr c, num 3],
+    tokenCall f b "transferFrom(address,address,uint256)" [addr a, addr d, num 7],
+    tokenCall f b "transferFrom(address,address,uint256)" [addr a, addr d, num 71],
+    tokenCall f d "transferFrom(address,address,uint256)" [addr c, addr a, num 3],
+    tokenCall f a "burn(address,uint256)" [addr b, num 5]]
+
 /-! ## Families -/
 
 /-- `keccak(m[k])` slot of a Solidity mapping at `slot`. -/
@@ -159,19 +207,21 @@ def solSlot2 (slot : Nat) (o s : Address) : Word :=
   mappingSlot (Word.ofAddress s) (solSlot slot o)
 
 /-- OpenZeppelin `ERC20Mock` on its own. -/
-def oz20 : TokenFamily where
-  name := "oz20"
-  token := Examples.OpenZeppelin.Contracts.OzAsset.address
-  init := some (Examples.OpenZeppelin.Contracts.OzAsset.creationCode ++
-    Examples.OpenZeppelin.Contracts.OzAsset.constructorArgs)
-  code := Examples.OpenZeppelin.Contracts.OzAsset.runtimeCode
-  selectors := Examples.OpenZeppelin.Contracts.OzAsset.selectors
-  balanceSlot := solSlot 0
-  allowanceSlot := solSlot2 1
-  supplySlot := some 2
-  weights := [("mint(address,uint256)", 4), ("burn(address,uint256)", 3),
-    ("transfer(address,uint256)", 6), ("transferFrom(address,address,uint256)", 6),
-    ("approve(address,uint256)", 5)]
+def oz20 : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "oz20"
+      token := Examples.OpenZeppelin.Contracts.OzAsset.address
+      init := some (Examples.OpenZeppelin.Contracts.OzAsset.creationCode ++
+        Examples.OpenZeppelin.Contracts.OzAsset.constructorArgs)
+      code := Examples.OpenZeppelin.Contracts.OzAsset.runtimeCode
+      selectors := Examples.OpenZeppelin.Contracts.OzAsset.selectors
+      balanceSlot := solSlot 0
+      allowanceSlot := solSlot2 1
+      supplySlot := some 2
+      weights := [("mint(address,uint256)", 4), ("burn(address,uint256)", 3),
+        ("transfer(address,uint256)", 6), ("transferFrom(address,address,uint256)", 6),
+        ("approve(address,uint256)", 5)] }
+  { f with scenario := erc20Scenario f }
 
 /-- Solady's balance slot: `keccak256(owner ‖ 0⁸ ‖ 0x87a211a2)` (32 bytes). -/
 def soladyBalanceSlot (a : Address) : Word :=
@@ -182,20 +232,22 @@ def soladyAllowanceSlot (o s : Address) : Word :=
   Crypto.real.keccak256 (Bytes.ofAddress o ++ Bytes.ofNatBE 12 0x7f5e9f20 ++ Bytes.ofAddress s)
 
 /-- Solady `ERC20` (`SoladyToken`), with Permit2 as an extra address and sender. -/
-def solady : TokenFamily where
-  name := "solady"
-  token := Examples.Solady.Contracts.SoladyToken.address
-  init := some Examples.Solady.Contracts.SoladyToken.creationCode
-  code := Examples.Solady.Contracts.SoladyToken.runtimeCode
-  selectors := Examples.Solady.Contracts.SoladyToken.selectors
-  balanceSlot := soladyBalanceSlot
-  allowanceSlot := soladyAllowanceSlot
-  supplySlot := some 0x05345cdf77eb68f44c
-  weights := [("mint(address,uint256)", 4), ("burn(address,uint256)", 3),
-    ("transfer(address,uint256)", 6), ("transferFrom(address,address,uint256)", 6),
-    ("approve(address,uint256)", 5),
-    ("permit(address,address,uint256,uint256,uint8,bytes32,bytes32)", 2)]
-  extraAddresses := #[0x000000000022D473030F116dDEE9F6B43aC78BA3]
+def solady : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "solady"
+      token := Examples.Solady.Contracts.SoladyToken.address
+      init := some Examples.Solady.Contracts.SoladyToken.creationCode
+      code := Examples.Solady.Contracts.SoladyToken.runtimeCode
+      selectors := Examples.Solady.Contracts.SoladyToken.selectors
+      balanceSlot := soladyBalanceSlot
+      allowanceSlot := soladyAllowanceSlot
+      supplySlot := some 0x05345cdf77eb68f44c
+      weights := [("mint(address,uint256)", 4), ("burn(address,uint256)", 3),
+        ("transfer(address,uint256)", 6), ("transferFrom(address,address,uint256)", 6),
+        ("approve(address,uint256)", 5),
+        ("permit(address,address,uint256,uint256,uint8,bytes32,bytes32)", 2)]
+      extraAddresses := #[0x000000000022D473030F116dDEE9F6B43aC78BA3] }
+  { f with scenario := erc20Scenario f }
 
 /-- The WETH9 deposit/transfer/withdraw round trip. -/
 def wethScenario (f : TokenFamily) : Array Call :=
@@ -213,7 +265,7 @@ def wethScenario (f : TokenFamily) : Array Call :=
     tokenCall f alice "totalSupply()" [],
     tokenCall f alice "withdraw(uint256)" [num (e18 + 3 * e18 / 4 + 1)],
     tokenCall f alice "withdraw(uint256)" [num (e18 + 3 * e18 / 4)],
-    tokenCall f bob "withdraw(uint256)" [num (e18 + e18 / 4)],
+    tokenCall f bob "withdraw(uint256)" [num (e18 / 2)],
     tokenCall f bob "totalSupply()" []]
 
 /-- Mainnet WETH9: deposits and withdrawals with ether, ether balances compared. -/
@@ -295,6 +347,13 @@ def testToken (rpc : Rpc) (stats : IO.Ref Stats) (seed famIdx sequences length :
     | none =>
       IO.println (s!"  fixed scenario agrees ({f.scenario.size} calls); token ether balance " ++
         s!"{(w.balance f.token).toNat}")
+      let bad := layoutCheck f w
+      if bad.isEmpty then
+        IO.println "  storage layout agrees with balanceOf/allowance/totalSupply"
+      else
+        found := found + 1
+        IO.println "  STORAGE LAYOUT MISMATCH:"
+        for b in bad do IO.println s!"    - {b}"
   found := found + (← s.fuzzMany seed famIdx sequences)
   stats.modify fun st => { st with mismatches := st.mismatches + found }
   IO.println s!"  {sequences} sequences × {length} calls: {found} mismatching sequences"
