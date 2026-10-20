@@ -81,3 +81,6 @@ import EvmLeanProofs.Solidity.PermitExtraMemory
 import EvmLeanProofs.Solidity.PermitExtraTactic
 import EvmLeanProofs.Solidity.PermitExtraWord
 import EvmLeanProofs.Program.GasMono.Interface
+import EvmLeanProofs.Program.GasMono.CodeScan
+import EvmLeanProofs.Program.GasMono.CodeFails
+import EvmLeanProofs.Program.GasMono.CodeFailsTactic
