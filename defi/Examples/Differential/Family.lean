@@ -94,6 +94,20 @@ def openzeppelin : Family where
   vaultAllowances := (slotOf? OzVault.storageLayout "_allowances").getD 0
   vaultTotalSupply := (slotOf? OzVault.storageLayout "_totalSupply").getD 0
 
+/-- The OpenZeppelin family with decimals offset 3: `ERC20Mock` and `OzVaultOffset`. -/
+def openzeppelinOffset : Family :=
+  { openzeppelin with
+    name := "oz3"
+    vaultInit := OzVaultOffset.creationCode ++ OzVaultOffset.constructorArgs
+    vaultInitFor a := OzVaultOffset.creationCode ++ withFirstArg OzVaultOffset.constructorArgs a
+    vault := OzVaultOffset.address
+    vaultCode := OzVaultOffset.runtimeCode
+    codeFor a _ := (OzAsset.runtimeCodeFor, OzVaultOffset.runtimeCodeFor a)
+    vaultSelectors := OzVaultOffset.selectors
+    vaultBalances := (slotOf? OzVaultOffset.storageLayout "_balances").getD 0
+    vaultAllowances := (slotOf? OzVaultOffset.storageLayout "_allowances").getD 0
+    vaultTotalSupply := (slotOf? OzVaultOffset.storageLayout "_totalSupply").getD 0 }
+
 /-- The storage slot of `m[k]` for a mapping at slot `slot` (`keccak(k ‖ slot)`). -/
 def mappingSlot (k : Word) (slot : Word) : Word :=
   Crypto.real.keccak256 (Bytes.ofWord k ++ Bytes.ofWord slot)

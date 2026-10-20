@@ -21,6 +21,7 @@ extra_output = ["storageLayout", "evm.methodIdentifiers", "evm.deployedBytecode.
 remappings = [
   "solmate/=lib/solmate/src/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "solady/=lib/solady/src/",
 ]
 
 # The a16z ERC-4626 property suite (contracts/run-a16z.sh). Inherits the default profile.

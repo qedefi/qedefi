@@ -1,11 +1,13 @@
 import Examples.OpenZeppelin.Contracts.OzAsset
 import Examples.OpenZeppelin.Contracts.OzVault
+import Examples.OpenZeppelin.Contracts.OzVaultOffset
 
 /-!
 # Runtime code of the OpenZeppelin contracts for arbitrary deployment parameters
 
-`runtimeCodeFor` patches the vault's immutables (`_asset`, `_underlyingDecimals`) into the
-canonical code by position (`runtimeCodeWith`).
+`runtimeCodeFor` patches the vaults' immutables (`_asset`, `_underlyingDecimals`) into the
+canonical code by position (`runtimeCodeWith`). `OzVaultOffset` is `OzVault` with
+`_decimalsOffset() = 3`.
 -/
 
 namespace Examples.OpenZeppelin.Contracts
@@ -29,5 +31,18 @@ def immutablesFor (asset : Address) (decimals : Nat := 18) : Immutables where
 def runtimeCodeFor (asset : Address) : ByteArray := runtimeCodeWith (immutablesFor asset)
 
 end OzVault
+
+namespace OzVaultOffset
+
+/-- The immutables of an `OzVaultOffset` over `asset` with `decimals` decimals. -/
+def immutablesFor (asset : Address) (decimals : Nat := 18) : Immutables where
+  asset := asset
+  underlyingDecimals := BitVec.ofNat 256 decimals
+
+/-- The runtime code of an `OzVaultOffset` over `asset` (18 decimals), wherever it is
+deployed. -/
+def runtimeCodeFor (asset : Address) : ByteArray := runtimeCodeWith (immutablesFor asset)
+
+end OzVaultOffset
 
 end Examples.OpenZeppelin.Contracts

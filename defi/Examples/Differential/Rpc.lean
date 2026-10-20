@@ -104,10 +104,11 @@ structure Observed where
   env : BlockEnv
 
 /-- A transaction as sent to anvil. -/
-def txJson (sender : Address) (to : Option Address) (data : ByteArray) (gas : Nat) : Json :=
+def txJson (sender : Address) (to : Option Address) (data : ByteArray) (gas : Nat)
+    (value : Nat := 0) : Json :=
   let base := [("from", Json.str (hexOfAddress sender)), ("data", Json.str (hexOfBytes data)),
                ("gas", Json.str (hexOfNat gas)), ("gasPrice", Json.str "0x0"),
-               ("value", Json.str "0x0")]
+               ("value", Json.str (hexOfNat value))]
   Json.mkObj (match to with
     | some a => ("to", Json.str (hexOfAddress a)) :: base
     | none => base)
@@ -126,11 +127,11 @@ def diffSlots (j : Json) : List (Address × Word) :=
       let storage := objEntries ((acct.getObjVal? "storage").toOption.getD Json.null)
       storage.map fun (k, _) => (addressOfHex a, wordOfHex k)
 
-/-- Send a transaction (automine) and collect its receipt, its block's environment (for chain
-`chainId`) and its traces. -/
+/-- Send a transaction with `value` wei (automine) and collect its receipt, its block's
+environment (for chain `chainId`) and its traces. -/
 def Rpc.execute (r : Rpc) (chainId : Nat) (sender : Address) (to : Option Address) (data : ByteArray)
-    (gas : Nat) : IO Observed := do
-  let hashJ ← r.call "eth_sendTransaction" (Json.arr #[txJson sender to data gas])
+    (gas : Nat) (value : Nat := 0) : IO Observed := do
+  let hashJ ← r.call "eth_sendTransaction" (Json.arr #[txJson sender to data gas value])
   let hash ← match hashJ.getStr? with
     | .ok h => pure h
     | .error _ => fail s!"eth_sendTransaction returned {hashJ.compress}"
@@ -169,6 +170,23 @@ def Rpc.storageAt (r : Rpc) (slots : Array (Address × Word)) : IO (Array Word) 
   let rs ← r.batch (slots.map fun (a, k) =>
     ("eth_getStorageAt", Json.arr #[hexOfAddress a, hexOfWord k, "latest"]))
   return rs.map fun j => wordOfHex (j.getStr?.toOption.getD "0x0")
+
+/-- Ether balances at the latest block (one batch). -/
+def Rpc.balances (r : Rpc) (accounts : Array Address) : IO (Array Nat) := do
+  let rs ← r.batch (accounts.map fun a => ("eth_getBalance", Json.arr #[hexOfAddress a, "latest"]))
+  return rs.map fun j => (parseHexNat (j.getStr?.toOption.getD "0x0")).toOption.getD 0
+
+/-- Install code at an account (`anvil_setCode`). -/
+def Rpc.setCode (r : Rpc) (a : Address) (code : ByteArray) : IO Unit :=
+  discard <| r.call "anvil_setCode" (Json.arr #[hexOfAddress a, hexOfBytes code])
+
+/-- Write a storage slot (`anvil_setStorageAt`). -/
+def Rpc.setStorageAt (r : Rpc) (a : Address) (k v : Word) : IO Unit :=
+  discard <| r.call "anvil_setStorageAt" (Json.arr #[hexOfAddress a, hexOfWord k, hexOfWord v])
+
+/-- Set an ether balance (`anvil_setBalance`). -/
+def Rpc.setBalance (r : Rpc) (a : Address) (v : Nat) : IO Unit :=
+  discard <| r.call "anvil_setBalance" (Json.arr #[hexOfAddress a, hexOfNat v])
 
 /-- Deployed code of an account. -/
 def Rpc.code (r : Rpc) (a : Address) : IO ByteArray := do

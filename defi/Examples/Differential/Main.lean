@@ -1,21 +1,25 @@
-import Examples.Differential.Rpc
-import Examples.Differential.Local
-import Examples.Differential.Gen
+import Examples.Differential.Session
+import Examples.Differential.Token
 import Examples.Deployment
 
 /-!
-# `lake exe difftest`: evm-lean vs. anvil on the ERC-4626 targets
+# `lake exe difftest`: evm-lean vs. anvil on the compiled and mainnet targets
 
 ```
-lake exe difftest [--seed N] [--sequences N] [--length N] [--family solmate|oz|all]
+lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]]
                   [--rpc URL | --port N] [--inject-bug] [--verbose]
 ```
 
-Per family: deploy from a non-canonical and the canonical deployer (checking
+Families: vaults `solmate`, `oz`, `oz3` (OpenZeppelin, decimals offset 3); tokens `oz20`,
+`solady`, `weth9`; groups `vaults`, `tokens`, `all`. Default: `solmate,oz`.
+
+Per vault family: deploy from a non-canonical and the canonical deployer (checking
 `runtimeCodeFor` and `runtimeCode`), run an inflation-attack scenario and random call
 sequences, comparing status, output, logs, `gasUsed` and storage after every call, and
-shrink any mismatch. `--inject-bug` self-tests the tester. Needs `anvil` in `PATH` unless
-`--rpc` is given; exit code 0 iff no mismatch.
+shrink any mismatch. Per token family (`Token.lean`): deploy or install the token, run its
+fixed scenario and random sequences the same way (ether balances too, for ether-holding
+tokens). `--inject-bug` self-tests the tester. Needs `anvil` in `PATH` unless `--rpc` is
+given; exit code 0 iff no mismatch.
 -/
 
 namespace Examples.Differential
@@ -23,9 +27,6 @@ namespace Examples.Differential
 open Lean EvmLean EvmLogic EvmLogic.Solidity Conformance Examples.Deployment
 open Examples.OpenZeppelin Examples.OpenZeppelin.Contracts
 open Examples.Solmate Examples.Solmate.Contracts
-
-/-- Gas limit of every transaction. -/
-def gasLimit : Nat := 10_000_000
 
 /-- A deployer different from the canonical one, to exercise immutables patching. -/
 def otherDeployer : Address := 0x2000000000000000000000000000000000000002
@@ -38,8 +39,10 @@ structure Config where
   sequences : Nat := 25
   /-- Calls per sequence. -/
   length : Nat := 40
-  /-- Families to test. -/
+  /-- Vault families to test. -/
   families : List Family := [solmate, openzeppelin]
+  /-- Token families to test. -/
+  tokens : List TokenFamily := []
   /-- Use a running anvil instead of starting one. -/
   rpc : Option String := none
   /-- Port for the anvil started by the tester (`0`: pick one). -/
@@ -63,119 +66,39 @@ def parseArgs : Config → List String → Except String Config
   | c, "--port" :: n :: rest => do parseArgs { c with port := ← natArg n } rest
   | c, "--rpc" :: u :: rest => parseArgs { c with rpc := some u } rest
   | c, "--family" :: f :: rest => do
-    let fams ← match f with
-      | "solmate" => pure [solmate]
-      | "oz" => pure [openzeppelin]
-      | "all" => pure [solmate, openzeppelin]
-      | _ => throw s!"unknown family {f} (solmate, oz, all)"
-    parseArgs { c with families := fams } rest
+    let vaults := [solmate, openzeppelin, openzeppelinOffset]
+    let mut fams := []
+    let mut toks := []
+    for n in f.splitOn "," do
+      match vaults.find? (·.name == n), tokenFamilies.find? (·.name == n) with
+      | some v, _ => fams := fams ++ [v]
+      | _, some t => toks := toks ++ [t]
+      | none, none =>
+        match n with
+        | "vaults" => fams := fams ++ vaults
+        | "tokens" => toks := toks ++ tokenFamilies
+        | "all" => fams := fams ++ vaults; toks := toks ++ tokenFamilies
+        | _ => throw (s!"unknown family {n} (" ++ ", ".intercalate
+            ((vaults.map (·.name)) ++ (tokenFamilies.map (·.name)) ++ ["vaults", "tokens", "all"]) ++ ")")
+    parseArgs { c with families := fams, tokens := toks } rest
   | c, "--inject-bug" :: rest => parseArgs { c with injectBug := true } rest
   | c, "--verbose" :: rest => parseArgs { c with verbose := true } rest
   | _, a :: _ => throw s!"unknown argument {a}"
-
-/-- Run statistics. -/
-structure Stats where
-  /-- Calls executed (including deployments and replays while shrinking). -/
-  calls : Nat := 0
-  /-- Calls that succeeded on both sides. -/
-  successes : Nat := 0
-  /-- Per operation: calls and successes. -/
-  byKind : Std.HashMap String (Nat × Nat) := {}
-  /-- Mismatching sequences. -/
-  mismatches : Nat := 0
-
-/-- A family under test, deployed on both sides. -/
-structure Session where
-  /-- Configuration. -/
-  cfg : Config
-  /-- Anvil. -/
-  rpc : Rpc
-  /-- The family. -/
-  fam : Family
-  /-- The evm-lean world after the canonical deployment. -/
-  world0 : World
-  /-- The anvil snapshot of the same state. -/
-  snap : IO.Ref Json
-  /-- Statistics. -/
-  stats : IO.Ref Stats
-
-/-! ## Comparison -/
-
-def showLog (l : Log) : String :=
-  s!"\{address {hexOfAddress l.address}, topics {l.topics.toList.map hexOfWord}, " ++
-    s!"data {hexOfBytes l.data}}"
-
-/-- Differences between the evm-lean outcome and anvil's observation. -/
-def compareOutcome (o : Outcome) (obs : Observed) : List String := Id.run do
-  let mut out := []
-  if o.success != obs.success then
-    out := out ++ [s!"status: evm-lean {o.success}, anvil {obs.success}"]
-  if o.output != obs.output then
-    out := out ++ [s!"output: evm-lean {hexOfBytes o.output}, anvil {hexOfBytes obs.output}"]
-  if o.gasUsed != obs.gasUsed then
-    out := out ++ [s!"gasUsed: evm-lean {o.gasUsed}, anvil {obs.gasUsed}"]
-  if o.logs.size != obs.logs.size then
-    out := out ++ [s!"logs: evm-lean {o.logs.size}, anvil {obs.logs.size}"]
-  for i in [0:min o.logs.size obs.logs.size] do
-    match o.logs[i]?, obs.logs[i]? with
-    | some a, some b =>
-      if a != b then out := out ++ [s!"log {i}: evm-lean {showLog a}, anvil {showLog b}"]
-    | _, _ => pure ()
-  return out
-
-/-- Compare the storage of the relevant accounts: every slot evm-lean holds before or after
-the call in the asset, the vault or any account anvil wrote, and every slot anvil wrote. -/
-def compareStorage (rpc : Rpc) (fam : Family) (before after : World)
-    (touched : List (Address × Word)) : IO (List String) := do
-  let accounts := touched.map (·.1) ++ [fam.asset, fam.vault]
-  let lean := accounts.flatMap fun a =>
-    (storageSlots before a ++ storageSlots after a).map fun k => (a, k)
-  let mut seen : Std.HashMap String (Address × Word) := {}
-  for (a, k) in touched ++ lean do
-    seen := seen.insert (hexOfAddress a ++ hexOfWord k) (a, k)
-  let slots := seen.toArray.map (·.2)
-  let vals ← rpc.storageAt slots
-  let mut out := []
-  for h : i in [0:slots.size] do
-    let (a, k) := slots[i]
-    let v := vals[i]?.getD 0
-    let mine := after.sload a k
-    if mine != v then
-      out := out ++ [s!"storage {hexOfAddress a}[{hexOfWord k}]: evm-lean {hexOfWord mine}, " ++
-        s!"anvil {hexOfWord v}"]
-  return out
-
-/-- Execute one transaction on both sides and compare. Anvil goes first, so that evm-lean
-runs in the environment of the block anvil mined (timestamp, number, coinbase, …). -/
-def step (cfg : Config) (rpc : Rpc) (fam : Family) (w : World) (sender : Address)
-    (to : Option Address) (data : ByteArray) (kind : String) :
-    IO (World × Outcome × Observed × List String) := do
-  let obs ← rpc.execute chainId sender to data gasLimit
-  let (o, w') ← ofExcept "evm-lean" (execTx Crypto.real obs.env w sender to data gasLimit)
-  let w' := if cfg.injectBug && kind == "vault.deposit" && o.success then
-      let k : Word := BitVec.ofNat 256 fam.vaultTotalSupply
-      w'.sstore fam.vault k (w'.sload fam.vault k + 1)
-    else w'
-  -- The return data of a creation is the deployed code, compared separately.
-  let obs := if to.isNone then { obs with output := o.output } else obs
-  let diffs := compareOutcome o obs
-  let sdiffs ← compareStorage rpc fam w w' obs.touchedSlots
-  return (w', o, obs, diffs ++ sdiffs)
 
 /-! ## Deployment -/
 
 /-- Deploy the family from `deployer` on a fresh chain on both sides and check the deployed
 code against `expected` (asset and vault code, given their addresses). Returns the
 evm-lean world. -/
-def deploy (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (fam : Family) (deployer : Address)
+def deploy (rpc : Rpc) (stats : IO.Ref Stats) (fam : Family) (deployer : Address)
     (expected : Address → Address → ByteArray × ByteArray) : IO World := do
   rpc.reset
   let assetAddr := Interpreter.createAddress Crypto.real.keccak256 deployer 0
   let vaultAddr := Interpreter.createAddress Crypto.real.keccak256 deployer 1
-  let fam' := { fam with asset := assetAddr, vault := vaultAddr }
-  let (wA, oA, obsA, dA) ← step cfg rpc fam' ∅ deployer none fam.assetInit "deploy"
+  let watch : Watch := { accounts := [assetAddr, vaultAddr] }
+  let (wA, oA, obsA, dA) ← step rpc watch ∅ deployer none fam.assetInit 0 "deploy"
   let (wV, oV, obsV, dV) ←
-    step cfg rpc fam' wA deployer none (fam.vaultInitFor assetAddr) "deploy"
+    step rpc watch wA deployer none (fam.vaultInitFor assetAddr) 0 "deploy"
   stats.modify fun st => { st with calls := st.calls + 2 }
   let (expA, expV) := expected assetAddr vaultAddr
   let anvilA ← rpc.code assetAddr
@@ -193,99 +116,6 @@ def deploy (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (fam : Family) (dep
     s!"({anvilA.size} B), vault {hexOfAddress vaultAddr} ({anvilV.size} B); code, " ++
     s!"storage and gas ({obsA.gasUsed} + {obsV.gasUsed}) agree")
   return wV
-
-/-! ## Sequences -/
-
-/-- Restore the deployed state in anvil (and re-arm the snapshot). -/
-def Session.restart (s : Session) : IO Unit := do
-  s.rpc.revertTo (← s.snap.get)
-  s.snap.set (← s.rpc.snapshot)
-
-def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
-  s.stats.modify fun st =>
-    let (n, k) := st.byKind.getD c.kind (0, 0)
-    let inc := if ok then 1 else 0
-    { st with calls := st.calls + 1, successes := st.successes + inc
-              byKind := st.byKind.insert c.kind (n + 1, k + inc) }
-
-def Session.exec (s : Session) (w : World) (c : Call) : IO (World × Outcome × List String) := do
-  let (w', o, obs, diffs) ← step s.cfg s.rpc s.fam w c.sender (some c.to) c.data c.kind
-  s.record c (o.success && obs.success)
-  if s.cfg.verbose then
-    IO.println s!"    {c.desc}: {if o.success then "ok" else "revert"} {hexOfBytes o.output}"
-  return (w', o, diffs)
-
-/-- Replay fixed calls from the deployed state; the index and differences of the first
-mismatch, if any. -/
-def Session.replay (s : Session) (calls : Array Call) : IO (Option (Nat × List String)) := do
-  s.restart
-  let mut w := s.world0
-  for h : i in [0:calls.size] do
-    let (w', _, diffs) ← s.exec w calls[i]
-    unless diffs.isEmpty do return some (i, diffs)
-    w := w'
-  return none
-
-/-- Words of a return value, for reuse as amounts. -/
-def outputWords (b : ByteArray) : Array Word :=
-  (Array.range (b.size / 32)).map fun i => Bytes.toWord (b.extract (32 * i) (32 * i + 32))
-
-/-- Generate and run one random sequence. Returns the calls up to the first mismatch and its
-differences, if any. -/
-def Session.fuzz (s : Session) (seed : UInt64) : IO (Option (Array Call × List String)) := do
-  s.restart
-  let mut w := s.world0
-  let mut g := seed
-  let mut recent : Array Word := #[]
-  let mut calls : Array Call := #[]
-  for _ in [0:s.cfg.length] do
-    let (c, g') := (genCall s.fam w recent).run g
-    g := g'
-    calls := calls.push c
-    let (w', o, diffs) ← s.exec w c
-    unless diffs.isEmpty do return some (calls, diffs)
-    w := w'
-    let r := recent ++ outputWords o.output
-    recent := r.extract (r.size - min r.size 16) r.size
-  return none
-
-/-- Greedily remove calls while a mismatch persists. -/
-def Session.shrink (s : Session) (calls : Array Call) (diffs : List String) :
-    IO (Array Call × List String) := do
-  let mut cur := calls
-  let mut msgs := diffs
-  let mut i := 0
-  for _ in [0:calls.size * calls.size + 1] do
-    if i ≥ cur.size then break
-    let cand := cur.eraseIdxIfInBounds i
-    match ← s.replay cand with
-    | some (k, d) => cur := cand.extract 0 (k + 1); msgs := d
-    | none => i := i + 1
-  return (cur, msgs)
-
-/-- Print a mismatch with its minimal reproduction. -/
-def Session.report (s : Session) (seq : Nat) (seed : UInt64) (calls : Array Call)
-    (diffs : List String) : IO Unit := do
-  IO.println (s!"  MISMATCH in {s.fam.name} sequence {seq} (generator state {seed}); " ++
-    s!"minimal reproduction from the deployed state ({calls.size} calls):")
-  for h : i in [0:calls.size] do
-    let c := calls[i]
-    IO.println s!"    {i + 1}. {c.desc}"
-    IO.println s!"       from {hexOfAddress c.sender} to {hexOfAddress c.to} data {hexOfBytes c.data}"
-  IO.println "  differences after the last call:"
-  for d in diffs do IO.println s!"    - {d}"
-
-/-- Run fixed calls from the deployed state, comparing after each; the final evm-lean world
-and the first mismatch, if any. -/
-def Session.runFixed (s : Session) (calls : Array Call) :
-    IO (World × Option (Nat × List String)) := do
-  s.restart
-  let mut w := s.world0
-  for h : i in [0:calls.size] do
-    let (w', _, diffs) ← s.exec w calls[i]
-    unless diffs.isEmpty do return (w', some (i, diffs))
-    w := w'
-  return (w, none)
 
 /-- The first-depositor inflation (donation) attack: alice deposits 1 wei, donates `10¹⁸`
 directly to the vault, bob deposits `2·10¹⁸ - 1`, alice redeems her share. -/
@@ -312,10 +142,17 @@ def inflationScenario (f : Family) : Array Call :=
 def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) (fam : Family) :
     IO Unit := do
   IO.println s!"[{fam.name}]"
-  discard <| deploy cfg rpc stats fam otherDeployer fam.codeFor
-  let world0 ← deploy cfg rpc stats fam deployer fun _ _ => (fam.assetCode, fam.vaultCode)
+  discard <| deploy rpc stats fam otherDeployer fam.codeFor
+  let world0 ← deploy rpc stats fam deployer fun _ _ => (fam.assetCode, fam.vaultCode)
   let snap ← IO.mkRef (← rpc.snapshot)
-  let s : Session := { cfg, rpc, fam, world0, snap, stats }
+  let corrupt (kind : String) (w : World) : World :=
+    if cfg.injectBug && kind == "vault.deposit" then
+      let k : Word := BitVec.ofNat 256 fam.vaultTotalSupply
+      w.sstore fam.vault k (w.sload fam.vault k + 1)
+    else w
+  let s : Session := { rpc, name := fam.name, watch := { accounts := [fam.asset, fam.vault], corrupt },
+                       world0, snap, stats, gen := genCall fam, length := cfg.length,
+                       verbose := cfg.verbose }
   let mut found := 0
   let scenario := inflationScenario fam
   let (w, res) ← s.runFixed scenario
@@ -328,15 +165,7 @@ def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) 
     IO.println (s!"  inflation-attack scenario agrees: alice paid {10 ^ 18 + 1} and ends " ++
       s!"with {bal (actors[0]?.getD 0)}, bob paid {2 * 10 ^ 18 - 1} and holds " ++
       s!"{(balanceIn w fam.vault fam.vaultBalances (actors[1]?.getD 0)).toNat} shares")
-  for seq in [0:cfg.sequences] do
-    (← IO.getStdout).flush
-    let seed : UInt64 := (cfg.seed * 1_000_003 + famIdx * 7_919 + seq).toUInt64
-    match ← s.fuzz seed with
-    | none => pure ()
-    | some (calls, diffs) =>
-      found := found + 1
-      let (calls, diffs) ← s.shrink calls diffs
-      s.report seq seed calls diffs
+  found := found + (← s.fuzzMany cfg.seed famIdx cfg.sequences)
   stats.modify fun st => { st with mismatches := st.mismatches + found }
   IO.println s!"  {cfg.sequences} sequences × {cfg.length} calls: {found} mismatching sequences"
 
@@ -345,6 +174,9 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
   let mut i := 0
   for fam in cfg.families do
     testFamily cfg rpc stats i fam
+    i := i + 1
+  for tok in cfg.tokens do
+    discard <| testToken rpc stats cfg.seed i cfg.sequences cfg.length cfg.verbose tok
     i := i + 1
 
 end Examples.Differential

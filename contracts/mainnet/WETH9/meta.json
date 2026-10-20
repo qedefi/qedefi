@@ -1,0 +1,20 @@
+{
+  "name": "WETH9",
+  "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "chainId": 1,
+  "block": 26236518,
+  "blockHash": "0xebf5f6000903e4761072d74eb118b089c1fcc4c608b9cc1e8881cf0ebd6acfe1",
+  "codeHash": "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23",
+  "codeSize": 3124,
+  "contractName": "WETH9",
+  "compiler": "0.4.19+commit.c4cbbb05",
+  "optimizer": {
+    "runs": 200,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

@@ -98,6 +98,8 @@ structure Call where
   desc : String
   /-- Operation name, for statistics. -/
   kind : String
+  /-- Ether sent with the call, in wei. -/
+  value : Nat := 0
   deriving Inhabited
 
 def calldata (sel : UInt32) (args : List Word) : ByteArray :=

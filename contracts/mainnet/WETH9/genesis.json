@@ -1,0 +1,8 @@
+{
+  "note": "State the constructor leaves (the field initialisers), injected with the runtime code for differential testing; equal to mainnet slots 0-2.",
+  "storage": [
+    {"label": "name", "slot": "0x0", "value": "0x577261707065642045746865720000000000000000000000000000000000001a"},
+    {"label": "symbol", "slot": "0x1", "value": "0x5745544800000000000000000000000000000000000000000000000000000008"},
+    {"label": "decimals", "slot": "0x2", "value": "0x12"}
+  ]
+}

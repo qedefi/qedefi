@@ -1,0 +1,10 @@
+{
+  "AllowanceOverflow()": "f9067066",
+  "AllowanceUnderflow()": "8301ab38",
+  "InsufficientAllowance()": "13be252b",
+  "InsufficientBalance()": "f4d678b8",
+  "InvalidPermit()": "ddafbaef",
+  "Permit2AllowanceIsFixedAtInfinity()": "3f68539a",
+  "PermitExpired()": "1a15a3cc",
+  "TotalSupplyOverflow()": "e5cfe957"
+}

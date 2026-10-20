@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Build the ERC-4626 verification targets with the pinned compiler, extract their artifacts
-# and generate the Lean constants in defi/Examples/{Solmate,OpenZeppelin}/Contracts/.
+# Build the verification targets with the pinned compiler, extract their artifacts and
+# generate the Lean constants in defi/Examples/<Project>/Contracts/. Two kinds of target:
+#   compiled  Solidity sources under contracts/ (forge, solc 0.8.28), deployed on anvil;
+#   mainnet   deployed mainnet bytecode pinned in contracts/mainnet/<Name>/ (fetched once by
+#             scripts/fetch-mainnet.sh; this script is offline and checks the code hash).
 #
 #   scripts/build-contracts.sh            # rebuild artifacts and Lean files
 #   scripts/build-contracts.sh --check    # rebuild and fail if anything committed changed
@@ -11,8 +14,11 @@
 #     runtime.hex, abi.json, methodIdentifiers.json, events.json, errors.json,
 #     storageLayout.json, immutableReferences.json}
 #   contracts/artifacts/deployment.json
+#   contracts/mainnet/<Name>/{methodIdentifiers.json, events.json, errors.json}
 #   defi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}.lean
-#   defi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault}.lean
+#   defi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}.lean
+#   defi/Examples/Solady/Contracts/SoladyToken.lean
+#   defi/Examples/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
 #
 # Immutables. solc emits the runtime code with zero placeholders where immutables go
 # (`runtime.template.hex`, positions in `immutableReferences.json`); the constructor fills
@@ -47,14 +53,18 @@ declare -A SRC=(
   [SolmateVault]="out/MockERC4626.sol/MockERC4626.json"
   [OzAsset]="out/ERC20Mock.sol/ERC20Mock.json"
   [OzVault]="out/OzVault.sol/OzVault.json"
+  [OzVaultOffset]="out/OzVaultOffset.sol/OzVaultOffset.json"
+  [SoladyToken]="out/SoladyToken.sol/SoladyToken.json"
 )
 declare -A SOLNAME=(
   [SolmateAsset]="lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20"
   [SolmateVault]="lib/solmate/src/test/utils/mocks/MockERC4626.sol:MockERC4626"
   [OzAsset]="lib/openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol:ERC20Mock"
   [OzVault]="src/OzVault.sol:OzVault"
+  [OzVaultOffset]="src/OzVaultOffset.sol:OzVaultOffset"
+  [SoladyToken]="src/SoladyToken.sol:SoladyToken"
 )
-TARGETS=(SolmateAsset SolmateVault OzAsset OzVault)
+TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
 declare -A LEANNS=(
@@ -62,12 +72,23 @@ declare -A LEANNS=(
   [SolmateVault]="Examples.Solmate.Contracts"
   [OzAsset]="Examples.OpenZeppelin.Contracts"
   [OzVault]="Examples.OpenZeppelin.Contracts"
+  [OzVaultOffset]="Examples.OpenZeppelin.Contracts"
+  [SoladyToken]="Examples.Solady.Contracts"
 )
 declare -A LEANDIR=(
   [SolmateAsset]="$ROOT/defi/Examples/Solmate/Contracts"
   [SolmateVault]="$ROOT/defi/Examples/Solmate/Contracts"
   [OzAsset]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
   [OzVault]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
+  [OzVaultOffset]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
+  [SoladyToken]="$ROOT/defi/Examples/Solady/Contracts"
+)
+
+# Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
+# (its directory mirrors the namespace).
+MAINNET=(WETH9)
+declare -A MNS=(
+  [WETH9]="Examples.WETH9.Contracts"
 )
 
 # Names of all immutables, by AST id (forge artifacts carry each source's AST).
@@ -116,7 +137,26 @@ ARGS[OzVault]=$(cast abi-encode "constructor(address)" "${ADDR[OzAsset]}" | stri
 ADDR[OzVault]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[OzVault]}")${ARGS[OzVault]}")
 for t in OzAsset OzVault; do CODE[$t]=$(cast code --rpc-url "$RPC" "${ADDR[$t]}" | strip0x); done
 
+# OpenZeppelin with decimals offset 3: the same asset, then `OzVaultOffset`.
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+oz3asset=$(deploy "$(jq -r .bytecode.object "$C/${SRC[OzAsset]}")")
+ARGS[OzVaultOffset]=$(cast abi-encode "constructor(address)" "$oz3asset" | strip0x)
+ADDR[OzVaultOffset]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[OzVaultOffset]}")${ARGS[OzVaultOffset]}")
+CODE[OzVaultOffset]=$(cast code --rpc-url "$RPC" "${ADDR[OzVaultOffset]}" | strip0x)
+[ "$(cast code --rpc-url "$RPC" "$oz3asset" | strip0x)" = "${CODE[OzAsset]}" ] \
+  || { echo "error: OzAsset code differs between families" >&2; exit 1; }
+
+# Solady: a single token at deployer nonce 0.
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+ARGS[SoladyToken]=""
+ADDR[SoladyToken]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[SoladyToken]}")")
+CODE[SoladyToken]=$(cast code --rpc-url "$RPC" "${ADDR[SoladyToken]}" | strip0x)
+
 [ "${ADDR[SolmateAsset]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[SolmateVault]}" = "${ADDR[OzVault]}" ] \
+  && [ "$oz3asset" = "${ADDR[OzAsset]}" ] && [ "${ADDR[OzVaultOffset]}" = "${ADDR[OzVault]}" ] \
+  && [ "${ADDR[SoladyToken]}" = "${ADDR[OzAsset]}" ] \
   || { echo "error: deployment addresses differ between families" >&2; exit 1; }
 
 # ---------------------------------------------------------------- Lean helpers
@@ -146,6 +186,41 @@ JQ_TYPE='def ty($types; t): $types[t] as $x
     elif $x.encoding == "bytes" then "(.bytes \"\($x.label)\")"
     elif $x.encoding == "dynamic_array" then "(.dynamicArray \(ty($types; $x.base)))"
     else "(.inplace \"\($x.label)\" \($x.numberOfBytes))" end;'
+
+# Selectors, events, custom errors and storage layout of the artifacts in directory $1
+# ($2 = forge: compiled here; abi: from the verified ABI and a hand-derived layout).
+lean_meta() {
+  local d=$1 sel ev er lay
+  if [ "$2" = forge ]; then
+    sel="(\`forge inspect … methodIdentifiers\`)"; ev="(\`forge inspect … events\`)"
+    er="(\`forge inspect … errors\`)"; lay="(\`forge inspect … storageLayout\`)"
+  else
+    sel="(from the verified ABI)"; ev="(from the verified ABI)"; er="(from the verified ABI)"
+    lay="(hand-derived from the verified source: \`storageLayout.json\`)"
+  fi
+  echo "/-- Function selectors $sel. -/"
+  echo "def selectors : List (String × UInt32) := ["
+  jq -r 'to_entries | map("  (\"\(.key)\", 0x\(.value))") | join(",\n")' "$d/methodIdentifiers.json"
+  echo "]"
+  echo
+  echo "/-- Event signatures and their topic $ev. -/"
+  echo "def events : List (String × Word) := ["
+  jq -r 'to_entries | map("  (\"\(.key)\", \(.value))") | join(",\n")' "$d/events.json"
+  echo "]"
+  echo
+  echo "/-- Custom-error selectors $er. -/"
+  echo "def errors : List (String × UInt32) := ["
+  jq -r 'if length == 0 then "" else to_entries | map("  (\"\(.key)\", 0x\(.value))") | join(",\n") end' "$d/errors.json" | sed '/^$/d'
+  echo "]"
+  echo
+  echo "/-- Storage layout $lay. -/"
+  echo "def storageLayout : List StorageVar := ["
+  jq -r "$JQ_TYPE"' .types as $types | [.storage[] |
+    "  { label := \"\(.label)\", slot := \(.slot), offset := \(.offset),\n    type := \(ty($types; .type)) }"]
+    | join(",\n")' "$d/storageLayout.json"
+  echo "]"
+  echo
+}
 
 TMP=$(mktemp -d)
 trap 'kill $ANVIL 2>/dev/null || true; rm -rf "$TMP"' EXIT
@@ -183,6 +258,7 @@ for t in "${TARGETS[@]}"; do
   [ "$masked" = "$tmpl" ] || { echo "error: $t: deployed code differs outside immutables" >&2; exit 1; }
 
   # ------------------------------------------------------------ Lean file
+  mkdir -p "${LEANDIR[$t]}"
   f="${LEANDIR[$t]}/$t.lean"
   nimm=$(jq length "$d/immutableReferences.json")
   rsize=$(( ${#code} / 2 ))
@@ -283,29 +359,123 @@ EOF
       echo "def immutableRefs : List ImmutableRef := []"
       echo
     fi
-    echo "/-- Function selectors (\`forge inspect … methodIdentifiers\`). -/"
-    echo "def selectors : List (String × UInt32) := ["
-    jq -r 'to_entries | map("  (\"\(.key)\", 0x\(.value))") | join(",\n")' "$d/methodIdentifiers.json"
-    echo "]"
-    echo
-    echo "/-- Event signatures and their topic (\`forge inspect … events\`). -/"
-    echo "def events : List (String × Word) := ["
-    jq -r 'to_entries | map("  (\"\(.key)\", \(.value))") | join(",\n")' "$d/events.json"
-    echo "]"
-    echo
-    echo "/-- Custom-error selectors (\`forge inspect … errors\`). -/"
-    echo "def errors : List (String × UInt32) := ["
-    jq -r 'if length == 0 then "" else to_entries | map("  (\"\(.key)\", 0x\(.value))") | join(",\n") end' "$d/errors.json" | sed '/^$/d'
-    echo "]"
-    echo
-    echo "/-- Storage layout (\`forge inspect … storageLayout\`). -/"
-    echo "def storageLayout : List StorageVar := ["
-    jq -r "$JQ_TYPE"' .types as $types | [.storage[] |
-      "  { label := \"\(.label)\", slot := \(.slot), offset := \(.offset),\n    type := \(ty($types; .type)) }"]
-      | join(",\n")' "$d/storageLayout.json"
-    echo "]"
-    echo
+    lean_meta "$d" forge
     echo "end ${LEANNS[$t]}.$t"
+  } > "$TMP/$t.lean"
+  mv "$TMP/$t.lean" "$f"
+done
+
+# ---------------------------------------------------------------- mainnet targets
+# ABI signature of an ABI entry (tuples expanded).
+JQ_SIG='def ty: if (.type | startswith("tuple")) then
+      "(" + ([.components[] | ty] | join(",")) + ")" + (.type | ltrimstr("tuple")) else .type end;
+  def sig: "\(.name)(" + ([.inputs[] | ty] | join(",")) + ")";'
+# Signature → selector/topic table of the ABI entries of kind $2 in $1, hashed by $3
+# (`sig`: 4-byte selector, `keccak`: 32-byte topic).
+abi_table() {
+  jq -r "$JQ_SIG"' .[] | select(.type == "'"$2"'") | sig' "$1" | sort -u | while read -r sg; do
+    if [ "$3" = sig ]; then printf '%s\t%s\n' "$sg" "$(cast sig "$sg" | strip0x)"
+    else printf '%s\t%s\n' "$sg" "$(cast keccak "$sg")"; fi
+  done | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]})
+                   | from_entries' | jq -S .
+}
+# Resolve a genesis storage entry to a 32-byte slot: a literal `slot`, or `mapping` (the
+# mapping's slot) with `keys` (addresses, outermost first).
+genesis_slot() {
+  local e=$1 slot k
+  if [ "$(jq -r 'has("slot")' <<<"$e")" = true ]; then slot=$(jq -r .slot <<<"$e")
+  else
+    slot=$(jq -r .mapping <<<"$e")
+    for k in $(jq -r '.keys[]' <<<"$e"); do slot=$(cast index address "$k" "$slot"); done
+  fi
+  cast to-uint256 "$slot"
+}
+declare -A MADDR MSIZE
+for t in "${MAINNET[@]}"; do
+  d="$C/mainnet/$t"
+  code=$(cat "$d/runtime.hex")
+  hash=$(jq -r .codeHash "$d/meta.json")
+  [ "$(cast keccak "0x$code")" = "$hash" ] || { echo "error: $t: runtime.hex does not hash to $hash" >&2; exit 1; }
+  MADDR[$t]=$(jq -r .address "$d/meta.json")
+  MSIZE[$t]=$(( ${#code} / 2 ))
+  abi_table "$d/abi.json" function sig > "$d/methodIdentifiers.json"
+  abi_table "$d/abi.json" event keccak > "$d/events.json"
+  abi_table "$d/abi.json" error sig > "$d/errors.json"
+  # Every ABI selector must be pushed by the dispatcher (PUSHn of the selector without its
+  # leading zero bytes).
+  for sel in $(jq -r '.[]' "$d/methodIdentifiers.json"); do
+    s=$(printf '%s' "$sel" | sed 's/^\(00\)*//'); n=$(( ${#s} / 2 ))
+    op=$(printf '%02x' $(( 0x5f + n )))
+    case "$code" in *"$op$s"*) ;; *) echo "error: $t: selector $sel not in the runtime code" >&2; exit 1 ;; esac
+  done
+  # Genesis storage as Lean `(slot, value)` pairs.
+  entries=()
+  if [ -f "$d/genesis.json" ]; then
+    while read -r e; do
+      entries+=("  -- $(jq -r .label <<<"$e")"$'\n'"  ($(genesis_slot "$e"),"$'\n'"   $(cast to-uint256 "$(jq -r .value <<<"$e")"))")
+    done < <(jq -c '.storage[]' "$d/genesis.json")
+  fi
+  genesis=""
+  for i in "${!entries[@]}"; do
+    [ "$i" -gt 0 ] && genesis+=","$'\n'
+    genesis+="${entries[$i]}"
+  done
+
+  ns="${MNS[$t]}"
+  dir="$ROOT/defi/$(printf '%s' "$ns" | tr . /)"
+  mkdir -p "$dir"
+  f="$dir/$t.lean"
+  opt=$(jq -r 'if .optimizer.enabled then "\(.optimizer.runs) runs" else "off" end' "$d/meta.json")
+  {
+    cat <<LEAN
+import EvmLogic.Solidity.Immutables
+import EvmLogic.Solidity.Layout
+
+/-!
+# \`$t\`: deployed mainnet bytecode and metadata (generated)
+
+Generated by \`scripts/build-contracts.sh\` from \`contracts/mainnet/$t/\`: the runtime code
+of \`$(jq -r .contractName "$d/meta.json")\` at \`${MADDR[$t]}\` on Ethereum mainnet, read
+at block $(jq -r .block "$d/meta.json") by \`scripts/fetch-mainnet.sh\`. Verified source in
+\`contracts/mainnet/$t/source/\` (solc $(jq -r .compiler "$d/meta.json"), optimizer $opt;
+Sourcify runtime match: $(jq -r .sourcify.runtimeMatch "$d/meta.json")). Do not edit; rerun the script.
+
+There is no creation code: tests and proofs start from \`runtimeCode\` installed at
+\`address\` with storage \`genesisStorage\` (the constructor's state with test parameters,
+\`contracts/mainnet/$t/genesis.json\`).
+-/
+
+namespace $ns.$t
+open EvmLean EvmLogic EvmLogic.Solidity
+
+set_option maxRecDepth 100000 in
+/-- Runtime code as deployed on mainnet (${MSIZE[$t]} bytes). -/
+def runtimeCode : ByteArray := ⟨⟨
+    $(lean_bytes "$code")⟩⟩
+
+/-- \`runtimeCode\` has the size of the deployed code. -/
+theorem size_runtimeCode : runtimeCode.size = ${MSIZE[$t]} := by decide +kernel
+
+/-- The mainnet address of the contract (also its address in tests). -/
+def address : Address := ${MADDR[$t]}
+
+/-- \`keccak256 runtimeCode\` (checked by the build script). -/
+def codeHash : Word := $hash
+
+/-- The mainnet block at which \`runtimeCode\` was read. -/
+def fetchBlock : Nat := $(jq -r .block "$d/meta.json")
+
+/-- The contract has no immutables. -/
+def immutableRefs : List ImmutableRef := []
+
+/-- Storage of the test deployment as \`(slot, value)\` pairs; every other slot is zero. -/
+def genesisStorage : List (Word × Word) := [
+$genesis
+]
+
+LEAN
+    lean_meta "$d" abi
+    echo "end $ns.$t"
   } > "$TMP/$t.lean"
   mv "$TMP/$t.lean" "$f"
 done
@@ -314,21 +484,33 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
   --arg sa "${ADDR[SolmateAsset]}" --arg sv "${ADDR[SolmateVault]}" \
   --arg oa "${ADDR[OzAsset]}" --arg ov "${ADDR[OzVault]}" \
   --arg saArgs "${ARGS[SolmateAsset]}" --arg svArgs "${ARGS[SolmateVault]}" --arg ovArgs "${ARGS[OzVault]}" \
+  --arg o3 "${ADDR[OzVaultOffset]}" --arg o3Args "${ARGS[OzVaultOffset]}" --arg sl "${ADDR[SoladyToken]}" \
+  --argjson mainnet "$(for t in "${MAINNET[@]}"; do jq -c --arg t "$t" '{($t): {address, block, codeHash, codeSize}}' "$C/mainnet/$t/meta.json"; done | jq -s 'add // {}')" \
   '{chainId: $chainId, deployer: $deployer, evmVersion: "cancun", solc: "0.8.28+commit.7893614a",
     note: "Each family is deployed on its own fresh chain: the asset at deployer nonce 0, the vault at nonce 1.",
     solmate: {asset: {contract: "MockERC20", address: $sa, args: ["Solmate Asset", "SAST", 18], argsHex: $saArgs},
               vault: {contract: "MockERC4626", address: $sv, args: [$sa, "Solmate Vault", "svSAST"], argsHex: $svArgs}},
     openzeppelin: {asset: {contract: "ERC20Mock", address: $oa, args: [], argsHex: ""},
-                   vault: {contract: "OzVault", address: $ov, args: [$oa], argsHex: $ovArgs}}}' \
+                   vault: {contract: "OzVault", address: $ov, args: [$oa], argsHex: $ovArgs}},
+    openzeppelinOffset3: {asset: {contract: "ERC20Mock", address: $oa, args: [], argsHex: ""},
+                          vault: {contract: "OzVaultOffset", address: $o3, args: [$oa], argsHex: $o3Args}},
+    solady: {token: {contract: "SoladyToken", address: $sl, args: [], argsHex: ""}},
+    mainnetNote: "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
+    mainnet: $mainnet}' \
   > "$ART/deployment.json"
 
+for t in "${MAINNET[@]}"; do
+  echo "$t: mainnet runtime ${MSIZE[$t]} B at ${MADDR[$t]}"
+done
 for t in "${TARGETS[@]}"; do
   echo "$t: runtime $(( $(wc -c < "$ART/$t/runtime.hex") / 2 )) B, creation $(( $(wc -c < "$ART/$t/creation.hex") / 2 )) B, at ${ADDR[$t]}"
 done
 
 if [ $CHECK -eq 1 ]; then
-  git -C "$ROOT" diff --exit-code -- contracts/artifacts defi/Examples/Solmate/Contracts \
-    defi/Examples/OpenZeppelin/Contracts \
+  git -C "$ROOT" diff --exit-code -- contracts/artifacts contracts/mainnet \
+    defi/Examples/Solmate/Contracts defi/Examples/OpenZeppelin/Contracts \
+    defi/Examples/Solady/Contracts \
+    $(for t in "${MAINNET[@]}"; do printf '%s ' "defi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"
 fi

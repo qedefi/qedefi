@@ -1,0 +1,48 @@
+{
+  "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T13:28:37Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.19+commit.c4cbbb05",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      },
+      "remappings": []
+    },
+    "name": "WETH9",
+    "fullyQualifiedName": "WETH9.sol:WETH9"
+  },
+  "deployment": {
+    "transactionHash": "0xb95343413e459a0f97461812111254163ae53467855c0d73e0f1e7c5b8442fa3",
+    "blockNumber": "4719568",
+    "transactionIndex": "85",
+    "deployer": "0x4F26FfBe5F04ED43630fdC30A87638d53D0b0876"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 3081,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820c7e08aec381ef94df726a83cd8a9b4fe8898fead862f1fff9fdd0e2b5ebb503e0029",
+      "offset": 3081
+    }
+  }
+}

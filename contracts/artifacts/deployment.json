@@ -41,5 +41,38 @@
       ],
       "argsHex": "00000000000000000000000013136008b64ff592819b2fa6d43f2835c452020e"
     }
+  },
+  "openzeppelinOffset3": {
+    "asset": {
+      "contract": "ERC20Mock",
+      "address": "0x13136008B64FF592819B2FA6d43F2835C452020e",
+      "args": [],
+      "argsHex": ""
+    },
+    "vault": {
+      "contract": "OzVaultOffset",
+      "address": "0x7c5a2c91b22d7A9226523D4Ba717DB6afB741ebd",
+      "args": [
+        "0x13136008B64FF592819B2FA6d43F2835C452020e"
+      ],
+      "argsHex": "00000000000000000000000013136008b64ff592819b2fa6d43f2835c452020e"
+    }
+  },
+  "solady": {
+    "token": {
+      "contract": "SoladyToken",
+      "address": "0x13136008B64FF592819B2FA6d43F2835C452020e",
+      "args": [],
+      "argsHex": ""
+    }
+  },
+  "mainnetNote": "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
+  "mainnet": {
+    "WETH9": {
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "block": 26236518,
+      "codeHash": "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23",
+      "codeSize": 3124
+    }
   }
 }

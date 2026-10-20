@@ -1,0 +1,75 @@
+{
+  "storage": [
+    {
+      "astId": 423,
+      "contract": "src/OzVaultOffset.sol:OzVaultOffset",
+      "label": "_balances",
+      "offset": 0,
+      "slot": "0",
+      "type": "t_mapping(t_address,t_uint256)"
+    },
+    {
+      "astId": 429,
+      "contract": "src/OzVaultOffset.sol:OzVaultOffset",
+      "label": "_allowances",
+      "offset": 0,
+      "slot": "1",
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))"
+    },
+    {
+      "astId": 431,
+      "contract": "src/OzVaultOffset.sol:OzVaultOffset",
+      "label": "_totalSupply",
+      "offset": 0,
+      "slot": "2",
+      "type": "t_uint256"
+    },
+    {
+      "astId": 433,
+      "contract": "src/OzVaultOffset.sol:OzVaultOffset",
+      "label": "_name",
+      "offset": 0,
+      "slot": "3",
+      "type": "t_string_storage"
+    },
+    {
+      "astId": 435,
+      "contract": "src/OzVaultOffset.sol:OzVaultOffset",
+      "label": "_symbol",
+      "offset": 0,
+      "slot": "4",
+      "type": "t_string_storage"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}

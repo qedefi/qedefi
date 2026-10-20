@@ -5,7 +5,7 @@ import EvmLean
 
 Transactions are executed as `EvmLean.Tx.process` does, except that the top-level message
 is run directly with `Interpreter.processMessageCall` so its return data is visible. Gas
-price and value are zero, so no ether moves.
+price is zero, so only the transaction's value moves ether.
 -/
 
 namespace Examples.Differential
@@ -26,12 +26,15 @@ structure Outcome where
 /-- Interpreter steps allowed per transaction (far more than 10M gas can pay for). -/
 def fuel : Nat := 50_000_000
 
-/-- Execute a transaction (a creation if `to = none`) in the block environment `env`; fails
-if the interpreter runs out of fuel or `gas` is below the intrinsic cost. -/
+/-- Execute a transaction (a creation if `to = none`) sending `value` wei in the block
+environment `env`; fails if the interpreter runs out of fuel, `gas` is below the intrinsic
+cost or the sender cannot pay `value`. -/
 def execTx (crypto : Crypto) (env : BlockEnv) (world : World) (sender : Address)
-    (to : Option Address) (data : ByteArray) (gas : Nat) : Except String (Outcome × World) := do
+    (to : Option Address) (data : ByteArray) (gas : Nat) (value : Nat := 0) :
+    Except String (Outcome × World) := do
+  if (world.balance sender).toNat < value then throw s!"sender cannot pay value {value}"
   let tx : Transaction := .legacy
-    { nonce := (world.account sender).nonce, gasPrice := 0, gas, to, value := 0, data,
+    { nonce := (world.account sender).nonce, gasPrice := 0, gas, to, value, data,
       v := 27, r := 0, s := 0 }
   let intrinsic := (Tx.intrinsicGas tx).regular
   if gas < intrinsic then throw s!"gas limit {gas} below intrinsic cost {intrinsic}"
