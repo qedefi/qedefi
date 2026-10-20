@@ -96,7 +96,9 @@ theorem vault_permit_body {i : SolmateVault.Immutables} (m : Machine) {M : Memor
     intro mf o _ ht
     obtain ⟨h1, h2, h3⟩ := ht
     subst hN
-    refine ⟨fun hr => h1 hr, fun hr => h2 hr, ?_⟩
+    refine ⟨fun hr => ?_, fun hr => h2 hr, ?_⟩
+    · obtain ⟨ho, hw, ht, hc, hl⟩ := h1 hr
+      exact ⟨ho, hw, ht, hc, hl⟩
     dsimp only at h3 ⊢
     omega
 

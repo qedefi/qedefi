@@ -18,7 +18,7 @@ open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contra
 /-- What the body of `permit` does, from a machine `m` back from `DOMAIN_SEPARATOR()` with
 separator `ds`, at the owner's nonce `nonce` read from `m.world`: if the signature recovers
 `owner ≠ 0` for the permit digest, success with `permitWorld`, transient storage and created
-accounts unchanged; otherwise a revert; at most `80000` gas. -/
+accounts unchanged, `Approval(owner, spender, value)` logged; otherwise a revert; at most `80000` gas. -/
 def BodyPost (ds : Word) (owner spender : Address) (value deadline v r s : Word) (m mf : Machine)
     (o : Outcome) : Prop :=
   (RecoversTo m.ctx.crypto (digest m.ctx.crypto ds (structHash m.ctx.crypto owner spender value
@@ -26,7 +26,9 @@ def BodyPost (ds : Word) (owner spender : Address) (value deadline v r s : Word)
       owner →
     o = .success .empty ∧
     mf.world = permitWorld m.ctx.crypto m.world m.frame.msg.currentTarget owner spender value ∧
-    mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts) ∧
+    mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
+    mf.frame.sub.logs = m.frame.sub.logs.push
+      (approvalLog m.frame.msg.currentTarget owner spender value)) ∧
   (¬ RecoversTo m.ctx.crypto (digest m.ctx.crypto ds (structHash m.ctx.crypto owner spender value
       (m.world.sload m.frame.msg.currentTarget (nonceSlot m.ctx.crypto owner)) deadline)) v r s
       owner → ∃ out, o = .revert out) ∧
@@ -123,7 +125,9 @@ theorem asset_permit_body {ia : SolmateAsset.Immutables} (m : Machine) {M : Memo
     intro mf o _ ht
     obtain ⟨h1, h2, h3⟩ := ht
     subst hN
-    refine ⟨fun hr => h1 hr, fun hr => h2 hr, ?_⟩
+    refine ⟨fun hr => ?_, fun hr => h2 hr, ?_⟩
+    · obtain ⟨ho, hw, ht, hc, hl⟩ := h1 hr
+      exact ⟨ho, hw, ht, hc, hl⟩
     dsimp only at h3 ⊢
     omega
 

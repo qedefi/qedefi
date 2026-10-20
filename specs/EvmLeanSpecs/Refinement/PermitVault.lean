@@ -66,8 +66,8 @@ theorem vault_permit_halts {i : SolmateVault.Immutables} (m : Machine)
     (Memory.loadWord_storeWord _ _ _) (by simp [Memory.size_storeWord, Memory.size_expand,
       Memory.wordsAfter, Memory.words]) hcase (by dsimp only; omega) (by dsimp only; omega))
     (fun _ _ _ h => h.elim) ?_
-  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, hgu⟩
-  dsimp only [Machine.resumeWith] at hgb hgu ⊢
+  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, hgu, hlog⟩
+  dsimp only [Machine.resumeWith] at hgb hgu hlog ⊢
   simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod, dsOf]
   generalize domainSeparator m_ctx.crypto _ _ _ _ _ = ds
   rcases hmem with ⟨h64, hs⟩ | ⟨h64, hs⟩
@@ -75,14 +75,18 @@ theorem vault_permit_halts {i : SolmateVault.Immutables} (m : Machine)
       h64 hs hv' (by dsimp only; omega) (by dsimp only; omega) rfl hdel1 hdepth hstatic)
       (fun _ _ h => h) ?_
     intro mf o _ ⟨h1, h2, h3⟩
-    refine ⟨fun h => h1 h.2.2, fun h => h2 fun h' => h ⟨hv, hdl, h'⟩, ?_⟩
+    refine ⟨fun h => ?_, fun h => h2 fun h' => h ⟨hv, hdl, h'⟩, ?_⟩
+    · obtain ⟨ho, hw, ht, hc, hl⟩ := h1 h.2.2
+      exact ⟨ho, hw, ht, hc, hl.trans (by rw [hlog])⟩
     dsimp only at h3 ⊢
     omega
   · refine WP.mono (vault_permit_body _ (F := 320) (S := 320) (.inr ⟨rfl, rfl⟩) rfl hj rfl rfl rfl
       h64 hs hv' (by dsimp only; omega) (by dsimp only; omega) rfl hdel1 hdepth hstatic)
       (fun _ _ h => h) ?_
     intro mf o _ ⟨h1, h2, h3⟩
-    refine ⟨fun h => h1 h.2.2, fun h => h2 fun h' => h ⟨hv, hdl, h'⟩, ?_⟩
+    refine ⟨fun h => ?_, fun h => h2 fun h' => h ⟨hv, hdl, h'⟩, ?_⟩
+    · obtain ⟨ho, hw, ht, hc, hl⟩ := h1 h.2.2
+      exact ⟨ho, hw, ht, hc, hl.trans (by rw [hlog])⟩
     dsimp only at h3 ⊢
     omega
 

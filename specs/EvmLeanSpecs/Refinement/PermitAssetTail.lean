@@ -1,5 +1,6 @@
 import EvmLeanSpecs.Refinement.PermitAssetDS
 import EvmLeanProofs.Program.PrecompileCallEcrecover
+import EvmLeanSpecs.Refinement.EventsTactic
 
 /-!
 # The asset's `permit`: from the `ECRECOVER` call to the end
@@ -28,14 +29,16 @@ def RecoversTo (crypto : Crypto) (dg v r s : Word) (owner : Address) : Prop :=
 
 /-- What the end of `permit` does, from a machine `m` at the `ECRECOVER` call: on a signature
 recovering `owner ≠ 0`, success with the allowance written (in `m.world`), transient storage and
-created accounts unchanged; otherwise a revert; at most `40000` gas in both cases. -/
+created accounts unchanged, `Approval(owner, spender, value)` appended to the logs; otherwise a revert; at most `40000` gas in both cases. -/
 def TailPost (owner spender : Address) (value dg v r s : Word) (m mf : Machine) (o : Outcome) :
     Prop :=
   (RecoversTo m.ctx.crypto dg v r s owner →
     o = .success .empty ∧
     mf.world = m.world.sstore m.frame.msg.currentTarget
       (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate owner spender) value ∧
-    mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts) ∧
+    mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
+    mf.frame.sub.logs = m.frame.sub.logs.push
+      (approvalLog m.frame.msg.currentTarget owner spender value)) ∧
   (¬ RecoversTo m.ctx.crypto dg v r s owner → ∃ out, o = .revert out) ∧
   m.frame.gasLeft ≤ mf.frame.gasLeft + 40000
 
@@ -139,8 +142,11 @@ theorem asset_permit_tail {ia : SolmateAsset.Immutables} (m : Machine) {M : Memo
             Solidity.eq_self, iszero_zero, iszero_one, permit_norm, hMs, Memory.read_64, hstatic]
           apply WP.halt_of_step (step_stop (by pcode_fact)) (SameFrame.refl _)
           unfold TailPost RecoversTo
-          refine ⟨fun _ => ⟨rfl, ?_, rfl, rfl⟩, fun h => absurd ⟨ha0, hrec⟩ h, ?_⟩
+          refine ⟨fun _ => ⟨rfl, ?_, rfl, rfl, ?_⟩, fun h => absurd ⟨ha0, hrec⟩ h, ?_⟩
           · rfl
+          · dsimp only
+            logs_simp []
+            event_log [value]
           · evm_gas
         · have hne := eq_ofAddress_ne hao
           pwp_steps [hM64, hz, hne, ofAddress_and_addressMask, addressMask_and_ofAddress,

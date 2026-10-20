@@ -95,8 +95,11 @@ theorem vault_permit_tail {i : SolmateVault.Immutables} (m : Machine) {M : Memor
             Solidity.eq_self, iszero_zero, iszero_one, permit_norm, hMs, Memory.read_64, hstatic]
           apply WP.halt_of_step (step_stop (by pcode_fact)) (SameFrame.refl _)
           unfold TailPost RecoversTo
-          refine ⟨fun _ => ⟨rfl, ?_, rfl, rfl⟩, fun h => absurd ⟨ha0, hrec⟩ h, ?_⟩
+          refine ⟨fun _ => ⟨rfl, ?_, rfl, rfl, ?_⟩, fun h => absurd ⟨ha0, hrec⟩ h, ?_⟩
           · rfl
+          · dsimp only
+            logs_simp []
+            event_log [value]
           · evm_gas
         · have hne := eq_ofAddress_ne hao
           pwp_steps [hM64, hz, hne, ofAddress_and_addressMask, addressMask_and_ofAddress,

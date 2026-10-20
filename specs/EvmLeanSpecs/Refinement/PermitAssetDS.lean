@@ -6,6 +6,7 @@ import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Solidity.PermitExtraMemory
 import EvmLeanProofs.Solidity.PermitExtraTactic
 import EvmLeanProofs.Solidity.PermitExtraWord
+import EvmLeanProofs.Solidity.EventsExtra
 
 /-!
 # The asset's `DOMAIN_SEPARATOR()`, internal and external
@@ -66,7 +67,7 @@ set_option maxHeartbeats 0 in
 /-- **`DOMAIN_SEPARATOR()` of the asset, internal (entry `0x0424`, stack `r :: rest`)**: returns
 to `r` with `Permit.domainSeparator …` on the stack. Entered with solc's initial memory
 (`FmpInit`); the world, transient storage and return data are unchanged; memory as in
-`DsMem`; at most 6000 gas. Covers the deployment chain (any name) and other chains for a
+`DsMem`; no logs; at most 6000 gas. Covers the deployment chain (any name) and other chains for a
 short name (`DomainCase`). -/
 theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
@@ -79,7 +80,8 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     (hg : 10000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64) :
     WP m (fun m' => ∃ mem g sub, m' = m.resumeWith r.toNat
         (dsOf ia.initialChainId ia.initialDomainSeparator m :: rest) mem g m.frame.returnData sub ∧
-        DsMem mem ∧ m.frame.gasLeft ≤ g + 6000 ∧ g ≤ m.frame.gasLeft)
+        DsMem mem ∧ m.frame.gasLeft ≤ g + 6000 ∧ g ≤ m.frame.gasLeft ∧
+        sub.logs = m.frame.sub.logs)
       (fun _ _ => False) := by
   have hagree := assetJumpDestsAgree ia
   obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
@@ -95,7 +97,7 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     simp only [hceq, ↓reduceIte]
     pwp_steps [he, readBytes_asset_chainId, readBytes_asset_ds]
     apply WP.ret
-    exact ⟨_, _, _, rfl, .inl ⟨hfmp, hsize⟩, by omega, by omega⟩
+    exact ⟨_, _, _, rfl, .inl ⟨hfmp, hsize⟩, by omega, by omega, rfl⟩
   · -- another chain: `computeDomainSeparator()`
     have hne : Word.eq (ofNat m_ctx.block.chainId) ia.initialChainId = 0#256 := eq_of_ne hceq
     have hshort := hcase.resolve_left hceq
@@ -135,7 +137,7 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     clear hg1
     pwp_steps [hM64, hMs, permit_norm, Memory.read_160]
     apply WP.ret
-    refine ⟨_, _, _, rfl, .inr ⟨?_, ?_⟩, by omega, by omega⟩
+    refine ⟨_, _, _, rfl, .inr ⟨?_, ?_⟩, by omega, by omega, rfl⟩
     · simp only [Memory.loadWord_expand, Memory.loadWord_storeWord]
     · simp only [permit_norm, hMs]
 
@@ -170,7 +172,7 @@ theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (Memory.loadWord_storeWord _ _ _) (by simp [Memory.size_storeWord, Memory.size_expand,
       Memory.wordsAfter, Memory.words]) hcase (by dsimp only; omega) (by dsimp only; omega))
     (fun _ _ _ h => h.elim) ?_
-  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, hgu⟩
+  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, -, -⟩
   dsimp only [Machine.resumeWith] at hgb ⊢
   simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
   simp only [dsOf]
