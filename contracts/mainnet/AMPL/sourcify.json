@@ -1,0 +1,52 @@
+{
+  "address": "0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T13:32:24Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.7.6+commit.7338295f",
+    "compilerSettings": {
+      "metadata": {
+        "bytecodeHash": "ipfs"
+      },
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "evmVersion": "istanbul",
+      "remappings": []
+    },
+    "name": "UFragments",
+    "fullyQualifiedName": "contracts/UFragments.sol:UFragments"
+  },
+  "deployment": {
+    "transactionHash": "0x0eb897243063faefe081691e5dc9bcb3638381e54b51f6271980a91262dd1749",
+    "blockNumber": "11968264",
+    "transactionIndex": "157",
+    "deployer": "0x5A617f363674489339226E8A448307763a43108F"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 6176,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa2646970667358221220aedd8c748d30347aa3410ab32497f36909ca02b2c8f9b113984ff6d56bae460964736f6c63430007060033",
+      "offset": 6176
+    }
+  }
+}

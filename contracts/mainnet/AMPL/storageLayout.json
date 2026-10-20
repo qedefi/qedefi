@@ -1,0 +1,171 @@
+{
+  "note": "Sourcify storageLayout of the verified compilation (solc 0.7.6); equal to the hand derivation and checked against mainnet proxy storage. The storage lives at the proxy (AMPLProxy).",
+  "storage": [
+    {
+      "label": "initialized",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_bool",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "initializing",
+      "slot": "0",
+      "offset": 1,
+      "type": "t_bool",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "______gap",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_name",
+      "slot": "51",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_symbol",
+      "slot": "52",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_decimals",
+      "slot": "53",
+      "offset": 0,
+      "type": "t_uint8",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "______gap",
+      "slot": "54",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_owner",
+      "slot": "104",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "______gap",
+      "slot": "105",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "monetaryPolicy",
+      "slot": "155",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "rebasePausedDeprecated",
+      "slot": "155",
+      "offset": 20,
+      "type": "t_bool",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "tokenPausedDeprecated",
+      "slot": "155",
+      "offset": 21,
+      "type": "t_bool",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "156",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_gonsPerFragment",
+      "slot": "157",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_gonBalances",
+      "slot": "158",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_allowedFragments",
+      "slot": "159",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "contracts/UFragments.sol:UFragments"
+    },
+    {
+      "label": "_nonces",
+      "slot": "160",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "contracts/UFragments.sol:UFragments"
+    }
+  ],
+  "types": {
+    "t_bool": {
+      "label": "bool",
+      "encoding": "inplace",
+      "numberOfBytes": "1"
+    },
+    "t_uint8": {
+      "label": "uint8",
+      "encoding": "inplace",
+      "numberOfBytes": "1"
+    },
+    "t_address": {
+      "label": "address",
+      "encoding": "inplace",
+      "numberOfBytes": "20"
+    },
+    "t_uint256": {
+      "label": "uint256",
+      "encoding": "inplace",
+      "numberOfBytes": "32"
+    },
+    "t_string_storage": {
+      "label": "string",
+      "encoding": "bytes",
+      "numberOfBytes": "32"
+    },
+    "t_array(t_uint256)50_storage": {
+      "base": "t_uint256",
+      "label": "uint256[50]",
+      "encoding": "inplace",
+      "numberOfBytes": "1600"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "value": "t_uint256",
+      "encoding": "mapping",
+      "numberOfBytes": "32"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "value": "t_mapping(t_address,t_uint256)",
+      "encoding": "mapping",
+      "numberOfBytes": "32"
+    }
+  }
+}

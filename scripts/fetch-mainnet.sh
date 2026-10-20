@@ -37,7 +37,7 @@ jq '{address, chainId, match, runtimeMatch, creationMatch, verifiedAt, compilati
      runtimeCborAuxdata: .runtimeBytecode.cborAuxdata}' "$TMP/sourcify.json" > "$D/sourcify.json"
 jq '.abi' "$TMP/sourcify.json" > "$D/abi.json"
 
-BLOCK=$(cast block-number --rpc-url "$RPC")
+BLOCK=$(( $(cast block-number --rpc-url "$RPC") - 3 ))  # a few blocks back: load-balanced nodes lag
 BHASH=$(cast block --rpc-url "$RPC" "$BLOCK" -f hash)
 cast code --rpc-url "$RPC" -B "$BLOCK" "$ADDR" | sed 's/^0x//' > "$D/runtime.hex"
 CODE=$(cat "$D/runtime.hex")

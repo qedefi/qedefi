@@ -13,7 +13,10 @@ is, exactly, and what should be proved about it.
 | OpenZeppelin `ERC4626`, **δ = 3** | compiled | `contracts/artifacts/OzVaultOffset/` | `…OpenZeppelin.Contracts.OzVaultOffset` | `oz3` |
 | WETH9 | **mainnet** `0xC02a…6Cc2` | `contracts/mainnet/WETH9/` | `Examples.WETH9.Contracts.WETH9` | `weth9` |
 | Solady `ERC20` v0.1.26 (`SoladyToken`) | compiled | `contracts/artifacts/SoladyToken/` | `Examples.Solady.Contracts.SoladyToken` | `solady` |
-| weird ERC-20s (USDT, BNB, …) | **mainnet** | `contracts/mainnet/<Token>/` | `Examples.WeirdERC20.<Token>.Contracts.<Token>` | see [below](#weird-erc-20s) |
+| USDT (`TetherToken`) | **mainnet** `0xdAC1…1ec7` | `contracts/mainnet/USDT/` | `Examples.WeirdERC20.USDT.Contracts.USDT` | `usdt`, `usdtfee` |
+| BNB | **mainnet** `0xB8c7…DD52` | `contracts/mainnet/BNB/` | `Examples.WeirdERC20.BNB.Contracts.BNB` | `bnb` |
+| STA (fee on transfer) | **mainnet** `0xa7DE…eED1` | `contracts/mainnet/STA/` | `Examples.WeirdERC20.STA.Contracts.STA` | `sta` |
+| AMPL (rebasing; zos proxy + `UFragments`) | **mainnet** `0xD46b…A161` / `0xD0e3…35b1` | `contracts/mainnet/{AMPLProxy,AMPL}/` | `Examples.WeirdERC20.AMPL.Contracts.{AMPLProxy,AMPL}` | `ampl` |
 
 *Compiled* targets are built from vendored sources by `scripts/build-contracts.sh` (solc
 0.8.28, optimizer 200, Cancun, no metadata) and deployed through their creation code.
@@ -241,6 +244,182 @@ so they need the memory-window lemmas (`Bytes`/`State` in EvmLogic) at unaligned
 `permit` writes the zero slot `0x60` and restores it; `log3` reads its topic from `mload(0x0c)`
 after the `mstore`s; one copy of the transfer logic per entry point (inlined, not
 `_transfer`), so no shared internal-function summary.
+
+## Weird ERC-20s
+
+Real mainnet bytecode (table in `contracts/README.md`), chosen from the Trail of Bits
+token-integration checklist and `d-xo/weird-erc20`. Each is installed in tests at its mainnet
+address with `genesis.json` storage: owner/admin roles given to alice (`0xA11CE`), balances
+to the four actors, supply = their sum, one finite and one infinite allowance. Notation:
+`bal`, `alw`, `S` (supply); `pad(x)` 32-byte word; mapping slots as Solidity's
+(`m[k]` at `keccak(pad(k) ‖ pad(slot))`, nested `keccak(pad(s) ‖ keccak(pad(o) ‖ pad(slot)))`).
+
+### USDT (`TetherToken`, solc 0.4.18, unoptimized, 11,075 B)
+
+**Layout** (C3 linearization `TetherToken, BlackList, StandardToken, ERC20, BasicToken,
+ERC20Basic, Pausable, Ownable`; storage from the most base): slot 0 `owner` (bytes 0–19) and
+`paused` (byte 20, read as `sload(0) / 2¹⁶⁰ & 0xff`); 1 `_totalSupply`; 2 `balances`; 3
+`basisPointsRate`; 4 `maximumFee`; 5 `allowed`; 6 `isBlackListed`; 7 `name`; 8 `symbol`;
+9 `decimals` (`uint256`); 10 `upgradedAddress` (bytes 0–19) and `deprecated` (byte 20).
+`MAX_UINT` is a constant.
+
+**Deviations** (all checked in the `usdt` scenario):
+
+1. `transfer`, `transferFrom`, `approve` **return nothing** (empty return data).
+2. **Approve race guard**: `approve(s, v)` reverts if `v ≠ 0 ∧ alw[caller][s] ≠ 0`; it
+   ignores `paused` and the blacklist; requires calldata ≥ 68 bytes.
+3. **Fee switch**: `fee = min(v · basisPointsRate / 10000, maximumFee)` credited to the
+   *current owner* (`Transfer(from, owner, fee)` first, then `Transfer(from, to, v − fee)`);
+   the sender is debited `v`, `transferFrom` spends `v` of allowance. `setParams(bps, max)`
+   (owner) requires `bps < 20`, `max < 50` and stores `max · 10^decimals`. Mainnet: 0 / 0.
+4. **Blacklist**: `transfer` requires `!isBlackListed[caller]`, `transferFrom` requires
+   `!isBlackListed[from]` (spender and recipient unchecked); `destroyBlackFunds(u)` (owner,
+   `u` blacklisted) zeroes `bal[u]` and lowers `_totalSupply` unchecked, emitting
+   `DestroyedBlackFunds` but no `Transfer`.
+5. **Pause**: `whenNotPaused` only on `transfer`/`transferFrom`.
+6. **Short-payload check** `onlyPayloadSize`: `transfer` needs ≥ 68 bytes, `transferFrom` ≥ 100
+   (only on the non-deprecated path, after pause and blacklist).
+7. **Insufficient balance or allowance fails with `INVALID`** (SafeMath `assert`): all gas
+   consumed, not `REVERT`.
+8. `issue(v)` / `redeem(v)` (owner) change `bal[owner]` and `S` with `Issue`/`Redeem` events,
+   no `Transfer`; `issue(0)` reverts (strict `>` checks). Infinite allowances are not spent.
+9. **Deprecation forwarding** (`deprecate(a)`, owner, irreversible): with `deprecated` set,
+   `transfer(to, v)` → `CALL a.transferByLegacy(caller, to, v)`, `transferFrom(f, t, v)` →
+   `transferFromByLegacy(caller, f, t, v)`, `approve(s, v)` → `approveByLegacy(caller, s, v)`,
+   `balanceOf`, `allowance`, `totalSupply` → the same functions on `a` — after the local
+   pause/blacklist/payload checks, value 0, gas `gas − 710`, preceded by
+   `require(extcodesize(a) > 0)` and followed by `require(success)` (no revert-data bubbling,
+   no `RETURNDATASIZE`: a short view return leaves the *calldata word* in the output buffer).
+   `destroyBlackFunds` reads the forwarded `balanceOf`. Getters `balances`, `allowed`,
+   `_totalSupply` stay local. With `a` without code, all six revert (token bricked); with
+   `a = USDT` itself, views recurse until gas runs out. The random generator exercises
+   `deprecate` (weight 1).
+
+**Model variant**: return convention `none`; `approveGuard`; `fee` with recipient `owner`;
+`blocked` per entry point (sender for `transfer`, `from` for `transferFrom`); `paused` on
+transfers only; owner-only `issue`/`redeem`/`setParams`/`pause`/`addBlackList`/`destroyBlackFunds`;
+the `deprecated` state as a *switch to an external token* (refinement only up to deprecation,
+or parametric in the upgraded token's summary). The supply invariant
+`Σ bal = _totalSupply` holds (fees move tokens, `destroyBlackFunds` burns, issue/redeem mint
+and burn to the owner) as long as `issue` cannot overflow (its strict checks ensure this).
+
+### BNB (solc 0.4.12, unoptimized, 5,355 B)
+
+**Layout** (`BNB is SafeMath`, no inherited state): 0 `name`, 1 `symbol`, 2 `decimals`
+(`uint8`), 3 `totalSupply`, 4 `owner` (no setter: fixed forever), 5 `balanceOf`, 6
+`freezeOf`, 7 `allowance`.
+
+**Deviations** (in the `bnb` scenario): `transfer` returns nothing (`transferFrom`, `approve`,
+`burn`, `freeze`, `unfreeze` return `true`); **zero values revert** in `transfer`,
+`transferFrom`, `approve` (so an allowance cannot be reset to 0), `burn`, `freeze`,
+`unfreeze`; transfers to `0` revert; **no `Approval` event** (not even declared); the infinite
+allowance is decremented; `freeze` moves balance to `freezeOf` (supply unchanged:
+`S = Σ bal + Σ freezeOf`); the **payable fallback accepts any unknown selector** with
+success and empty return data ("phantom functions": `permit(…)` succeeds) and ether, which only
+`withdrawEther(amount)` (owner, `transfer` with stipend) moves out. All failures are `REVERT`
+(0.4.12 `throw`; before Byzantium the same opcode consumed all gas).
+
+**Model variant**: `zeroValueReverts`, return convention per function, no approval event,
+`frozen` balances as a second ledger in the supply invariant, a fallback that succeeds on
+every unknown selector (the "malformed calldata" property 6 becomes "unknown selectors are
+no-ops that accept ether").
+
+### STA (Statera, solc 0.5.0, optimizer 200, 3,216 B): fee on transfer
+
+**Layout**: 0 `_name`, 1 `_symbol`, 2 `_decimals`, 3 `_balances`, 4 `_allowed`, 5
+`_totalSupply`, 6 `basePercent` (= 100, no setter). The Transfer topic is a data constant
+after the code (read by `CODECOPY`): a linear disassembly shows bogus instructions there.
+
+**Deviations** (in the `sta` scenario): `transfer(to, v)` burns `cut(v) = ⌈v/100⌉`
+(`basePercent = 100`; `cut(1) = 1`, so `transfer(x, 1)` delivers 0), credits `v − cut(v)`,
+lowers `S` by `cut(v)`, emits `Transfer(from, to, v − cut)` and `Transfer(from, 0, cut)`;
+`transferFrom` the same and spends `v` (infinite allowances too, no `Approval`); zero
+transfers succeed with two zero events; `approve` to `0` reverts; `destroy`/`destroyFrom`
+burn; `downAllowance` below zero is `INVALID`. Invariant `S = Σ bal` holds (fees are burned).
+
+**Model variant**: `fee v = ⌈v/100⌉` *burned* (recipient receives `v − fee`); the generic
+"exact effects" property becomes "recipient's balance increases by `v − fee v`".
+
+### AMPL (Ampleforth): rebasing, behind a proxy
+
+**Proxy**: the token address `0xD46b…A161` holds a zos-lib `AdminUpgradeabilityProxy`
+(solc 0.5.3) with **pre-EIP-1967 slots**: implementation at
+`keccak("org.zeppelinos.proxy.implementation") = 0x7050c9e0…f8c3`, admin at
+`keccak("org.zeppelinos.proxy.admin") = 0x10d6a54a…390b`. Calls from the admin to
+`admin()`, `implementation()`, `changeAdmin`, `upgradeTo(AndCall)` run in the proxy; every other
+call `DELEGATECALL`s the implementation `0xD0e3…35b1` (`UFragments`, solc 0.7.6) with the
+whole calldata, bubbling return or revert data; **the admin cannot use the token** (its
+fallback calls revert with a reason string). This is the one target that exercises proxy
+semantics already (`ampl` difftest family: both codes installed, state in the proxy).
+
+**Layout** (in the proxy's storage; Sourcify's/solc's layout equals the hand derivation):
+0 `initialized` (byte 0), `initializing` (byte 1); 1–50 gap; 51 `_name`, 52 `_symbol`, 53
+`_decimals` (9); 54–103 gap; 104 `_owner`; 105–154 gap; 155 `monetaryPolicy` (bytes 0–19)
+with two deprecated `bool`s (bytes 20, 21); 156 `_totalSupply`; 157 `_gonsPerFragment`; 158
+`_gonBalances`; 159 `_allowedFragments`; 160 `_nonces`. `TOTAL_GONS = M − (M mod 5·10¹⁶)`,
+`M = 2²⁵⁶ − 1`.
+
+**Deviations** (in the `ampl` scenario): `balanceOf(a) = gons[a] / gonsPerFragment` (rounded
+down; `Σ balanceOf ≤ S`, not equal); `rebase(epoch, δ)` (monetary policy) changes `S` and
+`gonsPerFragment = TOTAL_GONS / S`, i.e. **every balance changes without any `Transfer`
+event**; `transfer(v)` moves `v · gpf` gons; `transferAll`/`transferAllFrom` move all gons
+(including dust); transfers to `0` or to the token revert; infinite allowances are
+decremented; `decreaseAllowance` saturates at 0; `permit` (EIP-2612) accepts `owner = 0`
+with an invalid signature (`ecrecover` returns 0).
+
+**Model variant**: balances stored in *shares* (gons) with a global scale; the ERC-20 view is
+`gons / gpf`; `rebase` is a privileged operation changing the view of every account; the
+supply invariant becomes `Σ gons ≤ TOTAL_GONS` (exact for gons) with the fragment view
+bounded by `S`. Structurally this is an ERC-4626-like share ledger, so `Defi.ERC4626` rounding
+lemmas apply.
+
+### Recorded examples (not targets)
+
+LEND (zero-value transfers revert: strict `balances[to] + v > balances[to]`, approve race
+guard), GUSD (2 decimals; a front contract forwarding by `CALL` to a replaceable
+`erc20Impl` with balances in a separate store), YAM-V2 (24 decimals), USDC and PAXG (zos-slot
+proxies; PAXG's current implementation has no transfer fee anymore, contrary to the
+`weird-erc20` list). Addresses and code hashes in `contracts/README.md`.
+
+### The `Defi/ERC20` variant these need
+
+One `Token.Variant` record (see the next section) with: return convention
+(`bool | none | perFunction`), `zeroValueReverts`, `zeroAddressReverts`, `approveGuard`,
+`infiniteAllowance : Bool` (spent or not), `fee : ℕ → ℕ` with a sink (`owner` or burn),
+`blocked`, `paused`, `allowanceOverride` (Permit2), owner-only `mint`/`burn` entry points, a
+`frozen` ledger, and a *scaled* ledger (`gons`, `gpf`) for rebasing; events per operation as
+data. Each target instantiates it; the generic catalogue theorems are proved once for the
+variant, with hypotheses where a variant breaks them (fee: recipient receives less;
+rebasing: balances change without transfers; deprecation: behaviour delegated).
+
+### Integration theorems worth proving
+
+- **SafeTransferLib handles missing return values.** Solmate's `safeTransfer`/
+  `safeTransferFrom` accept empty return data or a `true` word (`SafeTransfer.lean` already
+  has its call shape). With USDT or BNB bytecode as the vault's asset (fee off, not paused,
+  not blacklisted, not deprecated), the Solmate vault refinement and its invariants still
+  hold: the asset's `transferFrom`/`transfer` summaries (`Halts` frames, empty output) plug
+  into `WP.call` exactly where `MockERC20`'s did. Conversely, an integration that
+  ABI-decodes a `bool` (solc ≥ 0.4.22 `returns (bool)` interface) **reverts** on every USDT
+  transfer: a concrete witness by kernel evaluation.
+- **USDT approve race guard breaks re-approval.** Any integration that calls
+  `approve(spender, x)` with a nonzero existing allowance reverts; e.g. a vault that
+  re-approves a router each deposit. The witness is the `usdt` scenario's second call;
+  a theorem: `approve` succeeds iff `v = 0 ∨ alw = 0` (and payload ≥ 68).
+- **Fee-on-transfer breaks vault accounting.** With STA (or USDT with the fee on) as the
+  asset, Solmate's `deposit(a)` mints shares for `a` while the vault receives `a − fee(a)`:
+  `totalAssets` grows by less than credited, so the share price falls and the first-depositor
+  and solvency properties fail; a concrete bytecode witness (two deposits, one redeem that
+  reverts or underpays) by kernel evaluation over the STA runtime code.
+- **Rebasing breaks vault solvency.** With AMPL as the asset, a negative `rebase` lowers
+  `asset.balanceOf(vault)` with no vault interaction: `convertToAssets` drops for all holders
+  and a vault caching balances becomes insolvent; a positive rebase gives an unaccounted
+  surplus. Witness: deposit, `rebase(−δ)`, withdraw of the previewed amount reverts.
+- **BNB's zero-value revert** breaks integrations that transfer computed amounts that can
+  be 0 (fee splits, dust sweeps); witness by `transfer(x, 0)`.
+- **Phantom functions**: calling `permit` on BNB "succeeds" without effect; an integration
+  relying on `permit` for authorization then uses a stale allowance (witness: the scenario's
+  phantom call).
 
 ## Generalizing `Defi/ERC20` into a reusable kit
 

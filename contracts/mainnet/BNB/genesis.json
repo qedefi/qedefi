@@ -1,0 +1,80 @@
+{
+  "note": "Constructor state with test parameters: owner alice (0xA11CE, fixed forever), 18 decimals; balances for the four actors, totalSupply their sum (no frozen tokens); two allowances (one infinite).",
+  "storage": [
+    {
+      "label": "name",
+      "slot": "0x0",
+      "value": "0x424e420000000000000000000000000000000000000000000000000000000006"
+    },
+    {
+      "label": "symbol",
+      "slot": "0x1",
+      "value": "0x424e420000000000000000000000000000000000000000000000000000000006"
+    },
+    {
+      "label": "decimals",
+      "slot": "0x2",
+      "value": "0x12"
+    },
+    {
+      "label": "totalSupply",
+      "slot": "0x3",
+      "value": "0x17293be8a9d5381240000"
+    },
+    {
+      "label": "owner",
+      "slot": "0x4",
+      "value": "0xa11ce"
+    },
+    {
+      "label": "balance[alice]",
+      "mapping": "5",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0xd3c21bcecceda1000000"
+    },
+    {
+      "label": "balance[bob]",
+      "mapping": "5",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x69e10de76676d0800000"
+    },
+    {
+      "label": "balance[carol]",
+      "mapping": "5",
+      "keys": [
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x34f086f3b33b68400000"
+    },
+    {
+      "label": "balance[dave]",
+      "mapping": "5",
+      "keys": [
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xde0b6b3a7640000"
+    },
+    {
+      "label": "allowance[bob][carol]",
+      "mapping": "7",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B",
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x152d02c7e14af6800000"
+    },
+    {
+      "label": "allowance[alice][dave]",
+      "mapping": "7",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE",
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

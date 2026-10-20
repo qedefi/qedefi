@@ -1,0 +1,49 @@
+{
+  "address": "0xa7DE087329BFcda5639247F96140f9DAbe3DeED1",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T14:40:21Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.5.0+commit.1d4f565a",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "evmVersion": "byzantium",
+      "remappings": []
+    },
+    "name": "Statera",
+    "fullyQualifiedName": "Statera.sol:Statera"
+  },
+  "deployment": {
+    "transactionHash": "0xdad0f559241c4b4c5bf5d9c1108b0b672d1f88c3c809f0c3d93ed120b3759c3b",
+    "blockNumber": "10160809",
+    "transactionIndex": "127",
+    "deployer": "0x43189898d712df36D37c41d2897843482f729c65"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 3173,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820d99f911f814a7a92670c075f80ba0f864f0be7b2b36bc750e6f89a3d759fdb290029",
+      "offset": 3173
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "note": "State of an initialized UFragments behind the proxy, with test parameters: implementation slot -> the mainnet implementation address, proxy admin 0x...AD (not an actor), owner and monetaryPolicy alice (so alice can rebase), totalSupply = INITIAL_FRAGMENTS_SUPPLY = 5e16, gonsPerFragment = TOTAL_GONS / totalSupply; gon balances = fragments * gonsPerFragment for the four actors (summing to the supply); allowances in fragments.",
+  "storage": [
+    {
+      "label": "implementation (zos slot)",
+      "slot": "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3",
+      "value": "0xd0e3f82ab04b983c05263cf3bf52481fbaa435b1"
+    },
+    {
+      "label": "admin (zos slot)",
+      "slot": "0x10d6a54a4754c8869d6886b5f5d7fbfa5b4522237ea5c60d11bc4e7a1ff9390b",
+      "value": "0xad"
+    },
+    {
+      "label": "initialized",
+      "slot": "0x0",
+      "value": "0x1"
+    },
+    {
+      "label": "_name",
+      "slot": "0x33",
+      "value": "0x416d706c65666f72746800000000000000000000000000000000000000000014"
+    },
+    {
+      "label": "_symbol",
+      "slot": "0x34",
+      "value": "0x414d504c00000000000000000000000000000000000000000000000000000008"
+    },
+    {
+      "label": "_decimals",
+      "slot": "0x35",
+      "value": "0x9"
+    },
+    {
+      "label": "_owner",
+      "slot": "0x68",
+      "value": "0xa11ce"
+    },
+    {
+      "label": "monetaryPolicy",
+      "slot": "0x9b",
+      "value": "0xa11ce"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "0x9c",
+      "value": "0xb1a2bc2ec50000"
+    },
+    {
+      "label": "_gonsPerFragment",
+      "slot": "0x9d",
+      "value": "0x170ef54646d496892137dfd73f5a90f85ff1be02afb731a6e9f"
+    },
+    {
+      "label": "balance[alice]",
+      "mapping": "158",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0xb33332dd4cf7aa71024bb4b4522c9d97d5f514948c9478728229e1f8241d0a00"
+    },
+    {
+      "label": "balance[bob]",
+      "mapping": "158",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x333333333333333333333333333333333333333333333333331b093256df0000"
+    },
+    {
+      "label": "balance[carol]",
+      "mapping": "158",
+      "keys": [
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x199999999999999999999999999999999999999999999999998d84992b6f8000"
+    },
+    {
+      "label": "balance[dave]",
+      "mapping": "158",
+      "keys": [
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0x55e63b88c230e77e7ee106959b5d3e1e9ea69ebac0b0b4be380bef7600"
+    },
+    {
+      "label": "allowance[bob][carol]",
+      "mapping": "159",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B",
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x38d7ea4c68000"
+    },
+    {
+      "label": "allowance[alice][dave]",
+      "mapping": "159",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE",
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

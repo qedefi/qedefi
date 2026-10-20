@@ -39,6 +39,7 @@ structure Watch where
   /-- Corrupt evm-lean's state after a call of the given kind (tester self-test). -/
   corrupt : String → World → World := fun _ w => w
 
+/-- A log, for reports. -/
 def showLog (l : Log) : String :=
   s!"\{address {hexOfAddress l.address}, topics {l.topics.toList.map hexOfWord}, " ++
     s!"data {hexOfBytes l.data}}"
@@ -138,6 +139,7 @@ def Session.restart (s : Session) : IO Unit := do
   s.rpc.revertTo (← s.snap.get)
   s.snap.set (← s.rpc.snapshot)
 
+/-- Count a call in the statistics. -/
 def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
   s.stats.modify fun st =>
     let (n, k) := st.byKind.getD c.kind (0, 0)
@@ -145,6 +147,7 @@ def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
     { st with calls := st.calls + 1, successes := st.successes + inc
               byKind := st.byKind.insert c.kind (n + 1, k + inc) }
 
+/-- Execute a call on both sides and compare. -/
 def Session.exec (s : Session) (w : World) (c : Call) : IO (World × Outcome × List String) := do
   let (w', o, obs, diffs) ← step s.rpc s.watch w c.sender (some c.to) c.data c.value c.kind
   s.record c (o.success && obs.success)

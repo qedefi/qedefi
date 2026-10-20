@@ -1,0 +1,20 @@
+{
+  "name": "AMPL",
+  "address": "0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1",
+  "chainId": 1,
+  "block": 26236604,
+  "blockHash": "0x2fe4f1f0e4943db3553e5edda6c015758d52b63b4862a5bfcc4e344a44d4f8f9",
+  "codeHash": "0xec01e9f4bb8099df1b15c0c2b6e1fd795484681553981e77b34285b923fbc578",
+  "codeSize": 6229,
+  "contractName": "UFragments",
+  "compiler": "0.7.6+commit.7338295f",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

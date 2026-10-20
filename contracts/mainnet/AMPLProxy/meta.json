@@ -1,0 +1,20 @@
+{
+  "name": "AMPLProxy",
+  "address": "0xD46bA6D942050d489DBd938a2C909A5d5039A161",
+  "chainId": 1,
+  "block": 26236604,
+  "blockHash": "0x2fe4f1f0e4943db3553e5edda6c015758d52b63b4862a5bfcc4e344a44d4f8f9",
+  "codeHash": "0xf74669def838d4f085b394f7892fa8f014fb7ed7558b760b288692b1cc3ca054",
+  "codeSize": 2269,
+  "contractName": "AdminUpgradeabilityProxy",
+  "compiler": "0.5.3+commit.10d17f24",
+  "optimizer": {
+    "runs": 0,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

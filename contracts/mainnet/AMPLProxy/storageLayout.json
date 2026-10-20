@@ -1,0 +1,5 @@
+{
+  "note": "AdminUpgradeabilityProxy (zos-lib) declares no state variables: it uses the unstructured slots keccak256(\"org.zeppelinos.proxy.implementation\") = 0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3 and keccak256(\"org.zeppelinos.proxy.admin\") = 0x10d6a54a4754c8869d6886b5f5d7fbfa5b4522237ea5c60d11bc4e7a1ff9390b (not the EIP-1967 slots). All token state is the implementation's layout (AMPL/storageLayout.json) in the proxy's storage.",
+  "storage": [],
+  "types": {}
+}

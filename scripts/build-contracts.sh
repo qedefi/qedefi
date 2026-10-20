@@ -86,9 +86,14 @@ declare -A LEANDIR=(
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
 # (its directory mirrors the namespace).
-MAINNET=(WETH9)
+MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy)
 declare -A MNS=(
   [WETH9]="Examples.WETH9.Contracts"
+  [USDT]="Examples.WeirdERC20.USDT.Contracts"
+  [BNB]="Examples.WeirdERC20.BNB.Contracts"
+  [STA]="Examples.WeirdERC20.STA.Contracts"
+  [AMPL]="Examples.WeirdERC20.AMPL.Contracts"
+  [AMPLProxy]="Examples.WeirdERC20.AMPL.Contracts"
 )
 
 # Names of all immutables, by AST id (forge artifacts carry each source's AST).

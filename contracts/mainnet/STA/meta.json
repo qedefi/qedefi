@@ -1,0 +1,20 @@
+{
+  "name": "STA",
+  "address": "0xa7DE087329BFcda5639247F96140f9DAbe3DeED1",
+  "chainId": 1,
+  "block": 26236604,
+  "blockHash": "0x2fe4f1f0e4943db3553e5edda6c015758d52b63b4862a5bfcc4e344a44d4f8f9",
+  "codeHash": "0x2d5b2ff1b704f708f9c0f6ec97829ec6c8c9013713b9e0c301bdcb8dbf3c8429",
+  "codeSize": 3216,
+  "contractName": "Statera",
+  "compiler": "0.5.0+commit.1d4f565a",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

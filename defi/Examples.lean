@@ -72,6 +72,11 @@ import Examples.Tests.Contracts
 import Examples.Tests.Solidity
 import Examples.Tests.Strings
 import Examples.WETH9.Contracts.WETH9
+import Examples.WeirdERC20.AMPL.Contracts.AMPL
+import Examples.WeirdERC20.AMPL.Contracts.AMPLProxy
+import Examples.WeirdERC20.BNB.Contracts.BNB
+import Examples.WeirdERC20.STA.Contracts.STA
+import Examples.WeirdERC20.USDT.Contracts.USDT
 
 /-!
 # Examples

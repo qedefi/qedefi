@@ -1,0 +1,48 @@
+{
+  "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T13:56:23Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.18+commit.9cf6e910",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 0,
+        "enabled": false
+      },
+      "remappings": []
+    },
+    "name": "TetherToken",
+    "fullyQualifiedName": "TetherToken.sol:TetherToken"
+  },
+  "deployment": {
+    "transactionHash": "0x2f1c5c2b44f771e942a8506148e256f94f1a464babc938ae0690c6e34cd79190",
+    "blockNumber": "4634748",
+    "transactionIndex": "64",
+    "deployer": "0x36928500Bc1dCd7af6a2B4008875CC336b927D57"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 11032,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820459abd0d736b0f007e9a56bbee76ffaebd566060ef1dc531c1122544b1d3c2100029",
+      "offset": 11032
+    }
+  }
+}

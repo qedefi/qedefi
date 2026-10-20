@@ -2,6 +2,11 @@ import Examples.Differential.Session
 import Examples.OpenZeppelin.Contracts.OzAsset
 import Examples.Solady.Contracts.SoladyToken
 import Examples.WETH9.Contracts.WETH9
+import Examples.WeirdERC20.USDT.Contracts.USDT
+import Examples.WeirdERC20.BNB.Contracts.BNB
+import Examples.WeirdERC20.STA.Contracts.STA
+import Examples.WeirdERC20.AMPL.Contracts.AMPL
+import Examples.WeirdERC20.AMPL.Contracts.AMPLProxy
 
 /-!
 # Token families under test
@@ -51,11 +56,21 @@ structure TokenFamily where
   extraAddresses : Array Address := #[]
   /-- A fixed scenario run before the random sequences. -/
   scenario : Array Call := #[]
+  /-- Further accounts installed with code (e.g. the implementation behind a proxy). -/
+  extraCode : List (Address × ByteArray) := []
+  /-- `balanceOf(a)` computed from storage, when it is not the word at `balanceSlot a`
+  (rebasing tokens: gons / gons-per-fragment). -/
+  balanceView : Option (World → Address → Word) := none
+  /-- Getters checked on the installed or deployed state: signature, address arguments and
+  the expected 32-byte result (validates `genesis` against the hand-derived layout,
+  including packed fields). -/
+  getters : List (String × List Address × Word) := []
 
 /-- A human-readable name for an address. -/
 def tokenAddrName (f : TokenFamily) (a : Address) : String :=
   if a = f.token then "token" else if a = 0 then "zero"
   else if a = 0x000000000022D473030F116dDEE9F6B43aC78BA3 then "permit2"
+  else if a = 0xAD then "admin"
   else match actors.idxOf? a with
     | some i => #["alice", "bob", "carol", "dave"][i]?.getD "?"
     | none => hexOfAddress a
@@ -72,7 +87,9 @@ def tokenCall (f : TokenFamily) (sender : Address) (sig : String) (args : List (
 
 /-- `balanceOf(a)` in the evm-lean world. -/
 def TokenFamily.balance (f : TokenFamily) (w : World) (a : Address) : Nat :=
-  (w.sload f.token (f.balanceSlot a)).toNat
+  match f.balanceView with
+  | some v => (v w a).toNat
+  | none => (w.sload f.token (f.balanceSlot a)).toNat
 
 /-- Values worth hitting: balances, allowances among actors, total supply, ether. -/
 def TokenFamily.stateValues (f : TokenFamily) (w : World) : Array Word :=
@@ -164,7 +181,10 @@ def layoutCheck (f : TokenFamily) (w : World) : List String := Id.run do
   let mut out := []
   for a in who do
     let v := view "balanceOf(address)" [a]
-    if v != some (w.sload f.token (f.balanceSlot a)) then
+    let expected := match f.balanceView with
+      | some bv => bv w a
+      | none => w.sload f.token (f.balanceSlot a)
+    if v != some expected then
       out := out ++ [s!"balanceOf({tokenAddrName f a}) = {v.map (·.toNat)} ≠ balance slot"]
   for o in who do
     for sp in actors.toList do
@@ -177,6 +197,18 @@ def layoutCheck (f : TokenFamily) (w : World) : List String := Id.run do
     | none => w.balance f.token
   if view "totalSupply()" [] != some sup then out := out ++ ["totalSupply() ≠ supply slot"]
   return out
+
+/-- The getters of `f.getters` that do not return the expected word on world `w`. -/
+def getterCheck (f : TokenFamily) (w : World) : List String :=
+  f.getters.filterMap fun (sig, args, expected) =>
+    let sel := (selector? f.selectors sig).getD 0
+    let got : Option Word :=
+      match execTx Crypto.real { gasLimit := 30_000_000 } w (actors[0]?.getD 0)
+          (some f.token) (calldata sel (args.map Word.ofAddress)) gasLimit with
+      | .ok (o, _) => if o.success && o.output.size = 32 then some (Bytes.toWord o.output) else none
+      | .error _ => none
+    if got == some expected then none
+    else some s!"{sig} = {got.map hexOfWord}, expected {hexOfWord expected}"
 
 /-- Mint to two actors, approve, transfer and spend an allowance: a state in which every
 storage-layout row the views read is exercised. -/
@@ -284,11 +316,230 @@ def weth9 : TokenFamily :=
         ("transferFrom(address,address,uint256)", 5), ("approve(address,uint256)", 4)]
       payable := ["deposit()"]
       receivesEther := true
-      etherFunding := 1000 * 10 ^ 18 }
+      etherFunding := 1000 * 10 ^ 18
+      getters := [("decimals()", [], 18), ("totalSupply()", [], 0)] }
   { f with scenario := wethScenario f }
 
+/-! ### Weird ERC-20s (mainnet bytecode) -/
+
+/-- Replace or add storage entries of a genesis state. -/
+def withStorage (g : List (Word × Word)) (upd : List (Word × Word)) : List (Word × Word) :=
+  g.filter (fun (k, _) => !upd.any (·.1 == k)) ++ upd
+
+/-- A call with raw calldata. -/
+def rawCall (f : TokenFamily) (sender : Address) (data : ByteArray) (desc : String)
+    (value : Nat := 0) : Call :=
+  { sender, to := f.token, data, value, kind := s!"{f.name}.raw",
+    desc := s!"{tokenAddrName f sender} → {f.name} {desc}" }
+
+/-- The first actor (owner and admin roles in the installed states). -/
+def alice : Address := actors[0]?.getD 0
+/-- The second actor. -/
+def bob : Address := actors[1]?.getD 0
+/-- The third actor. -/
+def carol : Address := actors[2]?.getD 0
+/-- The fourth actor. -/
+def dave : Address := actors[3]?.getD 0
+
+/-- An address argument. -/
+def aArg (f : TokenFamily) (x : Address) : Word × String := (Word.ofAddress x, tokenAddrName f x)
+
+/-- A number argument. -/
+def nArg (n : Nat) : Word × String := (BitVec.ofNat 256 n, toString n)
+
+/-- USDT's quirks: no return values, the approve race guard, the fee switch, pause,
+blacklist and `destroyBlackFunds`, issue/redeem, the short-payload check, `INVALID` on an
+insufficient balance. -/
+def usdtScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg (10 ^ 6)],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 5],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 0],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 5],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg 5],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg 7],
+    t alice "setParams(uint256,uint256)" [nArg 10, nArg 5],
+    t bob "transfer(address,uint256)" [aArg f carol, nArg (10 ^ 9)],
+    t bob "transfer(address,uint256)" [aArg f carol, nArg (10 ^ 10)],
+    t alice "pause()" [],
+    t bob "transfer(address,uint256)" [aArg f carol, nArg 1],
+    t bob "approve(address,uint256)" [aArg f dave, nArg 1],
+    t alice "unpause()" [],
+    t alice "addBlackList(address)" [aArg f dave],
+    t dave "transfer(address,uint256)" [aArg f carol, nArg 1],
+    t alice "transfer(address,uint256)" [aArg f dave, nArg 2],
+    t alice "destroyBlackFunds(address)" [aArg f dave],
+    t alice "issue(uint256)" [nArg (10 ^ 6)],
+    t alice "issue(uint256)" [nArg 0],
+    t alice "redeem(uint256)" [nArg (5 * 10 ^ 5)],
+    t bob "redeem(uint256)" [nArg 1],
+    rawCall f bob ((t bob "transfer(address,uint256)" [aArg f carol, nArg 1]).data.extract 0 36)
+      "transfer with a 36-byte payload",
+    t carol "transfer(address,uint256)" [aArg f bob, nArg (10 ^ 15)]]
+
+/-- Mainnet USDT (`TetherToken`), fee off. -/
+def usdt : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "usdt"
+      token := Examples.WeirdERC20.USDT.Contracts.USDT.address
+      init := none
+      code := Examples.WeirdERC20.USDT.Contracts.USDT.runtimeCode
+      genesis := Examples.WeirdERC20.USDT.Contracts.USDT.genesisStorage
+      selectors := Examples.WeirdERC20.USDT.Contracts.USDT.selectors
+      balanceSlot := solSlot 2
+      allowanceSlot := solSlot2 5
+      supplySlot := some 1
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 6), ("issue(uint256)", 2), ("redeem(uint256)", 2),
+        ("setParams(uint256,uint256)", 3), ("unpause()", 2), ("removeBlackList(address)", 2),
+        ("deprecate(address)", 1)]
+      getters := [("owner()", [], Word.ofAddress alice), ("paused()", [], 0), ("deprecated()", [], 0),
+        ("upgradedAddress()", [], 0), ("decimals()", [], 6), ("basisPointsRate()", [], 0),
+        ("maximumFee()", [], 0), ("isBlackListed(address)", [dave], 0),
+        ("allowance(address,address)", [alice, dave], BitVec.allOnes 256)] }
+  { f with scenario := usdtScenario f }
+
+/-- USDT with the fee switched on (0.1 %, at most 5 USDT), in the genesis state. -/
+def usdtFee : TokenFamily :=
+  { usdt with name := "usdtfee"
+              genesis := withStorage usdt.genesis [(3, 10), (4, BitVec.ofNat 256 (5 * 10 ^ 6))]
+              getters := [("basisPointsRate()", [], 10), ("maximumFee()", [], BitVec.ofNat 256 (5 * 10 ^ 6))] }
+
+/-- BNB's quirks: zero-value reverts, `transfer` without return value, no `Approval`, the
+infinite allowance decremented, freeze/unfreeze, phantom functions through the payable
+fallback, `withdrawEther`. -/
+def bnbScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  let e18 := 10 ^ 18
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg 0],
+    t alice "transfer(address,uint256)" [aArg f bob, nArg e18],
+    t alice "transfer(address,uint256)" [aArg f 0, nArg 1],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 0],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 7],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg e18],
+    t bob "freeze(uint256)" [nArg (1000 * e18)],
+    t bob "unfreeze(uint256)" [nArg (500 * e18)],
+    t carol "burn(uint256)" [nArg e18],
+    rawCall f dave (calldata 0xd505accf [Word.ofAddress dave, Word.ofAddress bob, 5])
+      "permit(dave, bob, 5) (not a BNB function: phantom)" e18,
+    rawCall f carol .empty "plain ether" (2 * e18),
+    t alice "withdrawEther(uint256)" [nArg (e18 / 2)],
+    t bob "withdrawEther(uint256)" [nArg 1]]
+
+/-- Mainnet BNB (Ethereum ERC-20 legacy). -/
+def bnb : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "bnb"
+      token := Examples.WeirdERC20.BNB.Contracts.BNB.address
+      init := none
+      code := Examples.WeirdERC20.BNB.Contracts.BNB.runtimeCode
+      genesis := Examples.WeirdERC20.BNB.Contracts.BNB.genesisStorage
+      selectors := Examples.WeirdERC20.BNB.Contracts.BNB.selectors
+      balanceSlot := solSlot 5
+      allowanceSlot := solSlot2 7
+      supplySlot := some 3
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 6), ("burn(uint256)", 2), ("freeze(uint256)", 3),
+        ("unfreeze(uint256)", 3), ("withdrawEther(uint256)", 2)]
+      getters := [("owner()", [], Word.ofAddress alice), ("decimals()", [], 18),
+        ("freezeOf(address)", [bob], 0), ("allowance(address,address)", [alice, dave], BitVec.allOnes 256)]
+      receivesEther := true
+      etherFunding := 1000 * 10 ^ 18 }
+  { f with scenario := bnbScenario f }
+
+/-- STA's quirks: 1 % burned per transfer (rounded up), two `Transfer` events, the infinite
+allowance decremented, `destroy`, `INVALID` on `downAllowance` underflow. -/
+def staScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg 1000],
+    t alice "transfer(address,uint256)" [aArg f bob, nArg 1],
+    t alice "transfer(address,uint256)" [aArg f bob, nArg 0],
+    t alice "transfer(address,uint256)" [aArg f alice, nArg 100],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg 100],
+    t bob "destroy(uint256)" [nArg 7],
+    t carol "upAllowance(address,uint256)" [aArg f dave, nArg 5],
+    t carol "downAllowance(address,uint256)" [aArg f dave, nArg 6],
+    t carol "destroyFrom(address,uint256)" [aArg f bob, nArg 1],
+    t alice "approve(address,uint256)" [aArg f 0, nArg 1],
+    t alice "cut(uint256)" [nArg (10 ^ 18 + 1)]]
+
+/-- Mainnet STA (Statera), a fee-on-transfer (burn) token. -/
+def sta : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "sta"
+      token := Examples.WeirdERC20.STA.Contracts.STA.address
+      init := none
+      code := Examples.WeirdERC20.STA.Contracts.STA.runtimeCode
+      genesis := Examples.WeirdERC20.STA.Contracts.STA.genesisStorage
+      selectors := Examples.WeirdERC20.STA.Contracts.STA.selectors
+      balanceSlot := solSlot 3
+      allowanceSlot := solSlot2 4
+      supplySlot := some 5
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 5), ("destroy(uint256)", 2), ("destroyFrom(address,uint256)", 2),
+        ("upAllowance(address,uint256)", 2), ("downAllowance(address,uint256)", 2)]
+      getters := [("basePercent()", [], 100), ("decimals()", [], 18)] }
+  { f with scenario := staScenario f }
+
+/-- AMPL's proxy admin in the tests (not an actor; also a sender). -/
+def amplAdmin : Address := 0xAD
+
+/-- AMPL's quirks: rebases (positive and negative) changing every balance without events,
+`transferAll`, the infinite allowance decremented, saturating `decreaseAllowance`, the
+recipient checks, the proxy admin locked out of the token and served by the proxy. -/
+def amplScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg (10 ^ 9)],
+    t alice "rebase(uint256,int256)" [nArg 1, nArg (10 ^ 15)],
+    t bob "transferAll(address)" [aArg f carol],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg (10 ^ 9)],
+    t carol "decreaseAllowance(address,uint256)" [aArg f bob, nArg (10 ^ 30)],
+    t alice "rebase(uint256,int256)" [nArg 2, (BitVec.ofNat 256 (2 ^ 256 - 2 * 10 ^ 15), "-2e15")],
+    t bob "rebase(uint256,int256)" [nArg 3, nArg 1],
+    t alice "transfer(address,uint256)" [aArg f f.token, nArg 1],
+    t alice "transfer(address,uint256)" [aArg f 0, nArg 1],
+    t amplAdmin "transfer(address,uint256)" [aArg f bob, nArg 0],
+    t amplAdmin "implementation()" [],
+    t bob "implementation()" [],
+    t alice "scaledBalanceOf(address)" [aArg f carol]]
+
+/-- AMPL's `balanceOf`: gon balance divided by `_gonsPerFragment` (slot 157). -/
+def amplBalance (w : World) (a : Address) : Word :=
+  let gpf := w.sload Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.address 157
+  if gpf = 0 then 0
+  else w.sload Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.address (solSlot 158 a) / gpf
+
+/-- Mainnet AMPL: the zos proxy at the token address delegating to the mainnet
+`UFragments` implementation, with the token state in the proxy's storage. -/
+def ampl : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "ampl"
+      token := Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.address
+      init := none
+      code := Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.runtimeCode
+      genesis := Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.genesisStorage
+      extraCode := [(Examples.WeirdERC20.AMPL.Contracts.AMPL.address,
+        Examples.WeirdERC20.AMPL.Contracts.AMPL.runtimeCode)]
+      selectors := Examples.WeirdERC20.AMPL.Contracts.AMPL.selectors ++
+        Examples.WeirdERC20.AMPL.Contracts.AMPLProxy.selectors
+      balanceSlot := solSlot 158
+      allowanceSlot := solSlot2 159
+      supplySlot := some 156
+      balanceView := some amplBalance
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 5), ("rebase(uint256,int256)", 4), ("transferAll(address)", 2),
+        ("transferAllFrom(address,address)", 2), ("increaseAllowance(address,uint256)", 2),
+        ("decreaseAllowance(address,uint256)", 2), ("upgradeTo(address)", 1),
+        ("upgradeToAndCall(address,bytes)", 0), ("initialize(string,string,uint8)", 0)]
+      extraAddresses := #[amplAdmin]
+      getters := [("owner()", [], Word.ofAddress alice), ("monetaryPolicy()", [], Word.ofAddress alice),
+        ("decimals()", [], 9), ("totalSupply()", [], BitVec.ofNat 256 (5 * 10 ^ 16)),
+        ("scaledTotalSupply()", [], BitVec.ofNat 256 (2 ^ 256 - 1 - (2 ^ 256 - 1) % (5 * 10 ^ 16))),
+        ("isOwner()", [], 1)] }
+  { f with scenario := amplScenario f }
+
 /-- Every token family. -/
-def tokenFamilies : List TokenFamily := [oz20, solady, weth9]
+def tokenFamilies : List TokenFamily := [oz20, solady, weth9, usdt, usdtFee, bnb, sta, ampl]
 
 /-! ## Setup and run -/
 
@@ -313,6 +564,9 @@ def setupToken (rpc : Rpc) (stats : IO.Ref Stats) (f : TokenFamily) : IO World :
   | none =>
     rpc.setCode f.token f.code
     w := w.modify f.token fun acc => { acc with code := f.code }
+    for (a, code) in f.extraCode do
+      rpc.setCode a code
+      w := w.modify a fun acc => { acc with code := code }
     for (k, v) in f.genesis do
       rpc.setStorageAt f.token k v
       w := w.sstore f.token k v
@@ -322,9 +576,11 @@ def setupToken (rpc : Rpc) (stats : IO.Ref Stats) (f : TokenFamily) : IO World :
   if w.code f.token != theirs then errs := errs ++ ["code differs between evm-lean and anvil"]
   if theirs != f.code then errs := errs ++ ["deployed code differs from the Lean constant"]
   unless errs.isEmpty do fail ("\n".intercalate errs)
+  let bad := getterCheck f w
+  unless bad.isEmpty do fail ("getters disagree with the installed state:\n" ++ "\n".intercalate bad)
   let how := if f.init.isSome then "deployed" else "installed"
   IO.println (s!"  {how} at {hexOfAddress f.token} ({theirs.size} B, " ++
-    s!"{f.genesis.length} storage slots); code and storage agree")
+    s!"{f.genesis.length} storage slots); code and storage agree, {f.getters.length} getters as expected")
   return w
 
 /-- Test one token family: setup, the fixed scenario, `sequences` random sequences. Returns
@@ -335,7 +591,8 @@ def testToken (rpc : Rpc) (stats : IO.Ref Stats) (seed famIdx sequences length :
   let world0 ← setupToken rpc stats f
   let snap ← IO.mkRef (← rpc.snapshot)
   let eth := if f.etherFunding > 0 then f.token :: (actors ++ f.extraAddresses).toList else []
-  let s : Session := { rpc, name := f.name, watch := { accounts := [f.token], eth }, world0, snap,
+  let s : Session := { rpc, name := f.name, watch := { accounts := f.token :: f.extraCode.map (·.1), eth },
+                       world0, snap,
                        stats, gen := genTokenCall f, length, verbose }
   let mut found := 0
   unless f.scenario.isEmpty do

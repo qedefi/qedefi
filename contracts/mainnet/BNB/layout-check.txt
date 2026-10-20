@@ -1,0 +1,38 @@
+# Layout validation for 0xB8c77482e45F1F44dE1745F52C74426C631bDD52 at block 26236523 (0xf32cd44fe92e7890a2c3bfb598638a310f48a1cf157e5dda0d0b4487e695b023)
+# slot values via eth_getStorageAt, getter values via eth_call, both at that block
+
+OK   slot  0 off  0 name               slot=0x424e420000000000000000000000000000000000000000000000000000000006  decoded=BNB  getter name=BNB
+OK   slot  1 off  0 symbol             slot=0x424e420000000000000000000000000000000000000000000000000000000006  decoded=BNB  getter symbol=BNB
+OK   slot  2 off  0 decimals           slot=0x0000000000000000000000000000000000000000000000000000000000000012  decoded=18  getter decimals=18
+OK   slot  2 off  1 slot2 upper bytes  slot=0x0000000000000000000000000000000000000000000000000000000000000012  decoded=0  getter None=(no getter)
+OK   slot  3 off  0 totalSupply        slot=0x00000000000000000000000000000000000000000000533397a23bc34905c7a3  decoded=392908128387295623890851  getter totalSupply=392908128387295623890851
+OK   slot  4 off  0 owner              slot=0x00000000000000000000000000c5e04176d95a286fcce0e68c683ca0bfec8454  decoded=0x00c5e04176d95a286fcce0e68c683ca0bfec8454  getter owner=0x00C5E04176d95A286fccE0E68c683Ca0bfec8454
+OK   slot  5 off  0 balanceOf(root)    slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  6 off  0 freezeOf(root)     slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  7 off  0 allowance(root)    slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  8 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  9 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 10 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 11 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 12 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 13 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 14 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 15 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+
+# mapping entries: slot = keccak256(pad32(key) ++ pad32(mappingSlot)); nested: keccak256(pad32(k2) ++ outerSlot)
+OK   balanceOf[0x00c5e04176d95a286fcce0e68c683ca0bfec8454]
+      slot 0x3a3b9fe9688ea9e8214d5426f7c2880d9be69814fc3c202302394b7b92710df9 = 10856026720304103   getter balanceOf(owner) = 10856026720304103
+OK   balanceOf[0x28C6c06298d514Db089934071355E5743bf21d60]
+      slot 0x20a03e9befac2b04d43478645753b1919343464c74cf98e7ad8f4b76675d0f0f = 1809907949298308902382   getter balanceOf(H1) = 1809907949298308902382
+OK   balanceOf[0xF977814e90dA44bFA03b6295A0616a897441aceC]
+      slot 0xfc98eff5386a9d0cc690abb49b2f3e826f706cbfcd11ad33a922c9802e328367 = 90399239330150000000000   getter balanceOf(H2) = 90399239330150000000000
+OK   balanceOf[0xB8c77482e45F1F44dE1745F52C74426C631bDD52]
+      slot 0xaa4024229e1034fc9bc3358179665995bf04d531ac3623d852e8dfec30a2dd78 = 23544462785298294155778   getter balanceOf(self) = 23544462785298294155778
+OK   freezeOf[0x00c5e04176d95a286fcce0e68c683ca0bfec8454]
+      slot 0xd399bca8d1d58d6473c0d8b17bdd0336737a27f594475a976c8d07c76f61be9a = 0   getter freezeOf(owner) = 0
+OK   allowance[0x28C6c06298d514Db089934071355E5743bf21d60][0xF977814e90dA44bFA03b6295A0616a897441aceC]
+      slot 0xcacb2dd56810a0054fe5683015d7b1834482592c6f8382e96e9eae3d504b0852 = 0   getter allowance(H1,H2) = 0
+NOTE weak checks: all checked freezeOf/allowance entries are zero; nonzero checks: name, symbol, decimals, totalSupply, owner, 4 balances
+NOTE phantom: eth_call of an unknown selector (permit(...)) succeeded with empty returndata (payable no-op fallback)
+
+# 0 failures

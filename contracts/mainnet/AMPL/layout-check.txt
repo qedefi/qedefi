@@ -1,0 +1,46 @@
+# Layout validation for 0xD46bA6D942050d489DBd938a2C909A5d5039A161 at block 26236568 (0xa09f3a46d5eecfd4d3855e2f3ea5ba6edd30676b26ec9e5ea1cb91763d27d4a8)
+# slot values via eth_getStorageAt, getter values via eth_call, both at that block
+
+OK   slot  0 off  0 initialized        slot=0x0000000000000000000000000000000000000000000000000000000000000001  decoded=true  getter None=(no getter)
+OK   slot  0 off  1 initializing       slot=0x0000000000000000000000000000000000000000000000000000000000000001  decoded=false  getter None=(no getter)
+OK   slot  1 off  0 gap[0]             slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 50 off  0 gap[49]            slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 51 off  0 _name              slot=0x416d706c65666f72746800000000000000000000000000000000000000000014  decoded=Ampleforth  getter name=Ampleforth
+OK   slot 52 off  0 _symbol            slot=0x414d504c00000000000000000000000000000000000000000000000000000008  decoded=AMPL  getter symbol=AMPL
+OK   slot 53 off  0 _decimals          slot=0x0000000000000000000000000000000000000000000000000000000000000009  decoded=9  getter decimals=9
+OK   slot 54 off  0 gap[0]             slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 103 off  0 gap[49]            slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 104 off  0 _owner             slot=0x000000000000000000000000223592a191ecfc7fdc38a9256c3bd96e771539a9  decoded=0x223592a191ecfc7fdc38a9256c3bd96e771539a9  getter owner=0x223592a191ECfC7FDC38a9256c3BD96E771539A9
+OK   slot 105 off  0 gap[0]             slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 154 off  0 gap[49]            slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 155 off  0 monetaryPolicy     slot=0x0000000000000000000000001b228a749077b8e307c5856ce62ef35d96dca2ea  decoded=0x1b228a749077b8e307c5856ce62ef35d96dca2ea  getter monetaryPolicy=0x1B228a749077b8e307C5856cE62Ef35d96Dca2ea
+OK   slot 155 off 20 rebasePausedDepr.  slot=0x0000000000000000000000001b228a749077b8e307c5856ce62ef35d96dca2ea  decoded=false  getter None=(no getter)
+OK   slot 155 off 21 tokenPausedDepr.   slot=0x0000000000000000000000001b228a749077b8e307c5856ce62ef35d96dca2ea  decoded=false  getter None=(no getter)
+OK   slot 156 off  0 _totalSupply       slot=0x00000000000000000000000000000000000000000000000000074c54f2f1c93e  decoded=2054252573870398  getter totalSupply=2054252573870398
+OK   slot 157 off  0 _gonsPerFragment   slot=0x0000000000002313c8a9faf9b32e0632b2d8abde2a343372b44d65fb14f7d264  decoded=56367016748652969451374730104402914392678186405310276298068580  getter None=(no getter)
+OK   slot 158 off  0 _gonBalances(root) slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 159 off  0 _allowed(root)     slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 160 off  0 _nonces(root)      slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 161 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+
+# mapping entries: slot = keccak256(pad32(key) ++ pad32(mappingSlot)); nested: keccak256(pad32(k2) ++ outerSlot)
+OK   _gonBalances[0x223592a191ecfc7fdc38a9256c3bd96e771539a9]
+      slot 0x4cd9a99c5a07115530c52c8a01a891d1c5c82bc3da1d8276d1bc62b21efdd1c7 = 7385060592503187764371429899576071050050218242025774974795035324494151282931   getter scaledBalanceOf(owner) = 7385060592503187764371429899576071050050218242025774974795035324494151282931
+OK   _gonBalances[0xc5be99A02C6857f9Eac67BbCE58DF5572498F40c]
+      slot 0x62869b3ea859347f106222dc39826a8909c71bb7a85fed9a182b072e3291a42c = 11100459471068763343532163303033535602912823306741695950439989270074195990752   getter scaledBalanceOf(H1) = 11100459471068763343532163303033535602912823306741695950439989270074195990752
+OK   _gonBalances[0xd8461BD73F19E3d789Ac0E5dbF1AD62FBBd15C22]
+      slot 0x10b9332098721d3aec2ef138d09886e4181a5c3bac38b89fe8045730c9e18c2e = 332405689252383017537598956506829347849713427406558725083614000000000   getter scaledBalanceOf(H3) = 332405689252383017537598956506829347849713427406558725083614000000000
+OK   _gonBalances[0xF977814e90dA44bFA03b6295A0616a897441aceC]
+      slot 0x5ba2684c8c7244010057bee92938a454f6adbd91527959b4a2890b665d6f2048 = 0   getter scaledBalanceOf(H2) = 0
+OK   _allowedFragments[0xc5be99A02C6857f9Eac67BbCE58DF5572498F40c][0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D]
+      slot 0x852cd2b302d116b32bc9a8eed4d7ad0f3a28939702e9c72da4a279a4e0b3a66b = 0   getter allowance(H1,uniV2router) = 0
+OK   _nonces[0xc5be99A02C6857f9Eac67BbCE58DF5572498F40c]
+      slot 0x5ae85d03eb654341a4ac25d21e53d11f44c7a147da7a21b1741bdf03fe88f8b3 = 0   getter nonces(H1) = 0
+NOTE proxy slots: zos implementation slot keccak256('org.zeppelinos.proxy.implementation')=0x7050c9e0...f8c3 -> 0xd0e3f82ab04b983c05263cf3bf52481fbaa435b1; zos admin slot keccak256('org.zeppelinos.proxy.admin')=0x10d6a54a...390b -> 0xd530ff90a4943fa5ad4afe94cf9006fb081d2778; EIP-1967 slots 0x3608...2bbc / 0xb531...6103 are zero
+NOTE TOTAL_GONS: scaledTotalSupply() == 2^256-1 - ((2^256-1) mod 5e16): OK
+NOTE gonsPerFragment: slot 157 == TOTAL_GONS / _totalSupply (slot 156): OK (56367016748652969451374730104402914392678186405310276298068580)
+NOTE balanceOf: balanceOf(owner)=131017410863413 == gons(owner)/gpf; balanceOf(H1)=196931824874944 == gons(H1)/gpf: OK
+NOTE compiler layout: solc 0.7.6 --storage-layout and Sourcify storageLayout both equal the hand layout (layout.json)
+NOTE implementation's own storage: the implementation contract was itself initialized (direct eth_call: owner 0x2c7EB87f529a3e1E760A2BBb664Fa8E3d19Cf45B, totalSupply 5e16); irrelevant to the proxy
+
+# 0 failures

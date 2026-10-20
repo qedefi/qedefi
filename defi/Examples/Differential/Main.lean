@@ -11,7 +11,8 @@ lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAMEâ€
 ```
 
 Families: vaults `solmate`, `oz`, `oz3` (OpenZeppelin, decimals offset 3); tokens `oz20`,
-`solady`, `weth9`; groups `vaults`, `tokens`, `all`. Default: `solmate,oz`.
+`solady`, `weth9`, `usdt`, `usdtfee`, `bnb`, `sta`, `ampl` (the last six are mainnet bytecode);
+groups `vaults`, `tokens`, `all`. Default: `solmate,oz`.
 
 Per vault family: deploy from a non-canonical and the canonical deployer (checking
 `runtimeCodeFor` and `runtimeCode`), run an inflation-attack scenario and random call
@@ -139,6 +140,8 @@ def inflationScenario (f : Family) : Array Call :=
     mkCall f v alice f.vault "redeem(uint256,address,address)" [num 1, addr alice, addr alice],
     mkCall f v bob f.vault "maxWithdraw(address)" [addr bob]]
 
+/-- Test one vault family: deployments from two deployers, the inflation scenario, random
+sequences. -/
 def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) (fam : Family) :
     IO Unit := do
   IO.println s!"[{fam.name}]"

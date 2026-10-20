@@ -1,0 +1,45 @@
+# Layout validation for 0xdAC17F958D2ee523a2206206994597C13D831ec7 at block 26236515 (0xb0f382f2c434a272d6996d64ded45f4da06a0cff102fae9065b5ed7675cc5d62)
+# slot values via eth_getStorageAt, getter values via eth_call, both at that block
+
+OK   slot  0 off  0 owner              slot=0x000000000000000000000000c6cde7c39eb2f0f0095f41570af89efc2c1ea828  decoded=0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828  getter owner=0xC6CDE7C39eB2f0F0095F41570af89eFC2C1Ea828
+OK   slot  0 off 20 paused             slot=0x000000000000000000000000c6cde7c39eb2f0f0095f41570af89efc2c1ea828  decoded=false  getter paused=false
+OK   slot  1 off  0 _totalSupply       slot=0x0000000000000000000000000000000000000000000000000139b6c4ac3d4d8e  decoded=88302623529979278  getter _totalSupply=88302623529979278
+OK   slot  1 off  0 _totalSupply       slot=0x0000000000000000000000000000000000000000000000000139b6c4ac3d4d8e  decoded=88302623529979278  getter totalSupply=88302623529979278
+OK   slot  2 off  0 balances(root)     slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  3 off  0 basisPointsRate    slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter basisPointsRate=0
+OK   slot  4 off  0 maximumFee         slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter maximumFee=0
+OK   slot  5 off  0 allowed(root)      slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  6 off  0 isBlackListed(root) slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot  7 off  0 name               slot=0x5465746865722055534400000000000000000000000000000000000000000014  decoded=Tether USD  getter name=Tether USD
+OK   slot  8 off  0 symbol             slot=0x5553445400000000000000000000000000000000000000000000000000000008  decoded=USDT  getter symbol=USDT
+OK   slot  9 off  0 decimals           slot=0x0000000000000000000000000000000000000000000000000000000000000006  decoded=6  getter decimals=6
+OK   slot 10 off  0 upgradedAddress    slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0x0000000000000000000000000000000000000000  getter upgradedAddress=0x0000000000000000000000000000000000000000
+OK   slot 10 off 20 deprecated         slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=false  getter deprecated=false
+OK   slot 11 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 12 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 13 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 14 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+OK   slot 15 off  0 (unused)           slot=0x0000000000000000000000000000000000000000000000000000000000000000  decoded=0  getter None=(no getter)
+
+# mapping entries: slot = keccak256(pad32(key) ++ pad32(mappingSlot)); nested: keccak256(pad32(k2) ++ outerSlot)
+OK   balances[0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828]
+      slot 0x2c5d52d4b7782f16d083fbe798093c52785a8ce6ef2407e0ce3e75a54d4ee74b = 108983767000   getter balanceOf(owner) = 108983767000
+OK   balances[0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828]
+      slot 0x2c5d52d4b7782f16d083fbe798093c52785a8ce6ef2407e0ce3e75a54d4ee74b = 108983767000   getter balances(owner) = 108983767000
+OK   balances[0x28C6c06298d514Db089934071355E5743bf21d60]
+      slot 0x78b35599871be95768b2fdfaf9293a4491ecdc8ef25b872ee404fa1e441436e0 = 956280903418287   getter balanceOf(H1) = 956280903418287
+OK   balances[0xF977814e90dA44bFA03b6295A0616a897441aceC]
+      slot 0x0be16d71963429204d70543701f859c43526c316ac005c10114f4694ca405f36 = 16000000001136208   getter balanceOf(H2) = 16000000001136208
+OK   balances[0x5754284f345afc66a98fbB0a0Afe71e0F007B949]
+      slot 0x1443dce88f8c7f4f31845046f516109d2f1bbf5d692b3ae975bff8784725ce24 = 2551642875314569   getter balanceOf(H3) = 2551642875314569
+OK   isBlackListed[0x28C6c06298d514Db089934071355E5743bf21d60]
+      slot 0x759ebf061baf585c99e31ae2e878792704a737b70719d1ed8895fe7d10c01bf7 = false   getter isBlackListed(H1) = false
+OK   isBlackListed[0x28C6c06298d514Db089934071355E5743bf21d60]
+      slot 0x759ebf061baf585c99e31ae2e878792704a737b70719d1ed8895fe7d10c01bf7 = false   getter getBlackListStatus(H1) = false
+OK   allowed[0x28C6c06298d514Db089934071355E5743bf21d60][0xF977814e90dA44bFA03b6295A0616a897441aceC]
+      slot 0x989cb81a1cb9f30f513ed45a768b19a0d6783d187b8eaf68ff658313a464e36a = 0   getter allowance(H1,H2) = 0
+NOTE bytecode packing evidence: disassembly reads paused as (SLOAD 0x00 / 0x100**0x14) & 0xff and deprecated as (SLOAD 0x0a / 0x100**0x14) & 0xff, confirming offset 20 in slots 0 and 10
+NOTE weak checks: paused, deprecated, upgradedAddress, basisPointsRate, maximumFee, slots 2/5/6 roots, and all checked allowance/blacklist entries are zero on mainnet, so they confirm consistency but cannot distinguish all alternative layouts; nonzero checks: owner, _totalSupply, name, symbol, decimals, 4 balances
+NOTE sum check: not performed (cannot enumerate holders)
+
+# 0 failures

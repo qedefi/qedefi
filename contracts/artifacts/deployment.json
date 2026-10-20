@@ -73,6 +73,36 @@
       "block": 26236518,
       "codeHash": "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23",
       "codeSize": 3124
+    },
+    "USDT": {
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "block": 26236598,
+      "codeHash": "0xb44fb4e949d0f78f87f79ee46428f23a2a5713ce6fc6e0beb3dda78c2ac1ea55",
+      "codeSize": 11075
+    },
+    "BNB": {
+      "address": "0xB8c77482e45F1F44dE1745F52C74426C631bDD52",
+      "block": 26236596,
+      "codeHash": "0xa1b62b5dd40a9c7b0f0a91ffd2578f7b1b22ca6d312846a0b88b3ae8339201c6",
+      "codeSize": 5355
+    },
+    "STA": {
+      "address": "0xa7DE087329BFcda5639247F96140f9DAbe3DeED1",
+      "block": 26236604,
+      "codeHash": "0x2d5b2ff1b704f708f9c0f6ec97829ec6c8c9013713b9e0c301bdcb8dbf3c8429",
+      "codeSize": 3216
+    },
+    "AMPL": {
+      "address": "0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1",
+      "block": 26236604,
+      "codeHash": "0xec01e9f4bb8099df1b15c0c2b6e1fd795484681553981e77b34285b923fbc578",
+      "codeSize": 6229
+    },
+    "AMPLProxy": {
+      "address": "0xD46bA6D942050d489DBd938a2C909A5d5039A161",
+      "block": 26236604,
+      "codeHash": "0xf74669def838d4f085b394f7892fa8f014fb7ed7558b760b288692b1cc3ca054",
+      "codeSize": 2269
     }
   }
 }

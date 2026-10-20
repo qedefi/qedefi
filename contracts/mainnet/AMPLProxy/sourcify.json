@@ -1,0 +1,51 @@
+{
+  "address": "0xD46bA6D942050d489DBd938a2C909A5d5039A161",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T13:33:13Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.5.3+commit.10d17f24",
+    "compilerSettings": {
+      "optimizer": {
+        "runs": 0,
+        "enabled": false
+      }
+    },
+    "name": "AdminUpgradeabilityProxy",
+    "fullyQualifiedName": "AdminUpgradeabilityProxy.sol:AdminUpgradeabilityProxy"
+  },
+  "deployment": {
+    "transactionHash": "0x9d2548165665f812dbbfac756e6d81791d7f5072a74e364afda87a010500dc37",
+    "blockNumber": "7953823",
+    "transactionIndex": "77",
+    "deployer": "0xd8461BD73F19E3d789Ac0E5dbF1AD62FBBd15C22"
+  },
+  "proxyResolution": {
+    "isProxy": true,
+    "proxyType": "ZeppelinOSProxy",
+    "implementations": [
+      {
+        "address": "0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1",
+        "name": "UFragments"
+      }
+    ]
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 2226,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a723058201aff1f6d568008efa288c813a44dd0e6db90e10ebf4996bdf62e63f8f17367e60029",
+      "offset": 2226
+    }
+  }
+}

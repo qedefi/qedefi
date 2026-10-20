@@ -125,6 +125,34 @@ checks that every selector is pushed by the dispatcher, and generates the Lean m
 | Name | Address | Code hash | Size | Read at block | Compiler (mainnet) |
 |---|---|---|---|---|---|
 | WETH9 | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | `0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23` | 3,124 B | 26,236,518 (`0xebf5f600…acfe1`) | 0.4.19+commit.c4cbbb05, optimizer off |
+| USDT | `0xdAC17F958D2ee523a2206206994597C13D831ec7` | `0xb44fb4e949d0f78f87f79ee46428f23a2a5713ce6fc6e0beb3dda78c2ac1ea55` | 11,075 B | 26,236,598 (`0x5c845d3e…`) | 0.4.18+commit.9cf6e910, optimizer off |
+| BNB | `0xB8c77482e45F1F44dE1745F52C74426C631bDD52` | `0xa1b62b5dd40a9c7b0f0a91ffd2578f7b1b22ca6d312846a0b88b3ae8339201c6` | 5,355 B | 26,236,596 (`0xcab61a55…`) | 0.4.12+commit.194ff033, optimizer off |
+| STA | `0xa7DE087329BFcda5639247F96140f9DAbe3DeED1` | `0x2d5b2ff1b704f708f9c0f6ec97829ec6c8c9013713b9e0c301bdcb8dbf3c8429` | 3,216 B | 26,236,604 (`0x2fe4f1f0…`) | 0.5.0+commit.1d4f565a, optimizer 200 (byzantium) |
+| AMPL (implementation `UFragments`) | `0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1` | `0xec01e9f4bb8099df1b15c0c2b6e1fd795484681553981e77b34285b923fbc578` | 6,229 B | 26,236,604 | 0.7.6+commit.7338295f, optimizer 200 (istanbul) |
+| AMPLProxy (token address, zos `AdminUpgradeabilityProxy`) | `0xD46bA6D942050d489DBd938a2C909A5d5039A161` | `0xf74669def838d4f085b394f7892fa8f014fb7ed7558b760b288692b1cc3ca054` | 2,269 B | 26,236,604 | 0.5.3+commit.10d17f24, optimizer off |
+
+Every Sourcify match above is *partial* (`"match"`: the code equals the recompilation except
+the metadata hash in the trailer), so none of these is byte-reproducible from source; the
+code hash is the pin. `layout-check.txt` (USDT, BNB, STA, AMPL) records the check of the
+hand-derived layout against mainnet: every slot of the static layout and mapping rows of
+known holders read with `eth_getStorageAt` and compared with the public getters
+(`eth_call`) at one block (26,236,515–26,236,568; 0 failures). Zero-valued slots (USDT's fee,
+pause, deprecation, blacklist; empty allowances) are consistent but not strong evidence;
+`difftest` additionally checks each family's getters against the installed `genesis.json`
+(packed `paused`/`deprecated`, fee parameters, owners) and the views against slot reads.
+
+Recorded, not targets (read at block 26,236,588): LEND `0x80fB784B7eD66730e8b1DBd9820aFD29931aab03`
+(code hash `0xb9ac5542…3f1f`, 6,872 B, solc 0.4.16: zero-value transfers revert), GUSD
+`0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd` (`0xfd0ab716…c8f5`, 3,490 B: 2 decimals, a
+front contract forwarding by `CALL` to `erc20Impl`), YAM-V2
+`0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A` (3,683 B: 24 decimals), USDC
+`0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` and PAXG `0x45804880De22913dAFE09f4980848ECE6EcbAf78`
+(zos-slot proxies; PAXG's current implementation no longer charges a transfer fee).
+
+AMPL is the one proxied target: the token address holds the proxy, whose storage holds the
+token state (`AMPLProxy/genesis.json`: zos implementation slot → the implementation address,
+admin `0xAD`, then `UFragments` state), and the implementation's code is installed at its
+mainnet address (`AMPL/`, no storage). `difftest` runs it through `DELEGATECALL`.
 
 **WETH9 reproducibility.** Deployed at block 4,719,568 (tx `0xb9534341…2fa3`). Sourcify's
 match is partial (`"match"`): recompiling with 0.4.19 gives the deployed code except the
@@ -154,14 +182,15 @@ OpenZeppelin `_balances 0, _allowances 1, _totalSupply 2, _name 3, _symbol 4`. M
 `keccak(o₂₀ ‖ 0⁸ ‖ 0x87a211a2)`, `allowance(o, s)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x7f5e9f20 ‖ s₂₀)`,
 `nonces(o)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x38377508)` ([docs/tokens.md](../docs/tokens.md)).
 
-Mainnet modules (`Examples.WETH9.Contracts.WETH9`, `Examples.WeirdERC20.<T>.Contracts.<T>`)
+Mainnet modules (`Examples.WETH9.Contracts.WETH9`, `Examples.WeirdERC20.<T>.Contracts.<T>` for
+`USDT`, `BNB`, `STA`, `AMPL` (implementation) and `AMPL.Contracts.AMPLProxy`)
 have `runtimeCode`, `size_runtimeCode`, `address` (mainnet), `codeHash`, `fetchBlock`,
 `genesisStorage`, `immutableRefs = []`, `selectors`, `events`, `errors`, `storageLayout`; no
 creation code.
 
 ## Differential testing
 
-`lake exe difftest [--seed N] [--sequences N] [--length N] [--family solmate|oz|all]`
+`lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]]`
 (`defi/Examples/Differential/Main.lean`, run from `defi/`, needs anvil) deploys both families
 through their creation code in evm-lean (`processMessageCall`, `Crypto.real`, Cancun) and in
 anvil, then runs random call sequences from four actors: asset mint/burn/approve/transfer/
@@ -171,6 +200,16 @@ selectors, malformed calldata; amounts include 0, 1, `2²⁵⁶−1` and near-ov
 After every call it compares status, return/revert data, logs, receipt `gasUsed` and every
 storage slot either side touched, and shrinks mismatches to a minimal sequence.
 `--inject-bug` corrupts evm-lean's `deposit` to self-test the comparison.
+
+Families: `solmate`, `oz` (default), `oz3` (OZ vault with δ = 3), and the token families
+`oz20`, `solady`, `weth9`, `usdt`, `usdtfee` (fee on in genesis), `bnb`, `sta`, `ampl`
+(`defi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. Token families
+deploy (compiled) or install (mainnet: code plus `genesis.json` storage, both sides; AMPL as
+proxy plus implementation) the token, check its getters against the installed state, run a
+fixed scenario of its quirks, check `balanceOf`/`allowance`/`totalSupply` against reads of the
+documented slots, and run random sequences over its whole ABI (weighted; ether to payable
+functions and fallbacks; ether balances compared for WETH9 and BNB). Details in
+[docs/tokens.md](../docs/tokens.md).
 
 A fixed first-depositor scenario runs first (alice deposits 1 wei, donates 10¹⁸, bob
 deposits 2·10¹⁸ − 1, alice redeems): both sides agree; on Solmate alice ends with

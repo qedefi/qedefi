@@ -1,0 +1,80 @@
+{
+  "note": "Constructor state with test parameters: owner alice (0xA11CE), not paused, not deprecated, fee 0, 6 decimals; balances for the four actors, totalSupply their sum; two allowances (one infinite).",
+  "storage": [
+    {
+      "label": "owner (paused = false in byte 20)",
+      "slot": "0x0",
+      "value": "0xa11ce"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "0x1",
+      "value": "0x19774301e40"
+    },
+    {
+      "label": "name",
+      "slot": "0x7",
+      "value": "0x5465746865722055534400000000000000000000000000000000000000000014"
+    },
+    {
+      "label": "symbol",
+      "slot": "0x8",
+      "value": "0x5553445400000000000000000000000000000000000000000000000000000008"
+    },
+    {
+      "label": "decimals",
+      "slot": "0x9",
+      "value": "0x6"
+    },
+    {
+      "label": "balance[alice]",
+      "mapping": "2",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0xe8d4a51000"
+    },
+    {
+      "label": "balance[bob]",
+      "mapping": "2",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x746a528800"
+    },
+    {
+      "label": "balance[carol]",
+      "mapping": "2",
+      "keys": [
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x3a35294400"
+    },
+    {
+      "label": "balance[dave]",
+      "mapping": "2",
+      "keys": [
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xf4240"
+    },
+    {
+      "label": "allowance[bob][carol]",
+      "mapping": "5",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B",
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x174876e800"
+    },
+    {
+      "label": "allowance[alice][dave]",
+      "mapping": "5",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE",
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

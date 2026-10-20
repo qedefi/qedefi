@@ -1,0 +1,20 @@
+{
+  "name": "BNB",
+  "address": "0xB8c77482e45F1F44dE1745F52C74426C631bDD52",
+  "chainId": 1,
+  "block": 26236596,
+  "blockHash": "0xcab61a5509df33d0c491a06b08456239a10a4426383f7106c97c6d56dbd72d6b",
+  "codeHash": "0xa1b62b5dd40a9c7b0f0a91ffd2578f7b1b22ca6d312846a0b88b3ae8339201c6",
+  "codeSize": 5355,
+  "contractName": "BNB",
+  "compiler": "0.4.12+commit.194ff033",
+  "optimizer": {
+    "runs": 200,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

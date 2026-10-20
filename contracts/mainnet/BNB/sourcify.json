@@ -1,0 +1,48 @@
+{
+  "address": "0xB8c77482e45F1F44dE1745F52C74426C631bDD52",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T13:26:43Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.12+commit.194ff033",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      },
+      "remappings": []
+    },
+    "name": "BNB",
+    "fullyQualifiedName": "BNB.sol:BNB"
+  },
+  "deployment": {
+    "transactionHash": "0x436fc7d21ed4a0a634f41b50ccb42fca12be7322de5bf9a20c97bdccbb5b2a04",
+    "blockNumber": "3978343",
+    "transactionIndex": "44",
+    "deployer": "0x00C5E04176d95A286fccE0E68c683Ca0bfec8454"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 5312,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820d02c5c68cb266e69017fe3c9b00e2f043fc78fa74c4bcdbc9cbd45375a535b020029",
+      "offset": 5312
+    }
+  }
+}
