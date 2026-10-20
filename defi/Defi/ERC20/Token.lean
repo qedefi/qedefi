@@ -5,31 +5,16 @@ public import Defi.Math.Arith
 /-!
 # ERC-20 ledgers
 
-`Token A` is the storage of an ERC-20 contract over an actor type `A` (addresses):
-balances as a finitely supported map `A →₀ ℕ`, the total supply, and the allowance matrix.
-Both the vault's share token and the underlying asset are `Token`s.
-
-Two families of operations mirror the two code bases exactly, including when they revert:
-
-* **Solmate `ERC20`** (`transfer`, `transferFrom`, `approve`, `_mint`, `_burn`): checked
-  subtraction on the debited balance, unchecked addition on the credited one, checked
-  `totalSupply += amount` in `_mint`, `type(uint256).max` allowances are never decreased,
-  no zero-address checks.
-* **OpenZeppelin `ERC20`** v5 (`_update`, `_transfer`, `_mint`, `_burn`, `_approve`,
-  `_spendAllowance`): the same arithmetic plus the zero-address reverts.
-
-Unchecked additions are modelled as `ℕ` additions; they agree with the bytecode as long as
-`Token.WF` (balances sum to `totalSupply ≤ MAX`) holds, which every operation preserves
-(`WF_transfer`, `WF_ozUpdate`, …). Amounts are ABI-decoded `uint256`s, so callers of these
-functions pass values `≤ MAX`.
+`Token A`: balances `A →₀ ℕ`, total supply and allowances. The Solmate and OpenZeppelin v5
+operations mirror their sources, including when they revert (OpenZeppelin adds the
+zero-address checks). Unchecked additions are `ℕ` additions, which match the bytecode while
+`Token.WF` (balances sum to `totalSupply ≤ MAX`) holds; every operation preserves it.
 -/
 
 @[expose] public noncomputable section
 
 namespace Defi.ERC20
-open Defi.Math
-
-open Finsupp
+open Defi.Math Finsupp
 
 /-- Sum of all entries of a finitely supported balance map. -/
 def total {A : Type} (f : A →₀ ℕ) : ℕ := f.sum fun _ v => v
@@ -44,7 +29,6 @@ structure Token (A : Type) where
   allowance : A → A → ℕ
 
 namespace Token
-open Defi.Math
 
 variable {A : Type} [DecidableEq A]
 
@@ -58,15 +42,13 @@ def setAllowance (t : Token A) (owner spender : A) (v : ℕ) : Token A :=
 
 /-! ## Solmate `ERC20` -/
 
-/-- Solmate `ERC20.transfer(to, amount)` with `msg.sender = src`:
-`balanceOf[src] -= amount` (checked), then `balanceOf[dst] += amount` (unchecked). -/
+/-- Solmate `ERC20.transfer(to, amount)` with `msg.sender = src`. -/
 def transfer (t : Token A) (src dst : A) (v : ℕ) : Option (Token A) :=
   if t.balanceOf src < v then none
   else some { t with balanceOf := t.balanceOf - single src v + single dst v }
 
-/-- The allowance step of Solmate `transferFrom`, `withdraw` and `redeem`:
-`if (allowed != type(uint256).max) allowance[owner][spender] = allowed - amount;`
-(checked subtraction). -/
+/-- The allowance step of Solmate `transferFrom`, `withdraw` and `redeem`; infinite
+(`MAX`) allowances are not decreased. -/
 def spend (t : Token A) (owner spender : A) (v : ℕ) : Option (Token A) :=
   if t.allowance owner spender = MAX then some t
   else if t.allowance owner spender < v then none
@@ -80,14 +62,12 @@ def transferFrom (t : Token A) (spender src dst : A) (v : ℕ) : Option (Token A
 def approve (t : Token A) (owner spender : A) (v : ℕ) : Token A :=
   t.setAllowance owner spender v
 
-/-- Solmate `ERC20._mint(to, amount)`: `totalSupply += amount` (checked), then
-`balanceOf[to] += amount` (unchecked). Also `MockERC20.mint`. -/
+/-- Solmate `ERC20._mint(to, amount)` (also `MockERC20.mint`). -/
 def mint (t : Token A) (dst : A) (v : ℕ) : Option (Token A) :=
   if MAX < t.totalSupply + v then none
   else some { t with totalSupply := t.totalSupply + v, balanceOf := t.balanceOf + single dst v }
 
-/-- Solmate `ERC20._burn(from, amount)`: `balanceOf[from] -= amount` (checked), then
-`totalSupply -= amount` (unchecked). Also `MockERC20.burn`. -/
+/-- Solmate `ERC20._burn(from, amount)` (also `MockERC20.burn`). -/
 def burn (t : Token A) (src : A) (v : ℕ) : Option (Token A) :=
   if t.balanceOf src < v then none
   else some { t with totalSupply := t.totalSupply - v, balanceOf := t.balanceOf - single src v }
@@ -176,25 +156,20 @@ theorem le_total (f : A →₀ ℕ) (a : A) : f a ≤ total f := by
   · exact Finset.single_le_sum (f := fun x => f x) (fun _ _ => Nat.zero_le _) ha
   · simp [Finsupp.notMem_support_iff.1 ha]
 
-
 /-! ## Effects of the Solmate operations -/
 
-/-- Balance after a debit and a credit, at the credited account. -/
 theorem move_apply_dst (f : A →₀ ℕ) {src dst : A} (v : ℕ) (h : src ≠ dst) :
     (f - single src v + single dst v) dst = f dst + v := by
   rw [add_single_apply, sub_single_apply]; simp [h]
 
-/-- Balance after a debit and a credit, at the debited account. -/
 theorem move_apply_src (f : A →₀ ℕ) {src dst : A} (v : ℕ) (h : src ≠ dst) :
     (f - single src v + single dst v) src = f src - v := by
   rw [add_single_apply, sub_single_apply]; simp [Ne.symm h]
 
-/-- Balance after a debit and a credit, elsewhere. -/
 theorem move_apply_other (f : A →₀ ℕ) {src dst x : A} (v : ℕ) (h1 : src ≠ x) (h2 : dst ≠ x) :
     (f - single src v + single dst v) x = f x := by
   rw [add_single_apply, sub_single_apply]; simp [h1, h2]
 
-/-- A self-transfer leaves the balances unchanged. -/
 theorem move_self {f : A →₀ ℕ} {a : A} {v : ℕ} (h : v ≤ f a) :
     f - single a v + single a v = f := sub_single_add_single h
 
@@ -244,7 +219,6 @@ theorem burn_eq_some {t t' : Token A} {src : A} {v : ℕ} :
     · rintro rfl; exact ⟨by omega, rfl⟩
     · rintro ⟨-, rfl⟩; rfl
 
-/-- In a well-formed ledger every balance is bounded by the total supply. -/
 theorem balanceOf_le_totalSupply {t : Token A} (hw : t.WF) (a : A) :
     t.balanceOf a ≤ t.totalSupply := hw.1 ▸ le_total _ a
 
@@ -350,7 +324,6 @@ theorem WF_ozTransferFrom {t t' : Token A} {sp src dst : A} {v : ℕ} (hw : t.WF
   unfold ozTransferFrom at h
   obtain ⟨t1, h1, h2⟩ := Option.bind_eq_some_iff.1 h
   exact WF_ozTransfer (WF_ozSpend hw h1) h2
-
 
 /-! ## Effects of the OpenZeppelin operations -/
 

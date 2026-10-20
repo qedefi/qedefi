@@ -5,16 +5,15 @@ import Examples.Deployment
 /-!
 # Tests for the compiled-contract constants
 
-Cross-checks of the generated tables in `defi/Examples/Solmate/Contracts/` against the pure-Lean
-Keccak-256 (selectors and event topics are hashes of their signatures), of the immutables
-patching (`runtimeCodeFor` recomputes the canonical immutables, including Solmate's EIP-712
-domain separator) and of the storage layouts the proofs rely on. Execution of the code
-itself is tested against anvil by `lake exe difftest`.
+Selectors and event topics against the pure-Lean Keccak-256, code sizes, canonical
+addresses, immutables patching, and the storage layouts the proofs rely on. Execution is
+tested against anvil by `lake exe difftest`.
 -/
 
 namespace Examples.Tests.Contracts
 
-open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin
+open Examples.OpenZeppelin.Contracts Examples.Solmate Examples.Solmate.Contracts
 
 /-- The 4-byte selector of a function signature. -/
 def selectorOf (sig : String) : UInt32 :=

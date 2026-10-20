@@ -4,21 +4,16 @@ import Conformance.Hex
 /-!
 # Random call sequences
 
-Calls are drawn by a seeded SplitMix64 generator, so a run is reproducible from its seed.
-Each call is generated against the current evm-lean state, which lets amounts hit the
-interesting values: zero, one, `2²⁵⁶ - 1` and other near-overflow values, current balances,
-total supply and total assets (± 1), and words recently returned by the contracts.
-
-The mix: asset `mint`/`burn`/`approve`/`transfer`/`transferFrom`, donations (asset transfers
-to the vault), vault `deposit`/`mint`/`withdraw`/`redeem` (with the caller sometimes not
-the owner, exercising allowances), share `transfer`/`approve`/`transferFrom`, Solmate
-`permit` with an invalid signature or an expired deadline, every view of either contract,
-generic calls of any selector with random arguments, and malformed calldata.
+A seeded SplitMix64 generator (runs are reproducible from the seed). Calls are generated
+against the current evm-lean state so amounts hit edge values: zero, one, near-overflow,
+current balances and totals (± 1), and recently returned words. The mix covers every entry
+point of both contracts, donations, invalid `permit`s, and malformed calldata.
 -/
 
 namespace Examples.Differential
 
-open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin
+open Examples.OpenZeppelin.Contracts Examples.Solmate Examples.Solmate.Contracts
 
 /-- Generator state: a SplitMix64 counter. -/
 abbrev Gen := StateM UInt64
@@ -35,7 +30,6 @@ def next64 : Gen UInt64 := do
 def below (n : Nat) : Gen Nat := do
   if n = 0 then return 0 else return (← next64).toNat % n
 
-/-- A uniformly random word. -/
 def randWord : Gen Word := do
   let mut n := 0
   for _ in [0:4] do n := n * 2 ^ 64 + (← next64).toNat
@@ -106,7 +100,6 @@ structure Call where
   kind : String
   deriving Inhabited
 
-/-- The calldata of a call with a static argument list. -/
 def calldata (sel : UInt32) (args : List Word) : ByteArray :=
   Bytes.ofNatBE 4 sel.toNat ++ args.foldl (fun b w => b ++ Bytes.ofWord w) .empty
 
@@ -118,7 +111,6 @@ def paramTypes (sig : String) : List String :=
     if inner.isEmpty then [] else inner.splitOn ","
   | _ => []
 
-/-- The function name of a signature. -/
 def fnName (sig : String) : String := (sig.splitOn "(").headD sig
 
 /-- An argument of the given ABI type, with its rendering. -/

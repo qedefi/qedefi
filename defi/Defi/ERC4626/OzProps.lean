@@ -6,26 +6,19 @@ public import Defi.Math.Arith
 /-!
 # Properties of the OpenZeppelin vault
 
-The same catalogue as `SolmateProps.lean`, for the OpenZeppelin model with decimals offset
-`δ` and `k = 10^δ` virtual shares. Write `T̂ = totalAssets + 1` and `Ŝ = totalSupply + k`
-for the *virtual* totals; all conversions are `mulDiv`s by `Ŝ/T̂` or `T̂/Ŝ`.
-
-Because `Ŝ, T̂ > 0` always, every property that needed `totalSupply > 0` for Solmate holds
-here unconditionally: the price `T̂/Ŝ` is monotone through every vault operation, and all
-eight a16z round trips hold in every state (including an empty or drained vault).
+The `SolmateProps` catalogue for OpenZeppelin, with virtual totals `T̂ = totalAssets + 1`
+and `Ŝ = totalSupply + 10^δ`. Since `T̂, Ŝ > 0`, everything that needed `totalSupply > 0`
+for Solmate holds unconditionally, including all eight round trips.
 -/
 
 @[expose] public section
 
 namespace Defi.ERC4626.Oz
-open Defi.Math Defi.ERC20
-
-open Defi.ERC20.Token Finsupp
+open Defi.Math Defi.ERC20 Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A] [Zero A] {δ : ℕ}
 
 namespace State
-open Defi.Math Defi.ERC20
 
 /-- Virtual supply `Ŝ = totalSupply + 10^δ`. -/
 def vS (δ : ℕ) (s : State A) : ℕ := s.totalSupply + 10 ^ δ
@@ -216,7 +209,7 @@ theorem Inv_step {s s' : State A} {op : Op A} (hi : Inv s) (h : step δ s op = s
   | assetBurn src v =>
     obtain ⟨t, h1, rfl⟩ := Option.map_eq_some_iff.1 h; exact ⟨WF_ozBurn hi.1 h1, hi.2⟩
 
-/-- **Multi-transaction invariant** for the OpenZeppelin vault. -/
+/-- Any sequence of calls preserves `Inv`. -/
 theorem Inv_exec {s : State A} (hi : Inv s) (ops : List (Op A)) : Inv (exec δ s ops) := by
   induction ops generalizing s with
   | nil => exact hi
@@ -226,14 +219,13 @@ theorem Inv_exec {s : State A} (hi : Inv s) (ops : List (Op A)) : Inv (exec δ s
     | none => exact hi
     | some s' => exact Inv_step hi h
 
-/-- [INV-SUPPLY] `totalSupply = Σ balanceOf` in every reachable state. -/
+/-- `totalSupply = Σ balanceOf` in every reachable state. -/
 theorem totalSupply_eq_sum_exec {s : State A} (hi : Inv s) (ops : List (Op A)) :
     (exec δ s ops).totalSupply = total (exec δ s ops).shares.balanceOf :=
   ((Inv_exec hi ops).2.1).symm
 
 /-! ## Previews and rounding -/
 
-/-- [P-PREVIEW-*] Each entry point returns exactly its preview. -/
 theorem previews_exact {s s' : State A} {c r o : A} {x y : ℕ} :
     (deposit δ s c x r = some (s', y) → s.previewDeposit δ x = some y) ∧
     (mint δ s c x r = some (s', y) → s.previewMint δ x = some y) ∧
@@ -242,28 +234,28 @@ theorem previews_exact {s s' : State A} {c r o : A} {x y : ℕ} :
   ⟨fun h => (deposit_eq_some h).1, fun h => (mint_eq_some h).1,
     fun h => (withdraw_eq_some h).1, fun h => (redeem_eq_some h).1⟩
 
-/-- [R-DEPOSIT] `n = ⌊a·Ŝ/T̂⌋`. -/
+/-- `deposit` rounds down: `n = ⌊a·Ŝ/T̂⌋`. -/
 theorem deposit_rounding {s s' : State A} {c r : A} {a n : ℕ}
     (h : deposit δ s c a r = some (s', n)) :
     n * s.vT ≤ a * s.vS δ ∧ a * s.vS δ < (n + 1) * s.vT := by
   obtain ⟨-, -, -, rfl⟩ := toShares_eq_some.1 (deposit_eq_some h).1
   exact ⟨Nat.div_mul_le_self _ _, lt_div_add_one_mul _ _ (State.vT_pos s)⟩
 
-/-- [R-MINT] `a = ⌈n·T̂/Ŝ⌉`. -/
+/-- `mint` rounds up: `a = ⌈n·T̂/Ŝ⌉`. -/
 theorem mint_rounding {s s' : State A} {c r : A} {n a : ℕ}
     (h : mint δ s c n r = some (s', a)) :
     n * s.vT ≤ a * s.vS δ ∧ a * s.vS δ < n * s.vT + s.vS δ := by
   obtain ⟨-, -, -, rfl⟩ := toAssets_eq_some.1 (mint_eq_some h).1
   exact ⟨le_ceilDiv_mul _ _ (State.vS_pos s), ceilDiv_mul_lt _ _ (State.vS_pos s)⟩
 
-/-- [R-WITHDRAW] `n = ⌈a·Ŝ/T̂⌉`. -/
+/-- `withdraw` rounds up: `n = ⌈a·Ŝ/T̂⌉`. -/
 theorem withdraw_rounding {s s' : State A} {c r o : A} {a n : ℕ}
     (h : withdraw δ s c a r o = some (s', n)) :
     a * s.vS δ ≤ n * s.vT ∧ n * s.vT < a * s.vS δ + s.vT := by
   obtain ⟨-, -, -, rfl⟩ := toShares_eq_some.1 (withdraw_eq_some h).1
   exact ⟨le_ceilDiv_mul _ _ (State.vT_pos s), ceilDiv_mul_lt _ _ (State.vT_pos s)⟩
 
-/-- [R-REDEEM] `a = ⌊n·T̂/Ŝ⌋`. -/
+/-- `redeem` rounds down: `a = ⌊n·T̂/Ŝ⌋`. -/
 theorem redeem_rounding {s s' : State A} {c r o : A} {n a : ℕ}
     (h : redeem δ s c n r o = some (s', a)) :
     a * s.vS δ ≤ n * s.vT ∧ n * s.vT < (a + 1) * s.vS δ := by
@@ -296,7 +288,6 @@ theorem mint_vTS {s s' : State A} {c r : A} {n a : ℕ} (h : mint δ s c n r = s
   have := totalAssets_in hc hself hb
   unfold State.vT State.vS; omega
 
-/-- After `withdraw` to a receiver other than the vault: `T̂ = a + T̂'`, `Ŝ = n + Ŝ'`. -/
 theorem withdraw_vTS {s s' : State A} {c r o : A} {a n : ℕ} (hi : Inv s)
     (h : withdraw δ s c a r o = some (s', n)) (hr : r ≠ s.self) :
     s.vT = a + s'.vT ∧ s.vS δ = n + s'.vS δ := by
@@ -305,7 +296,6 @@ theorem withdraw_vTS {s s' : State A} {c r o : A} {a n : ℕ} (hi : Inv s)
   have := hn.trans (balanceOf_le_totalSupply hi.2 o)
   unfold State.vT State.vS State.totalSupply at *; omega
 
-/-- After `redeem` to a receiver other than the vault: `T̂ = a + T̂'`, `Ŝ = n + Ŝ'`. -/
 theorem redeem_vTS {s s' : State A} {c r o : A} {n a : ℕ} (hi : Inv s)
     (h : redeem δ s c n r o = some (s', a)) (hr : r ≠ s.self) :
     s.vT = a + s'.vT ∧ s.vS δ = n + s'.vS δ := by
@@ -316,7 +306,7 @@ theorem redeem_vTS {s s' : State A} {c r o : A} {n a : ℕ} (hi : Inv s)
 
 /-! ## No dilution, unconditionally -/
 
-/-- [E-PRICE-DEPOSIT] `T̂·Ŝ' ≤ T̂'·Ŝ`, in every state (no `totalSupply > 0` needed). -/
+/-- A deposit never lowers the price: `T̂·Ŝ' ≤ T̂'·Ŝ`, in every state. -/
 theorem deposit_price_mono {s s' : State A} {c r : A} {a n : ℕ}
     (h : deposit δ s c a r = some (s', n)) (hc : c ≠ s.self) :
     s.vT * s'.vS δ ≤ s'.vT * s.vS δ := by
@@ -324,7 +314,6 @@ theorem deposit_price_mono {s s' : State A} {c r : A} {a n : ℕ}
   have := (deposit_rounding h).1
   rw [e1, e2]; nlinarith
 
-/-- [E-PRICE-MINT] -/
 theorem mint_price_mono {s s' : State A} {c r : A} {n a : ℕ}
     (h : mint δ s c n r = some (s', a)) (hc : c ≠ s.self) :
     s.vT * s'.vS δ ≤ s'.vT * s.vS δ := by
@@ -332,7 +321,6 @@ theorem mint_price_mono {s s' : State A} {c r : A} {n a : ℕ}
   have := (mint_rounding h).1
   rw [e1, e2]; nlinarith
 
-/-- [E-PRICE-WITHDRAW] -/
 theorem withdraw_price_mono {s s' : State A} {c r o : A} {a n : ℕ} (hi : Inv s)
     (h : withdraw δ s c a r o = some (s', n)) (hr : r ≠ s.self) :
     s.vT * s'.vS δ ≤ s'.vT * s.vS δ := by
@@ -340,7 +328,6 @@ theorem withdraw_price_mono {s s' : State A} {c r o : A} {a n : ℕ} (hi : Inv s
   have := (withdraw_rounding h).1
   rw [e1, e2] at this ⊢; nlinarith
 
-/-- [E-PRICE-REDEEM] -/
 theorem redeem_price_mono {s s' : State A} {c r o : A} {n a : ℕ} (hi : Inv s)
     (h : redeem δ s c n r o = some (s', a)) (hr : r ≠ s.self) :
     s.vT * s'.vS δ ≤ s'.vT * s.vS δ := by
@@ -348,7 +335,6 @@ theorem redeem_price_mono {s s' : State A} {c r o : A} {n a : ℕ} (hi : Inv s)
   have := (redeem_rounding h).1
   rw [e1, e2] at this ⊢; nlinarith
 
-/-- Cross-multiplied monotonicity is monotonicity of `price` over `ℚ`. -/
 theorem price_le_of_cross {s s' : State A} (h : s.vT * s'.vS δ ≤ s'.vT * s.vS δ) :
     s.price δ ≤ s'.price δ := by
   unfold State.price
@@ -357,7 +343,7 @@ theorem price_le_of_cross {s s' : State A} (h : s.vT * s'.vS δ ≤ s'.vT * s.vS
 
 /-! ## Solvency -/
 
-/-- [I-SOLVENT] `Σₓ ⌊balanceOf[x]·T̂/Ŝ⌋ ≤ totalAssets` in every well-formed state. -/
+/-- **Solvency.** `Σₓ ⌊balanceOf[x]·T̂/Ŝ⌋ ≤ totalAssets` whenever `Inv` holds. -/
 theorem solvent (s : State A) (hi : Inv s) :
     (s.shares.balanceOf.sum fun _ b => b * s.vT / s.vS δ) ≤ s.totalAssets := by
   have hsum : total s.shares.balanceOf = s.totalSupply := hi.2.1
@@ -380,7 +366,7 @@ theorem solvent (s : State A) (hi : Inv s) :
 
 /-! ## Round trips: all eight hold in every state -/
 
-/-- [RT-DEPOSIT-REDEEM] `redeem(deposit(a)) ≤ a`. -/
+/-- `redeem(deposit(a)) ≤ a`, in every state. -/
 theorem rt_deposit_redeem {s s₁ s₂ : State A} {c r c' r' o : A} {a n a' : ℕ}
     (h₁ : deposit δ s c a r = some (s₁, n)) (h₂ : redeem δ s₁ c' n r' o = some (s₂, a'))
     (hc : c ≠ s.self) : a' ≤ a := by
@@ -390,7 +376,7 @@ theorem rt_deposit_redeem {s s₁ s₂ : State A} {c r c' r' o : A} {a n a' : �
   exact rt_in_out_assets (by have := State.vS_pos (δ := δ) s; omega) (deposit_rounding h₁).1
     r2
 
-/-- [RT-MINT-REDEEM] `redeem(n) ≤ mint(n)`. -/
+/-- `redeem(n) ≤ mint(n)`. -/
 theorem rt_mint_redeem {s s₁ s₂ : State A} {c r c' r' o : A} {n a a' : ℕ}
     (h₁ : mint δ s c n r = some (s₁, a)) (h₂ : redeem δ s₁ c' n r' o = some (s₂, a'))
     (hc : c ≠ s.self) : a' ≤ a := by
@@ -400,7 +386,7 @@ theorem rt_mint_redeem {s s₁ s₂ : State A} {c r c' r' o : A} {n a a' : ℕ}
   exact rt_in_out_assets (by have := State.vS_pos (δ := δ) s; omega) (mint_rounding h₁).1
     r2
 
-/-- [RT-DEPOSIT-WITHDRAW] `withdraw(a)` burns at least the `deposit(a)` shares. -/
+/-- `withdraw(a)` burns at least the shares `deposit(a)` minted. -/
 theorem rt_deposit_withdraw {s s₁ s₂ : State A} {c r c' r' o : A} {a n n' : ℕ}
     (h₁ : deposit δ s c a r = some (s₁, n)) (h₂ : withdraw δ s₁ c' a r' o = some (s₂, n'))
     (hc : c ≠ s.self) : n ≤ n' := by
@@ -410,7 +396,7 @@ theorem rt_deposit_withdraw {s s₁ s₂ : State A} {c r c' r' o : A} {a n n' : 
   exact rt_in_out_shares (by have := State.vT_pos s; omega) (deposit_rounding h₁).1
     r2
 
-/-- [RT-MINT-WITHDRAW] `withdraw(mint(n))` burns at least `n` shares. -/
+/-- `withdraw(mint(n))` burns at least `n` shares. -/
 theorem rt_mint_withdraw {s s₁ s₂ : State A} {c r c' r' o : A} {n a n' : ℕ}
     (h₁ : mint δ s c n r = some (s₁, a)) (h₂ : withdraw δ s₁ c' a r' o = some (s₂, n'))
     (hc : c ≠ s.self) : n ≤ n' := by
@@ -420,7 +406,7 @@ theorem rt_mint_withdraw {s s₁ s₂ : State A} {c r c' r' o : A} {n a n' : ℕ
   exact rt_in_out_shares (by have := State.vT_pos s; omega) (mint_rounding h₁).1
     r2
 
-/-- [RT-REDEEM-DEPOSIT] `deposit(redeem(n)) ≤ n`, even when the redemption drains the vault. -/
+/-- `deposit(redeem(n)) ≤ n`, even when the redemption drains the vault. -/
 theorem rt_redeem_deposit {s s₁ s₂ : State A} {c r o c' r' : A} {n a n' : ℕ} (hi : Inv s)
     (h₁ : redeem δ s c n r o = some (s₁, a)) (h₂ : deposit δ s₁ c' a r' = some (s₂, n'))
     (hr : r ≠ s.self) : n' ≤ n := by
@@ -429,7 +415,7 @@ theorem rt_redeem_deposit {s s₁ s₂ : State A} {c r o c' r' : A} {n a n' : �
   rw [eT, eS] at r1
   exact rt_out_in_shares (State.vT_pos s₁) r1 (deposit_rounding h₂).1
 
-/-- [RT-WITHDRAW-DEPOSIT] `deposit(a) ≤ withdraw(a)` (shares). -/
+/-- `deposit(a) ≤ withdraw(a)` (shares). -/
 theorem rt_withdraw_deposit {s s₁ s₂ : State A} {c r o c' r' : A} {a n n' : ℕ} (hi : Inv s)
     (h₁ : withdraw δ s c a r o = some (s₁, n)) (h₂ : deposit δ s₁ c' a r' = some (s₂, n'))
     (hr : r ≠ s.self) : n' ≤ n := by
@@ -438,7 +424,7 @@ theorem rt_withdraw_deposit {s s₁ s₂ : State A} {c r o c' r' : A} {a n n' : 
   rw [eT, eS] at r1
   exact rt_out_in_shares (State.vT_pos s₁) r1 (deposit_rounding h₂).1
 
-/-- [RT-REDEEM-MINT] `mint(n)` after `redeem(n)` costs at least what it paid. -/
+/-- `mint(n)` after `redeem(n)` costs at least what the redemption paid. -/
 theorem rt_redeem_mint {s s₁ s₂ : State A} {c r o c' r' : A} {n a a' : ℕ} (hi : Inv s)
     (h₁ : redeem δ s c n r o = some (s₁, a)) (h₂ : mint δ s₁ c' n r' = some (s₂, a'))
     (hr : r ≠ s.self) : a ≤ a' := by
@@ -447,7 +433,7 @@ theorem rt_redeem_mint {s s₁ s₂ : State A} {c r o c' r' : A} {n a a' : ℕ} 
   rw [eT, eS] at r1
   exact rt_out_in_assets (State.vS_pos s₁) r1 (mint_rounding h₂).1
 
-/-- [RT-WITHDRAW-MINT] `mint(withdraw(a))` costs at least `a`. -/
+/-- `mint(withdraw(a))` costs at least `a`. -/
 theorem rt_withdraw_mint {s s₁ s₂ : State A} {c r o c' r' : A} {a n a' : ℕ} (hi : Inv s)
     (h₁ : withdraw δ s c a r o = some (s₁, n)) (h₂ : mint δ s₁ c' n r' = some (s₂, a'))
     (hr : r ≠ s.self) : a ≤ a' := by
@@ -458,8 +444,7 @@ theorem rt_withdraw_mint {s s₁ s₂ : State A} {c r o c' r' : A} {a n a' : ℕ
 
 /-! ## A deposit can mint zero shares -/
 
-/-- [EIP-DEPOSIT-ZERO] Unlike Solmate, OpenZeppelin has no `ZERO_SHARES` check: when
-`a·Ŝ < T̂` a successful `deposit` takes `a` assets and mints `0` shares. -/
+/-- With no `ZERO_SHARES` check, a deposit with `a·Ŝ < T̂` takes `a` assets for `0` shares. -/
 theorem deposit_zero_shares {s s' : State A} {c r : A} {a n : ℕ}
     (h : deposit δ s c a r = some (s', n)) (hlt : a * s.vS δ < s.vT) : n = 0 := by
   have := (deposit_rounding h).1

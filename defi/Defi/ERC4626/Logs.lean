@@ -4,18 +4,9 @@ import EvmLean.Crypto.Keccak
 /-!
 # The logs of the Solmate contracts' events
 
-* **Topics.** `transferTopic`, `approvalTopic`, `depositTopic`, `withdrawTopic` are the
-  Keccak-256 hashes of the event signatures (checked against the executable Keccak below and
-  against `contracts/artifacts/*/events.json`). In the bytecode they are `PUSH32` constants (or
-  copied from the code), so no hash hypothesis is involved: the theorems hold for every
-  `Crypto`.
-* **Logs.** `transferLog token src dst v` = `Transfer(src, dst, v)` emitted by `token`: topics
-  `[transferTopic, pad(src), pad(dst)]` (indexed addresses left-padded), data the ABI word of
-  `v`; `approvalLog`; `depositLog vault caller owner assets shares` (data: two words);
-  `withdrawLog vault caller receiver owner assets shares` (three indexed addresses).
-* **Tactics** for the companion proofs: `event_log d` closes the equation between the entry a
-  `LOGn` appended during symbolic execution (`logEntry`, a memory read) and the expected log
-  with data words `d`.
+Event topics (checked against the executable Keccak; in the bytecode they are constants, so
+no hash hypothesis is needed), the expected `Log` of each event, and the `event_log` /
+`logs_simp` tactics for log proofs after symbolic execution.
 -/
 
 section
@@ -89,13 +80,7 @@ end
 
 section
 
-/-!
-## Tactics for the log companions of the vault's internal functions
-
-`logs_simp [h, …]`: normalise the logs of a substate built by symbolic execution — warm sets,
-refunds and successful child calls keep or concatenate logs (`warmKey_logs`, `mergeSub_logs`,
-…) — using the extra facts `h` (typically the callee's or an internal function's logs).
--/
+/-! ## Tactics for the log companions of the vault's internal functions -/
 
 namespace Defi.ERC4626
 

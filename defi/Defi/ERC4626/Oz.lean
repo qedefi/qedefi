@@ -5,31 +5,16 @@ public import Defi.ERC20.Token
 /-!
 # The OpenZeppelin ERC-4626 vault, as an abstract state machine
 
-Mirrors OpenZeppelin Contracts v5 `token/ERC20/extensions/ERC4626.sol` (vendored v5.7.0)
-with `totalAssets() = asset.balanceOf(address(this))` and a decimals offset `δ`
-(`_decimalsOffset()`; the pinned `OzVault` uses `δ = 0`), over an OpenZeppelin `ERC20Mock`
-asset. `δ` is a parameter of every function: the vault has `10^δ` *virtual shares* and
-one *virtual asset*:
-
-```
-_convertToShares(a, r) = a.mulDiv(totalSupply() + 10 ** δ, totalAssets() + 1, r)
-_convertToAssets(n, r) = n.mulDiv(totalAssets() + 1, totalSupply() + 10 ** δ, r)
-```
-
-Reverts are modelled exactly: checked `+` in both conversions, `Math.mulDiv`'s
-division-by-zero / overflow panics and its checked rounding increment, the
-`ERC4626ExceededMax*` checks, and every OpenZeppelin `ERC20` revert (zero addresses,
-insufficient balance or allowance, supply overflow). As for Solmate, events, gas and
-reentrancy are out of scope and the vault never calls itself. `A` needs a `0`
-(`address(0)`).
+OpenZeppelin v5.7 `ERC4626` (`totalAssets() = asset.balanceOf(this)`) over `ERC20Mock`, for
+any decimals offset `δ`: conversions use `10^δ` virtual shares and one virtual asset (the
+pinned `OzVault` has `δ = 0`). Every revert is modelled; events, gas and reentrancy are out
+of scope. `A` needs a `0` (`address(0)`).
 -/
 
 @[expose] public noncomputable section
 
 namespace Defi.ERC4626.Oz
-open Defi.Math Defi.ERC20
-
-open Defi.ERC20.Token
+open Defi.Math Defi.ERC20 Defi.ERC20.Token
 
 /-- Storage of a deployed OpenZeppelin ERC-4626 vault together with its asset. -/
 structure State (A : Type) where
@@ -43,7 +28,6 @@ structure State (A : Type) where
 variable {A : Type} [DecidableEq A] [Zero A]
 
 namespace State
-open Defi.Math Defi.ERC20
 
 variable (δ : ℕ) (s : State A)
 
@@ -99,8 +83,8 @@ def deposit (δ : ℕ) (s : State A) (caller : A) (assets : ℕ) (receiver : A) 
     Option (State A × ℕ) :=
   if MAX < assets then none else                                   -- ERC4626ExceededMaxDeposit
   (s.previewDeposit δ assets).bind fun shares =>
-  (s.asset.ozTransferFrom s.self caller s.self assets).bind fun asset =>  -- _transferIn
-  (s.shares.ozMint receiver shares).map fun sh =>                  -- _mint
+  (s.asset.ozTransferFrom s.self caller s.self assets).bind fun asset =>
+  (s.shares.ozMint receiver shares).map fun sh =>
   ({ s with asset := asset, shares := sh }, shares)
 
 /-- `mint(shares, receiver)` called by `caller`. Returns the assets pulled in. -/
@@ -123,8 +107,8 @@ def withdraw (δ : ℕ) (s : State A) (caller : A) (assets : ℕ) (receiver owne
   if maxAssets < assets then none else                             -- ERC4626ExceededMaxWithdraw
   (s.previewWithdraw δ assets).bind fun shares =>
   (spendIfNotOwner s.shares caller owner shares).bind fun sh1 =>
-  (sh1.ozBurn owner shares).bind fun sh2 =>                        -- _burn
-  (s.asset.ozTransfer s.self receiver assets).map fun asset =>     -- _transferOut
+  (sh1.ozBurn owner shares).bind fun sh2 =>
+  (s.asset.ozTransfer s.self receiver assets).map fun asset =>
   ({ s with asset := asset, shares := sh2 }, shares)
 
 /-- `redeem(shares, receiver, owner)` called by `caller`. Returns the assets paid out. -/

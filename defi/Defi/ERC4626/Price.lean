@@ -3,31 +3,19 @@ import Defi.ERC4626.Agree
 /-!
 # No dilution along sequences of user operations (model level)
 
-The model's per-entry-point price monotonicity (`Solmate.deposit_price_mono`, …,
-`[E-PRICE-*]`) extended to **every** operation of `Solmate.Op` that does not move assets out
-of the vault's own account, and then to whole sequences:
-
-* `UserOp self op`: the operation is a *user* operation — it does not spend the vault's own
-  asset balance directly (`asset.transfer` with the vault as caller, `asset.transferFrom` or
-  `asset.burn` from the vault) and is not a deposit/mint paid by the vault itself. The vault's
-  code never makes such calls except inside `withdraw`/`redeem`, which are user operations;
-  a top-level transaction cannot have the vault as sender (it has code, EIP-3607), so for
-  top-level traces the only excluded operation is `MockERC20.burn(vault, ·)`, which the mock
-  token lets anyone call (the model's "loss" operation).
-* `price_mono_step`: a user operation from a state with shares never lowers assets-per-share:
-  `T·S' ≤ T'·S` (reverting steps trivially).
-* `price_exec_mono`: along a sequence of user operations during which the vault is never
-  empty, the price `T/S` (over `ℚ`) never decreases.
+Solmate's per-entry-point price monotonicity extended to every `UserOp` (an operation that
+does not spend the vault's own assets) and to sequences of them: while the vault has shares,
+the price `T/S` never decreases.
 -/
 
 namespace Defi.ERC4626
-open Defi.Trace
-
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.ERC20.Token Finsupp
+open Defi.Math Defi.ERC20 Defi.ERC20.Token Defi.ERC4626.Solmate Defi.Trace Finsupp
 
 variable {A : Type} [DecidableEq A]
 
-/-- A user operation of the vault at `self` (see the module docstring). -/
+/-- A user operation of the vault at `self`: not spending the vault's own asset balance
+directly. For top-level traces (the vault never sends a transaction, EIP-3607) this excludes
+only `MockERC20.burn(vault, ·)`. -/
 def UserOp (self : A) : Op A → Prop
   | .deposit c _ _ => c ≠ self
   | .mint c _ _ => c ≠ self
@@ -42,21 +30,18 @@ def UserOp (self : A) : Op A → Prop
   | .assetMint _ _ => True
   | .assetBurn src _ => src ≠ self
 
-/-- A transfer not debiting `x` does not decrease `x`'s balance. -/
 theorem le_move_of_ne (f : A →₀ ℕ) {src dst x : A} (v : ℕ) (h : src ≠ x) :
     f x ≤ (f - single src v + single dst v) x := by
   rw [add_single_apply, sub_single_apply]
   split_ifs <;> simp_all
 
-/-- Operations other than the four entry points keep the supply and do not lower the
-vault's asset balance. -/
 theorem TS_of_other {s s' : State A} {T' : ℕ} (hS : s'.totalSupply = s.totalSupply)
     (hT : s.totalAssets ≤ T') (hT' : s'.totalAssets = T') :
     s.totalAssets * s'.totalSupply ≤ s'.totalAssets * s.totalSupply := by
   rw [hS, hT']; exact Nat.mul_le_mul_right _ hT
 
-/-- **No dilution, one step.** A successful user operation from a well-formed state with
-shares never lowers assets-per-share: `T·S' ≤ T'·S`. -/
+/-- A successful user operation from a state with shares never lowers assets-per-share:
+`T·S' ≤ T'·S`. -/
 theorem price_mono_step {s s' : State A} {op : Op A} (hi : Inv s) (hu : UserOp s.self op)
     (h : step s op = some s') (hS : s.totalSupply ≠ 0) :
     s.totalAssets * s'.totalSupply ≤ s'.totalAssets * s.totalSupply := by
@@ -112,7 +97,6 @@ theorem price_mono_step {s s' : State A} {op : Op A} (hi : Inv s) (hu : UserOp s
     · exact absurd h hu
     · exact le_rfl
 
-/-- `price_mono_step` for a step in which a revert is a no-op. -/
 theorem price_mono_stepD {s : State A} {op : Op A} (hi : Inv s) (hu : UserOp s.self op)
     (hS : s.totalSupply ≠ 0) :
     s.totalAssets * (Lift.stepD step s op).totalSupply ≤
@@ -122,9 +106,8 @@ theorem price_mono_stepD {s : State A} {op : Op A} (hi : Inv s) (hu : UserOp s.s
   | none => exact le_of_eq (Nat.mul_comm _ _ ▸ rfl)
   | some s' => exact price_mono_step hi hu e hS
 
-/-- **No dilution along a sequence.** Along any sequence of user operations from a well-formed
-state, during which the vault always has shares (before every step and at the end), the share
-price `T/S` never decreases. -/
+/-- **No dilution.** Along any sequence of user operations from a well-formed state during
+which the vault always has shares, the share price `T/S` never decreases. -/
 theorem price_exec_mono {s : State A} (hi : Inv s) {ops : List (Op A)}
     (hu : ∀ op ∈ ops, UserOp s.self op)
     (hS : ∀ k ≤ ops.length, (Lift.exec step s (ops.take k)).totalSupply ≠ 0) :

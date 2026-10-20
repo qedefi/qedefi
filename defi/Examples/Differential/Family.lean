@@ -5,14 +5,14 @@ import Examples.Deployment
 /-!
 # Vault families under test
 
-A *family* is an asset token and an ERC-4626 vault over it, with everything the tester needs
-to deploy them, encode calls and locate their ERC-20 storage. Both families come from the
-generated constants in `defi/Examples/Solmate/Contracts/`.
+A *family* is an asset token and an ERC-4626 vault over it, with what the tester needs to
+deploy them, encode calls and locate their ERC-20 storage.
 -/
 
 namespace Examples.Differential
 
-open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin
+open Examples.OpenZeppelin.Contracts Examples.Solmate Examples.Solmate.Contracts
 
 /-- An asset/vault pair. -/
 structure Family where

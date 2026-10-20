@@ -5,28 +5,9 @@ public import Defi.ERC4626.Solmate
 /-!
 # Events of the Solmate vault model
 
-The events each model operation (`Solmate.Op`) emits, as a function of the pre-state and the
-arguments, exactly as Solmate's `ERC20` / `ERC4626` and `MockERC20` / `MockERC4626` emit them:
-
-* `ERC20.transfer(to, v)` from `c`: `Transfer(c, to, v)`;
-* `ERC20.transferFrom(src, dst, v)`: `Transfer(src, dst, v)` only — Solmate does **not** emit
-  `Approval` when it spends an allowance (neither in `transferFrom` nor in `withdraw` /
-  `redeem`);
-* `ERC20.approve(sp, v)` from `c`: `Approval(c, sp, v)`;
-* `_mint(to, v)` (also `MockERC20.mint`): `Transfer(0, to, v)`; `_burn(from, v)` (also
-  `MockERC20.burn`): `Transfer(from, 0, v)`;
-* `deposit` / `mint` of the vault: the asset's `Transfer(caller, vault, assets)` (inside
-  `safeTransferFrom`), the shares' `Transfer(0, receiver, shares)` (`_mint`), then
-  `Deposit(caller, receiver, assets, shares)`;
-* `withdraw` / `redeem`: the shares' `Transfer(owner, 0, shares)` (`_burn`, after the
-  `beforeWithdraw` hook), `Withdraw(caller, receiver, owner, assets, shares)`, then the asset's
-  `Transfer(vault, receiver, assets)` (inside `safeTransfer`).
-
-An operation that reverts (`Solmate.step s op = none`) emits nothing (`events_eq_nil`). Every
-`Transfer` / `Approval` carries its emitter (`Emitter.vault` for the share token,
-`Emitter.asset` for the asset); `Deposit` / `Withdraw` are always the vault's. The zero address
-is `0 : A` (`[Zero A]`). `stream s ops` is the event stream of a sequence of calls (reverted
-ones contribute nothing, as `Solmate.exec`). The encoding as EVM logs is in
+The events each `Solmate.Op` emits, in order, exactly as the Solmate sources emit them
+(note: spending an allowance emits no `Approval`); a reverting call emits nothing. `stream`
+is the event stream of a call sequence. The EVM log encoding is in
 `Examples.Solmate.ERC4626.Events`.
 -/
 
@@ -57,7 +38,6 @@ inductive Event (A : Type) where
 variable {A : Type} [DecidableEq A] [Zero A]
 
 namespace Events
-open Defi.Math Defi.ERC20
 
 /-- `Transfer(src, dst, v)` of emitter `e` if the Solmate `transfer` succeeds, else nothing. -/
 def transfer (e : Emitter) (t : Token A) (src dst : A) (v : ℕ) : List (Event A) :=
@@ -133,12 +113,10 @@ def stream (s : State A) : List (Op A) → List (Event A)
   | [] => []
   | op :: ops => events s op ++ stream ((step s op).getD s) ops
 
-/-- A reverting call emits nothing. -/
 theorem events_eq_nil {s : State A} {op : Op A} (h : step s op = none) : events s op = [] := by
   cases op <;> simp_all [step, events, Events.deposit, Events.mint4626, Events.withdraw,
     Events.redeem, Events.transfer, Events.transferFrom, Events.mint, Events.burn]
 
-/-- The stream of a concatenation. -/
 theorem stream_append (s : State A) (ops₁ ops₂ : List (Op A)) :
     stream s (ops₁ ++ ops₂) = stream s ops₁ ++ stream (exec s ops₁) ops₂ := by
   induction ops₁ generalizing s with

@@ -4,32 +4,15 @@ import Defi.Trace.Lift
 /-!
 # Agreement of model states up to unobserved allowances
 
-The refinement theorems describe the concrete storage through the Solidity layout
-*pointwise*: after a write, every balance and the total supply are known exactly, but an
-allowance entry is only known when its slot is not one of the written slots
-(`Shares.RepOn`). A plausible hypothesis on Keccak cannot rule out a collision between a
-written balance slot and the slot of *some* allowance entry among all `2³²⁰` pairs (see
-`EvmLogic/Solidity/Keccak.lean`), so the concrete world can only be related to the model
-up to the allowances of pairs outside a set `G` of pairs whose slots are known to be fresh —
-in practice, all pairs of the finitely many actors of a trace.
-
-* `TokAgree G t u`: same balances and total supply, same allowances on `G`;
-* `AgreeOn G s t`: the vault states have the same address and hook counters, and both
-  ledgers agree in the sense of `TokAgree G`;
-* `Reads G self op`: the allowances `op` reads are in `G` (`allowance[src][caller]` of a
-  `transferFrom`, `allowance[owner][caller]` of a third-party `withdraw`/`redeem`, the asset
-  allowance `allowance[caller][vault]` of `deposit`/`mint`);
-* `step_agree`: the model's `step` respects `AgreeOn G` on operations that only read
-  allowances in `G` — both revert, or both succeed with agreeing states.
-
-Every property of a state that does not read allowances outside `G` is the same on agreeing
-states (`AgreeOn.totalSupply`, `AgreeOn.totalAssets`, `AgreeOn.price`, `AgreeOn.inv`, …).
+Storage frames are pointwise (`Defi.ERC20.RepOn`): Keccak hypotheses cannot exclude a
+written slot colliding with *some* allowance entry, so concrete states match the model only
+up to allowances outside a set `G` of pairs (in practice, the actors of a trace).
+`AgreeOn G` is that relation, and `step_rel` shows the model respects it on operations that
+only read allowances in `G` (`Reads`).
 -/
 
 namespace Defi.ERC4626
-open Defi.Trace
-
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace
 
 variable {A : Type} [DecidableEq A]
 
@@ -79,7 +62,6 @@ structure TokAgree (G : A → A → Prop) (t u : Token A) : Prop where
   allowance : ∀ o sp, G o sp → t.allowance o sp = u.allowance o sp
 
 namespace TokAgree
-open Defi.Trace
 
 variable {G : A → A → Prop}
 
@@ -95,7 +77,6 @@ theorem mono {G' : A → A → Prop} {t u : Token A} (h : TokAgree G t u)
     (hG : ∀ o sp, G' o sp → G o sp) : TokAgree G' t u :=
   ⟨h.1, h.2, fun o sp hg => h.3 o sp (hG o sp hg)⟩
 
-/-- Agreeing ledgers are equally well formed. -/
 theorem wf {t u : Token A} (h : TokAgree G t u) (hw : t.WF) : u.WF := by
   unfold Token.WF at *; rw [← h.1, ← h.2]; exact hw
 
@@ -171,7 +152,6 @@ structure AgreeOn (G : A → A → Prop) (s t : State A) : Prop where
   beforeWithdraw : s.beforeWithdrawCount = t.beforeWithdrawCount
 
 namespace AgreeOn
-open Defi.Trace
 
 variable {G : A → A → Prop}
 
@@ -184,7 +164,6 @@ theorem symm {s t : State A} (h : AgreeOn G s t) : AgreeOn G t s :=
 theorem trans {s t u : State A} (h₁ : AgreeOn G s t) (h₂ : AgreeOn G t u) : AgreeOn G s u :=
   ⟨h₁.1.trans h₂.1, h₁.2.trans h₂.2, h₁.3.trans h₂.3, h₁.4.trans h₂.4, h₁.5.trans h₂.5⟩
 
-/-- `AgreeOn G` is an equivalence. -/
 theorem equivalence : Equivalence (AgreeOn (A := A) G) :=
   ⟨refl, symm, trans⟩
 
@@ -192,7 +171,6 @@ theorem mono {G' : A → A → Prop} {s t : State A} (h : AgreeOn G s t)
     (hG : ∀ o sp, G' o sp → G o sp) : AgreeOn G' s t :=
   ⟨h.1, h.2.mono hG, h.3.mono hG, h.4, h.5⟩
 
-/-- Equal states agree on every `G`. -/
 theorem of_eq {s t : State A} (h : s = t) : AgreeOn G s t := h ▸ refl s
 
 theorem totalSupply {s t : State A} (h : AgreeOn G s t) : s.totalSupply = t.totalSupply :=
@@ -318,8 +296,8 @@ theorem redeem_rel {s t : State A} (h : AgreeOn G s t) {c r o : A} (hg : c ≠ o
     exact rel_map (h.asset.transfer s.self r a) fun a₁ a₂ ha' =>
       ⟨⟨rfl, ha', hs', h.afterDeposit, rfl⟩, rfl⟩
 
-/-- **The model respects agreement.** On an operation that reads only allowances in `G`, two
-agreeing states both revert or both succeed with agreeing states. -/
+/-- On an operation reading only allowances in `G`, two agreeing states both revert or both
+succeed with agreeing states. -/
 theorem step_rel {s t : State A} (h : AgreeOn G s t) {op : Op A} (hr : Reads G s.self op) :
     Option.Rel (AgreeOn G) (step s op) (step t op) := by
   have hfst : ∀ {x y : Option (State A × ℕ)},
@@ -346,26 +324,22 @@ theorem step_rel {s t : State A} (h : AgreeOn G s t) {op : Op A} (hr : Reads G s
   | assetBurn src v =>
     exact rel_map (h.asset.burn src v) fun _ _ hx => ⟨h.self, hx, h.shares, h.4, h.5⟩
 
-/-- `step_rel` for steps in which a revert is a no-op. -/
 theorem stepD_agree {s t : State A} (h : AgreeOn G s t) {op : Op A} (hr : Reads G s.self op) :
     AgreeOn G (Lift.stepD step s op) (Lift.stepD step t op) := by
   unfold Lift.stepD
   exact rel_getD (step_rel h hr) h
 
-/-- `Solmate.exec` is the generic `exec` of `Solmate.step`. -/
 theorem exec_eq (s : State A) (ops : List (Op A)) : exec s ops = Lift.exec step s ops := by
   induction ops generalizing s with
   | nil => rfl
   | cons op ops ih => exact ih _
 
-/-- `self` is preserved by `stepD`. -/
 theorem self_stepD (s : State A) (op : Op A) : (Lift.stepD step s op).self = s.self := by
   unfold Lift.stepD
   cases e : step s op with
   | none => rfl
   | some s' => exact self_step e
 
-/-- `self` is preserved by `exec`. -/
 theorem self_exec (s : State A) (ops : List (Op A)) : (Lift.exec step s ops).self = s.self := by
   induction ops generalizing s with
   | nil => rfl

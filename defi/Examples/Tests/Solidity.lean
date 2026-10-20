@@ -6,16 +6,13 @@ import Examples.Solmate.Contracts.SolmateAsset
 /-!
 # Tests for the Solidity layer
 
-* `Abi.selector` with the real Keccak-256 reproduces the compiler's method identifiers
-  (`SolmateAsset.selectors`), so the selector literals used in the proofs are the right ones.
-* ABI encoding sizes and argument decoding on concrete calldata.
-* Packed storage fields (`Field.get`/`Field.set`) on a slot holding `uint8 decimals`,
-  `bool paused` and `address owner`, the layout solc gives these three declarations.
+Selectors against the compiler's method identifiers, ABI encoding and decoding on concrete
+calldata, and packed storage fields (`Field.get`/`Field.set`).
 -/
 
 namespace Examples.Tests.Solidity
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Solidity EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Solidity Examples.Solmate
 
 -- Every method identifier of the Solmate asset artifact is the selector of its signature.
 #guard Examples.Solmate.Contracts.SolmateAsset.selectors.all fun (sig, sel) =>

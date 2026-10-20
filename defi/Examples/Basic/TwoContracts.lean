@@ -13,18 +13,12 @@ contract A {
 }
 ```
 
-* `getSummary : FunctionSummary codeB`: `B.get()` from any fresh frame (dispatcher
-  `get_dispatch` + body `get_body`): returns slot 0 of the executing account, no state change,
-  at most 2400 gas.
-* `f_halts`: `A.f()` symbolically executed up to its `STATICCALL`; `WP.staticcall` with
-  `getSummary.halts` on the child frame replaces executing `B`; the caller resumes from
-  `resumeAfter_success` and runs to `RETURN`. `f_processMessageCall`: the top-level statement.
+`B.get()` is proved once as a `FunctionSummary` (`getSummary`); `A.f()` is executed up to its
+`STATICCALL`, where `WP.staticcall` uses the summary instead of executing `B`.
 -/
 
 namespace Examples.Basic.TwoContracts
-open EvmLean EvmLogic EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program
 
 /-- Runtime code of `B` (solc 0.8.28, `--optimize --optimize-runs 200 --evm-version cancun`). -/
 def codeB : ByteArray := ⟨#[
@@ -56,7 +50,6 @@ def codeA : ByteArray := ⟨#[
   0x0a, 0x4d, 0x82, 0xe3, 0xf6, 0x84, 0xa6, 0x54, 0x64, 0x73, 0x6f, 0x6c, 0x63, 0x43, 0x00, 0x08,
   0x1c, 0x00, 0x33]⟩
 
-/-- `a < b` is false as a word comparison when `b ≤ a < 2²⁵⁶`. -/
 theorem lt_ofNat_eq_zero {a b : Nat} (h : b ≤ a) (ha : a < 2 ^ 256) :
     Word.lt (ofNat a) (BitVec.ofNat 256 b) = 0 := by
   rw [Word.lt_eq_zero_iff]
@@ -74,7 +67,6 @@ def getPre (m : Machine) : Prop :=
   m.frame.msg.value = 0 ∧ 4 ≤ m.frame.msg.data.size ∧ m.frame.msg.data.size < 2 ^ 256 ∧
     selectorOf m.frame.msg.data = 0x6d4ce63c#256 ∧ 3000 ≤ m.frame.gasLeft
 
-/-- The machine at the entry of `get`'s body. -/
 def getEntry (m m' : Machine) : Prop :=
   m' = { m with frame := { m.frame with
     pc := 0x2a, stack := [0x6d4ce63c#256], memory := fmpMemory, gasLeft := m.frame.gasLeft - 96 } }
@@ -87,7 +79,6 @@ def getPost (m mf : Machine) (o : Outcome) : Prop :=
     m.frame.gasLeft ≤ mf.frame.gasLeft + 2400 ∧ mf.frame.sub.logs = m.frame.sub.logs
 
 set_option maxHeartbeats 0 in
-/-- `B`'s dispatcher reaches `get`. -/
 theorem get_dispatch (m : Machine) (hf : Fresh codeB m) (hpre : getPre m) :
     WP m (fun m' => m'.frame.pc = 0x2a ∧ getEntry m m') (getPost m) := by
   obtain ⟨hc, hj, hpc, hs, hmem, -, -⟩ := hf.frame
@@ -98,7 +89,6 @@ theorem get_dispatch (m : Machine) (hf : Fresh codeB m) (hpre : getPre m) :
   exact WP.ret ⟨rfl, by simp only [getEntry, fmpMemory]⟩
 
 set_option maxHeartbeats 0 in
-/-- The body of `get`. -/
 theorem get_body (m m' : Machine) (hf : Fresh codeB m) (hpre : getPre m) (hs : SameFrame m m')
     (he : getEntry m m') : Halts m' (getPost m) := by
   obtain ⟨hc, hj, -, -, -, -, -⟩ := hf.frame
@@ -125,10 +115,8 @@ def getSummary : FunctionSummary codeB where
 /-- `B`'s address in `A`. -/
 def addrB : Address := 0xbeef
 
-/-- The address `A` pushes is `addrB`. -/
 theorem toAddress_beef : Word.toAddress 48879#256 = addrB := by decide
 
-/-- `B`'s code is not a delegation designator. -/
 theorem delegatedAddress?_codeB : delegatedAddress? codeB = none := by decide +kernel
 
 /-- Postcondition of `A.f()`: returns `B`'s slot 0, world unchanged. -/
@@ -136,7 +124,6 @@ def fPost (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord (m.world.sload addrB 0)) ∧ mf.world = m.world
 
 set_option maxHeartbeats 0 in
-/-- The frame of `A.f()`, with `B` entering only through `getSummary`. -/
 theorem f_halts (m : Machine) (hf : Fresh codeA m) (hval : m.frame.msg.value = 0)
     (hsize : 4 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 256)
     (hsel : selectorOf m.frame.msg.data = 0x26121ff0#256) (hg : 20000 ≤ m.frame.gasLeft)
@@ -185,13 +172,10 @@ theorem f_halts (m : Machine) (hf : Fresh codeA m) (hval : m.frame.msg.value = 0
     wp_steps
     exact ⟨rfl, hw⟩
 
-/-- `A`'s code is not a delegation designator. -/
 theorem delegatedAddress?_codeA : delegatedAddress? codeA = none := by decide +kernel
 
-/-- **`A.f()` returns `B`'s storage slot 0**, for every `Crypto`, context without EIP-7702
-authorizations (or before Prague), world in which `addrB` holds `B`'s code, transient storage,
-caller, calldata selecting `f`, and gas in `[20000, 2⁶⁴)`; the world is unchanged. `B`'s
-behaviour enters only through its summary `getSummary` (via `WP.staticcall`). -/
+/-- **`A.f()` returns `B`'s storage slot 0** (when `addrB` holds `B`'s code and gas is in
+`[20000, 2⁶⁴)`), leaving the world unchanged. -/
 theorem f_processMessageCall {ctx : Context} {w : World} {tr : TransientStorage}
     {msg : Message} {a : Address}
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])

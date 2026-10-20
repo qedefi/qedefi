@@ -13,18 +13,12 @@ function sum(uint256 n) external pure returns (uint256 s) {
 }
 ```
 
-* `loop`: the loop at pc `0x4e` (head `DUP3 DUP2 LT ISZERO PUSH1 0x60 JUMPI`, body back to the
-  head), by induction on the iterations left: from the head with counter `k` and accumulator
-  `sumTo k`, the loop exits at `0x60` with `sumTo n`, having used exactly `55 (n - k) + 26` gas.
-  Each iteration is one `wp_run_to 0x4e`.
-* `sum_halts`: the whole frame (dispatcher, ABI decoding, loop via `WP.bind`, return), for any
-  parents; `sum_processMessageCall`: the top-level statement.
+The loop is proved by induction on the iterations left (`loop`), then composed into the
+whole frame with `WP.bind` (`sum_halts`) and the top-level call (`sum_processMessageCall`).
 -/
 
 namespace Examples.Basic.Sum
-open EvmLean EvmLogic EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program
 
 /-- Runtime code of `Sum` (solc output, including the metadata trailer). -/
 def code : ByteArray := ⟨#[
@@ -52,20 +46,16 @@ def sumTo : Nat → Word
   | 0 => 0
   | k + 1 => sumTo k + BitVec.ofNat 256 k
 
-/-- Incrementing the counter. -/
 theorem ofNat_succ' (k : Nat) : 1#256 + BitVec.ofNat 256 k = BitVec.ofNat 256 (k + 1) := by
   apply BitVec.eq_of_toNat_eq; simp; omega
 
-/-- One loop step of the accumulator. -/
 theorem sumTo_succ' (k : Nat) : BitVec.ofNat 256 k + sumTo k = sumTo (k + 1) := by
   simp only [sumTo]; exact BitVec.add_comm _ _
 
-/-- The loop condition holds while `k < n`. -/
 theorem lt_ofNat {k n : Nat} (hk : k < n) (hn : n < 2 ^ 256) :
     Word.lt (BitVec.ofNat 256 k) (BitVec.ofNat 256 n) = 1 := by
   rw [Word.lt_eq_one_iff]; simp; omega
 
-/-- The loop condition fails at `k = n`. -/
 theorem lt_ofNat_self (n : Nat) : Word.lt (BitVec.ofNat 256 n) (BitVec.ofNat 256 n) = 0 := by
   rw [Word.lt_eq_zero_iff]; exact Nat.le_refl _
 
@@ -78,7 +68,8 @@ def loopExit (m : Machine) (n k : Nat) (rest : List Word) : Machine :=
       gasLeft := m.frame.gasLeft - (55 * (n - k) + 26) } }
 
 set_option maxHeartbeats 0 in
-/-- **The loop** (see the module docstring), by induction on `d = n - k`. -/
+/-- The loop at pc `0x4e`: from the head with counter `k` and accumulator `sumTo k`, it exits
+at `0x60` with `sumTo n`, using exactly `55 (n - k) + 26` gas. -/
 theorem loop (n : Nat) (rest : List Word) (hn : n < 2 ^ 256) (hlen : rest.length < 1000) (Q H) :
     ∀ d k (m : Machine), n - k = d → k ≤ n →
     m.frame.code = code → m.frame.jumpDests = validJumpDests code → m.frame.pc = 0x4e →
@@ -117,7 +108,6 @@ def SumPost (m₀ : Machine) (n : Nat) (mf : Machine) (o : Outcome) : Prop :=
     mf.createdAccounts = m₀.createdAccounts ∧ mf.frame.sub = m₀.frame.sub
 
 set_option maxHeartbeats 0 in
-/-- The whole frame of `sum(n)`: prologue to the loop head, the loop, the return. -/
 theorem sum_halts (m : Machine) (n : Nat) (hn : n < 2 ^ 256)
     (hc : m.frame.code = code) (hj : m.frame.jumpDests = validJumpDests code)
     (hpc : m.frame.pc = 0) (hs : m.frame.stack = []) (hmem : m.frame.memory = {})
@@ -138,14 +128,10 @@ theorem sum_halts (m : Machine) (n : Nat) (hn : n < 2 ^ 256)
   wp_steps
   simp only [SumPost, outputMachine, and_self]
 
-/-- The runtime code is not an EIP-7702 delegation designator. -/
 theorem delegatedAddress?_code : delegatedAddress? code = none := by decide +kernel
 
-/-- **`sum(n)` returns `∑_{i<n} i`** (modulo `2²⁵⁶`): a top-level call of the solc-compiled
-`Sum` contract with calldata selecting `sum` and encoding `n`, for every `Crypto`, context
-without EIP-7702 authorizations (or before Prague), world, transient storage, caller, warm
-sets, and gas at least `55 n + 500`, succeeds with output `sumTo n` and leaves the world
-unchanged, for all large enough fuel. -/
+/-- **`sum(n)` returns `∑_{i<n} i`** (mod `2²⁵⁶`): a top-level call with gas at least
+`55 n + 500` succeeds with output `sumTo n` and leaves the world unchanged. -/
 theorem sum_processMessageCall {ctx : Context} {w : World} {tr : TransientStorage}
     {msg : Message} {a : Address} {n : Nat}
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])

@@ -7,20 +7,14 @@ import Examples.Solmate.Contracts.SolmateAsset
 /-!
 # Tests for `string` storage and ABI encoding (`EvmLogic.Solidity.Strings`)
 
-* `Str.shortWord` of the canonical deployment strings is the slot word the constructors of
-  the canonical deployment store (the constructor arguments in
-  `contracts/artifacts/deployment.json`, re-encoded by Solidity's short form).
-* `Abi.encodeString` agrees with the ABI encoding of a single `string` return value.
-* The compiled getters, run in the interpreter with the real Keccak-256 (vault and asset,
-  `name()` and `symbol()`),
-  return `Abi.encodeString` of what `Str.decode` reads, for short, empty and long strings, and
-  panic on inconsistent slots; the gas they use stays within `Str.getterGas`.
+The compiled `name()`/`symbol()` getters, run with the real Keccak-256, return
+`Abi.encodeString` of what `Str.decode` reads (short, empty and long strings) within
+`Str.getterGas`, and revert on inconsistent slots.
 -/
 
 namespace Examples.Tests.Strings
-open EvmTest
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Solidity EvmLean.Interpreter EvmTest EvmTest.InterpreterUtil Examples.Solmate.Contracts
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Solidity EvmTest EvmTest.InterpreterUtil
+open Examples.Solmate Examples.Solmate.Contracts
 
 -- The canonical deployment strings, in their short storage form.
 #guard Str.shortWord "Solmate Vault".toUTF8 ==
