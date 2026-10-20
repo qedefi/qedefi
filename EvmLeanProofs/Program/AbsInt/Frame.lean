@@ -225,6 +225,71 @@ theorem inCert_resume (hc : Cert ρ allowed code init t) {m m' : Machine} {b : U
   · rw [hpc, hM, hpc', ← hx1]; exact hall x hx
   · rw [hw, hM]; exact hx2
 
+/-- **A step staying in the frame keeps it described.** -/
+theorem inCert_within (hc : Cert ρ allowed code init t) {m m' m₁ : Machine} {b : UInt8}
+    {a : Action} (hcm : m.frame.code = code) (hQ : InCert ρ t m)
+    (hb : m.frame.code[m.frame.pc]? = some b)
+    (he : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m')) (hw : Within m' a m₁) :
+    m₁.frame.code = code ∧ InCert ρ t m₁ := by
+  have hif : InstrFrame m m' := ((exec_frame _ m).of_run he).1
+  rcases hw with ⟨rfl, hm1⟩ | ⟨req, rfl, hpre, hm1⟩ <;> rw [hm1]
+  · refine ⟨hif.same.code.trans hcm, ?_⟩
+    obtain ⟨s, imm, succs, hst, -, hsucc, hall, himm⟩ := hQ.entry hc hcm hb
+    have hpost : NextPost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
+    obtain ⟨x, hx, hx1, hx2⟩ := asucc_next hst rfl himm hpost hsucc
+    exact ⟨x.2, by rw [← hx1]; exact hall x hx, hx2⟩
+  · obtain ⟨w, tr, r, hl, -⟩ := launchCall_some hpre
+    rw [hl]
+    refine ⟨(resume_frame _ r).2.2.trans (hif.same.code.trans hcm), ?_⟩
+    exact inCert_resume hc hcm hQ hb he (.inl ⟨req, rfl⟩) _ r rfl
+
+/-- **The frame resumed after a child is described.** -/
+theorem inCert_pushed (hc : Cert ρ allowed code init t) {m m' mc : Machine} {b : UInt8}
+    {a : Action} (hcm : m.frame.code = code) (hQ : InCert ρ t m)
+    (hb : m.frame.code[m.frame.pc]? = some b)
+    (he : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m')) (hp : Pushed m' a mc)
+    (mfc : Machine) (oc : Outcome) :
+    (resumeAfter m'.frame m.parents mfc oc).frame.code = code ∧
+      InCert ρ t (resumeAfter m'.frame m.parents mfc oc) := by
+  have hif : InstrFrame m m' := ((exec_frame _ m).of_run he).1
+  have ha : (∃ req, a = .call req) ∨ ∃ msg, a = .create msg := by
+    rcases hp with ⟨req, rfl, -⟩ | ⟨msg, rfl, -⟩
+    · exact .inl ⟨req, rfl⟩
+    · exact .inr ⟨msg, rfl⟩
+  refine ⟨?_, inCert_resume hc hcm hQ hb he ha _ _ rfl⟩
+  exact (resume_frame _ _).2.2.trans (hif.same.code.trans hcm)
+
+/-- **The calls of a described machine** go to allowed targets, running the target's code
+(unless it holds an EIP-7702 designator). -/
+theorem inCert_call (hc : Cert ρ allowed code init t) {m m' : Machine} {b : UInt8}
+    {req : CallRequest} (hcm : m.frame.code = code) (hQ : InCert ρ t m)
+    (hb : m.frame.code[m.frame.pc]? = some b)
+    (he : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (.call req, m')) :
+    ∃ tw a, m.frame.stack[1]? = some tw ∧ allowed a = true ∧ a.Holds ρ tw ∧
+      ((m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress tw)) = none) →
+        req.msg.codeAddress = some (Word.toAddress tw) ∧
+        req.msg.code = m.world.code (Word.toAddress tw) ∧ req.msg.disablePrecompiles = false) := by
+  obtain ⟨s, imm, succs, hst, hok, -, -, -⟩ := hQ.entry hc hcm hb
+  have hpost : CallPost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
+  obtain ⟨tw, htw, hcall⟩ := (exec_target _ m).of_run he req rfl
+  cases hbe : byteEff b with
+  | call p =>
+    rw [hbe] at hok
+    obtain ⟨a, ha, hat⟩ := callOk_target hok hst htw
+    exact ⟨tw, a, htw, ha, hat, hcall⟩
+  | _ => rw [hbe] at hpost; exact hpost.elim
+
+/-- **A described machine requests no creation.** -/
+theorem inCert_no_create (hc : Cert ρ allowed code init t) {m m' : Machine} {b : UInt8}
+    {msg : Message} (hcm : m.frame.code = code) (hQ : InCert ρ t m)
+    (hb : m.frame.code[m.frame.pc]? = some b)
+    (he : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (.create msg, m')) : False := by
+  obtain ⟨s, imm, succs, hst, hok, -, -, -⟩ := hQ.entry hc hcm hb
+  have hpost : CreatePost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
+  cases hbe : byteEff b with
+  | create p => rw [hbe] at hok; simp [callOk] at hok
+  | _ => rw [hbe] at hpost; exact hpost.elim
+
 /-- **Soundness of the abstract interpretation for a frame**: every machine of the frame
 before its exit is described by a recorded abstract state. -/
 theorem absint_frame (hc : Cert ρ allowed code init t) {mh mf : Machine} {N : Nat}
@@ -234,25 +299,9 @@ theorem absint_frame (hc : Cert ρ allowed code init t) {mh mf : Machine} {N : N
   refine (exit_frame_ind (fun m => m.frame.code = code ∧ InCert ρ t m) ?_ ?_ N mh mf o hex
     ⟨hcode, h0⟩ k hk m hm hs).2
   · intro m b a m' m₁ ⟨hcm, hQ⟩ hb he hw
-    have hif : InstrFrame m m' := ((exec_frame _ m).of_run he).1
-    rcases hw with ⟨rfl, hm1⟩ | ⟨req, rfl, hpre, hm1⟩ <;> rw [hm1]
-    · refine ⟨hif.same.code.trans hcm, ?_⟩
-      obtain ⟨s, imm, succs, hst, -, hsucc, hall, himm⟩ := hQ.entry hc hcm hb
-      have hpost : NextPost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
-      obtain ⟨x, hx, hx1, hx2⟩ := asucc_next hst rfl himm hpost hsucc
-      exact ⟨x.2, by rw [← hx1]; exact hall x hx, hx2⟩
-    · obtain ⟨w, tr, r, hl, -⟩ := launchCall_some hpre
-      rw [hl]
-      refine ⟨(resume_frame _ r).2.2.trans (hif.same.code.trans hcm), ?_⟩
-      exact inCert_resume hc hcm hQ hb he (.inl ⟨req, rfl⟩) _ r rfl
+    exact inCert_within hc hcm hQ hb he hw
   · intro m b a m' mc nc mfc oc ⟨hcm, hQ⟩ hb he hp _
-    have hif : InstrFrame m m' := ((exec_frame _ m).of_run he).1
-    have ha : (∃ req, a = .call req) ∨ ∃ msg, a = .create msg := by
-      rcases hp with ⟨req, rfl, -⟩ | ⟨msg, rfl, -⟩
-      · exact .inl ⟨req, rfl⟩
-      · exact .inr ⟨msg, rfl⟩
-    refine ⟨?_, inCert_resume hc hcm hQ hb he ha _ _ rfl⟩
-    exact (resume_frame _ _).2.2.trans (hif.same.code.trans hcm)
+    exact inCert_pushed hc hcm hQ hb he hp mfc oc
 
 /-- **The calls of a certified frame** go to allowed targets, running the target's code
 (unless it holds an EIP-7702 designator). -/
@@ -264,32 +313,17 @@ theorem absint_call (hc : Cert ρ allowed code init t) {mh mf : Machine} {N : Na
       ∃ tw a, m.frame.stack[1]? = some tw ∧ allowed a = true ∧ a.Holds ρ tw ∧
         ((m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress tw)) = none) →
           req.msg.codeAddress = some (Word.toAddress tw) ∧
-          req.msg.code = m.world.code (Word.toAddress tw) ∧ req.msg.disablePrecompiles = false) := by
-  intro k hk m b req m' hm hs hb he
-  have hin := absint_frame hc hex hcode h0 k hk m hm hs
-  have hcm : m.frame.code = code := hs.code.trans hcode
-  obtain ⟨s, imm, succs, hst, hok, -, -, -⟩ := hin.entry hc hcm hb
-  have hpost : CallPost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
-  obtain ⟨tw, htw, hcall⟩ := (exec_target _ m).of_run he req rfl
-  cases hbe : byteEff b with
-  | call p =>
-    rw [hbe] at hok
-    obtain ⟨a, ha, hat⟩ := callOk_target hok hst htw
-    exact ⟨tw, a, htw, ha, hat, hcall⟩
-  | _ => rw [hbe] at hpost; exact hpost.elim
+          req.msg.code = m.world.code (Word.toAddress tw) ∧ req.msg.disablePrecompiles = false) :=
+  fun k hk m _ _ _ hm hs hb he =>
+    inCert_call hc (hs.code.trans hcode) (absint_frame hc hex hcode h0 k hk m hm hs) hb he
 
 /-- **A certified frame requests no creation.** -/
 theorem absint_no_create (hc : Cert ρ allowed code init t) {mh mf : Machine} {N : Nat}
     {o : Outcome} (hex : Exit mh N mf o) (hcode : mh.frame.code = code) (h0 : InCert ρ t mh) :
     ∀ k ≤ N, ∀ m b msg m', stepN k mh = .running m → SameFrame mh m →
       m.frame.code[m.frame.pc]? = some b →
-      (exec (Opcode.decode m.ctx.fork b)).run m = .ok (.create msg, m') → False := by
-  intro k hk m b msg m' hm hs hb he
-  have hin := absint_frame hc hex hcode h0 k hk m hm hs
-  obtain ⟨s, imm, succs, hst, hok, -, -, -⟩ := hin.entry hc (hs.code.trans hcode) hb
-  have hpost : CreatePost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run he
-  cases hbe : byteEff b with
-  | create p => rw [hbe] at hok; simp [callOk] at hok
-  | _ => rw [hbe] at hpost; exact hpost.elim
+      (exec (Opcode.decode m.ctx.fork b)).run m = .ok (.create msg, m') → False :=
+  fun k hk m _ _ _ hm hs hb he =>
+    inCert_no_create hc (hs.code.trans hcode) (absint_frame hc hex hcode h0 k hk m hm hs) hb he
 
 end EvmLean.Program.AbsInt
