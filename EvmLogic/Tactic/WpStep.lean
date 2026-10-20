@@ -131,6 +131,7 @@ def wpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Boo
         saved.restore
         return false)
   let norm : TacticM Unit := do
+    trace[EvmLean.symStep] "pc {pc}, byte {b}"
     try evalTactic (← `(tactic| evm_norm [List.set_cons_zero, List.set_cons_succ, Nat.sub_sub,
       Memory.loadWord_expand, Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
       Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint, true_or, or_true,

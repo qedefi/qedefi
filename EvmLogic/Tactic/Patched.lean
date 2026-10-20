@@ -2,6 +2,7 @@ import EvmLogic.Solidity.Dispatch
 import EvmLogic.Solidity.Immutables
 import EvmLogic.Tactic.WpStep
 import EvmLogic.Tactic.SolStep
+import EvmLogic.Tactic.FastStep
 
 /-!
 # `psol_step` / `pwp_step`: symbolic execution of code with symbolic immutables
@@ -111,7 +112,7 @@ def dischCodeByte (g : MVarId) : TacticM Unit := g.withContext do
   let .mvar gid := g' | throwError "psol_disch: internal error"
   g.assign (← mkEqTrans heq g')
   setGoals [gid]
-  evalTactic (← `(tactic| decide +kernel))
+  evalTactic (← `(tactic| table_decide))
 
 def dischJumpDest (g : MVarId) : TacticM Unit := g.withContext do
   let t ← instantiateMVars (← g.getType)
@@ -129,7 +130,7 @@ def dischJumpDest (g : MVarId) : TacticM Unit := g.withContext do
     | throwError "psol_disch: no `JumpDestsAgree` hypothesis for the code"
   let gs ← g.apply (mkAppN (mkConst ``isValidJumpDest_of_agree) #[code, base, d, h])
   setGoals gs
-  evalTactic (← `(tactic| decide +kernel))
+  evalTactic (← `(tactic| table_decide))
 
 /-- `sol_disch` for patched code (code bytes, jump destinations). -/
 elab "psol_disch" : tactic => withMainContext do
@@ -196,16 +197,15 @@ elab_rules : tactic
       setGoals [hg]
       SolStep.firstOf halts s!"psol_step: no halting lemma applies to opcode {b}"
       setGoals rest
+    trace[EvmLean.symStep] "byte {b}"
     evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.Patched.reducePatchedRead,
       EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow, Nat.reduceLT,
       $extra,*]))
 
-/-- Repeat `psol_step` while it succeeds. -/
-syntax "psol_steps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
-macro_rules
-  | `(tactic| psol_steps) => `(tactic| repeat psol_step)
-  | `(tactic| psol_steps [$extra,*]) => `(tactic| repeat psol_step [$extra,*])
+/-- Repeat `psol_step` while it succeeds (after the first step, by the fast stepper when it
+applies). -/
+syntax "psol_steps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 /-- `sol_dispatch` for patched code (needs `JumpDestsAgree code base` in the context). -/
 macro "psol_dispatch" : tactic => `(tactic| (
@@ -340,7 +340,9 @@ elab "pjumpdest_disch" : tactic => withMainContext do
     let memTy ← mkAppM ``Membership.mem #[← mkAppM ``Solidity.jumpDestList
       #[← mkAppM ``HAdd.hAdd #[← mkAppM ``ByteArray.size #[base], mkNatLit 1],
         ← mkAppM ``Array.toList #[← mkAppM ``ByteArray.data #[base]], mkNatLit 0], d]
-    let hmem ← mkDecideProof memTy
+    let hmem ← match ← jumpDestMem? base d with
+      | some h => mkExpectedTypeHint h memTy
+      | none => mkDecideProof memTy
     g.assign (mkAppN (mkConst ``isValidJumpDest_of_jumpTable_agree)
       #[jd, code, base, d, hjd, hag, hmem])
     replaceMainGoal []
@@ -385,6 +387,7 @@ def pwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bo
         saved.restore
         return false)
   let norm : TacticM Unit := do
+    trace[EvmLean.symStep] "pc {pc}, byte {b}"
     try evalTactic (← `(tactic| evm_norm [List.set_cons_zero, List.set_cons_succ, Nat.sub_sub,
       Memory.loadWord_expand, Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
       Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint, true_or, or_true,
@@ -442,6 +445,36 @@ def pwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bo
       return true
   return false
 
+/-- The fast stepper's configuration for the main goal `WP m Q H` (`none` if the code is not
+known): the normalization of `pwpStep` and its code facts. -/
+def pwpFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
+    TacticM (Option FastStep.Cfg) := withMainContext do
+  let g ← getMainGoal
+  let some m ← wpGoalMachine? g | return none
+  let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
+  let some (bytes, pinfo) ← codeInfo? code | return none
+  let normStx ← `(tactic| evm_norm [List.set_cons_zero, List.set_cons_succ, Nat.sub_sub,
+      Memory.loadWord_expand, Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
+      Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint, true_or, or_true,
+      reduceClosedWord, Bytes.size_ofWord, Bytes.toWord_ofWord, $extra,*])
+  let some simpStx ← liftMacroM <| expandMacro? normStx | return none
+  let r ← mkSimpContext simpStx (eraseLocal := false)
+  return some {
+    simpCtx := r.ctx, simprocs := r.simprocs
+    codeFact := fun c pc b => pcodeFact c pinfo pc b
+    pushFact := fun c pc n => ppushFact? c pinfo bytes pc n
+    bytes := fun c => do
+      if c == code then return some bytes
+      return (← codeInfo? c).map (·.1)
+    disch := pwpDisch }
+
+/-- One step: the fast stepper if it applies, else `pwpStep`. -/
+def pwpStepFast (cfg : Option FastStep.Cfg)
+    (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool := do
+  if let some c := cfg then
+    if ← FastStep.fastWpStep c then return true
+  pwpStep extra
+
 /-- Advance a goal `WP m Q H` by one instruction (literal or patched code). -/
 syntax "pwp_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
@@ -458,8 +491,12 @@ elab_rules : tactic
   | `(tactic| pwp_steps $[$n]? $[[$extra,*]]?) => do
     let extra := (extra.map (·.getElems)).getD #[]
     let limit := (n.map (·.getNat)).getD 1000000
-    for _ in [0:limit] do
-      unless ← pwpStep extra do return
+    -- the first step normalizes the whole goal (as every step of `pwpStep` does), the rest
+    -- only what they change
+    let mut cfg : Option FastStep.Cfg := none
+    for i in [0:limit] do
+      if i == 1 then cfg ← pwpFastCfg extra
+      unless ← pwpStepFast cfg extra do return
 
 /-- `wp_run_to` for literal or patched code. -/
 syntax "pwp_run_to " num,+ (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
@@ -468,12 +505,14 @@ elab_rules : tactic
   | `(tactic| pwp_run_to $pcs,* $[[$extra,*]]?) => do
     let extra := (extra.map (·.getElems)).getD #[]
     let pcs := pcs.getElems.toList.map (·.getNat)
+    let mut cfg : Option FastStep.Cfg := none
     for i in [0:1000000] do
       let g ← getMainGoal
       if i > 0 then
         if let some pc ← wpGoalPc? g then
           if pcs.contains pc then return
-      unless ← pwpStep extra do return
+      if i == 1 then cfg ← pwpFastCfg extra
+      unless ← pwpStepFast cfg extra do return
 
 end EvmLogic.Program
 
@@ -501,5 +540,57 @@ macro "pwp_codecopy" : tactic => `(tactic| (
     Nat.reduceEqDiff, Nat.max_def, ↓reduceIte]))
 
 end EvmLogic.Program
+
+end
+
+section
+
+/-! ## `psol_steps` with the fast stepper -/
+
+namespace EvmLogic.Tactic.Patched
+open EvmLean EvmLogic.Solidity Lean Elab Tactic EvmLogic.Tactic Meta EvmLean.Interpreter
+
+/-- The fast stepper's configuration for a goal with `run _ m`: the normalization and side
+conditions of `psol_step`. -/
+def psolFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
+    TacticM (Option FastStep.Cfg) := withMainContext do
+  let t ← instantiateMVars (← getMainTarget)
+  let some m := SolStep.findRunMachine? t | return none
+  let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
+  let some (bytes, pinfo) ← EvmLogic.Program.codeInfo? code | return none
+  let normStx ← `(tactic| evm_norm [EvmLogic.Tactic.Patched.reducePatchedRead,
+      EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow, Nat.reduceLT,
+      $extra,*])
+  let some simpStx ← liftMacroM <| expandMacro? normStx | return none
+  let r ← mkSimpContext simpStx (eraseLocal := false)
+  return some {
+    simpCtx := r.ctx, simprocs := r.simprocs
+    codeFact := fun c pc b => EvmLogic.Program.pcodeFact c pinfo pc b
+    pushFact := fun c pc n => EvmLogic.Program.ppushFact? c pinfo bytes pc n
+    bytes := fun c => do
+      if c == code then return some bytes
+      return (← EvmLogic.Program.codeInfo? c).map (·.1)
+    disch := do evalTactic (← `(tactic| psol_disch))
+    foldGas := false }
+
+elab_rules : tactic
+  | `(tactic| psol_steps $[[$extra,*]]?) => do
+    let extra := (extra.map (·.getElems)).getD #[]
+    let one : TacticM Bool := do
+      let s ← saveState
+      try
+        evalTactic (← `(tactic| psol_step [$extra,*]))
+        return true
+      catch _ =>
+        s.restore
+        return false
+    let mut cfg : Option FastStep.Cfg := none
+    for i in [0:1000000] do
+      if i == 1 then cfg ← psolFastCfg extra
+      if let some c := cfg then
+        if ← FastStep.fastRunStep c then continue
+      unless ← one do return
+
+end EvmLogic.Tactic.Patched
 
 end

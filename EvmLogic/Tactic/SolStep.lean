@@ -4,6 +4,7 @@ import EvmLogic.Solidity.JumpDest
 import EvmLogic.Solidity.Steps
 import EvmLogic.Solidity.Memory
 import EvmLogic.Solidity.Word
+import EvmLogic.Program.Code
 
 /-!
 # Symbolic execution of compiled contracts: `sol_step`
@@ -61,6 +62,10 @@ simproc_decl reduceCodeImm (_) := fun e => do
     let some bytes ← codeBytes? c | return .continue
     let v := readNat bytes i n % 2 ^ 256
     let rhs := mkApp2 (mkConst ``BitVec.ofNat) (mkRawNatLit 256) (mkRawNatLit v)
+    if n ≤ 32 then
+      if let some (tab, ok, _) ← EvmLogic.Program.codeTable? c then
+        let pf ← EvmLogic.Program.wordFact c tab ok i n v
+        return .visit { expr := rhs, proof? := some (← mkExpectedTypeHint pf (← mkEq e rhs)) }
     return .visit { expr := rhs, proof? := some (← kernelEq e rhs) }
   | readBytes c i n =>
     let some n' ← (evalNat n).run | return .continue
@@ -91,11 +96,11 @@ elab "sol_disch" : tactic => withMainContext do
     | some lhs => lhs.isAppOf ``isValidJumpDest
     | none => false
   if isCodeByte then
-    evalTactic (← `(tactic| (try dsimp only); decide +kernel))
+    evalTactic (← `(tactic| (try dsimp only); table_decide))
   else if isJumpDest then
     evalTactic (← `(tactic| (try dsimp only)))
     evalTactic (← `(tactic| apply EvmLogic.Solidity.isValidJumpDest_of_mem))
-    evalTactic (← `(tactic| decide +kernel))
+    evalTactic (← `(tactic| table_decide))
   else
     -- Closed goals go to the kernel: the elaborator's `rfl`/`decide` can hit the recursion
     -- limit on large numerals, a runtime error that `first` does not catch.
@@ -213,6 +218,7 @@ elab_rules : tactic
       setGoals [hg]
       firstOf halts s!"sol_step: no halting lemma applies to opcode {b}"
       setGoals rest
+    trace[EvmLean.symStep] "byte {b}"
     evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
       Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*]))
 

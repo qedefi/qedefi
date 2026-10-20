@@ -16,6 +16,7 @@ import EvmLogic.GasMono.Pc
 import EvmLogic.Program.Block
 import EvmLogic.Program.Call
 import EvmLogic.Program.Code
+import EvmLogic.Program.CodeTable
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
 import EvmLogic.Program.Nested.Frame
@@ -51,6 +52,7 @@ import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage
 import EvmLogic.Tactic.EvmStep
+import EvmLogic.Tactic.FastStep
 import EvmLogic.Tactic.KernelRfl
 import EvmLogic.Tactic.Mcopy
 import EvmLogic.Tactic.Patched
