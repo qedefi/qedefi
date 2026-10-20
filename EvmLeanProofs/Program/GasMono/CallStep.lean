@@ -130,6 +130,34 @@ theorem execCall_call_mono (m : Machine) (b : Word) (d x : Nat) (ps : List Frame
     (hbd : b.toNat ≤ a.toNat + d) :
     Wp (execCall .call) (fun act m' => Twp (execCall .call)
       (fun act' m'' => CallRel x ps act act' m' m'') (withTop b (bump d x ps m))) m := by
-  sorry
+  simp (config := { maxSteps := 2000000 }) [execCall, withTop, bump, hs, memoryExpansion,
+    expandMemory, readMemory, setReturnData, genericCall]
+  intro x1 xs h1 x2 xs2 h2 x3 xs3 h3 x4 xs4 h4 x5 xs5 h5 x6 xs6 h6
+  subst h1 h2 h3 h4 h5 h6
+  simp only [CallRel, BumpOf, bump, CallRequest.withGas, Machine.mk.injEq, Frame.mk.injEq,
+    Message.mk.injEq, CallRequest.mk.injEq, true_and, and_true]
+  refine ⟨fun hcond hc hst => ?_, fun dl hfork hdl hc hst => ?_⟩
+  · have hm := mcg_mono (d := d) hab hbd hc
+    have h1 := hm.1
+    have h2 := hm.2.1
+    have h3 := hm.2.2.1
+    have h4 := hm.2.2.2.1
+    have h5 := hm.2.2.2.2.1
+    have h6 := hm.2.2.2.2.2
+    exact ⟨fun hbal hlen => .inl ⟨hcond, h1, hst, .inl ⟨hbal, hlen, h5, h6⟩⟩,
+      fun hbal => ⟨fun hdep hlen => .inl ⟨hcond, h1, hst, .inr ⟨hbal, .inl ⟨hdep, hlen, h5, h6⟩⟩⟩,
+        fun hdep => .inl ⟨hcond, h1, hst, .inr ⟨hbal, .inr ⟨hdep, h2, h3, h4⟩⟩⟩⟩⟩
+  · have hm := mcg_mono (d := d) hab hbd hc
+    have h1 := hm.1
+    have h2 := hm.2.1
+    have h3 := hm.2.2.1
+    have h4 := hm.2.2.2.1
+    have h5 := hm.2.2.2.2.1
+    have h6 := hm.2.2.2.2.2
+    refine ⟨fun hbal hlen => .inr ⟨hfork, dl, hdl, h1, hst, .inl ⟨hbal, hlen, h5, h6, rfl⟩⟩,
+      fun hbal => ⟨fun hdep hlen => .inr ⟨hfork, dl, hdl, h1, hst, .inr ⟨hbal, .inl ⟨hdep, hlen, h5, h6, rfl⟩⟩⟩,
+        fun hdep => .inr ⟨hfork, dl, hdl, h1, hst, .inr ⟨hbal, .inr ⟨hdep, ?_⟩⟩⟩⟩⟩
+    repeat' apply And.intro
+    all_goals first | rfl | assumption
 
 end EvmLean.Program.GasMono

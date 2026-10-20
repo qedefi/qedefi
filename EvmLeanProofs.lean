@@ -81,6 +81,14 @@ import EvmLeanProofs.Solidity.PermitExtraMemory
 import EvmLeanProofs.Solidity.PermitExtraTactic
 import EvmLeanProofs.Solidity.PermitExtraWord
 import EvmLeanProofs.Program.GasMono.Interface
+import EvmLeanProofs.Program.GasMono.Exit
+import EvmLeanProofs.Program.GasMono.Pc
+import EvmLeanProofs.Program.GasMono.Bump
+import EvmLeanProofs.Program.GasMono.CallStep
+import EvmLeanProofs.Program.GasMono.LockstepDefs
+import EvmLeanProofs.Program.GasMono.Lockstep
+import EvmLeanProofs.Program.GasMono.LockstepTop
+import EvmLeanProofs.Program.GasMono.CallsFedScan
 import EvmLeanProofs.Program.GasMono.CodeScan
 import EvmLeanProofs.Program.GasMono.CodeFails
 import EvmLeanProofs.Program.GasMono.CodeFailsTactic
