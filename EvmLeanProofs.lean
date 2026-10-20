@@ -62,3 +62,15 @@ import EvmLeanProofs.Solidity.ExtraPatchedWP
 import EvmLeanProofs.Solidity.ExtraTactic
 import EvmLeanProofs.Program.InExtraCall
 import EvmLeanProofs.Solidity.InExtraWord
+import EvmLeanProofs.Program.NestedExtraWp
+import EvmLeanProofs.Program.NestedExtraFrame
+import EvmLeanProofs.Program.NestedExtraStep
+import EvmLeanProofs.Program.NestedExtraRun
+import EvmLeanProofs.Program.NestedExtraGas
+import EvmLeanProofs.Solidity.EventsExtra
+import EvmLeanProofs.Solidity.StringsStep
+import EvmLeanProofs.Solidity.StringsTactic
+import EvmLeanProofs.Solidity.Strings
+import EvmLeanProofs.Solidity.StringsWord
+import EvmLeanProofs.Solidity.StringsEncoding
+import EvmLeanProofs.Solidity.StringsExamples

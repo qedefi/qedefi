@@ -12,6 +12,7 @@ public import EvmLeanSpecs.Vault.InflationAlgebra
 public import EvmLeanSpecs.Vault.Inflation
 public import EvmLeanSpecs.Vault.Witnesses
 public import EvmLeanSpecs.Vault.MoreProps
+public import EvmLeanSpecs.Vault.Events
 
 /-!
 # `EvmLeanSpecs.Vault`: abstract ERC-4626 vault models
