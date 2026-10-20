@@ -195,13 +195,14 @@ def outputWords (b : ByteArray) : Array Word :=
 failures at every depth: either repeat the previous call with a limit around the gas it used
 (`gasUsed + δ`, δ from −2 to a few thousand: refunds, the 63/64 rule and stipends make the
 needed limit differ from `gasUsed`), or send the new call with its intrinsic gas plus a small
-random amount. Never below the intrinsic gas (anvil rejects such transactions). Lowered calls
+random amount. Never below the intrinsic gas (anvil rejects such transactions); the previous
+call is repeated only if its sender can still pay its value in `w`. Lowered calls
 get the kind suffix `@lowgas` (reports show each call's gas limit). -/
-def lowerGas (pct : Nat) (prev : Option (Call × Nat)) (c : Call) : Gen Call := do
+def lowerGas (pct : Nat) (w : World) (prev : Option (Call × Nat)) (c : Call) : Gen Call := do
   if (← below 100) ≥ pct then return c
   let (base, target) ← match prev with
     | some (p, used) =>
-      if (← below 2) = 0 then
+      if (← below 2) = 0 && p.value ≤ (w.balance p.sender).toNat then
         let δ : Int ← match ← below 4 with
           | 0 => pure ((← pick #[-2, -1, 0, 1, 2]) : Int)
           | 1 => pure ((← pick #[100, 2300, 2301, 4800, 5000, 9000, 20000]) : Int)
@@ -225,7 +226,7 @@ def Session.fuzz (s : Session) (seed : UInt64) : IO (Option (Array Call × List 
   let mut prev : Option (Call × Nat) := none
   for _ in [0:s.length] do
     let (c, g') := (s.gen w recent).run g
-    let (c, g') := (lowerGas s.lowGasPct prev c).run g'
+    let (c, g') := (lowerGas s.lowGasPct w prev c).run g'
     g := g'
     calls := calls.push c
     let (w', o, diffs) ← s.exec w c
