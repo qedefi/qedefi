@@ -238,6 +238,24 @@ theorem exec_pc (op : Opcode) (m : Machine) : Wp (exec op) (PcPost op m) m := by
   case dup => intro _; split <;> simp [PcPost, immOf]
   case swap => intro _; split <;> simp [PcPost, immOf]
 
+/-- The instructions that do not read the gas never request a child. -/
+def NoChild : Action → Prop
+  | .next | .stop _ | .revert _ => True
+  | .call _ | .create _ => False
+
+set_option maxHeartbeats 4000000 in
+/-- **Only the `CALL` and `CREATE` families start children.** -/
+theorem exec_noChild (op : Opcode) (hop : readsGasB op = false) (m : Machine) :
+    Wp (exec op) (fun a _ => NoChild a) m := by
+  cases op
+  all_goals first
+    | (simp [readsGasB] at hop; done)
+    | (simp [NoChild, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+        memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+        execSstore, execSelfdestruct])
+  case dup => intro _; split <;> simp
+  case swap => intro _; split <;> simp
+
 /-! ## The pc invariant -/
 
 /-- The pc is an instruction boundary inside the region `[0, n)`. -/
