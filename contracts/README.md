@@ -130,29 +130,46 @@ checks that every selector is pushed by the dispatcher, and generates the Lean m
 | STA | `0xa7DE087329BFcda5639247F96140f9DAbe3DeED1` | `0x2d5b2ff1b704f708f9c0f6ec97829ec6c8c9013713b9e0c301bdcb8dbf3c8429` | 3,216 B | 26,236,604 (`0x2fe4f1f0…`) | 0.5.0+commit.1d4f565a, optimizer 200 (byzantium) |
 | AMPL (implementation `UFragments`) | `0xD0e3F82ab04B983C05263cF3BF52481FbAa435b1` | `0xec01e9f4bb8099df1b15c0c2b6e1fd795484681553981e77b34285b923fbc578` | 6,229 B | 26,236,604 | 0.7.6+commit.7338295f, optimizer 200 (istanbul) |
 | AMPLProxy (token address, zos `AdminUpgradeabilityProxy`) | `0xD46bA6D942050d489DBd938a2C909A5d5039A161` | `0xf74669def838d4f085b394f7892fa8f014fb7ed7558b760b288692b1cc3ca054` | 2,269 B | 26,236,604 | 0.5.3+commit.10d17f24, optimizer off |
+| GUSD (token address, `ERC20Proxy`) | `0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd` | `0xfd0ab716aa170c34925e0c205ae36765d6f4e7e74d2235f6a365b4ca81e3c8f5` | 3,490 B | 26,236,997 (`0x0889f6b9…`) | 0.4.21+commit.dfe3193c, optimizer 200 |
+| GUSDImpl (`ERC20Impl`) | `0x483A1E7F16F46266400f1bAF7abdF445c8D140A2` | `0x5b5d5718eed66700397b9b47da1141322e171501f795c3e7d2f25b7d930c1181` | 12,180 B | 26,236,997 | 0.8.30+commit.73712a01, optimizer 100,000 (shanghai) |
+| GUSDStore (`ERC20Store`) | `0xc42B14e49744538e3C239f8ae48A1Eaaf35e68a0` | `0xe768e3d1ee8a04a3b06d8c6ec2c498fb6494c7d50312f9ffb9dcc984143ed775` | 2,026 B | 26,236,997 | 0.4.21+commit.dfe3193c, optimizer 200 |
+| YAMV2 (`YAMv2`, 24 decimals) | `0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A` | `0xba80d2f3d66c1c11fe204b02db121186e3113415910213bbe355db422dc595b1` | 3,683 B | 26,236,997 | 0.6.12+commit.27d51765, optimizer 50,000 (istanbul) |
+| LEND (`EthLendToken`) | `0x80fB784B7eD66730e8b1DBd9820aFD29931aab03` | `0xb9ac5542f3276a4ee6be31d235c3f0736f37c1f0182c4369a07b8de2d1f23f1f` | 6,872 B | 26,236,997 | 0.4.16+commit.d7661dd9, optimizer off |
+| ZRX (`ZRXToken`) | `0xE41d2489571d322189246DaFA5ebDe1F4699F498` | `0x44d31e602fd21d6ca2e92923b0a6626c47c1986a92e1abc87bea9ae71e553229` | 2,946 B | 26,236,997 | 0.4.11+commit.68ef5810, optimizer off |
 
-Every Sourcify match above is *partial* (`"match"`: the code equals the recompilation except
-the metadata hash in the trailer), so none of these is byte-reproducible from source; the
-code hash is the pin. `layout-check.txt` (USDT, BNB, STA, AMPL) records the check of the
+Every Sourcify match above except GUSDImpl's is *partial* (`"match"`: the code equals the
+recompilation except the metadata hash in the trailer), so those are not byte-reproducible
+from source; GUSDImpl's is exact. The code hash is the pin. `layout-check.txt` (USDT, BNB,
+STA, AMPL, GUSD, GUSDImpl, GUSDStore, YAMV2, LEND, ZRX) records the check of the
 hand-derived layout against mainnet: every slot of the static layout and mapping rows of
 known holders read with `eth_getStorageAt` and compared with the public getters
-(`eth_call`) at one block (26,236,515–26,236,568; 0 failures). Zero-valued slots (USDT's fee,
+(`eth_call`) at one block (26,236,515–26,236,568 for the first four, 26,237,004 for the
+others; 0 failures; `CMP` rows are packed slots or strings compared by hand). Zero-valued slots (USDT's fee,
 pause, deprecation, blacklist; empty allowances) are consistent but not strong evidence;
 `difftest` additionally checks each family's getters against the installed `genesis.json`
 (packed `paused`/`deprecated`, fee parameters, owners) and the views against slot reads.
 
-Recorded, not targets (read at block 26,236,588): LEND `0x80fB784B7eD66730e8b1DBd9820aFD29931aab03`
-(code hash `0xb9ac5542…3f1f`, 6,872 B, solc 0.4.16: zero-value transfers revert), GUSD
-`0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd` (`0xfd0ab716…c8f5`, 3,490 B: 2 decimals, a
-front contract forwarding by `CALL` to `erc20Impl`), YAM-V2
-`0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A` (3,683 B: 24 decimals), USDC
+Recorded, not targets (read at block 26,236,588): USDC
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` and PAXG `0x45804880De22913dAFE09f4980848ECE6EcbAf78`
-(zos-slot proxies; PAXG's current implementation no longer charges a transfer fee).
+(zos-slot proxies; PAXG's current implementation no longer charges a transfer fee). LEND, GUSD
+and YAM-V2, recorded here before, are now targets.
 
 AMPL is the one proxied target: the token address holds the proxy, whose storage holds the
 token state (`AMPLProxy/genesis.json`: zos implementation slot → the implementation address,
 admin `0xAD`, then `UFragments` state), and the implementation's code is installed at its
 mainnet address (`AMPL/`, no storage). `difftest` runs it through `DELEGATECALL`.
+
+GUSD is a three-contract token without `DELEGATECALL`: the token address holds `ERC20Proxy`
+(0.4.21), which forwards every ERC-20 call by `CALL` to `erc20Impl` with `msg.sender` as an
+argument (`transferWithSender` …) and emits the events when the implementation asks it to
+(`emitTransfer`/`emitApproval`, implementation only); `ERC20Impl` (0.8.30, deployed at
+block 26,155,545 on 2026-10-09: the current implementation is recent) keeps balances, allowances and
+the supply in `ERC20Store` (0.4.21) through setters callable by the implementation only.
+The implementation's immutables `erc20Proxy` and `erc20Store` are the mainnet addresses, so
+all three are installed at their mainnet addresses, each with its own `genesis.json`
+(custodian alice everywhere). Sourcify serves the proxy's flattened source under the empty
+path `.sol` (`GUSD/source/.sol`, kept as served; `GUSDStore/source/ERC20Store.sol` is the same
+file). `requestPrint` and the 0.4.21 `generateLockId` hash `BLOCKHASH(number − 1)`.
 
 **WETH9 reproducibility.** Deployed at block 4,719,568 (tx `0xb9534341…2fa3`). Sourcify's
 match is partial (`"match"`): recompiling with 0.4.19 gives the deployed code except the
@@ -183,14 +200,16 @@ OpenZeppelin `_balances 0, _allowances 1, _totalSupply 2, _name 3, _symbol 4`. M
 `nonces(o)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x38377508)` ([docs/tokens.md](../docs/tokens.md)).
 
 Mainnet modules (`Examples.WETH9.Contracts.WETH9`, `Examples.WeirdERC20.<T>.Contracts.<T>` for
-`USDT`, `BNB`, `STA`, `AMPL` (implementation) and `AMPL.Contracts.AMPLProxy`)
+`USDT`, `BNB`, `STA`, `AMPL` (implementation), `YAMV2`, `LEND`, `ZRX`, and
+`AMPL.Contracts.AMPLProxy`, `GUSD.Contracts.{GUSD, GUSDImpl, GUSDStore}`)
 have `runtimeCode`, `size_runtimeCode`, `address` (mainnet), `codeHash`, `fetchBlock`,
 `genesisStorage`, `immutableRefs = []`, `selectors`, `events`, `errors`, `storageLayout`; no
 creation code.
 
 ## Differential testing
 
-`lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]]`
+`lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]] [--edge]
+[--low-gas PCT]`
 (`defi/Examples/Differential/Main.lean`, run from `defi/`, needs anvil) deploys both families
 through their creation code in evm-lean (`processMessageCall`, `Crypto.real`, Cancun) and in
 anvil, then runs random call sequences from four actors: asset mint/burn/approve/transfer/
@@ -202,8 +221,19 @@ storage slot either side touched, and shrinks mismatches to a minimal sequence.
 `--inject-bug` corrupts evm-lean's `deposit` to self-test the comparison.
 
 Families: `solmate`, `oz` (default), `oz3` (OZ vault with δ = 3), and the token families
-`oz20`, `solady`, `weth9`, `usdt`, `usdtfee` (fee on in genesis), `bnb`, `sta`, `ampl`
-(`defi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. Token families
+`oz20`, `solady`, `weth9`, `usdt`, `usdtfee` (fee on in genesis), `bnb`, `sta`, `ampl`, `gusd`
+(proxy, implementation and store; calls to all three), `yamv2`, `lend`, `lendico` (LEND with
+the ICO reopened: purchases with ether, transfers locked) and `zrx`
+(`defi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. `--edge` makes
+the token generators favour extreme amounts (0, 1, `2²⁵⁶ − 1`, `2²⁵⁵`, balance, balance + 1),
+self-transfers and address arguments with dirty upper 96 bits; `--low-gas PCT` lowers the
+gas limit of `PCT` % of random calls (vaults too): the previous call again with `gasUsed + δ`
+(δ ∈ −2…40,000, including 2,300 and the stipend/refund neighbourhood) or the new call with its
+intrinsic gas plus at most 60,000, so that out-of-gas hits every depth. `BLOCKHASH(number −
+1)` is given to evm-lean as anvil's parent hash (older block hashes are not; no target reads
+them). The summary counts, per operation, calls, successes, exceptional halts (failures that
+consume the whole gas limit: out of gas, `INVALID`) and calls returning one zero word (ZRX's
+`false`). Token families
 deploy (compiled) or install (mainnet: code plus `genesis.json` storage, both sides; AMPL as
 proxy plus implementation) the token, check its getters against the installed state, run a
 fixed scenario of its quirks, check `balanceOf`/`allowance`/`totalSupply` against reads of the

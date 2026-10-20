@@ -18,6 +18,10 @@ each target is, exactly, and what should be proved about it. The model-level res
 | BNB | **mainnet** `0xB8c7…DD52` | `contracts/mainnet/BNB/` | `Examples.WeirdERC20.BNB.Contracts.BNB` | `bnb` |
 | STA (fee on transfer) | **mainnet** `0xa7DE…eED1` | `contracts/mainnet/STA/` | `Examples.WeirdERC20.STA.Contracts.STA` | `sta` |
 | AMPL (rebasing; zos proxy + `UFragments`) | **mainnet** `0xD46b…A161` / `0xD0e3…35b1` | `contracts/mainnet/{AMPLProxy,AMPL}/` | `Examples.WeirdERC20.AMPL.Contracts.{AMPLProxy,AMPL}` | `ampl` |
+| GUSD (2 decimals; `CALL` proxy + implementation + store) | **mainnet** `0x056F…d5Cd` / `0x483A…40A2` / `0xc42B…68a0` | `contracts/mainnet/{GUSD,GUSDImpl,GUSDStore}/` | `Examples.WeirdERC20.GUSD.Contracts.{GUSD,GUSDImpl,GUSDStore}` | `gusd` |
+| YAMv2 (24 decimals) | **mainnet** `0xAba8…aD8A` | `contracts/mainnet/YAMV2/` | `Examples.WeirdERC20.YAMV2.Contracts.YAMV2` | `yamv2` |
+| LEND (zero-value transfers revert; approve guard; ICO) | **mainnet** `0x80fB…ab03` | `contracts/mainnet/LEND/` | `Examples.WeirdERC20.LEND.Contracts.LEND` | `lend`, `lendico` |
+| ZRX (returns `false` instead of reverting) | **mainnet** `0xE41d…F498` | `contracts/mainnet/ZRX/` | `Examples.WeirdERC20.ZRX.Contracts.ZRX` | `zrx` |
 
 *Compiled* targets are built from vendored sources by `scripts/build-contracts.sh` (solc
 0.8.28, optimizer 200, Cancun, no metadata) and deployed through their creation code.
@@ -374,13 +378,95 @@ supply invariant becomes `Σ gons ≤ TOTAL_GONS` (exact for gons) with the frag
 bounded by `S`. Structurally this is an ERC-4626-like share ledger, so `Defi.ERC4626` rounding
 lemmas apply.
 
+### GUSD (Gemini dollar): 2 decimals, three contracts linked by `CALL`
+
+**Contracts** (all at their mainnet addresses; custodian alice in each genesis):
+`ERC20Proxy` at the token address (0.4.21, optimizer 200, 3,490 B), `ERC20Impl`
+`0x483A…40A2` (0.8.30, optimizer 100,000, 12,180 B; deployed 2026-10-09, immutables
+`erc20Proxy`, `erc20Store`), `ERC20Store` `0xc42B…68a0` (0.4.21, 2,026 B). Every proxy
+entry point calls `erc20Impl.xWithSender(msg.sender, …)`; the implementation reads and writes
+the store through its setters and calls back `proxy.emitTransfer`/`emitApproval`, so the
+logs of a transfer come from the token address while the state changes in the store: one
+`transfer` is a depth-3 call tree (proxy → impl → store ×2, impl → proxy).
+
+**Layout**: proxy 0 `lockRequestCount`, 1 `custodian`, 2 `custodianChangeReqs`, 3
+`erc20Impl`, 4 `implChangeReqs`, 5 `name`, 6 `symbol`, 7 `decimals` (2); store 0–4 the same
+prefix (`erc20Impl` in slot 3), 5 `totalSupply`, 6 `balances`, 7 `allowed`; implementation 0
+`lockRequestCount`, 1 `custodian`, 2 `custodianChangeReqs`, 3 `pendingPrintMap` (struct
+`receiver`, `value` in two slots).
+
+**Deviations** (in the `gusd` scenario): 2 decimals; transfers and approvals to `0` revert;
+`increaseApproval`/`decreaseApproval` with explicit overflow checks; infinite allowances
+decremented; no approve guard. **The proxy does not bubble revert data**: the implementation
+reverts with `"zero address"`, `"insufficient balance"` …, the token address returns empty
+revert data (0.4.21 `require(call)`); calls to the implementation directly return the strings.
+`batchTransfer(tos, values)` (implementation, any holder) checks the lengths, skips the
+ledger update for self-entries but still emits their `Transfer`; `burn(v)` (holder) and
+custodian-only `executePrint`, `burn(owner, v)`; `requestPrint` returns a lock id hashing
+`BLOCKHASH(number − 1)`, the implementation's address and a counter, `confirmPrint(lockId)`
+(custodian) mints it. Access control: store setters only from `erc20Impl`, `emitTransfer`
+/`emitApproval` only from the implementation, `*WithSender` only from the proxy. The custodian
+can replace the implementation of the proxy or the store (`requestImplChange` then
+`confirmImplChange(lockId)`): with an EOA as implementation every proxy call reverts
+(extcodesize check), with the store re-pointed the implementation's writes revert.
+
+**Model variant**: `Variant` with return `bool`, `zeroAddressReverts` (recipient and
+spender), checked allowance helpers; the three-contract structure is a *frame* question
+(the ledger lives in another account, written only by the current implementation): a
+refinement relates the store's storage, not the token's, to `VState`; revert data is lost at
+the proxy.
+
+### YAMv2: 24 decimals
+
+`YAMv2` (0.6.12, optimizer 50,000, 3,683 B), an OpenZeppelin-3 style token with
+`_setupDecimals(24)` and a `minter` (no burn). **Layout**: 0 `minter`, 1 `_balances`, 2
+`_allowances`, 3 `_totalSupply`, 4 `_name`, 5 `_symbol`, 6 `_decimals`. Balances in the tests
+are `~10³⁰` (a million tokens), so amounts sit 6 orders of magnitude above 18-decimals
+tokens; nothing overflows before `2²⁵⁶` (SafeMath with string reasons). **Deviations** (in the
+`yamv2` scenario): string revert reasons (`"!minter"`, `"ERC20: transfer amount exceeds
+balance"`, …); `transferFrom` moves the tokens *before* spending the allowance, so a
+transfer that fails both checks reports the balance; the spend emits `Approval`; infinite
+allowances decremented; zero-address checks on sender, recipient, owner, spender and mint
+recipient. The variant is OZ's with `decimals = 24`; the generic catalogue holds unchanged.
+
+### LEND (EthLend): zero-value transfers revert
+
+`EthLendToken` (0.4.16, unoptimized, 6,872 B). **Layout**: 0 `balances`, 1 `allowed`, 2
+`supply`, 3 `currentState` (enum, byte 0), `enableTransfers` (byte 1), `teamTokenBonus`
+(bytes 2–21), 4 `escrow`, 5 `tokenManager`, 6 `presaleSoldTokens`, 7 `icoSoldTokens`, 8
+`totalSoldTokens`. **Deviations** (in the `lend` scenario, mainnet state ICOFinished):
+`transfer`/`transferFrom` require `balances[to] + v > balances[to]` — **zero-value transfers
+revert** (also self-transfers of 0 and `transferFrom` of 0); the approve race guard (as USDT,
+but returning `true`); infinite allowances decremented; no zero-address checks; transfers and
+approvals gated by `enableTransfers` (set exactly when the state becomes ICOFinished, which
+is final). The `lendico` family reopens the ICO (state ICORunning, transfers disabled):
+`buyTokens`/the payable fallback mint `msg.value · price` (price tiers 27,500 / 26,250 /
+25,000 per ether by `icoSoldTokens`; the genesis puts the first tier boundary 1,000 tokens
+away), `withdrawEther` sends the whole ether balance to the escrow with `send` (2,300
+stipend), `setState` by the token manager (out-of-range enum values fail), and transfers
+unlock at ICOFinished. **Model variant**: `zeroValueReverts` (strict-increase check, so also
+for self-transfers), `approveGuard`, a global `paused` (= `¬enableTransfers`) that also
+covers `approve`, and a sale entry point minting against ether.
+
+### ZRX (0x Protocol Token): failures return `false`
+
+`ZRXToken` (0.4.11, unoptimized, 2,946 B). **Layout**: 0 `balances`, 1 `allowed`, 2
+`StandardToken.totalSupply` (**shadowed**: `ZRXToken` redeclares `totalSupply`, the
+constructor and the public getter use slot 3; slot 2 is 0 on mainnet), 3 `totalSupply`.
+`name`, `symbol`, `decimals` are constants. **Deviations** (in the `zrx` scenario):
+insufficient balance or allowance makes `transfer`/`transferFrom` **return `false`** with
+status success, no event and no state change (an integration that ignores the return value
+proceeds as if paid); an allowance of exactly `2²⁵⁶ − 1` is not spent; no zero-address checks
+(transfers to `0` keep the supply); zero transfers and self-transfers succeed. Pre-Byzantium
+failures (value sent to a non-payable function, short calldata in the dispatcher) consume all
+gas. **Model variant**: failure convention `returnFalse` (already in `Defi.ERC20.Variant`, so
+`unchecked_call_returnFalse` and `unchecked_returnFalse_deposit` apply to ZRX as is),
+`infiniteAllowance = MAX`.
+
 ### Recorded examples (not targets)
 
-LEND (zero-value transfers revert: strict `balances[to] + v > balances[to]`, approve race
-guard), GUSD (2 decimals; a front contract forwarding by `CALL` to a replaceable
-`erc20Impl` with balances in a separate store), YAM-V2 (24 decimals), USDC and PAXG (zos-slot
-proxies; PAXG's current implementation has no transfer fee anymore, contrary to the
-`weird-erc20` list). Addresses and code hashes in `contracts/README.md`.
+USDC and PAXG (zos-slot proxies; PAXG's current implementation has no transfer fee anymore,
+contrary to the `weird-erc20` list). Addresses and code hashes in `contracts/README.md`.
 
 ### The `Defi/ERC20` variant these need
 
@@ -483,7 +569,12 @@ implementation refinement over the proxy's storage.
 ## Differential testing
 
 `lake exe difftest --family oz3,oz20,solady,weth9` (or `tokens`, `vaults`, `all`; run from
-`defi/`). Token families (`defi/Examples/Differential/Token.lean`): compiled tokens are
+`defi/`; `--edge` and `--low-gas PCT` as in `contracts/README.md`). The GUSD family installs
+all three contracts with their own storage, compares the storage of all three and sends 30 %
+of its ABI calls to the implementation and the store directly (`batchTransfer`, prints, the
+custodian's and the access-controlled setters); lock ids returned by earlier calls are reused
+as `bytes32` arguments, so `confirmPrint`/`confirmImplChange`/`confirmCustodianChange` hit
+real requests. Token families (`defi/Examples/Differential/Token.lean`): compiled tokens are
 deployed through their creation code, mainnet tokens installed with their genesis storage
 (both sides); actors are funded with 1000 ether where ether matters. The generator draws from
 the token's ABI by weight with state-aware amounts, sends ether to payable functions, to the
