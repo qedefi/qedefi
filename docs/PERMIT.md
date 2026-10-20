@@ -5,7 +5,7 @@ Both Solmate `ERC20`s of the target — the asset (`MockERC20`) and the vault's 
 bytecode** does (any immutables: chain id, domain separator, decimals, asset), for **every
 `Crypto`**, with only the standard axioms, and relate it to an extended ledger model.
 
-## The precompile-call rule (`EvmLeanProofs/Program/PrecompileCall*.lean`)
+## The precompile-call rule (`EvmLogic/Program/PrecompileCall*.lean`)
 
 A `CALL*` to a precompile pushes no frame: `launchCall` runs it inside the same `step`.
 
@@ -25,14 +25,14 @@ A `CALL*` to a precompile pushes no frame: `launchCall` runs it inside the same 
   under the standard precompiles of the context: the caller continues with `1` pushed, 3000
   gas spent beyond the call's own charges, the signer's word stored at `out` (or memory
   unchanged, `returnMemory_ecrecoverOutput`).
-* Tests: `EvmLeanTest/PrecompileCall.lean` (real secp256k1 vector, agreement with the precompile).
+* Tests: `EvmTest/PrecompileCall.lean` (real secp256k1 vector, agreement with the precompile).
 
-Helpers: `Solidity/PermitExtraMemory.lean` (multi-word and unaligned reads, expansion of a
+Helpers: `EvmLogic/Solidity/Memory.lean` (multi-word and unaligned reads, expansion of a
 symbolic-length access inside memory), `PermitExtraWord.lean`, `PermitExtraTactic.lean`
 (`wp_generalize_mem`), `PermitExtraAttr.lean` (`permit_norm`: memory sizes and expansion costs,
 keeps the gas a closed sum over generalized memory).
 
-## The model (`../Vault/Permit.lean`)
+## The model (`defi/Defi/ERC20/Permit.lean`)
 
 `PermitToken A = { token : Token A, nonces : A →₀ ℕ }`.
 `PermitToken.permit s owner spender value valid`: if `valid (s.nonces owner)` then
@@ -40,7 +40,7 @@ keeps the gas a closed sum over generalized memory).
 source's unchecked `++`; `+ 1` below `MAX`, `permit_nonce_of_lt`), else `none`. Validity is a
 parameter; `liftOp` lifts the other ledger operations (nonces unchanged).
 
-## What the bytecode computes (`PermitDefs.lean`)
+## What the bytecode computes (`defi/Examples/Solmate/ERC20/Permit.lean`)
 
 `PERMIT_TYPEHASH`, `DOMAIN_TYPEHASH`, `VERSION_HASH` are the **literals in the code** (solc folds
 `keccak256("…")`); `structHash`, `digest` (`keccak("\x19\x01" ‖ ds ‖ structHash)`) use
@@ -64,13 +64,13 @@ in `PermitVault*.lean`, same scripts at other offsets):
 * `asset_domainSeparator_halts` / `vault_…`: returns `domainSeparator …`, world unchanged.
   Internal summary `asset_ds_wp` / `vault_ds_wp` (both branches).
 * `asset_nonces_halts` / `vault_…`: returns the word of `nonces[owner]`.
-* `asset_permit_refines`, `vault_permit_refines` (`PermitSpec.lean`): additionally
+* `asset_permit_refines`, `vault_permit_refines` (`defi/Examples/Solmate/ERC4626/PermitSpec.lean`): additionally
   `PermitRefinesPost`: `modelPermit` (= `(permitView crypto w token).permit … (validAt …)`)
   is `some l'` iff success, and then the storage represents `l'` (`PermitRepOn`) and the log is
   emitted; `none` iff revert.
-* `asset_permit_events`, `vault_permit_events` (`PermitEvents.lean`): `EventsPost` form.
+* `asset_permit_events`, `vault_permit_events` (`defi/Examples/Solmate/ERC4626/PermitSpec.lean`): `EventsPost` form.
 
-Top level (`PermitCall.lean`, `processMessageCall`, `∃ n, ∀ fuel ≥ n, …`):
+Top level (`defi/Examples/Solmate/ERC4626/PermitSpec.lean`, `processMessageCall`, `∃ n, ∀ fuel ≥ n, …`):
 `asset_permit_call`, `vault_permit_call` (`PermitResult`: success / `permitWorld` /
 `res.logs = #[approvalLog …]` iff `PermitValid`; else revert, `res.world = w`, no logs),
 `asset_domainSeparator_call`, `vault_…`, `asset_nonces_call`, `vault_…`;
@@ -99,7 +99,7 @@ entries `PermitAllowances` (written entry or a different slot), nonces for `Perm
 Nothing. Every theorem holds for **every** `Crypto`: it states exactly when `permit` succeeds,
 in terms of `crypto.ecrecover` and `crypto.keccak256` (`SigOk`). In particular it is **not** a
 theorem here that only the owner can produce a valid permit. That is ECDSA unforgeability, a
-computational assumption; `SigUnforgeable crypto Signed` (`PermitDefs.lean`, *unused by every
+computational assumption; `SigUnforgeable crypto Signed` (`defi/Examples/Solmate/ERC20/Permit.lean`, *unused by every
 refinement theorem*) fixes its shape — every signature recovering to `owner` is for a digest in
 `Signed owner` — for users who want to add it as a hypothesis (`signed_of_sigOk`). Likewise
 the domain-separator and type-hash literals equal the real Keccak of their strings only for the
@@ -107,7 +107,7 @@ real Keccak (`lake exe difftest` runs `permit` against anvil with `Crypto.real`)
 
 ## Integration into the trace system
 
-Done for the any-transaction theorems (`NestedPermit.lean`, `INVARIANTS.md` §6.3). The
+Done for the any-transaction theorems (`defi/Examples/Solmate/ERC4626/Nested/Permit.lean`, `INVARIANTS.md` §6.3). The
 abstraction is **not** extended with nonces (no invariant mentions them); instead the nonce
 write is shown invisible to `abs`, and a `permit` frame commits the owner's approval:
 
@@ -127,7 +127,7 @@ write is shown invisible to `abs`, and a `permit` frame commits the owner's appr
    statements;
 4. `DOMAIN_SEPARATOR()` and `nonces` are covered views (`ViewData`).
 
-The top-level traces of `Invariants.lean` do not get a `permit` `VCall`: their `OpRefinesAt`
+The top-level traces of `defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean` do not get a `permit` `VCall`: their `OpRefinesAt`
 relates a call to one model operation from the abstraction alone, and a permit's success
 depends on the nonce, timestamp and chain id (not in the abstraction). Direct top-level permit
 transactions are covered by the any-transaction theorems (`txOk_direct`). Events: the model's
@@ -136,6 +136,6 @@ stream `trace_logs` is unchanged.
 
 ## Build
 
-`cd specs && lake build`. Times (M-series laptop, other builds running): `PermitAssetDS` ~60 s,
-`PermitAssetTail` ~75 s, `PermitAssetBody` ~60 s, `PermitAsset` ~70 s, and the same for the
+`cd defi && lake build`. Times (M-series laptop, other builds running): `Examples.Solmate.ERC20.Permit` ~60 s,
+`Examples.Solmate.ERC20.Permit` ~75 s, `Examples.Solmate.ERC20.Permit` ~60 s, `Examples.Solmate.ERC20.Permit` ~70 s, and the same for the
 vault files; the rest a few seconds.

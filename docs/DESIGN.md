@@ -46,7 +46,7 @@ audit found there.
 - Cancun, Prague and Osaka implemented. Conformance: ethereum/tests Cancun 22,332/22,332;
   execution-spec-tests v5.4.0 blockchain tests for Cancun, Prague, Osaka and the
   Cancun→Prague, Prague→Osaka transitions all pass (see README).
-- Proof library (`EvmLeanProofs`): per-opcode step lemmas, memory/storage/word lemmas,
+- Proof library (`EvmLogic`): per-opcode step lemmas, memory/storage/word lemmas,
   `evm_step`/`evm_steps` symbolic execution, `kernel_rfl`/`kernel_decide` for kernel-only
   evaluation with free variables. Theorems hold for every `Crypto`.
 - Next: loops/invariants (CFG lemmas), CALL/CREATE frame lemmas, Solidity ABI and keccak
@@ -68,8 +68,8 @@ audit found there.
 | `EvmLean/Crypto/Kzg.lean` (+ BLS12-381) | KZG point evaluation | agent **kzg** |
 | `EvmLean/Gas.lean`, `EvmLean/Interpreter.lean`, `EvmLean/Interpreter/*` | gas schedule, frames, `step`, `run`, `processMessageCall` | agent **interpreter** |
 | `EvmLean/Tx.lean`, `EvmLean/Tx/*`, `EvmLean/Block.lean`, `Conformance/*` | transactions, block glue, fixture runner | agent **tx-harness** |
-| `EvmLeanTest/*` | `#guard` unit tests, one file per module | each owner |
-| `EvmLeanProofs/*` | kernel-checked sanity theorems | later phase |
+| `EvmTest/*` | `#guard` unit tests, one file per module | each owner |
+| `EvmLogic/*` | kernel-checked sanity theorems | later phase |
 
 ## Interfaces between agents
 

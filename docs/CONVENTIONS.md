@@ -62,7 +62,7 @@ LNSym, and checked against Lean v4.35.0.
 ## Tests
 - `#guard` for executable checks, `example … := by decide +kernel` (or `rfl`) for kernel
   checks. Plain `decide` uses the elaborator's reducer and can hang on `ByteArray` code,
-  `#guard_msgs in #eval` for printed output. One test file per module in `EvmLeanTest/`.
+  `#guard_msgs in #eval` for printed output. One test file per module in `EvmTest/`.
 - Use official vectors: NIST/FIPS, EIP test cases, go-ethereum precompile JSONs, c-kzg vectors.
 
 ## Trust

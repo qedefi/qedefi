@@ -9,9 +9,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Trust check
         run: scripts/check-trust.sh
+      # Root package (core + Std): EvmLean, EvmLogic, Conformance (default targets), then
+      # `lake test` (EvmTest).
       - uses: leanprover/lean-action@v1
         with:
           build-args: "--wfail"
           test: true
-      - name: Kernel-checked theorems
-        run: lake build EvmLeanProofs
+      # The `defi` package (Mathlib): Defi, Examples, difftest.
+      - name: DeFi package
+        working-directory: defi
+        run: |
+          lake exe cache get
+          lake build --wfail

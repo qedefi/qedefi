@@ -2,19 +2,19 @@
 
 The last layer of the ERC-4626 verification: the model's invariants (`../Vault/`) hold for the
 **deployed bytecode** of Solmate `MockERC4626` + `MockERC20` across arbitrary sequences of
-transactions by arbitrary callers. Files: `Lift.lean` (generic), `InvariantsAgree.lean`,
-`InvariantsPrice.lean` (model side), `InvariantsSystem.lean` (the concrete system),
-`InvariantsCalls.lean`, `AssetApproveCall.lean`, `AssetMintCall.lean`, `AssetBurnCall.lean`
-(per-call obligations proved today), `Invariants.lean` (headlines), `InvariantsFinal.lean`
-(every call kind); for arbitrary transactions with nested calls: `EvmLeanProofs/Program/
-NestedExtra*.lean` (generic simulation), `NestedSystem.lean`, `NestedCalls.lean`,
-`NestedViews.lean`, `NestedPermit.lean`, `NestedInvariants.lean`, `NestedCoverage.lean`,
-`SharesFrame*.lean`, `ViewsRest.lean`, `UnknownSelectors.lean`, `Malformed*.lean` (§6); for any
-gas and any depth: `LowGas*.lean` with `EvmLeanProofs/Program/GasMono/` and
-`EvmLeanProofs/Program/AbsInt/` (§6.5).
+transactions by arbitrary callers. Files: `defi/Defi/Trace/Lift.lean` (generic), `defi/Defi/ERC4626/Agree.lean`,
+`defi/Defi/ERC4626/Price.lean` (model side), `defi/Examples/Solmate/ERC4626/Invariants/System.lean` (the concrete system),
+`defi/Examples/Solmate/ERC4626/Invariants/System.lean`, `defi/Examples/Solmate/ERC4626/Invariants/System.lean`, `defi/Examples/Solmate/ERC4626/Invariants/System.lean`, `defi/Examples/Solmate/ERC4626/Invariants/System.lean`
+(per-call obligations proved today), `defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean` (headlines), `defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean`
+(every call kind); for arbitrary transactions with nested calls: `EvmLogic/Program/
+NestedExtra*.lean` (generic simulation), `defi/Examples/Solmate/ERC4626/Nested/System.lean`, `defi/Examples/Solmate/ERC4626/Nested/Calls.lean`,
+`defi/Examples/Solmate/ERC4626/Nested/Views.lean`, `defi/Examples/Solmate/ERC4626/Nested/Permit.lean`, `defi/Examples/Solmate/ERC4626/Nested/Invariants.lean`, `defi/Examples/Solmate/ERC4626/Nested/Coverage.lean`,
+`SharesFrame*.lean`, `defi/Examples/Solmate/ERC4626/ViewsSpec.lean`, `defi/Examples/Solmate/ERC4626/UnknownSelectors.lean`, `Malformed*.lean` (§6); for any
+gas and any depth: `LowGas*.lean` with `EvmLogic/GasMono/` and
+`EvmLogic/AbsInt/` (§6.5).
 Every theorem uses only `propext`, `Classical.choice`, `Quot.sound`; no `sorry`.
 
-## 1. The concrete system (`InvariantsSystem.lean`)
+## 1. The concrete system (`defi/Examples/Solmate/ERC4626/Invariants/System.lean`)
 
 **States.** Worlds `w` with `Deployed w vault asset`: the compiled vault (any immutables whose
 `asset` is `asset`) at `vault`, the compiled `MockERC20` (any immutables) at `asset`, neither a
@@ -64,7 +64,7 @@ supplies, hook counters and all actor allowances are exact.
 **Initial state.** `Deployed w₀ vault asset` and `Solmate.Inv (abs crypto w₀ vault asset)`
 (both ledgers well formed: balances sum to the supply, which fits 256 bits).
 
-## 2. The generic lifting theorem (`Lift.lean`)
+## 2. The generic lifting theorem (`defi/Defi/Trace/Lift.lean`)
 
 A `System W S O` packs the model `step`, the abstraction `abs`, concrete `call`/`env`
 transitions, a concrete well-formedness `Pre`, the model invariant `Inv`, the agreement
@@ -83,22 +83,22 @@ none => w' = w`) and keeps `Pre`; environment steps keep `Pre` and `abs`.
 
 Proved by induction on traces, independently of the EVM.
 
-## 3. Instantiation and headline theorems (`Invariants.lean`)
+## 3. Instantiation and headline theorems (`defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean`)
 
 `RefinesFor crypto vault asset minGas Act K` = every call kind admitted by `K` satisfies
 `OpRefinesAt`; `refinement` turns it (with `SlotsOk`) into `System.Refinement`.
 
 * **Today** — `refinesFor_now (hmin : 100000 ≤ minGas) hk`, `K = VCall.NotEntry`: every
   modelled call except the four ERC-4626 entry points —
-  - vault `transfer`/`transferFrom`/`approve` (`Shares.*_refines`), `InvariantsCalls.lean`;
+  - vault `transfer`/`transferFrom`/`approve` (`Shares.*_refines`), `defi/Examples/Solmate/ERC4626/Invariants/System.lean`;
   - asset `transfer`/`transferFrom` (frame-level `assetTransfer_refines` /
-    `assetTransferFrom_refines` lifted to top level by `call_of_halts`), `InvariantsCalls.lean`;
-  - asset `approve` (`assetApprove_refines`, `AssetApprove.lean`; always succeeds, world
-    `Erc20.approveWorld`), `AssetApproveCall.lean`;
+    `assetTransferFrom_refines` lifted to top level by `call_of_halts`), `defi/Examples/Solmate/ERC4626/Invariants/System.lean`;
+  - asset `approve` (`assetApprove_refines`, `defi/Examples/Solmate/ERC20/Approve.lean`; always succeeds, world
+    `Erc20.approveWorld`), `defi/Examples/Solmate/ERC4626/Invariants/System.lean`;
   - asset `mint(dst, v)` / `burn(src, v)`, unrestricted in `MockERC20`, any caller
     (`assetMint_refines` / `assetBurn_refines`: success with worlds `mintWorld` / `burnWorld`
     representing `Token.mint` / `Token.burn`, or `Panic(0x11)` on supply overflow / insufficient
-    balance, exactly when the model returns `none`), `AssetMintCall.lean`, `AssetBurnCall.lean`.
+    balance, exactly when the model returns `none`), `defi/Examples/Solmate/ERC4626/Invariants/System.lean`, `defi/Examples/Solmate/ERC4626/Invariants/System.lean`.
     These need `hk`.
 
   `refinesFor_proven hmin` (`K = VCall.Proven`: the share functions and asset transfers) needs
@@ -130,8 +130,8 @@ user call, e.g. yield (`asset.mint(vault, ·)`) and burns of other accounts' ass
 
 ## 4. Every call kind is wired
 
-`InvariantsFinal.lean` discharges `RefinesFor … (fun _ => True)` (`refinesFor_all_of`, the
-`Pending` obligations from `InvariantsDepositMint.lean` / `InvariantsWithdrawRedeem.lean`) and
+`defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean` discharges `RefinesFor … (fun _ => True)` (`refinesFor_all_of`, the
+`Pending` obligations from `defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean` / `defi/Examples/Solmate/ERC4626/Invariants/Deployed.lean`) and
 states the headlines on the deployed bytecode (`*_deployed`, `minGas = 250000`, fixed-slot
 hypothesis `[2, 6, 7]`). Those are about traces of **top-level** calls; §6 removes that
 restriction.
@@ -164,15 +164,15 @@ with arbitrary gas, possibly many times per transaction, possibly reverting afte
 theorems of this section cover a top-level message call **from any account without code to any
 code**, and sequences of such transactions.
 
-### 6.1 The machine-level simulation (root package, `EvmLeanProofs/Program/NestedExtra*.lean`)
+### 6.1 The machine-level simulation (root package, `EvmLogic/Program/NestedExtra*.lean`)
 
 Generic in a set `P` of *protected* accounts and a property `Good` of worlds that depends only
 on their storage and code (`GoodOk`: protected accounts hold code that is not an EIP-7702
 designator). Everything else runs arbitrary code.
 
-* `NestedExtraWp`: a weakest-precondition calculus for the instruction monad (`Wp`, simp lemmas
+* `EvmLogic.Program.Nested.Wp`: a weakest-precondition calculus for the instruction monad (`Wp`, simp lemmas
   through `do` blocks).
-* `NestedExtraFrame`, `exec_frame`: **the frame condition of every opcode** (one theorem, all
+* `EvmLogic.Program.Nested.Frame`, `exec_frame`: **the frame condition of every opcode** (one theorem, all
   ~150 opcodes): a successful instruction keeps the frame's identity and created accounts,
   never increases its gas, and keeps the storage and code of every account holding code that
   the frame may not write (`Writable`: the executing account of a non-static frame — `SSTORE`
@@ -182,12 +182,12 @@ designator). Everything else runs arbitrary code.
   taken from the caller, and for a non-static child: from a non-static frame, at the caller's
   own account — `CALLCODE`/`DELEGATECALL` — or a `CALL` from the caller's account running the
   callee's own code) / `CreateOk` (the new account holds no code).
-* `NestedExtraGas`: `exec_bump` (gas monotonicity of every gas-oblivious opcode, §6.5).
-* `NestedExtraStep`: `step_cases`, `frameResult_world` (a finished frame hands over its world,
+* `EvmLogic.Program.Nested.Gas`: `exec_bump` (gas monotonicity of every gas-oblivious opcode, §6.5).
+* `EvmLogic.Program.Nested.Step`: `step_cases`, `frameResult_world` (a finished frame hands over its world,
   its world with deposited code, or its snapshot), and **gas conservation** (`step_gas`,
   `stepN_gas`: the total gas of the frame stack never increases; all standard precompiles
   return at most the gas they get, `precompile_gasLeft_le`).
-* `NestedExtraRun`: a frame is **dangerous** (`Danger`) if it runs at a protected account and
+* `EvmLogic.Program.Nested.Run`: a frame is **dangerous** (`Danger`) if it runs at a protected account and
   is not static. **The simulation invariant** `MInv P Good G m` of a machine whose executing
   frame is not dangerous: the current world is `Good`; every frame of the stack (executing and
   suspended) is not dangerous, has a `Good` rollback snapshot, and does not create a protected
@@ -209,7 +209,7 @@ designator). Everything else runs arbitrary code.
     runs its code; any target, code, value, calldata, gas `≤ G`), before Prague or without
     authorizations.
 
-### 6.2 The vault instance (`NestedSystem.lean`)
+### 6.2 The vault instance (`defi/Examples/Solmate/ERC4626/Nested/System.lean`)
 
 `Prot vault asset` = {vault, asset}; `Good = Follows crypto vault asset Act K w₀`: deployed, and
 `abs w ≈ Solmate.exec (abs w₀) (cs.map op)` (`AgreeOn (ActorPairs Act)`) for some list `cs` of
@@ -220,35 +220,35 @@ none for a view); reverts/halts are free (the snapshot is restored, `follows_of_
 `processMessageCall_follows`: any top-level message keeps `Follows` given `FrameOk` of every
 dangerous frame it reaches.
 
-### 6.3 Frame summaries (`SharesFrame*.lean`, `NestedCalls.lean`, `NestedViews.lean`)
+### 6.3 Frame summaries (`SharesFrame*.lean`, `defi/Examples/Solmate/ERC4626/Nested/Calls.lean`, `defi/Examples/Solmate/ERC4626/Nested/Views.lean`)
 
-* **Share-token functions in any frame** (`SharesFrame.lean`): `sharesTransfer_halts_ok/_revert`,
+* **Share-token functions in any frame** (`defi/Examples/Solmate/ERC4626/SharesFrame.lean`): `sharesTransfer_halts_ok/_revert`,
   `sharesTransferFrom_halts_ok/_revert`, `sharesApprove_halts` (fresh frame, any parents,
-  calldata as the decoder reads it); model level in `SharesFrameSpec.lean`
+  calldata as the decoder reads it); model level in `defi/Examples/Solmate/ERC4626/SharesFrame.lean`
   (`sharesTransfer_refines`, `sharesTransferFrom_refines`, `sharesApprove_refines`); views
   `sharesTotalSupply_halts`, `sharesBalanceOf_halts`, `sharesAllowance_halts`,
-  `sharesDecimals_halts` (`SharesFrameViews.lean`).
+  `sharesDecimals_halts` (`defi/Examples/Solmate/ERC4626/SharesFrame.lean`).
 * `frameOk_of_executes`: a frame executing a modelled call (`Executes`: caller, account and
   ABI calldata `CallData c` of a `VCall`) that is funded (`Funded`: no value, `≥ minGas` and
   `< 2⁶⁴` gas, for the vault depth `< 1024` — it calls the asset —, calldata `< 2⁶⁴` bytes), for all twelve call kinds, from the
   frame-level refinement theorems (`deposit_refines`, `mint_refines`, `withdraw_refines`,
   `redeem_refines`, `shares*_refines`, `asset*_refines`).
-* `frameOk_view` (`NestedViews.lean`, world unchanged): **every view of both contracts** —
+* `frameOk_view` (`defi/Examples/Solmate/ERC4626/Nested/Views.lean`, world unchanged): **every view of both contracts** —
   the vault's twelve ERC-4626 views, its share-token views `totalSupply`, `balanceOf`,
   `allowance`, `decimals`, its hook counters `beforeWithdrawHookCalledCounter`,
-  `afterDepositHookCalledCounter` (`ViewsRest.lean`) and `nonces` (`PermitVaultDS.lean`); the
-  asset's `balanceOf`, `totalSupply`, `allowance`, `decimals` (`ViewsRest.lean`) and `nonces`;
+  `afterDepositHookCalledCounter` (`defi/Examples/Solmate/ERC4626/ViewsSpec.lean`) and `nonces` (`defi/Examples/Solmate/ERC4626/Permit.lean`); the
+  asset's `balanceOf`, `totalSupply`, `allowance`, `decimals` (`defi/Examples/Solmate/ERC4626/ViewsSpec.lean`) and `nonces`;
   for both tokens `name()`/`symbol()` (`Strings*Spec.lean`, with the gas the stored string's
   length needs, `Str.getterGas`: long strings cost more than `minGas` may cover) and
   `DOMAIN_SEPARATOR()` (`Permit*DS.lean`) in the cases `DomainOk` admits — `block.chainid` is
   the token's deployment chain id (immutable), or its name is stored in short form (< 32
   bytes; both canonical names are). **Not covered**: `DOMAIN_SEPARATOR()` on another chain
   with a name of 32 bytes or more (the out-of-place string encoder is not verified).
-* `frameOk_permit` (`NestedPermit.lean`): `permit(owner, spender, value, deadline, v, r, s)` of
+* `frameOk_permit` (`defi/Examples/Solmate/ERC4626/Nested/Permit.lean`): `permit(owner, spender, value, deadline, v, r, s)` of
   either token (`PermitData`, calldata as the decoder reads it), see below.
 * `frameOk_value`: calls with value revert (`vault_value_reverts`, `asset_value_reverts`: the
   dispatcher's `CALLVALUE` check), with at least 100 gas.
-* `frameOk_unknown` (`UnknownSelectors.lean`): calldata shorter than four bytes, or a selector
+* `frameOk_unknown` (`defi/Examples/Solmate/ERC4626/UnknownSelectors.lean`): calldata shorter than four bytes, or a selector
   that is none of the contract's functions (`vaultSelectors`, `assetSelectors`, checked
   against the ABI's `SolmateVault.selectors` / `SolmateAsset.selectors`), reverts in the
   dispatcher (`vault_unknown_reverts`, `vault_short_reverts`, `asset_*`: symbolic execution of
@@ -259,7 +259,7 @@ dangerous frame it reaches.
   (`vault_<f>_short`, `vault_<f>_dirty<j>`, `asset_*`, one theorem per function and address
   argument, dispatched by `vault_malformed_reverts` / `asset_malformed_reverts` over the
   function shapes `vaultArgShapes` / `assetArgShapes`), with at least 2000 gas.
-* **Every calldata is accounted for** (`NestedCoverage.lean`, `covered_of_funded`): a funded
+* **Every calldata is accounted for** (`defi/Examples/Solmate/ERC4626/Nested/Coverage.lean`, `covered_of_funded`): a funded
   frame of either contract is `Covered` whatever its calldata, under `CoverOk` — gas for the
   stored `name`/`symbol` string, `DomainOk` for `DOMAIN_SEPARATOR()`, `PermitFrame` for
   `permit`. The proof is a case analysis over the 30 + 14 selectors (`vaultSelectors`,
@@ -271,7 +271,7 @@ dangerous frame it reaches.
   with `CoverOk`, and its committed calls are admitted.
 
 **`permit` as a modelled call.** The abstraction has no nonces and no invariant mentions them,
-so they are not added to it. Instead (`NestedPermit.lean`):
+so they are not added to it. Instead (`defi/Examples/Solmate/ERC4626/Nested/Permit.lean`):
 
 * the nonce write is **invisible to `abs`**: under `NonceSlotOk crypto Act owner` — the owner's
   nonce slot `keccak(owner ‖ 5)` is fresh among the address-keyed preimages of slots 3, 4, 5
@@ -293,10 +293,10 @@ so they are not added to it. Instead (`NestedPermit.lean`):
   a real chain nobody holds the key of `0x01`), depth below 1024 (room for the precompile
   call), at least 100000 gas (below `minGas`).
 * The events of a permit are the model's `approve` events (`Approval(owner, spender, value)` by
-  the token, `PermitEvents.lean`); the event-stream theorem `trace_logs` is about top-level
+  the token, `defi/Examples/Solmate/ERC4626/PermitSpec.lean`); the event-stream theorem `trace_logs` is about top-level
   traces of `VCall`s and is unchanged.
 
-### 6.4 Headlines (`NestedInvariants.lean`)
+### 6.4 Headlines (`defi/Examples/Solmate/ERC4626/Nested/Invariants.lean`)
 
 A transaction is **covered** (`TxOk vault asset minGas Act K ctx w tr msg`) when every
 non-static frame of the vault's or the asset's code that **unprotected code** starts during it
@@ -339,18 +339,18 @@ The theorems of §6.4 ask every vault/asset frame to be covered **with at least 
 250000` gas** (and, for the vault and the asset's `permit`, below the call-depth limit). These
 requirements are gone:
 
-* **Gas monotonicity** (`EvmLeanProofs/Program/GasMono/`, `LowGasMono.lean`,
-  `LowGasFrames.lean`). Every instruction except `GAS`, `CALL*`, `CREATE*` commutes with adding
+* **Gas monotonicity** (`EvmLogic/GasMono/`, `defi/Examples/Solmate/ERC4626/LowGas/Code.lean`,
+  `defi/Examples/Solmate/ERC4626/LowGas/Frames.lean`). Every instruction except `GAS`, `CALL*`, `CREATE*` commutes with adding
   gas (`exec_bump`); the frame-level lockstep `monoFrom_of_code` (code conditions `CodeOk`:
   `GAS` only feeds `CALL`/`STATICCALL`, execution stays in the code region, every call is fed
   by `GAS`, and after each call a failed call makes the frame fail, `FailureReverts`, proved by
-  symbolic execution at the four vault and the one asset return points, `LowGas.lean`): with
+  symbolic execution at the four vault and the one asset return points, `defi/Examples/Solmate/ERC4626/LowGas/Code.lean`): with
   less gas a frame fails or ends exactly as with more gas. `frameOk_of_topBump`: a frame
   summary of the same frame with more gas `G` (at the top level, `topBump G m`) transfers.
   Premises: `0x01` not EIP-7702-delegated in the frame's world (`EcrecoverOk`), and the
   call targets below.
-* **Call targets by certified abstract interpretation** (`EvmLeanProofs/Program/AbsInt/`,
-  `LowGasTargets.lean`). The lockstep needs every child of a frame to be a precompile call or a
+* **Call targets by certified abstract interpretation** (`EvmLogic/AbsInt/`,
+  `defi/Examples/Solmate/ERC4626/LowGas/Targets.lean`). The lockstep needs every child of a frame to be a precompile call or a
   gas-monotone frame (`CallsTo`). An explicit-state abstract interpreter (exact stack depth;
   values unknown, constant, or the symbolic address immutable `sym k`, so that one certificate
   holds for all immutables; constants folded through `SHL`/`SUB`/`AND` and solc's address
@@ -369,7 +369,7 @@ requirements are gone:
   level up until its first call, which fails at once and makes it fail (`FailureReverts`).
   `frameOk_of_depth`: the summary of the frame one level up (with more gas) transfers.
 
-**Headlines at any gas** (`LowGasHeadline.lean`). `CoveredAnyGas vault asset m`: `Covered` with
+**Headlines at any gas** (`defi/Examples/Solmate/ERC4626/LowGas/AnyGas.lean`). `CoveredAnyGas vault asset m`: `Covered` with
 its own gas, or (`EcrecoverOk m`) covered with some more gas below `2⁶⁴` (`CoveredAtSomeGas`), or
 at depth 1024 and covered one level up with more gas (`CoveredAtLimit`). `TxOkAnyGas` is `TxOk`
 with `CoveredAnyGas` and no `minGas`; `txOkAnyGas_of_txOk`: every transaction covered in the

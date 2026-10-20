@@ -14,7 +14,7 @@ hold (short and long), for every `Crypto`, with only the standard axioms.
 
 ## Statements
 
-* **Abstraction** (`EvmLeanProofs/Solidity/Strings.lean`): `stringAt crypto w a p : Option ByteArray`
+* **Abstraction** (`EvmLogic/Solidity/Strings.lean`): `stringAt crypto w a p : Option ByteArray`
   is `Str.decode crypto (w.sload a) p`, exactly what the compiled getter reads: the slot word
   `S`; its length `Str.slotLen S` (`S >> 1`, masked with `0x7f` when `S` is even);
   `none` when `extract_byte_array_length` panics (`Str.slotOk`: even with length ≥ 32 or odd
@@ -41,7 +41,7 @@ reading a long string touches `keccak256(slot) + j` for whatever `Crypto` is, an
 abstraction is defined through the same slots. Freshness would only matter for *writes*
 (none here) or for relating `stringAt` to another storage view.
 
-**Encoding lemmas** (`EvmLeanProofs/Solidity/StringsEncoding.lean`): `Str.decode_shortWord`
+**Encoding lemmas** (`EvmLogic/Solidity/Strings.lean`): `Str.decode_shortWord`
 (`s.size ≤ 31`, slot = `Str.shortWord s` ⇒ decodes to `s`), `Str.decode_of_storesLong`
 (`Str.StoresLong`: `2|s|+1` in the slot, `Str.chunk s j` at `keccak256(p) + j` ⇒ decodes to `s`),
 `Str.slotLen_shortWord`, `Bytes.ofWord_toWord`, `Bytes.toNat_div_mod`.
@@ -50,18 +50,18 @@ abstraction is defined through the same slots. Freshness would only matter for *
 
 | file | contents |
 |---|---|
-| `EvmLeanProofs/Solidity/StringsStep.lean` | `step_mcopy`, `step_mcopy_zero`, `mcopyCost`, `Memory.mcopy` |
-| `EvmLeanProofs/Solidity/StringsTactic.lean` | `pwp_mcopy`, `pwp_mcopy_zero`, `pwp_msteps`; `psol_mcopy`, `psol_mcopy_zero`, `psol_msteps` (after a copy, `mcopy_size_facts` records the memory size for `evm_gas`); `wp_generalize_mem`; `pwp_mload_in`, `pwp_return_in` (accesses inside a memory of symbolic size); `Memory.getD_bytes_mcopy`, `read_mcopy(_of_disjoint)`, `size_mcopy`; `Gas.extendMemory_one/_two`, `memoryCost_eq`, `mcopyCost_eq`, `memoryCost_of_le`, `Gas.memoryCost_mono` |
-| `EvmLeanProofs/Solidity/Strings.lean` | `Str.slotLen`, `slotOk`, `decode`, `longData`, `wordsFrom`, `shortWord`, `chunk`, `StoresLong`, `getterGas`; `stringAt`; `Abi.encodeString` |
-| `EvmLeanProofs/Solidity/StringsWord.lean` | word facts of `extract_byte_array_length` and the copy (`and_one_of_even`, `shr_one_and_127`, `div_32_mul_32`, `and_notMask31`, …) |
-| `EvmLeanProofs/Solidity/StringsEncoding.lean` | the encoding lemmas above |
-| `EvmLeanProofs/Solidity/StringsExamples.lean` | `copy42_output` (`psol_msteps`), `copy42_wp` (`pwp_msteps`): a program with an `MCOPY` |
-| `StringsVault.lean` | `StringPost`; short strings: `vaultEncodeShort_wp` (encoder from its `MCOPY`), `vaultStringShort_wp` |
-| `StringsVaultLong.lean` | long strings: `VaultCopy` (loop invariant, gas as the potential `gasLeft + memoryCost size`), `vaultCopyBody_wp`, `vaultCopyLoop_wp` (`WP.loop_nat`), `vaultLongTail_wp` (encoder with symbolic head), `vaultStringLong_wp` |
-| `StringsVaultSpec.lean` | `StringPre`, `vaultString_wp`, `vaultName/Symbol_refines`, `StringResult`, `string_call`, `vaultName/Symbol_call` |
+| `EvmLogic/Solidity/Steps.lean` | `step_mcopy`, `step_mcopy_zero`, `mcopyCost`, `Memory.mcopy` |
+| `EvmLogic/Tactic/Mcopy.lean` | `pwp_mcopy`, `pwp_mcopy_zero`, `pwp_msteps`; `psol_mcopy`, `psol_mcopy_zero`, `psol_msteps` (after a copy, `mcopy_size_facts` records the memory size for `evm_gas`); `wp_generalize_mem`; `pwp_mload_in`, `pwp_return_in` (accesses inside a memory of symbolic size); `Memory.getD_bytes_mcopy`, `read_mcopy(_of_disjoint)`, `size_mcopy`; `Gas.extendMemory_one/_two`, `memoryCost_eq`, `mcopyCost_eq`, `memoryCost_of_le`, `Gas.memoryCost_mono` |
+| `EvmLogic/Solidity/Strings.lean` | `Str.slotLen`, `slotOk`, `decode`, `longData`, `wordsFrom`, `shortWord`, `chunk`, `StoresLong`, `getterGas`; `stringAt`; `Abi.encodeString` |
+| `EvmLogic/Solidity/Strings.lean` | word facts of `extract_byte_array_length` and the copy (`and_one_of_even`, `shr_one_and_127`, `div_32_mul_32`, `and_notMask31`, …) |
+| `EvmLogic/Solidity/Strings.lean` | the encoding lemmas above |
+| `defi/Examples/Basic/Mcopy.lean` | `copy42_output` (`psol_msteps`), `copy42_wp` (`pwp_msteps`): a program with an `MCOPY` |
+| `defi/Examples/Solmate/ERC4626/Strings.lean` | `StringPost`; short strings: `vaultEncodeShort_wp` (encoder from its `MCOPY`), `vaultStringShort_wp` |
+| `defi/Examples/Solmate/ERC4626/Strings.lean` | long strings: `VaultCopy` (loop invariant, gas as the potential `gasLeft + memoryCost size`), `vaultCopyBody_wp`, `vaultCopyLoop_wp` (`WP.loop_nat`), `vaultLongTail_wp` (encoder with symbolic head), `vaultStringLong_wp` |
+| `defi/Examples/Solmate/ERC4626/Strings.lean` | `StringPre`, `vaultString_wp`, `vaultName/Symbol_refines`, `StringResult`, `string_call`, `vaultName/Symbol_call` |
 | `StringsAsset*.lean` | the same for the asset (same code at other offsets) |
-| `StringsCanonical.lean` | `stringAt_shortWord`, `getterGas_shortWord`, the four `*_canonical` corollaries |
-| `EvmLeanTest/Strings.lean` | canonical slot words and encodings; the compiled getters run in the interpreter (real Keccak) against `Str.decode`, short/empty/long/inconsistent slots, gas within `getterGas` |
+| `defi/Examples/Solmate/ERC20/Strings.lean` | `stringAt_shortWord`, `getterGas_shortWord`, the four `*_canonical` corollaries |
+| `defi/Examples/Tests/Strings.lean` | canonical slot words and encodings; the compiled getters run in the interpreter (real Keccak) against `Str.decode`, short/empty/long/inconsistent slots, gas within `getterGas` |
 
 ## Notes for the coordinator
 
@@ -69,7 +69,7 @@ abstraction is defined through the same slots. Freshness would only matter for *
   `MCOPY` is added by wrapper tactics (`pwp_msteps`, `psol_msteps`) rather than by editing them.
   Adding `0x5e ↦ step_mcopy, step_mcopy_zero` to both tables (and `mcopyCost` to the
   normalization) would make plain `pwp_steps`/`psol_steps` handle literal-length copies.
-* `Shares.lean`'s module doc says `name()`/`symbol()` are not covered for lack of an `MCOPY`
+* `defi/Examples/Solmate/ERC4626/Shares.lean`'s module doc says `name()`/`symbol()` are not covered for lack of an `MCOPY`
   step lemma; this is now superseded (not edited, per ownership).
 * Two pitfalls met on the way (worth knowing for other symbolic-memory proofs):
   `omega` hits "maximum recursion depth" on `(n - k) * 2300` (write `2300 * (n - k)`), and a
@@ -81,7 +81,7 @@ abstraction is defined through the same slots. Freshness would only matter for *
 
 ## Build
 
-`cd specs && lake build`. Times (M-series laptop): `StringsVault` 63 s, `StringsVaultLong` 55 s,
-`StringsAsset` 50 s, `StringsAssetLong` 44 s, `StringsVaultSpec` 42 s, `StringsAssetSpec` 15 s,
-`StringsCanonical` 4 s; about 3 min wall clock in parallel. Root files (`EvmLeanProofs/Solidity/Strings*`,
-`EvmLeanTest/Strings`) build in a few seconds each.
+`cd defi && lake build`. Times (M-series laptop): `Examples.Solmate.ERC4626.Strings` 63 s, `Examples.Solmate.ERC4626.Strings` 55 s,
+`Examples.Solmate.ERC20.Strings` 50 s, `Examples.Solmate.ERC20.Strings` 44 s, `Examples.Solmate.ERC4626.Strings` 42 s, `Examples.Solmate.ERC20.Strings` 15 s,
+`Examples.Solmate.ERC20.Strings` 4 s; about 3 min wall clock in parallel. Root files (`EvmLogic/Solidity/Strings*`,
+`EvmTest/Strings`) build in a few seconds each.

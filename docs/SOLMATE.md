@@ -3,30 +3,30 @@
 Theorems relating the **deployed bytecode** of Solmate `MockERC4626` (vault) and `MockERC20`
 (asset) — `Contracts.SolmateVault` / `Contracts.SolmateAsset`, solc 0.8.28, deployed with
 **arbitrary immutables** (`runtimeCodeWith i`: any asset address, chain id, domain separator,
-decimals) — to the Mathlib model `Vault.Solmate.State` (`../Vault/Solmate.lean`). Every theorem
+decimals) — to the Mathlib model `Vault.Solmate.State` (`defi/Defi/ERC4626/Solmate.lean`). Every theorem
 holds for every `Crypto`; only the standard axioms are used.
 
-Two families of files: the share-token functions (`Shares*.lean`, see `Shares.lean`) and the
+Two families of files: the share-token functions (`Shares*.lean`, see `defi/Examples/Solmate/ERC4626/Shares.lean`) and the
 core described here.
 
 | file | contents |
 |---|---|
-| `MulDiv.lean` | `mulDivDown_wp`, `mulDivUp_wp`: Solmate's assembly `mulDiv` (internal, entries `0x0e62`, `0x0e7d`) |
-| `AssetBalanceOf.lean` | `balanceOf_halts`: asset `balanceOf` as a callee summary; `fresh_intro` |
-| `AssetTransfer.lean`, `AssetTransferFrom.lean` | `transfer_halts_ok/_revert`, `transferFrom_halts_ok/_revert` (callee summaries, exact worlds) |
-| `VaultTotalAssets.lean` | `VaultFrame`, `totalAssets_wp`: the internal `totalAssets()` with its `STATICCALL` to the asset (via `WP.staticcall` + `balanceOf_halts`) |
-| `VaultConvert.lean` | `convertToShares_wp`, `convertToAssets_wp`, `previewMint_wp`, `previewWithdraw_wp`: the four internal conversions |
-| `VaultViews.lean`, `VaultViewsMax.lean` | `*_halts`: the 13 views at the bytecode level (`Nat` specs) |
-| `Abstraction.lean` | `Deployed`, `toToken`, `tokenView`, `abs`, `Refines`, `refines_iff` |
-| `VaultViewsSpec.lean` | `*_refines` (any frame) and `*_call` (top-level) for the views, against the model |
-| `AssetSpec.lean` | `assetBalanceOf_refines`, `assetTransfer_refines`, `assetTransferFrom_refines` against `Token` |
+| `defi/Examples/Solmate/ERC4626/MulDiv.lean` | `mulDivDown_wp`, `mulDivUp_wp`: Solmate's assembly `mulDiv` (internal, entries `0x0e62`, `0x0e7d`) |
+| `defi/Examples/Solmate/ERC20/BalanceOf.lean` | `balanceOf_halts`: asset `balanceOf` as a callee summary; `fresh_intro` |
+| `defi/Examples/Solmate/ERC20/Transfer.lean`, `defi/Examples/Solmate/ERC20/TransferFrom.lean` | `transfer_halts_ok/_revert`, `transferFrom_halts_ok/_revert` (callee summaries, exact worlds) |
+| `defi/Examples/Solmate/ERC4626/Convert.lean` | `VaultFrame`, `totalAssets_wp`: the internal `totalAssets()` with its `STATICCALL` to the asset (via `WP.staticcall` + `balanceOf_halts`) |
+| `defi/Examples/Solmate/ERC4626/Convert.lean` | `convertToShares_wp`, `convertToAssets_wp`, `previewMint_wp`, `previewWithdraw_wp`: the four internal conversions |
+| `defi/Examples/Solmate/ERC4626/Views.lean`, `defi/Examples/Solmate/ERC4626/Views.lean` | `*_halts`: the 13 views at the bytecode level (`Nat` specs) |
+| `defi/Examples/Solmate/ERC4626/Abstraction.lean` | `Deployed`, `toToken`, `tokenView`, `abs`, `Refines`, `refines_iff` |
+| `defi/Examples/Solmate/ERC4626/ViewsSpec.lean` | `*_refines` (any frame) and `*_call` (top-level) for the views, against the model |
+| `defi/Examples/Solmate/ERC20/Spec.lean` | `assetBalanceOf_refines`, `assetTransfer_refines`, `assetTransferFrom_refines` against `Token` |
 
-Generic tools (root package): `EvmLeanProofs/Program/ExtraLogic.lean` (`WP.bind_mono`,
-`Machine.resumeAt/resumeWith`), `Program/ExtraTactic.lean` (`evm_gas` over symbolic memory,
-`wp_generalize_gas`), `Solidity/ExtraPatchedWP.lean` (`pwp_step(s)`, `pwp_run_to`,
+Generic tools (root package): `EvmLogic/Program/Summary.lean` (`WP.bind_mono`,
+`Machine.resumeAt/resumeWith`), `EvmLogic/Tactic/WpStep.lean` (`evm_gas` over symbolic memory,
+`wp_generalize_gas`), `EvmLogic/Tactic/Patched.lean` (`pwp_step(s)`, `pwp_run_to`,
 `pcode_fact`, `pjumpdest_disch`: `wp_step` on code with symbolic immutables),
-`Solidity/ExtraTactic.lean` (`pwp_codecopy`), `Solidity/ExtraWord.lean` (the `mulDiv` guard,
-ABI length check), `Solidity/ExtraMemory.lean` (calldata assembled in memory).
+`EvmLogic/Tactic/Patched.lean` (`pwp_codecopy`), `EvmLogic/Solidity/Word.lean` (the `mulDiv` guard,
+ABI length check), `EvmLogic/Solidity/Memory.lean` (calldata assembled in memory).
 
 ## The bridge
 
@@ -43,7 +43,7 @@ ABI length check), `Solidity/ExtraMemory.lean` (calldata assembled in memory).
   allowances are known only for entries whose slot was not written.
 
 Reading needs **no** hash hypothesis: `abs` is by definition what the code reads. Hypotheses
-on Keccak appear only for writes and are pointwise (`EvmLeanProofs/Solidity/Keccak.lean`):
+on Keccak appear only for writes and are pointwise (`EvmLogic/Solidity/Keccak.lean`):
 `Erc20.BalanceSlotOk` for each balance written, `Erc20.AllowanceSlotOk` for each allowance
 written; never global injectivity (false for every `Crypto`).
 
@@ -98,7 +98,7 @@ Prague.
    writes at `0x00–0x3f` keep it, see `maxWithdraw_halts`).
 3. **Calls into the asset.** `safeTransferFrom` / `safeTransfer` are `CALL`s with value 0:
    use `WP.call` with `step_call` (there is no `WP.call` wrapper for `CALL` yet; follow
-   `WP.staticcall` in `Program/Call.lean`) and `transferFrom_halts_ok` / `transfer_halts_ok`
+   `WP.staticcall` in `EvmLogic/Program/Call.lean`) and `transferFrom_halts_ok` / `transfer_halts_ok`
    on the child frame (the child message has `isStatic = false` from a non-static vault
    frame; calldata facts as `ThreeWordCall` / `TwoWordCall`, proved from memory as in
    `totalAssets_wp` with `Memory.readBytes_read`). After `resumeAfter_success`, rewrite
@@ -119,8 +119,8 @@ Prague.
 
 ## Build
 
-`cd specs && lake build`. Times of the core files (M-series laptop, sequential within a
-file): `AssetTransferFrom` 128 s, `VaultViewsMax` 74 s, `AssetTransfer` 56 s, `VaultViews`
-51 s, `VaultConvert` 22 s, `Abstraction` 22 s (Mathlib import), `VaultTotalAssets` 18 s,
-`AssetBalanceOf` 16 s, `MulDiv` 12 s, `VaultViewsSpec`, `AssetSpec` 5 s; about 4 min wall
+`cd defi && lake build`. Times of the core files (M-series laptop, sequential within a
+file): `Examples.Solmate.ERC20.TransferFrom` 128 s, `Examples.Solmate.ERC4626.Views` 74 s, `Examples.Solmate.ERC20.Transfer` 56 s, `Examples.Solmate.ERC4626.Views`
+51 s, `Examples.Solmate.ERC4626.Convert` 22 s, `Abstraction` 22 s (Mathlib import), `Examples.Solmate.ERC4626.Convert` 18 s,
+`Examples.Solmate.ERC20.BalanceOf` 16 s, `MulDiv` 12 s, `Examples.Solmate.ERC4626.ViewsSpec`, `Examples.Solmate.ERC20.Spec` 5 s; about 4 min wall
 clock in parallel.

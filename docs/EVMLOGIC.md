@@ -1,4 +1,4 @@
-# EvmLeanProofs: proving things about bytecode
+# EvmLogic: proving things about bytecode
 
 Kernel-checked theorems about the `EvmLean` semantics, and the library for writing them.
 Everything here depends only on `propext`, `Classical.choice` and `Quot.sound`, and every
@@ -41,7 +41,7 @@ theorem transfer_ok … :
   …
 ```
 
-1. **Start.** `processMessageCall_eq_run` (`Call.lean`) turns a top-level call into
+1. **Start.** `processMessageCall_eq_run` (`EvmLogic/Step/Basic.lean`) turns a top-level call into
    `run fuel m₀` when EIP-7702 delegation does nothing (`ctx.fork < .prague ∨
    ctx.tx.authorizations = []`) and the code is not a delegation designator;
    `initMachine_call` computes `m₀` for a call to a non-precompile with zero value.
@@ -57,30 +57,30 @@ theorem transfer_ok … :
    form `k + n` with `n` at least the number of steps.
 4. **Branches.** `evm_steps` stops at a `JUMPI` whose condition is symbolic. Split on the
    condition and rewrite it to `0` (`step_jumpi_of_eq_zero`) or a non-zero numeral
-   (`step_jumpi_of_ne_zero`); `Word.lt_eq_zero_iff` etc. (`Word.lean`) help.
+   (`step_jumpi_of_ne_zero`); `Word.lt_eq_zero_iff` etc. (`EvmLogic/Word.lean`) help.
 5. **Result.** After the halting instruction the goal contains `.ok (topLevelResult …)`;
    `refine ⟨_, rfl, …⟩` and the `topLevelResult_*`, `World.sload_sstore*` and memory lemmas
    finish.
 
-`EvmLeanProofs/Examples/Token.lean` is the worked example (a token `transfer` with symbolic
-everything); `Execution.lean` has smaller ones (`addStore`, `ret42`).
+`defi/Examples/Basic/Token.lean` is the worked example (a token `transfer` with symbolic
+everything); `defi/Examples/Basic/AddStore.lean` has smaller ones (`addStore`, `ret42`).
 
 ## Lemma inventory
 
 | File | Contents |
 |---|---|
-| `StepBasic` | `step_eq_of_code`, `step_of_exec_*`, generic `step_of_binOp`/`unOp`/`ternOp`/`pushValue`, `run_succ_of_running`, `run_succ_of_done`, `run_add_of_ok`, `readBytes_zero` |
-| `StepArith` | `step_add` … `step_sar`, `step_iszero`, `step_not`, `step_addmod`, `step_mulmod`, `step_exp` |
-| `StepStack`, `StepPush` | `step_push` (any n), `step_push0/1/2` (immediates evaluated), `step_pop`, `step_dup1..16`, `step_swap1..16`, `decode_push/dup/swap/log` |
-| `StepEnv` | `step_caller`, `step_callvalue`, `step_calldataload`, `step_calldatasize`, `step_address`, `step_origin`, `step_gas`, `step_pc`, `step_msize`, block fields, … |
-| `StepMemory` | `step_mload`, `step_mstore`, `step_mstore8`, `step_keccak256` (result is `ctx.crypto.keccak256 …`), `Memory.expand_storeWord_self` |
-| `StepStorage` | `step_sload`, `step_sstore`, `run_accessStorageKey`, cost bounds `sloadCost_le`, `sstoreCost_le` |
-| `StepFlow` | `step_jumpdest`, `step_jump`, `step_jumpi(_of_eq_zero/_of_ne_zero)`, `step_stop(_top)`, `step_return(_top)`, `step_revert(_top)`, `step_invalid`, `finishFrame_*_top`, `topLevelResult_*` |
-| `StepLog` | `step_log` (generic), `step_log0..4`, `run_popN` |
+| `EvmLogic.Step.Basic` | `step_eq_of_code`, `step_of_exec_*`, generic `step_of_binOp`/`unOp`/`ternOp`/`pushValue`, `run_succ_of_running`, `run_succ_of_done`, `run_add_of_ok`, `readBytes_zero` |
+| `EvmLogic.Step.Arith` | `step_add` … `step_sar`, `step_iszero`, `step_not`, `step_addmod`, `step_mulmod`, `step_exp` |
+| `EvmLogic.Step.Stack`, `EvmLogic.Step.Push` | `step_push` (any n), `step_push0/1/2` (immediates evaluated), `step_pop`, `step_dup1..16`, `step_swap1..16`, `decode_push/dup/swap/log` |
+| `EvmLogic.Step.Env` | `step_caller`, `step_callvalue`, `step_calldataload`, `step_calldatasize`, `step_address`, `step_origin`, `step_gas`, `step_pc`, `step_msize`, block fields, … |
+| `EvmLogic.Step.Memory` | `step_mload`, `step_mstore`, `step_mstore8`, `step_keccak256` (result is `ctx.crypto.keccak256 …`), `Memory.expand_storeWord_self` |
+| `EvmLogic.Step.Storage` | `step_sload`, `step_sstore`, `run_accessStorageKey`, cost bounds `sloadCost_le`, `sstoreCost_le` |
+| `EvmLogic.Step.Flow` | `step_jumpdest`, `step_jump`, `step_jumpi(_of_eq_zero/_of_ne_zero)`, `step_stop(_top)`, `step_return(_top)`, `step_revert(_top)`, `step_invalid`, `finishFrame_*_top`, `topLevelResult_*` |
+| `EvmLogic.Step.Log` | `step_log` (generic), `step_log0..4`, `run_popN` |
 | `Bytes` | `toNat_eq_foldl`, `toWord_ofWord`, `toNat_ofNatBE`, calldata decoding (`toWord_readBytes_ofWord_append_left/right`), `Memory.loadWord_storeWord` (all offsets), `Memory.size_storeWord`, disjoint-write lemmas |
 | `State` | `Storage.get_set(_self/_ne)`, `World.sload_sstore(_self/_ne_key/_ne_addr)`, `World.balance_transfer`, `balance_add_balance_transfer`, `balance_moveEther`, `storageKeyWarm_addStorageKey`, `addStorageKey_of_warm` |
 | `Word` | `mod_zero`, `smod_zero`, `div_zero`, `sdiv_zero`, `toNat_addmod/mulmod`, `toNat_exp` (= `b ^ e % 2²⁵⁶`), `lt_eq_one_iff`, `iszero_eq_one_iff`, `ofAddress_injective`, … |
-| `Decode` | `decode_eq_decode_cancun` (fork-independence except `0x1e`), `decode_toByte(_osaka)`, `isValidJumpDest_validJumpDests`, `lt_size_of_isValidJumpDest` |
+| `EvmLogic.Program.JumpDest` | `decode_eq_decode_cancun` (fork-independence except `0x1e`), `decode_toByte(_osaka)`, `isValidJumpDest_validJumpDests`, `lt_size_of_isValidJumpDest` |
 | `Call` | `applyTopLevelDelegation_eq`, `processMessageCall_eq_run`, `initMachine_call` |
 | `KernelRfl`, `Tactic` | `kernel_rfl`, `kernel_decide`, `evm_step(s)`, `evm_norm`, `evm_disch`, `evm_gas`, `evm_apply` |
 
@@ -107,7 +107,7 @@ To add a lemma to the search: ``macro_rules | `(tactic| evm_step_core) => `(tact
 - **`rfl`/`decide` vs the kernel.** `rfl` and plain `decide` check definitional equality in
   the *elaborator* (`Meta.isDefEq`/`whnf`). On a whole-program run that does not finish
   (> 150 s even for `Crypto.real`). `decide +kernel` is fast but refuses goals with free
-  variables, which is why the original `Execution.lean` theorems had to fix
+  variables, which is why the original `defi/Examples/Basic/AddStore.lean` theorems had to fix
   `Crypto.real`. Use `kernel_rfl`/`kernel_decide` for runs with free but uninspected
   variables. Use `kernel_decide` when both sides only meet after evaluating to numbers
   (e.g. gas arithmetic): `kernel_rfl`'s lazy unfolding of `Nat.sub` can hit deep recursion.
@@ -116,7 +116,7 @@ To add a lemma to the search: ``macro_rules | `(tactic| evm_step_core) => `(tact
 - **`rfl` in dischargers only on equalities.** `rfl` on `a ≤ b` tries `Nat.le.refl`
   and unfolds symbolic gas expressions; `evm_disch` uses `exact rfl`.
 - **`first | … | last` recovers from errors in its last alternative** (logging the error
-  and admitting the goal). Every `first` in `Tactic.lean` ends with `fail "…"`; do the same
+  and admitting the goal). Every `first` in `EvmLogic/Tactic/EvmStep.lean` ends with `fail "…"`; do the same
   in extensions.
 - **No `simp_all` in dischargers.** With a large context it can time out, and it would run
   for every failed lemma.

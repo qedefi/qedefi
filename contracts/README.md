@@ -1,7 +1,7 @@
 # ERC-4626 verification targets
 
 Pinned Solidity sources, a reproducible build, and the compiled artifacts that the Lean
-proofs (`EvmLeanProofs/Contracts/`) and the differential tester (`lake exe difftest`) use.
+proofs (`defi/Examples/Solmate/Contracts/`) and the differential tester (`lake exe difftest`) use.
 See `docs/erc4626-plan.md` for the overall plan.
 
 | Target | Asset | Vault |
@@ -41,7 +41,7 @@ Solmate is AGPL-3.0-only, OpenZeppelin MIT), at the upstream paths:
 only on the sources and settings).
 
 ```bash
-scripts/build-contracts.sh           # rebuild artifacts/ and EvmLeanProofs/Contracts/*.lean
+scripts/build-contracts.sh           # rebuild artifacts/ and defi/Examples/Solmate/Contracts/*.lean
 scripts/build-contracts.sh --check   # also fail if the committed files changed
 ```
 
@@ -101,7 +101,7 @@ Two ways to obtain the runtime code of a deployment:
    `runtimeCodeWith_deployment : runtimeCodeWith deployment = runtimeCode` is checked by the
    kernel; `difftest` checks `runtimeCodeFor` against a deployment by a second deployer.
 
-## Lean API (`EvmLeanProofs/Contracts/`)
+## Lean API (`defi/Examples/Solmate/Contracts/`)
 
 Namespaces `EvmLean.Contracts.{SolmateAsset, SolmateVault, OzAsset, OzVault}`, each with
 `creationCode`, `constructorArgs`, `runtimeCode : ByteArray` (canonical, literal
@@ -120,7 +120,7 @@ Storage slots: Solmate `name 0, symbol 1, totalSupply 2, balanceOf 3, allowance 
 
 ## Differential testing (`lake exe difftest`)
 
-See `Differential/Main.lean`. Deploys both families through their creation code in evm-lean
+See `defi/Examples/Differential/Main.lean`. Deploys both families through their creation code in evm-lean
 (`Interpreter.processMessageCall`, `Crypto.real`, Cancun) and in anvil, then runs random call
 sequences from four actors (asset mint/burn/approve/transfer/transferFrom, donations, vault
 deposit/mint/withdraw/redeem with third-party owners, share transfers/approvals, Solmate

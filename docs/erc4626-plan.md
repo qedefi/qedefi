@@ -8,10 +8,10 @@ the vault, with the economic properties proved on the model.
  EIP-4626 + public invariant suites (a16z erc4626-tests, crytic/properties)
             │  formalised as
             ▼
- specs/ (Mathlib): abstract vault model + invariants + inflation-attack theorems
+ defi/ (Mathlib): abstract vault model + invariants + inflation-attack theorems
             ▲  refinement: every external function of the bytecode implements
             │  the corresponding model operation (under explicit hypotheses)
- EvmLeanProofs/: Solidity layer (storage layout, ABI) + program layer (CFG, loops,
+ EvmLogic/: Solidity layer (storage layout, ABI) + program layer (CFG, loops,
             calls) + per-function summaries of the compiled vault
             ▲
  contracts/: pinned Solidity sources → pinned solc → bytecode artifacts (as Lean data),
@@ -52,10 +52,10 @@ proofs never depend on a local compiler.
 
 | Package | Owns | Delivers |
 |---|---|---|
-| **contracts** | `contracts/`, `scripts/build-contracts.sh`, `EvmLeanProofs/Contracts/`, `Differential/` | pinned sources, solc artifacts as Lean constants + layout metadata; a differential tester running random call sequences through evm-lean and Foundry and comparing storage/returns |
-| **spec** | `specs/` (own Lake package, Mathlib), `docs/erc4626-invariants.md` | invariant catalogue with sources; abstract model; invariants and the inflation-attack theorems proved on the model |
-| **solidity** | `EvmLeanProofs/Solidity/` | storage-slot model (value, mapping `keccak(key ‖ slot)`, packing), keccak non-collision hypotheses, ABI encoding/decoding and selector-dispatch lemmas, ERC-20 storage abstraction |
-| **program** | `EvmLeanProofs/Program/` | run composition, basic-block summaries, loop-invariant rule, CALL/STATICCALL frame lemmas with callee summaries, a "function summary" structure for compiled functions |
+| **contracts** | `contracts/`, `scripts/build-contracts.sh`, `defi/Examples/Solmate/Contracts/`, `defi/Examples/Differential/` | pinned sources, solc artifacts as Lean constants + layout metadata; a differential tester running random call sequences through evm-lean and Foundry and comparing storage/returns |
+| **spec** | `defi/` (own Lake package, Mathlib), `docs/erc4626-invariants.md` | invariant catalogue with sources; abstract model; invariants and the inflation-attack theorems proved on the model |
+| **solidity** | `EvmLogic/Solidity/` | storage-slot model (value, mapping `keccak(key ‖ slot)`, packing), keccak non-collision hypotheses, ABI encoding/decoding and selector-dispatch lemmas, ERC-20 storage abstraction |
+| **program** | `EvmLogic/Program/` | run composition, basic-block summaries, loop-invariant rule, CALL/STATICCALL frame lemmas with callee summaries, a "function summary" structure for compiled functions |
 
 Then: per-function refinement of the compiled vault (`deposit`, `mint`, `withdraw`,
 `redeem`, views, ERC-20 `transfer`/`approve`/`transferFrom`), invariant transfer, report.

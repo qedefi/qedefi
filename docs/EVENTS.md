@@ -7,7 +7,7 @@ vault's `deposit` / `mint` / `withdraw` / `redeem` (a child frame's logs, merged
 vault's on return). Every theorem holds for every `Crypto` and any immutables, uses only the
 standard axioms, and has the hypotheses of the corresponding refinement theorem (or fewer).
 
-## Model (`../Vault/Events.lean`)
+## Model (`defi/Defi/ERC4626/Events.lean`)
 
 `Solmate.Event`: `transfer e src dst v` / `approval e owner spender v` (emitter `e` =
 `.vault` for the share token, `.asset`), `deposit caller owner assets shares`,
@@ -26,9 +26,9 @@ from state `s`, matching Solmate exactly:
 A reverting call emits nothing (`events_eq_nil`). `Solmate.stream s ops` is the event stream of a
 sequence of calls (`stream_append`).
 
-## Encoding (`EventsLog.lean`, `Events.lean`)
+## Encoding (`defi/Defi/ERC4626/Logs.lean`, `defi/Examples/Solmate/ERC4626/Events.lean`)
 
-`transferLog token src dst v`, `approvalLog`, `depositLog`, `withdrawLog` (`EventsLog`): emitter
+`transferLog token src dst v`, `approvalLog`, `depositLog`, `withdrawLog` (`Defi.ERC4626.Logs`): emitter
 address, topics `[signature hash, indexed args left-padded]` (`Word.ofAddress`), data the ABI
 words of the unindexed args (`Abi.encodeArgs`). The signature hashes are the bytecode's
 constants (`PUSH32` / code-copied), checked with `#guard` against the executable Keccak, so no
@@ -40,7 +40,7 @@ call gives `res.logs = L` for `processMessageCall`. `resumeAfter_eventsPost`: fo
 the caller's logs after the callee are its own followed by `L` (a reverted callee's logs are
 dropped).
 
-## Generic facts (`EvmLeanProofs/Solidity/EventsExtra.lean`)
+## Generic facts (`EvmLogic/Solidity/Events.lean`)
 
 `eventLog`, `logEntry_eq_eventLog` (the entry `LOGn` appends, as a memory read), logs through
 child calls (`mergeSub_logs`, `resumeAfter_{success,revert,halt}_logs`), substate operations
@@ -60,30 +60,30 @@ summaries). No existing file was edited.
 
 | companion file | companions of |
 |---|---|
-| `EventsAssetTransfer`, `EventsAssetTransferFrom`, `EventsAssetMint` | `transfer_halts_ok`, `approve_halts`, `transferFrom_halts_ok`, `mint_halts_ok`, `burn_halts_ok` |
+| `Examples.Solmate.ERC20.Events`, `Examples.Solmate.ERC20.Events`, `Examples.Solmate.ERC20.Events` | `transfer_halts_ok`, `approve_halts`, `transferFrom_halts_ok`, `mint_halts_ok`, `burn_halts_ok` |
 | `EventsSharesCode` | `Shares.transfer_ok`, `approve_ok`, `transferFrom_ok` |
 | `EventsConvert` | `totalAssets_wp_gas`, `convertToShares_wp_gas`, `previewMint_wp_gas`, `convertToAssets_wp_gas`, `previewWithdraw_wp_gas` (logs unchanged) |
-| `EventsDepositInternal` | `assetTransferFrom_halts`, `safeTransferFrom_wp`, `mintShares_wp`, `afterDeposit_wp` |
-| `EventsWithdrawInternal` | `bump_wp`, `burn_wp`, `withdrawSpend_wp`, `redeemSpend_wp`, `safeTransfer_wp` |
-| `EventsDeposit`, `EventsMint` | `deposit_refines`, `mint_refines` (refinement post ∧ `EventsPost`) |
-| `EventsWithdraw`, `EventsRedeem` | `withdraw_halts`, `redeem_halts` (`OutPostLogs`) |
+| `Examples.Solmate.ERC4626.EventsInternal` | `assetTransferFrom_halts`, `safeTransferFrom_wp`, `mintShares_wp`, `afterDeposit_wp` |
+| `Examples.Solmate.ERC4626.EventsInternal` | `bump_wp`, `burn_wp`, `withdrawSpend_wp`, `redeemSpend_wp`, `safeTransfer_wp` |
+| `Examples.Solmate.ERC4626.EventsEntry`, `Examples.Solmate.ERC4626.EventsEntry` | `deposit_refines`, `mint_refines` (refinement post ∧ `EventsPost`) |
+| `Examples.Solmate.ERC4626.EventsEntry`, `Examples.Solmate.ERC4626.EventsEntry` | `withdraw_halts`, `redeem_halts` (`OutPostLogs`) |
 
 ## Theorems
 
 Frame form (any frame, top level or nested; `EventsPost` against `encode vault asset (…)`):
 `assetTransfer_events`, `assetTransferFrom_events`, `assetApprove_events`, `assetMint_events`,
-`assetBurn_events` (`EventsAsset`); `deposit_events`, `mint_events` (`EventsDeposit/Mint`),
+`assetBurn_events` (`Examples.Solmate.ERC20.Events`); `deposit_events`, `mint_events` (`EventsDeposit/Mint`),
 `withdraw_events`, `redeem_events` (`EventsEntry`) — the last four also restate the refinement
 post. The share functions have only top-level refinement theorems today, hence only top-level
 event theorems.
 
 Top-level form (`processMessageCall`, `res.logs = encode vault asset (events (abs ctx.crypto w
-vault asset) op)`, both success and revert): `assetTransfer_events_call`, … (`EventsAsset`),
+vault asset) op)`, both success and revert): `assetTransfer_events_call`, … (`Examples.Solmate.ERC20.Events`),
 `Shares.transfer_events_call`, `approve_events_call`, `transferFrom_events_call` (and the
 `vaultCall`/`Rep` forms `Shares.transfer_events`, …; `EventsShares`), `deposit_events_call`,
 `mint_events_call`, `withdraw_events_call`, `redeem_events_call` (`EventsEntry`).
 
-Trace form (`EventsTrace`): `OpEventsAt` (the per-call obligation in the shape of
+Trace form (`Examples.Solmate.ERC4626.Invariants.Events`): `OpEventsAt` (the per-call obligation in the shape of
 `OpRefinesAt`), `opEvents_all` (every `VCall` kind), `events_agree` (events only read what
 `AgreeOn` keeps), `LogTrace` (a `Trace` recording its calls' logs) and **`trace_logs`**: under
 `SlotsOk`, the fixed-slot hypothesis and `250000 ≤ minGas`, the concatenated logs of a trace's

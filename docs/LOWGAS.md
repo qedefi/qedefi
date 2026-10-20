@@ -1,8 +1,8 @@
 # Low gas: the call sites of the Solmate vault and asset
 
-The generic gas-lockstep theorem (`EvmLeanProofs/Program/GasMono/`) relates a frame to the same
+The generic gas-lockstep theorem (`EvmLogic/GasMono/`) relates a frame to the same
 frame given more gas. It needs three facts about the code, defined in
-`EvmLeanProofs/Program/GasMono/Interface.lean`:
+`EvmLogic/GasMono/Interface.lean`:
 
 * `GasFeedsCall code n`: every `GAS` at an instruction boundary below `n` is immediately
   followed by `CALL`/`STATICCALL` (so the only way gas is observed is as forwarded call gas);
@@ -12,7 +12,7 @@ frame given more gas. It needs three facts about the code, defined in
   `GAS` at `q`): from **any** machine at `pc = p` with `0` (a failed call's success flag) on
   top of the stack, the frame ends with a revert or an exceptional halt, never a success.
 
-`specs/EvmLeanSpecs/Refinement/LowGas.lean` proves all of them for the compiled Solmate
+`defi/Examples/Solmate/ERC4626/LowGas/Code.lean` proves all of them for the compiled Solmate
 `MockERC4626` (`SolmateVault`, `n = 5216`) and `MockERC20` (`SolmateAsset`, `n = 2838`), for
 **arbitrary immutables**, every `Crypto` and fork, with only the standard axioms:
 
@@ -119,9 +119,9 @@ stack overflow/underflow, invalid jump destination, return data out of bounds) �
 out-of-gas branch is proved once per shape, not per step. Values that depend on untracked state
 (`MLOAD`, `RETURNDATASIZE`) are universally quantified. `fails_steps`
 (`GasMono/CodeFailsTactic.lean`) applies the rules, reading opcodes and immediates through the
-kernel-checked patched-code facts of `Solidity/ExtraPatchedWP.lean`.
+kernel-checked patched-code facts of `EvmLogic/Tactic/Patched.lean`.
 
-Timings (M-series laptop, `lake env lean`): the whole `LowGas.lean` checks in ≈40 s; each scan
+Timings (M-series laptop, `lake env lean`): the whole `defi/Examples/Solmate/ERC4626/LowGas/Code.lean` checks in ≈40 s; each scan
 fact 0.6–3.6 s; the bubble-revert sites ≈1 s each; the `safeTransfer*` sites ≈13 s each (kernel
 checks of the code facts of 55 instructions on patched code).
 
@@ -130,7 +130,7 @@ checks of the code facts of 55 instructions on patched code).
 The lockstep also needs to know **who** each frame calls (`CallsTo`): the asset only calls the
 `ECRECOVER` precompile, the vault only the asset (or `ECRECOVER`). The target is a stack value
 (at 3955/4325 a parameter of the internal `SafeTransferLib` functions), so this is a path fact.
-`EvmLeanProofs/Program/AbsInt/` is a generic, kernel-checked abstract interpreter:
+`EvmLogic/AbsInt/` is a generic, kernel-checked abstract interpreter:
 
 | File | Content |
 |---|---|
@@ -140,7 +140,7 @@ The lockstep also needs to know **who** each frame calls (`CallsTo`): the asset 
 | `Frame.lean` | `exit_frame_ind` (induction along a frame up to its `Exit`, children skipped), `absint_frame` (every machine of the frame is described), `absint_call`, `absint_no_create` |
 | `Code.lean`, `CodeRun.lean` | no instruction changes any code (`exec_code`); code properties along a whole message call (`reaches_allWorlds`; instance: no EIP-7702 designator appears) |
 
-`specs/…/LowGasTargets.lean`: `vault_certify` (6618 abstract states over 3304 instructions) and
+`defi/…/LowGasTargets.lean`: `vault_certify` (6618 abstract states over 3304 instructions) and
 `asset_certify` (2964 over 1921) by `decide +kernel` on the canonical codes (`ascan_vault`,
 `ascan_asset`: the scans of the patched codes are the same, so the certificates hold for all
 immutables); the vault's six `asset` `PUSH32`s push the symbolic immutable (`vault_symOk`).
@@ -149,9 +149,9 @@ immutables); the vault's six `asset` `PUSH32`s push the symbolic immutable (`vau
 
 ## The depth limit
 
-`EvmLeanProofs/Program/GasMono/Depth.lean`: only the `CALL`/`CREATE` families read a frame's
+`EvmLogic/GasMono/Depth.lean`: only the `CALL`/`CREATE` families read a frame's
 depth (`exec_setDepth`), so a frame at depth 1024 runs in lockstep with the same frame one level
 up until its first call; that call fails at once (`execCall_limit`) and `FailureReverts` makes
-the frame fail (`depth_lockstep`, `halts_world_of_depth`). `LowGasHeadline.lean`:
+the frame fail (`depth_lockstep`, `halts_world_of_depth`). `defi/Examples/Solmate/ERC4626/LowGas/AnyGas.lean`:
 `frameOk_of_depth`, `CoveredAnyGas`, and the headline theorems at any gas and depth (see
 `INVARIANTS.md` §6.5).

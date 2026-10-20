@@ -1,17 +1,17 @@
 # ERC-4626 property catalogue
 
 The properties the ERC-4626 verification effort targets, where each one comes from, and the
-Lean theorem that proves (✓) or refutes (✗) it on the abstract vault models in `specs/`
-(`EvmLeanSpecs.Vault`). The models mirror, statement by statement and revert by revert:
+Lean theorem that proves (✓) or refutes (✗) it on the abstract vault models in `defi/`
+(`Defi`). The models mirror, statement by statement and revert by revert:
 
 * **Solmate**: `ERC4626` + `MockERC4626` (`totalAssets = asset.balanceOf(this)`) over a
-  Solmate `MockERC20` asset (`specs/EvmLeanSpecs/Vault/Solmate.lean`);
+  Solmate `MockERC20` asset (`defi/Defi/ERC4626/Solmate.lean`);
 * **OZ(δ)**: OpenZeppelin v5.7 `ERC4626` with decimals offset `δ` (`k = 10^δ` virtual shares,
-  1 virtual asset) over `ERC20Mock` (`specs/EvmLeanSpecs/Vault/Oz.lean`). The pinned
+  1 virtual asset) over `ERC20Mock` (`defi/Defi/ERC4626/Oz.lean`). The pinned
   `OzVault` has `δ = 0`; every theorem below is for arbitrary `δ`.
 
 Notation: `T = totalAssets`, `S = totalSupply`, `T̂ = T + 1`, `Ŝ = S + k`. Theorem names
-are relative to `EvmLeanSpecs.Vault` (`Solmate.`, `Oz.`, `Inflation.`, `Witnesses.`).
+are relative to `Defi` (`Solmate.`, `Oz.`, `Inflation.`, `Witnesses.`).
 "Standard hypotheses" for value-flow theorems: the caller of a deposit/mint and the
 receiver of a withdraw/redeem is not the vault itself (true for the bytecode: the vault
 never calls itself), and the state satisfies `Inv` (well-formed ledgers), which every
@@ -92,7 +92,7 @@ drained vaults.
 | RT-CONVERT | `convertToAssets(convertToShares(a)) ≤ a` and `convertToShares(convertToAssets(n)) ≤ n` | [crytic] `verify_convertRoundTrip`, `…2` | ✓ (all states) | ✓ | `Solmate.convert_roundtrip`, `Solmate.convert_roundtrip2`, `Oz.convert_roundtrip`, `Oz.convert_roundtrip2` |
 
 The arithmetic core of all eight is `rt_in_out_assets`, `rt_in_out_shares`,
-`rt_out_in_shares`, `rt_out_in_assets` (`RoundTripAlgebra.lean`).
+`rt_out_in_shares`, `rt_out_in_assets` (`defi/Defi/Math/Arith.lean`).
 
 ## Economic properties (category E)
 
