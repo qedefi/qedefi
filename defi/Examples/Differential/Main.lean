@@ -7,12 +7,15 @@ import Examples.Deployment
 
 ```
 lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]]
-                  [--rpc URL | --port N] [--inject-bug] [--verbose]
+                  [--edge] [--low-gas PCT] [--rpc URL | --port N] [--inject-bug] [--verbose]
 ```
 
 Families: vaults `solmate`, `oz`, `oz3` (OpenZeppelin, decimals offset 3); tokens `oz20`,
-`solady`, `weth9`, `usdt`, `usdtfee`, `bnb`, `sta`, `ampl` (the last six are mainnet bytecode);
-groups `vaults`, `tokens`, `all`. Default: `solmate,oz`.
+`solady`, `weth9`, `usdt`, `usdtfee`, `bnb`, `sta`, `ampl`, `gusd`, `yamv2`, `lend`, `lendico`,
+`zrx` (all but the first two are mainnet bytecode); groups `vaults`, `tokens`, `all`.
+Default: `solmate,oz`. `--edge` makes the token generators favour extreme amounts,
+self-transfers and dirty address arguments; `--low-gas PCT` lowers the gas limit of `PCT` % of
+the random calls (around the gas the previous call used, or barely above the intrinsic gas).
 
 Per vault family: deploy from a non-canonical and the canonical deployer (checking
 `runtimeCodeFor` and `runtimeCode`), run an inflation-attack scenario and random call
@@ -52,6 +55,10 @@ structure Config where
   injectBug : Bool := false
   /-- Print every call. -/
   verbose : Bool := false
+  /-- Edge-case-heavy token generators. -/
+  edge : Bool := false
+  /-- Percentage of random calls with a lowered gas limit. -/
+  lowGas : Nat := 0
 
 /-- A decimal command-line argument. -/
 def natArg (s : String) : Except String Nat :=
@@ -84,6 +91,8 @@ def parseArgs : Config → List String → Except String Config
     parseArgs { c with families := fams, tokens := toks } rest
   | c, "--inject-bug" :: rest => parseArgs { c with injectBug := true } rest
   | c, "--verbose" :: rest => parseArgs { c with verbose := true } rest
+  | c, "--edge" :: rest => parseArgs { c with edge := true } rest
+  | c, "--low-gas" :: n :: rest => do parseArgs { c with lowGas := ← natArg n } rest
   | _, a :: _ => throw s!"unknown argument {a}"
 
 /-! ## Deployment -/
@@ -155,7 +164,7 @@ def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) 
     else w
   let s : Session := { rpc, name := fam.name, watch := { accounts := [fam.asset, fam.vault], corrupt },
                        world0, snap, stats, gen := genCall fam, length := cfg.length,
-                       verbose := cfg.verbose }
+                       verbose := cfg.verbose, lowGasPct := cfg.lowGas }
   let mut found := 0
   let scenario := inflationScenario fam
   let (w, res) ← s.runFixed scenario
@@ -179,7 +188,8 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
     testFamily cfg rpc stats i fam
     i := i + 1
   for tok in cfg.tokens do
-    discard <| testToken rpc stats cfg.seed i cfg.sequences cfg.length cfg.verbose tok
+    discard <| testToken rpc stats cfg.seed i cfg.sequences cfg.length cfg.verbose
+      { tok with edge := cfg.edge } cfg.lowGas
     i := i + 1
 
 end Examples.Differential
@@ -205,8 +215,10 @@ def main (args : List String) : IO UInt32 := do
     child.kill
   let st ← stats.get
   let secs := ((← IO.monoMsNow) - start) / 1000
-  IO.println (s!"summary: {st.calls} transactions ({st.successes} successful on both sides), " ++
+  IO.println (s!"summary: {st.calls} transactions ({st.successes} successful on both sides, " ++
+    s!"{st.halts} exceptional halts), " ++
     s!"{st.mismatches} mismatching sequences, {secs} s")
-  for (k, (n, ok)) in st.byKind.toList.mergeSort (fun a b => a.1 ≤ b.1) do
-    IO.println s!"  {k}: {n} calls, {ok} successful"
+  for (k, ks) in st.byKind.toList.mergeSort (fun a b => a.1 ≤ b.1) do
+    IO.println (s!"  {k}: {ks.calls} calls, {ks.ok} successful, {ks.halts} exceptional halts, " ++
+      s!"{ks.zeroReturns} returned a zero word")
   return if st.mismatches = 0 then 0 else 1

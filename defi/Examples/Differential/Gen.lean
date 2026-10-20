@@ -86,6 +86,9 @@ def genAmount (state recent : Array Word) : Gen Word := do
   else if r < 80 then return BitVec.ofNat 256 (← below 1000)
   else return BitVec.ofNat 256 ((← next64).toNat * (← below 1_000_000_000))
 
+/-- Gas limit of a transaction unless the generator lowers it. -/
+def defaultGas : Nat := 10_000_000
+
 /-- A transaction to send. -/
 structure Call where
   /-- Sender. -/
@@ -100,10 +103,34 @@ structure Call where
   kind : String
   /-- Ether sent with the call, in wei. -/
   value : Nat := 0
+  /-- Gas limit of the transaction. -/
+  gas : Nat := defaultGas
   deriving Inhabited
 
 def calldata (sel : UInt32) (args : List Word) : ByteArray :=
   Bytes.ofNatBE 4 sel.toNat ++ args.foldl (fun b w => b ++ Bytes.ofWord w) .empty
+
+/-- An ABI argument: a static word or a dynamic array of words (`address[]`, `uint256[]`). -/
+inductive AbiArg where
+  /-- A static 32-byte argument. -/
+  | word (w : Word)
+  /-- A dynamic array of static elements. -/
+  | array (ws : List Word)
+
+/-- ABI-encode a call: heads (words, or offsets of the dynamic arguments), then the tails
+(length and elements of each array). -/
+def abiCalldata (sel : UInt32) (args : List AbiArg) : ByteArray := Id.run do
+  let headSize := 32 * args.length
+  let mut heads := ByteArray.empty
+  let mut tails := ByteArray.empty
+  for a in args do
+    match a with
+    | .word w => heads := heads ++ Bytes.ofWord w
+    | .array ws =>
+      heads := heads ++ Bytes.ofWord (BitVec.ofNat 256 (headSize + tails.size))
+      tails := tails ++ Bytes.ofWord (BitVec.ofNat 256 ws.length) ++
+        ws.foldl (fun b w => b ++ Bytes.ofWord w) .empty
+  return Bytes.ofNatBE 4 sel.toNat ++ heads ++ tails
 
 /-- The parameter types of a signature `f(t₁,…,tₙ)`. -/
 def paramTypes (sig : String) : List String :=

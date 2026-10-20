@@ -53,6 +53,12 @@ def execTx (crypto : Crypto) (env : BlockEnv) (world : World) (sender : Address)
   return ({ success := res.success, output := res.output, logs := res.logs,
             gasUsed := gasUsedBeforeRefund - refund }, w)
 
+/-- The intrinsic gas of a legacy transaction to `to` (a creation if `none`) with `data`: the
+least gas limit a transaction may carry. -/
+def intrinsicGasOf (to : Option Address) (data : ByteArray) : Nat :=
+  (Tx.intrinsicGas (.legacy { nonce := 0, gasPrice := 0, gas := 0, to, value := 0, data,
+                              v := 27, r := 0, s := 0 })).regular
+
 /-- The non-zero storage slots of `a` (storage never holds zeros). -/
 def storageSlots (w : World) (a : Address) : List Word := (w.account a).storage.keys
 

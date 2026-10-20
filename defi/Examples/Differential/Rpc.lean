@@ -155,7 +155,9 @@ def Rpc.execute (r : Rpc) (chainId : Nat) (sender : Address) (to : Option Addres
   let env : BlockEnv :=
     { chainId, number := natField block "number", timestamp := natField block "timestamp",
       coinbase := addressOfHex (strField block "miner"), gasLimit := natField block "gasLimit",
-      baseFee := natField block "baseFeePerGas", prevRandao := wordOfHex (strField block "mixHash") }
+      baseFee := natField block "baseFeePerGas", prevRandao := wordOfHex (strField block "mixHash")
+      -- `BLOCKHASH(number - 1)` (GUSD's lock ids); older hashes are not provided.
+      blockHashes := [wordOfHex (strField block "parentHash")] }
   let logs := match receipt.getObjValAs? (Array Json) "logs" with
     | .ok ls => ls.map logOfJson
     | .error _ => #[]

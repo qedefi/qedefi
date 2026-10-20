@@ -7,6 +7,12 @@ import Examples.WeirdERC20.BNB.Contracts.BNB
 import Examples.WeirdERC20.STA.Contracts.STA
 import Examples.WeirdERC20.AMPL.Contracts.AMPL
 import Examples.WeirdERC20.AMPL.Contracts.AMPLProxy
+import Examples.WeirdERC20.GUSD.Contracts.GUSD
+import Examples.WeirdERC20.GUSD.Contracts.GUSDImpl
+import Examples.WeirdERC20.GUSD.Contracts.GUSDStore
+import Examples.WeirdERC20.YAMV2.Contracts.YAMV2
+import Examples.WeirdERC20.LEND.Contracts.LEND
+import Examples.WeirdERC20.ZRX.Contracts.ZRX
 
 /-!
 # Token families under test
@@ -16,7 +22,11 @@ targets) or installed as runtime code plus storage at its address (mainnet targe
 read from mainnet, the storage its constructor would leave, `genesisStorage`). The
 generator draws from the token's whole ABI with weights, sizes amounts against the current
 balances, allowances and ether, sends ether to payable functions (and sometimes to
-non-payable ones) and to the fallback, and adds malformed calldata.
+non-payable ones) and to the fallback, and adds malformed calldata. A token may consist of
+several contracts (GUSD: proxy, implementation, store), each called directly as well, and
+keep its ledger in another account than the token address. In edge mode (`--edge`) the
+generator favours extreme amounts, self-transfers and address arguments with dirty upper
+bits.
 -/
 
 namespace Examples.Differential
@@ -65,52 +75,77 @@ structure TokenFamily where
   the expected 32-byte result (validates `genesis` against the hand-derived layout,
   including packed fields). -/
   getters : List (String × List Address × Word) := []
+  /-- Storage of the accounts of `extraCode`. -/
+  extraGenesis : List (Address × List (Word × Word)) := []
+  /-- The account holding balances, allowances and supply, if not the token itself (GUSD's
+  store). -/
+  ledger : Option Address := none
+  /-- Further contracts of the token called directly: address, name, selectors. -/
+  others : List (Address × String × List (String × UInt32)) := []
+  /-- Percentage of ABI calls that go to `others` instead of the token. -/
+  othersPct : Nat := 0
+  /-- Values for `uint8` arguments (signature `v`, enums). -/
+  uint8Values : Array Nat := #[0, 1, 27, 28, 255]
+  /-- Edge mode: more extreme amounts, self-transfers, dirty address arguments. -/
+  edge : Bool := false
+
+/-- The account holding the token's ledger. -/
+def TokenFamily.ledgerAddr (f : TokenFamily) : Address := f.ledger.getD f.token
 
 /-- A human-readable name for an address. -/
 def tokenAddrName (f : TokenFamily) (a : Address) : String :=
   if a = f.token then "token" else if a = 0 then "zero"
   else if a = 0x000000000022D473030F116dDEE9F6B43aC78BA3 then "permit2"
   else if a = 0xAD then "admin"
-  else match actors.idxOf? a with
-    | some i => #["alice", "bob", "carol", "dave"][i]?.getD "?"
-    | none => hexOfAddress a
+  else match actors.idxOf? a, f.others.find? (·.1 == a) with
+    | some i, _ => #["alice", "bob", "carol", "dave"][i]?.getD "?"
+    | none, some (_, n, _) => n
+    | none, none => hexOfAddress a
+
+/-- A call of `sig` (selector from `table`) on the token's contract `to` named `toName`. -/
+def tokenCallAt (f : TokenFamily) (to : Address) (toName : String) (table : List (String × UInt32))
+    (sender : Address) (sig : String) (args : List (AbiArg × String)) (value : Nat := 0) : Call :=
+  let sel := (selector? table sig).getD 0
+  let v := if value = 0 then "" else s!" value {value}"
+  let target := if to = f.token then f.name else s!"{f.name}.{toName}"
+  { sender, to, data := abiCalldata sel (args.map (·.1)), value
+    kind := s!"{target}.{fnName sig}"
+    desc := s!"{tokenAddrName f sender} → {target}.{fnName sig}(" ++
+      ", ".intercalate (args.map (·.2)) ++ ")" ++ v }
 
 /-- A call of `sig` on the token with the given arguments and value. -/
 def tokenCall (f : TokenFamily) (sender : Address) (sig : String) (args : List (Word × String))
     (value : Nat := 0) : Call :=
-  let sel := (selector? f.selectors sig).getD 0
-  let v := if value = 0 then "" else s!" value {value}"
-  { sender, to := f.token, data := calldata sel (args.map (·.1)), value
-    kind := s!"{f.name}.{fnName sig}"
-    desc := s!"{tokenAddrName f sender} → {f.name}.{fnName sig}(" ++
-      ", ".intercalate (args.map (·.2)) ++ ")" ++ v }
+  tokenCallAt f f.token f.name f.selectors sender sig (args.map fun (w, d) => (.word w, d)) value
 
 /-- `balanceOf(a)` in the evm-lean world. -/
 def TokenFamily.balance (f : TokenFamily) (w : World) (a : Address) : Nat :=
   match f.balanceView with
   | some v => (v w a).toNat
-  | none => (w.sload f.token (f.balanceSlot a)).toNat
+  | none => (w.sload f.ledgerAddr (f.balanceSlot a)).toNat
 
 /-- Values worth hitting: balances, allowances among actors, total supply, ether. -/
 def TokenFamily.stateValues (f : TokenFamily) (w : World) : Array Word :=
   let who := actors ++ f.extraAddresses ++ #[f.token]
-  let bal := who.map fun a => w.sload f.token (f.balanceSlot a)
-  let alw := actors.flatMap fun o => actors.map fun s => w.sload f.token (f.allowanceSlot o s)
+  let bal := who.map fun a => w.sload f.ledgerAddr (f.balanceSlot a)
+  let alw := actors.flatMap fun o => actors.map fun s => w.sload f.ledgerAddr (f.allowanceSlot o s)
   let sup := match f.supplySlot with
-    | some k => #[w.sload f.token k]
+    | some k => #[w.sload f.ledgerAddr k]
     | none => #[]
   bal ++ alw ++ sup ++ (actors.map fun a => w.balance a) ++ #[w.balance f.token]
 
 /-- Functions whose first address argument is the account debited. -/
 def debitsFirstArg (name : String) : Bool :=
-  name ∈ ["transferFrom", "burn", "burnFrom", "redeem", "destroyBlackFunds", "transferByLegacy"]
+  name ∈ ["transferFrom", "burn", "burnFrom", "redeem", "destroyBlackFunds", "transferByLegacy",
+    "transferWithSender", "setBalance"]
 
 /-- An amount bounded by `ether`, likely close to it. -/
 def etherAmount (ether : Nat) : Gen Nat := do
   let v := (← plausible ether).toNat
   return min v ether
 
-/-- The next call on the token. -/
+/-- The next call on the token, or (with probability `othersPct` %) on another of its
+contracts. -/
 def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call := do
   let state := f.stateValues w
   let everyone := actors ++ f.extraAddresses
@@ -119,6 +154,7 @@ def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call 
   let ether := (w.balance sender).toNat
   let genAddr : Gen Address := do
     let r ← below 100
+    if f.edge && r < 10 then return sender
     if r < 85 then pick everyone else if r < 92 then return 0 else return f.token
   let r ← below 100
   if r < 3 then
@@ -138,33 +174,58 @@ def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call 
     let data ← if (← below 3) = 0 then pure (calldata (← next64).toUInt32 []) else pure .empty
     return { sender, to := f.token, data, value, kind := s!"{f.name}.fallback"
              desc := s!"{tokenAddrName f sender} → {f.name} fallback {hexOfBytes data} value {value}" }
-  -- A function from the ABI, by weight.
-  let table := f.selectors.map fun (sig, _) => (sig, (f.weights.lookup sig).getD 1)
+  -- The target contract, then a function from its ABI, by weight.
+  let (to, toName, sigs) ← if !f.others.isEmpty && (← below 100) < f.othersPct then
+      pick f.others.toArray
+    else pure (f.token, f.name, f.selectors)
+  let table := sigs.map fun (sig, _) => (sig, (f.weights.lookup sig).getD 1)
   let total := table.foldl (fun n (_, k) => n + k) 0
   let mut x ← below total
   let mut sig := (table.headD ("", 0)).1
   for (s, k) in table do
     if x < k then sig := s; break
     x := x - k
-  let mut args : List (Word × String) := []
+  let mut args : List (AbiArg × String) := []
   let mut debit := sender
   let mut first := true
+  let arrLen ← below 4
+  let amount (debit : Address) : Gen Word := do
+    if f.edge && (← below 100) < 15 then
+      let b := f.balance w debit
+      pick #[0, 1, BitVec.allOnes 256, BitVec.allOnes 256 - 1, BitVec.ofNat 256 (2 ^ 255),
+             BitVec.ofNat 256 b, BitVec.ofNat 256 (b + 1)]
+    else if (← below 2) = 0 then plausible (f.balance w debit) else genAmount state recent
   for ty in paramTypes sig do
     match ty with
     | "address" =>
       let a ← genAddr
       if first && debitsFirstArg (fnName sig) then debit := a
       first := false
-      args := args ++ [(Word.ofAddress a, tokenAddrName f a)]
+      let word ← if f.edge && (← below 100) < 3 then
+          pure (((← randWord) <<< 160) ||| Word.ofAddress a) else pure (Word.ofAddress a)
+      let name := if word = Word.ofAddress a then tokenAddrName f a else s!"dirty {hexOfWord word}"
+      args := args ++ [(.word word, name)]
     | "uint8" =>
-      let v := BitVec.ofNat 256 (← pick #[0, 1, 27, 28, 255]); args := args ++ [(v, toString v.toNat)]
-    | "bytes32" => let v ← randWord; args := args ++ [(v, hexOfWord v)]
+      let v := BitVec.ofNat 256 (← pick f.uint8Values); args := args ++ [(.word v, toString v.toNat)]
+    | "bytes32" =>
+      let v ← if !recent.isEmpty && (← below 2) = 0 then pick recent else randWord
+      args := args ++ [(.word v, hexOfWord v)]
+    | "address[]" | "uint256[]" =>
+      let n ← if (← below 10) = 0 then below 4 else pure arrLen
+      let mut ws : List Word := []
+      let mut names : List String := []
+      for _ in [0:n] do
+        if ty = "address[]" then
+          let a ← genAddr; ws := ws ++ [Word.ofAddress a]; names := names ++ [tokenAddrName f a]
+        else
+          let v ← amount sender; ws := ws ++ [v]; names := names ++ [toString v.toNat]
+      args := args ++ [(.array ws, "[" ++ ", ".intercalate names ++ "]")]
     | _ =>
-      let v ← if (← below 2) = 0 then plausible (f.balance w debit) else genAmount state recent
-      args := args ++ [(v, toString v.toNat)]
+      let v ← amount debit
+      args := args ++ [(.word v, toString v.toNat)]
   let value ← if sig ∈ f.payable then etherAmount ether
     else if (← below 100) < 3 then etherAmount (min ether 1000) else pure 0
-  return tokenCall f sender sig args value
+  return tokenCallAt f to toName sigs sender sig args value
 
 /-- Check the storage layout against the token's own views, in evm-lean on world `w`:
 `balanceOf(a)` equals the word at `balanceSlot a`, `allowance(o, s)` the word at
@@ -183,17 +244,17 @@ def layoutCheck (f : TokenFamily) (w : World) : List String := Id.run do
     let v := view "balanceOf(address)" [a]
     let expected := match f.balanceView with
       | some bv => bv w a
-      | none => w.sload f.token (f.balanceSlot a)
+      | none => w.sload f.ledgerAddr (f.balanceSlot a)
     if v != some expected then
       out := out ++ [s!"balanceOf({tokenAddrName f a}) = {v.map (·.toNat)} ≠ balance slot"]
   for o in who do
     for sp in actors.toList do
       let v := view "allowance(address,address)" [o, sp]
-      if v != some (w.sload f.token (f.allowanceSlot o sp)) then
+      if v != some (w.sload f.ledgerAddr (f.allowanceSlot o sp)) then
         out := out ++ [s!"allowance({tokenAddrName f o}, {tokenAddrName f sp}) = " ++
           s!"{v.map (·.toNat)} ≠ allowance slot"]
   let sup := match f.supplySlot with
-    | some k => w.sload f.token k
+    | some k => w.sload f.ledgerAddr k
     | none => w.balance f.token
   if view "totalSupply()" [] != some sup then out := out ++ ["totalSupply() ≠ supply slot"]
   return out
@@ -538,8 +599,252 @@ def ampl : TokenFamily :=
         ("isOwner()", [], 1)] }
   { f with scenario := amplScenario f }
 
+/-! ### Further weird ERC-20s: low and high decimals, zero-value reverts, `false` returns -/
+
+namespace GUSDAddrs
+/-- GUSD's token address (`ERC20Proxy`). -/
+def proxy : Address := Examples.WeirdERC20.GUSD.Contracts.GUSD.address
+/-- GUSD's `ERC20Impl` (its immutables point to the proxy and the store). -/
+def impl : Address := Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.address
+/-- GUSD's `ERC20Store` (balances, allowances, supply). -/
+def store : Address := Examples.WeirdERC20.GUSD.Contracts.GUSDStore.address
+end GUSDAddrs
+
+/-- An address-array argument. -/
+def addrsArg (f : TokenFamily) (xs : List Address) : AbiArg × String :=
+  (.array (xs.map Word.ofAddress), "[" ++ ", ".intercalate (xs.map (tokenAddrName f)) ++ "]")
+
+/-- A number-array argument. -/
+def numsArg (xs : List Nat) : AbiArg × String :=
+  (.array (xs.map (BitVec.ofNat 256)), "[" ++ ", ".intercalate (xs.map toString) ++ "]")
+
+/-- A static argument as an `AbiArg`. -/
+def wArg (a : Word × String) : AbiArg × String := (.word a.1, a.2)
+
+/-- GUSD's quirks: the proxy forwarding by `CALL` to the implementation, which keeps the
+ledger in the store and has the proxy emit the events; 2 decimals; increase/decrease of
+allowances with overflow checks; transfers to `0` rejected; `batchTransfer` (self-transfers
+skipped in the ledger); custodian-only `executePrint`/`burn(owner, v)`; `requestPrint` lock ids
+from `BLOCKHASH(number − 1)`; the access control between the three contracts. -/
+def gusdScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  let impl := Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.selectors
+  let store := Examples.WeirdERC20.GUSD.Contracts.GUSDStore.selectors
+  let i (sender : Address) (sig : String) (args : List (AbiArg × String)) :=
+    tokenCallAt f GUSDAddrs.impl "impl" impl sender sig args
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg 100],
+    t alice "transfer(address,uint256)" [aArg f 0, nArg 1],
+    t bob "approve(address,uint256)" [aArg f 0, nArg 5],
+    t bob "increaseApproval(address,uint256)" [aArg f carol, nArg (2 ^ 256 - 1)],
+    t bob "decreaseApproval(address,uint256)" [aArg f carol, nArg (10 ^ 5 + 1)],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg (10 ^ 5)],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg 50],
+    i bob "batchTransfer(address[],uint256[])" [addrsArg f [carol, bob, dave], numsArg [1, 2, 3]],
+    i bob "batchTransfer(address[],uint256[])" [addrsArg f [carol], numsArg [1, 2]],
+    i carol "burn(uint256)" [wArg (nArg 10)],
+    i alice "executePrint(address,uint256)" [wArg (aArg f dave), wArg (nArg 1000)],
+    i bob "executePrint(address,uint256)" [wArg (aArg f dave), wArg (nArg 1000)],
+    i carol "requestPrint(address,uint256)" [wArg (aArg f bob), wArg (nArg 7)],
+    i alice "burn(address,uint256)" [wArg (aArg f bob), wArg (nArg 1)],
+    i alice "transferWithSender(address,address,uint256)" [wArg (aArg f alice), wArg (aArg f bob), wArg (nArg 1)],
+    tokenCallAt f GUSDAddrs.store "store" store alice "setBalance(address,uint256)"
+      [wArg (aArg f alice), wArg (nArg 0)],
+    t alice "emitTransfer(address,address,uint256)" [aArg f alice, aArg f bob, nArg 1],
+    t carol "requestImplChange(address)" [aArg f bob],
+    t alice "totalSupply()" []]
+
+/-- Mainnet GUSD (Gemini dollar): `ERC20Proxy` at the token address, `ERC20Impl` and
+`ERC20Store` at their mainnet addresses (the implementation's immutables name them), each
+with its own storage; custodian alice everywhere. -/
+def gusd : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "gusd"
+      token := GUSDAddrs.proxy
+      init := none
+      code := Examples.WeirdERC20.GUSD.Contracts.GUSD.runtimeCode
+      genesis := Examples.WeirdERC20.GUSD.Contracts.GUSD.genesisStorage
+      extraCode := [(GUSDAddrs.impl, Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.runtimeCode),
+        (GUSDAddrs.store, Examples.WeirdERC20.GUSD.Contracts.GUSDStore.runtimeCode)]
+      extraGenesis := [(GUSDAddrs.impl, Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.genesisStorage),
+        (GUSDAddrs.store, Examples.WeirdERC20.GUSD.Contracts.GUSDStore.genesisStorage)]
+      selectors := Examples.WeirdERC20.GUSD.Contracts.GUSD.selectors
+      ledger := some GUSDAddrs.store
+      balanceSlot := solSlot 6
+      allowanceSlot := solSlot2 7
+      supplySlot := some 5
+      others := [(GUSDAddrs.impl, "impl", Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.selectors),
+        (GUSDAddrs.store, "store", Examples.WeirdERC20.GUSD.Contracts.GUSDStore.selectors)]
+      othersPct := 30
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 5), ("increaseApproval(address,uint256)", 3),
+        ("decreaseApproval(address,uint256)", 3), ("batchTransfer(address[],uint256[])", 6),
+        ("burn(uint256)", 3), ("burn(address,uint256)", 2), ("executePrint(address,uint256)", 3),
+        ("requestPrint(address,uint256)", 4), ("confirmPrint(bytes32)", 4),
+        ("requestImplChange(address)", 1), ("confirmImplChange(bytes32)", 1),
+        ("requestCustodianChange(address)", 1), ("confirmCustodianChange(bytes32)", 1)]
+      getters := [("decimals()", [], 2), ("custodian()", [], Word.ofAddress alice),
+        ("erc20Impl()", [], Word.ofAddress GUSDAddrs.impl), ("lockRequestCount()", [], 0),
+        ("totalSupply()", [], BitVec.ofNat 256 (175 * 10 ^ 6 + 100)),
+        ("allowance(address,address)", [alice, dave], BitVec.allOnes 256)] }
+  { f with scenario := gusdScenario f }
+
+/-- YAMv2's quirks: 24 decimals, OpenZeppelin 3 style string reverts, minter-only `mint`,
+the allowance spent (with `Approval`) after the transfer, infinite allowances decremented. -/
+def yamScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  #[t alice "mint(address,uint256)" [aArg f bob, nArg (10 ^ 24)],
+    t bob "mint(address,uint256)" [aArg f bob, nArg 1],
+    t alice "mint(address,uint256)" [aArg f 0, nArg 1],
+    t alice "mint(address,uint256)" [aArg f alice, nArg (2 ^ 256 - 1)],
+    t alice "transfer(address,uint256)" [aArg f 0, nArg 1],
+    t bob "transfer(address,uint256)" [aArg f carol, nArg (10 ^ 30)],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg (10 ^ 28 + 1)],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg (10 ^ 28)],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg 1],
+    t bob "decreaseAllowance(address,uint256)" [aArg f carol, nArg 1],
+    t bob "increaseAllowance(address,uint256)" [aArg f carol, nArg (2 ^ 256 - 1)],
+    t bob "increaseAllowance(address,uint256)" [aArg f carol, nArg 1],
+    t alice "approve(address,uint256)" [aArg f 0, nArg 1]]
+
+/-- Mainnet YAMv2 (24 decimals). -/
+def yamv2 : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "yamv2"
+      token := Examples.WeirdERC20.YAMV2.Contracts.YAMV2.address
+      init := none
+      code := Examples.WeirdERC20.YAMV2.Contracts.YAMV2.runtimeCode
+      genesis := Examples.WeirdERC20.YAMV2.Contracts.YAMV2.genesisStorage
+      selectors := Examples.WeirdERC20.YAMV2.Contracts.YAMV2.selectors
+      balanceSlot := solSlot 1
+      allowanceSlot := solSlot2 2
+      supplySlot := some 3
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 5), ("mint(address,uint256)", 4),
+        ("increaseAllowance(address,uint256)", 2), ("decreaseAllowance(address,uint256)", 2)]
+      getters := [("decimals()", [], 24), ("minter()", [], Word.ofAddress alice),
+        ("totalSupply()", [], BitVec.ofNat 256 (1750001 * 10 ^ 24))] }
+  { f with scenario := yamScenario f }
+
+/-- LEND after its ICO: zero-value transfers revert (strict `balances[to] + v > balances[to]`),
+the approve race guard, infinite allowances decremented, the token manager's switches. -/
+def lendScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  let e18 := 10 ^ 18
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg 0],
+    t alice "transfer(address,uint256)" [aArg f bob, nArg e18],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 5],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 0],
+    t bob "approve(address,uint256)" [aArg f carol, nArg 5],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg 6],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg 5],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg e18],
+    t alice "transfer(address,uint256)" [aArg f alice, nArg 1],
+    t alice "transferFrom(address,address,uint256)" [aArg f bob, aArg f carol, nArg 0],
+    t alice "setState(uint8)" [nArg 4],
+    t bob "setTokenManager(address)" [aArg f bob],
+    t alice "withdrawEther()" [],
+    rawCall f carol .empty "plain ether (no sale running)" e18,
+    t alice "transfer(address,uint256)" [aArg f bob, nArg (2 ^ 256 - 1)]]
+
+/-- Mainnet LEND (EthLend), post-ICO as on mainnet. -/
+def lend : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "lend"
+      token := Examples.WeirdERC20.LEND.Contracts.LEND.address
+      init := none
+      code := Examples.WeirdERC20.LEND.Contracts.LEND.runtimeCode
+      genesis := Examples.WeirdERC20.LEND.Contracts.LEND.genesisStorage
+      selectors := Examples.WeirdERC20.LEND.Contracts.LEND.selectors
+      balanceSlot := solSlot 0
+      allowanceSlot := solSlot2 1
+      supplySlot := some 2
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 6), ("setState(uint8)", 2), ("buyTokens()", 2),
+        ("buyTokensICO()", 1), ("buyTokensPresale()", 1), ("withdrawEther()", 1),
+        ("setTokenManager(address)", 1)]
+      payable := ["buyTokens()", "buyTokensICO()", "buyTokensPresale()"]
+      receivesEther := true
+      etherFunding := 1000 * 10 ^ 18
+      uint8Values := #[0, 1, 2, 3, 4, 5, 6, 255]
+      getters := [("currentState()", [], 5), ("enableTransfers()", [], 1),
+        ("tokenManager()", [], Word.ofAddress alice), ("escrow()", [], Word.ofAddress carol),
+        ("teamTokenBonus()", [], Word.ofAddress dave), ("decimals()", [], 18),
+        ("totalSupply()", [], BitVec.ofNat 256 (1750001 * 10 ^ 18))] }
+  { f with scenario := lendScenario f }
+
+/-- LEND's slot 3 (`currentState`, `enableTransfers`, `teamTokenBonus = dave`). -/
+def lendSlot3 (state : Nat) (enable : Bool) : Word :=
+  BitVec.ofNat 256 (dave.toNat * 2 ^ 16 + (if enable then 2 ^ 8 else 0) + state)
+
+/-- The ICO reopened: purchases with ether through `buyTokens`/the fallback across a price
+tier, the presale entry point in the wrong state, ether to the escrow by `send`, the state
+machine (including out-of-range enum values) ending transfers' lock. -/
+def lendIcoScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) (value : Nat := 0) :=
+    tokenCall f sender sig args value
+  let e18 := 10 ^ 18
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg 1],
+    t bob "getPrice()" [],
+    t bob "buyTokens()" [] e18,
+    t bob "getPrice()" [],
+    t bob "buyTokens()" [] e18,
+    rawCall f carol .empty "fallback purchase" (e18 / 100),
+    rawCall f carol .empty "fallback purchase below the minimum" (e18 / 100 - 1),
+    t dave "buyTokensPresale()" [] e18,
+    t alice "withdrawEther()" [],
+    t bob "withdrawEther()" [],
+    t alice "setState(uint8)" [nArg 6],
+    t alice "setState(uint8)" [nArg 5],
+    t alice "transfer(address,uint256)" [aArg f bob, nArg 1],
+    t alice "setState(uint8)" [nArg 4]]
+
+/-- LEND with the ICO running (`currentState = ICORunning`, transfers disabled). -/
+def lendIco : TokenFamily :=
+  let f : TokenFamily :=
+    { lend with name := "lendico"
+                genesis := withStorage lend.genesis [(3, lendSlot3 4 false)]
+                getters := [("currentState()", [], 4), ("enableTransfers()", [], 0),
+                  ("getPrice()", [], 27500)] }
+  { f with scenario := lendIcoScenario f }
+
+/-- ZRX's quirks: failures return `false` (no revert, no event), infinite allowances are not
+spent, the shadowed `totalSupply`, no zero-address checks. -/
+def zrxScenario (f : TokenFamily) : Array Call :=
+  let t (sender : Address) (sig : String) (args : List (Word × String)) := tokenCall f sender sig args
+  let e18 := 10 ^ 18
+  #[t alice "transfer(address,uint256)" [aArg f bob, nArg e18],
+    t bob "transfer(address,uint256)" [aArg f carol, nArg (10 ^ 30)],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg (10 ^ 22 + 1)],
+    t carol "transferFrom(address,address,uint256)" [aArg f bob, aArg f dave, nArg (10 ^ 22)],
+    t dave "transferFrom(address,address,uint256)" [aArg f alice, aArg f carol, nArg e18],
+    t alice "transfer(address,uint256)" [aArg f alice, nArg 5],
+    t alice "approve(address,uint256)" [aArg f bob, nArg (2 ^ 256 - 1)],
+    t bob "transferFrom(address,address,uint256)" [aArg f alice, aArg f alice, nArg 1],
+    t alice "transfer(address,uint256)" [aArg f 0, nArg 1],
+    t dave "transfer(address,uint256)" [aArg f bob, nArg 0],
+    t dave "totalSupply()" []]
+
+/-- Mainnet ZRX (0x Protocol Token, solc 0.4.11). -/
+def zrx : TokenFamily :=
+  let f : TokenFamily :=
+    { name := "zrx"
+      token := Examples.WeirdERC20.ZRX.Contracts.ZRX.address
+      init := none
+      code := Examples.WeirdERC20.ZRX.Contracts.ZRX.runtimeCode
+      genesis := Examples.WeirdERC20.ZRX.Contracts.ZRX.genesisStorage
+      selectors := Examples.WeirdERC20.ZRX.Contracts.ZRX.selectors
+      balanceSlot := solSlot 0
+      allowanceSlot := solSlot2 1
+      supplySlot := some 3
+      weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
+        ("approve(address,uint256)", 5)]
+      getters := [("decimals()", [], 18), ("totalSupply()", [], BitVec.ofNat 256 (1750001 * 10 ^ 18)),
+        ("allowance(address,address)", [alice, dave], BitVec.allOnes 256)] }
+  { f with scenario := zrxScenario f }
+
 /-- Every token family. -/
-def tokenFamilies : List TokenFamily := [oz20, solady, weth9, usdt, usdtFee, bnb, sta, ampl]
+def tokenFamilies : List TokenFamily :=
+  [oz20, solady, weth9, usdt, usdtFee, bnb, sta, ampl, gusd, yamv2, lend, lendIco, zrx]
 
 /-! ## Setup and run -/
 
@@ -567,11 +872,14 @@ def setupToken (rpc : Rpc) (stats : IO.Ref Stats) (f : TokenFamily) : IO World :
     for (a, code) in f.extraCode do
       rpc.setCode a code
       w := w.modify a fun acc => { acc with code := code }
-    for (k, v) in f.genesis do
-      rpc.setStorageAt f.token k v
-      w := w.sstore f.token k v
-    let vals ← rpc.storageAt (f.genesis.map fun (k, _) => (f.token, k)).toArray
-    if vals.toList != f.genesis.map (·.2) then errs := errs ++ ["installed storage differs"]
+    let stores := (f.token, f.genesis) :: f.extraGenesis
+    for (a, g) in stores do
+      for (k, v) in g do
+        rpc.setStorageAt a k v
+        w := w.sstore a k v
+    let all := stores.flatMap fun (a, g) => g.map fun (k, v) => ((a, k), v)
+    let vals ← rpc.storageAt (all.map (·.1)).toArray
+    if vals.toList != all.map (·.2) then errs := errs ++ ["installed storage differs"]
   let theirs ← rpc.code f.token
   if w.code f.token != theirs then errs := errs ++ ["code differs between evm-lean and anvil"]
   if theirs != f.code then errs := errs ++ ["deployed code differs from the Lean constant"]
@@ -580,20 +888,20 @@ def setupToken (rpc : Rpc) (stats : IO.Ref Stats) (f : TokenFamily) : IO World :
   unless bad.isEmpty do fail ("getters disagree with the installed state:\n" ++ "\n".intercalate bad)
   let how := if f.init.isSome then "deployed" else "installed"
   IO.println (s!"  {how} at {hexOfAddress f.token} ({theirs.size} B, " ++
-    s!"{f.genesis.length} storage slots); code and storage agree, {f.getters.length} getters as expected")
+    s!"{f.genesis.length + (f.extraGenesis.map (·.2.length)).sum} storage slots); code and storage agree, {f.getters.length} getters as expected")
   return w
 
 /-- Test one token family: setup, the fixed scenario, `sequences` random sequences. Returns
 the number of mismatching sequences. -/
 def testToken (rpc : Rpc) (stats : IO.Ref Stats) (seed famIdx sequences length : Nat)
-    (verbose : Bool) (f : TokenFamily) : IO Nat := do
+    (verbose : Bool) (f : TokenFamily) (lowGasPct : Nat := 0) : IO Nat := do
   IO.println s!"[{f.name}]"
   let world0 ← setupToken rpc stats f
   let snap ← IO.mkRef (← rpc.snapshot)
   let eth := if f.etherFunding > 0 then f.token :: (actors ++ f.extraAddresses).toList else []
   let s : Session := { rpc, name := f.name, watch := { accounts := f.token :: f.extraCode.map (·.1), eth },
                        world0, snap,
-                       stats, gen := genTokenCall f, length, verbose }
+                       stats, gen := genTokenCall f, length, verbose, lowGasPct }
   let mut found := 0
   unless f.scenario.isEmpty do
     let (w, res) ← s.runFixed f.scenario

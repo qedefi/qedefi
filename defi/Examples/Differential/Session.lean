@@ -16,8 +16,21 @@ namespace Examples.Differential
 
 open Lean EvmLean Conformance
 
-/-- Gas limit of every transaction. -/
-def gasLimit : Nat := 10_000_000
+/-- Gas limit of every transaction unless lowered (`Call.gas`). -/
+def gasLimit : Nat := defaultGas
+
+/-- Statistics of one operation. -/
+structure KindStats where
+  /-- Calls. -/
+  calls : Nat := 0
+  /-- Calls that succeeded on both sides. -/
+  ok : Nat := 0
+  /-- Failures that consumed the whole gas limit (out of gas, `INVALID`, other exceptional
+  halts), in evm-lean. -/
+  halts : Nat := 0
+  /-- Successful calls returning exactly one zero word (`false`, or a zero view). -/
+  zeroReturns : Nat := 0
+  deriving Inhabited
 
 /-- Run statistics. -/
 structure Stats where
@@ -25,8 +38,10 @@ structure Stats where
   calls : Nat := 0
   /-- Calls that succeeded on both sides. -/
   successes : Nat := 0
-  /-- Per operation: calls and successes. -/
-  byKind : Std.HashMap String (Nat × Nat) := {}
+  /-- Failures that consumed the whole gas limit. -/
+  halts : Nat := 0
+  /-- Per operation. -/
+  byKind : Std.HashMap String KindStats := {}
   /-- Mismatching sequences. -/
   mismatches : Nat := 0
 
@@ -100,10 +115,10 @@ def compareEth (rpc : Rpc) (accounts : List Address) (after : World) : IO (List 
 /-- Execute one transaction on both sides and compare. Anvil goes first, so that evm-lean
 runs in the environment of the block anvil mined (timestamp, number, coinbase, …). -/
 def step (rpc : Rpc) (watch : Watch) (w : World) (sender : Address) (to : Option Address)
-    (data : ByteArray) (value : Nat) (kind : String) :
+    (data : ByteArray) (value : Nat) (kind : String) (gas : Nat := gasLimit) :
     IO (World × Outcome × Observed × List String) := do
-  let obs ← rpc.execute Examples.Deployment.chainId sender to data gasLimit value
-  let (o, w') ← ofExcept "evm-lean" (execTx Crypto.real obs.env w sender to data gasLimit value)
+  let obs ← rpc.execute Examples.Deployment.chainId sender to data gas value
+  let (o, w') ← ofExcept "evm-lean" (execTx Crypto.real obs.env w sender to data gas value)
   let w' := if o.success then watch.corrupt kind w' else w'
   -- The return data of a creation is the deployed code, compared separately.
   let obs := if to.isNone then { obs with output := o.output } else obs
@@ -133,6 +148,8 @@ structure Session where
   length : Nat
   /-- Print every call. -/
   verbose : Bool := false
+  /-- Percentage of random calls whose gas limit is lowered (`lowerGas`). -/
+  lowGasPct : Nat := 0
 
 /-- Restore the deployed state in anvil (and re-arm the snapshot). -/
 def Session.restart (s : Session) : IO Unit := do
@@ -140,19 +157,23 @@ def Session.restart (s : Session) : IO Unit := do
   s.snap.set (← s.rpc.snapshot)
 
 /-- Count a call in the statistics. -/
-def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
+def Session.record (s : Session) (c : Call) (ok : Bool) (o : Outcome) : IO Unit :=
   s.stats.modify fun st =>
-    let (n, k) := st.byKind.getD c.kind (0, 0)
+    let ks := st.byKind.getD c.kind {}
     let inc := if ok then 1 else 0
-    { st with calls := st.calls + 1, successes := st.successes + inc
-              byKind := st.byKind.insert c.kind (n + 1, k + inc) }
+    let halt := if !o.success && o.gasUsed = c.gas then 1 else 0
+    let zeroRet := if o.success && o.output = Bytes.ofWord 0 then 1 else 0
+    { st with calls := st.calls + 1, successes := st.successes + inc, halts := st.halts + halt
+              byKind := st.byKind.insert c.kind
+                { calls := ks.calls + 1, ok := ks.ok + inc, halts := ks.halts + halt
+                  zeroReturns := ks.zeroReturns + zeroRet } }
 
 /-- Execute a call on both sides and compare. -/
 def Session.exec (s : Session) (w : World) (c : Call) : IO (World × Outcome × List String) := do
-  let (w', o, obs, diffs) ← step s.rpc s.watch w c.sender (some c.to) c.data c.value c.kind
-  s.record c (o.success && obs.success)
+  let (w', o, obs, diffs) ← step s.rpc s.watch w c.sender (some c.to) c.data c.value c.kind c.gas
+  s.record c (o.success && obs.success) o
   if s.verbose then
-    IO.println s!"    {c.desc}: {if o.success then "ok" else "revert"} {hexOfBytes o.output}"
+    IO.println s!"    {c.desc} (gas {c.gas}): {if o.success then "ok" else "revert"} {hexOfBytes o.output}"
   return (w', o, diffs)
 
 /-- Replay fixed calls from the deployed state; the index and differences of the first
@@ -170,6 +191,29 @@ def Session.replay (s : Session) (calls : Array Call) : IO (Option (Nat × List 
 def outputWords (b : ByteArray) : Array Word :=
   (Array.range (b.size / 32)).map fun i => Bytes.toWord (b.extract (32 * i) (32 * i + 32))
 
+/-- With probability `pct` %, lower the gas limit of the next call to provoke out-of-gas
+failures at every depth: either repeat the previous call with a limit around the gas it used
+(`gasUsed + δ`, δ from −2 to a few thousand: refunds, the 63/64 rule and stipends make the
+needed limit differ from `gasUsed`), or send the new call with its intrinsic gas plus a small
+random amount. Never below the intrinsic gas (anvil rejects such transactions). Lowered calls
+get the kind suffix `@lowgas` (reports show each call's gas limit). -/
+def lowerGas (pct : Nat) (prev : Option (Call × Nat)) (c : Call) : Gen Call := do
+  if (← below 100) ≥ pct then return c
+  let (base, target) ← match prev with
+    | some (p, used) =>
+      if (← below 2) = 0 then
+        let δ : Int ← match ← below 4 with
+          | 0 => pure ((← pick #[-2, -1, 0, 1, 2]) : Int)
+          | 1 => pure ((← pick #[100, 2300, 2301, 4800, 5000, 9000, 20000]) : Int)
+          | 2 => pure ((← below 5000 : Nat) : Int)
+          | _ => pure (((← below 40000 : Nat) : Int) - 2000)
+        pure (p, ((used : Int) + δ).toNat)
+      else pure (c, intrinsicGasOf (some c.to) c.data + (← below 60000))
+    | none => pure (c, intrinsicGasOf (some c.to) c.data + (← below 60000))
+  let gas := max target (intrinsicGasOf (some base.to) base.data)
+  let kind := if base.kind.endsWith "@lowgas" then base.kind else base.kind ++ "@lowgas"
+  return { base with gas, kind }
+
 /-- Generate and run one random sequence. Returns the calls up to the first mismatch and its
 differences, if any. -/
 def Session.fuzz (s : Session) (seed : UInt64) : IO (Option (Array Call × List String)) := do
@@ -178,12 +222,15 @@ def Session.fuzz (s : Session) (seed : UInt64) : IO (Option (Array Call × List 
   let mut g := seed
   let mut recent : Array Word := #[]
   let mut calls : Array Call := #[]
+  let mut prev : Option (Call × Nat) := none
   for _ in [0:s.length] do
     let (c, g') := (s.gen w recent).run g
+    let (c, g') := (lowerGas s.lowGasPct prev c).run g'
     g := g'
     calls := calls.push c
     let (w', o, diffs) ← s.exec w c
     unless diffs.isEmpty do return some (calls, diffs)
+    prev := some (c, o.gasUsed)
     w := w'
     let r := recent ++ outputWords o.output
     recent := r.extract (r.size - min r.size 16) r.size
@@ -212,7 +259,7 @@ def Session.report (s : Session) (seq : Nat) (seed : UInt64) (calls : Array Call
     let c := calls[i]
     IO.println s!"    {i + 1}. {c.desc}"
     IO.println (s!"       from {hexOfAddress c.sender} to {hexOfAddress c.to} value {c.value} " ++
-      s!"data {hexOfBytes c.data}")
+      s!"gas {c.gas} data {hexOfBytes c.data}")
   IO.println "  differences after the last call:"
   for d in diffs do IO.println s!"    - {d}"
 
