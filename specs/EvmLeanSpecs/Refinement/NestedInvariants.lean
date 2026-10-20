@@ -32,14 +32,18 @@ owner's nonce slot fresh, `NonceSlotOk`). Covered frames are those with a proved
     permit frame conditions (`PermitFrame`: `DomainOk`, `0x01` not EIP-7702-delegated, depth
     below 1024), or
   - select no function (`UnknownData`: calldata shorter than four bytes or an unknown
-    selector; the dispatcher reverts).
+    selector; the dispatcher reverts), or
+  - are malformed for the selected function (`MalformedData`: argument words missing, or a
+    dirty `address` argument; the ABI decoder reverts).
 
-The uncovered frames — less than `minGas` gas, the vault at depth 1024, `name`/`symbol` without
-the gas for the stored string, `DOMAIN_SEPARATOR()`/`permit` on another chain with a name of 32
-bytes or more (or `permit` with `0x01` delegated, or the asset's `permit` at depth 1024),
-calldata selecting a function but malformed for its ABI decoder (arguments missing, dirty
-address words) — are the pending obligations (`PendingFrames`); `follows_tx_pending` takes them
-as a hypothesis instead of `TxOk`'s coverage.
+`NestedCoverage.lean` (`covered_of_funded`) shows that this is every funded frame, whatever
+its calldata, under `CoverOk` (gas for the stored `name`/`symbol`, `DomainOk` for
+`DOMAIN_SEPARATOR()`, `PermitFrame` for `permit`). The uncovered frames — less than `minGas`
+gas, the vault at depth 1024, `name`/`symbol` without the gas for the stored string,
+`DOMAIN_SEPARATOR()`/`permit` on another chain with a name of 32 bytes or more (or `permit`
+with `0x01` delegated, or the asset's `permit` at depth 1024) — are the pending obligations
+(`PendingFrames`); `follows_tx_pending` takes them as a hypothesis instead of `TxOk`'s
+coverage.
 
 ## Hash hypotheses
 
@@ -122,9 +126,10 @@ def TxOk (vault asset : Address) (minGas : Nat) (Act : List Address) (K : VCall 
     Covered vault asset minGas m ∧ FrameAdmitted ctx.crypto vault asset Act K m
 
 /-- **The pending obligations**: frame summaries of the frames of the vault and the asset
-that are not covered (low gas, the vault at depth 1024, `permit` / `DOMAIN_SEPARATOR()` on
-another chain with a name of 32 bytes or more or with `0x01` delegated, malformed calldata and
-unknown selectors), from a deployed world with well-formed ledgers. -/
+that are not covered (low gas, the vault at depth 1024, `name`/`symbol` without the gas for the
+stored string, `permit` / `DOMAIN_SEPARATOR()` on another chain with a name of 32 bytes or
+more, `permit` with `0x01` delegated or at depth 1024), from a deployed world with well-formed
+ledgers. -/
 def PendingFrames (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : List Address)
     (K : VCall → Prop) : Prop :=
   ∀ m, VaultStart vault asset m → Deployed m.world vault asset →

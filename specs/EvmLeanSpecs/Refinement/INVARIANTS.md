@@ -8,8 +8,8 @@ transactions by arbitrary callers. Files: `Lift.lean` (generic), `InvariantsAgre
 (per-call obligations proved today), `Invariants.lean` (headlines), `InvariantsFinal.lean`
 (every call kind); for arbitrary transactions with nested calls: `EvmLeanProofs/Program/
 NestedExtra*.lean` (generic simulation), `NestedSystem.lean`, `NestedCalls.lean`,
-`NestedViews.lean`, `NestedPermit.lean`, `NestedInvariants.lean`, `SharesFrame*.lean`,
-`ViewsRest.lean`, `UnknownSelectors.lean` (§6).
+`NestedViews.lean`, `NestedPermit.lean`, `NestedInvariants.lean`, `NestedCoverage.lean`,
+`SharesFrame*.lean`, `ViewsRest.lean`, `UnknownSelectors.lean`, `Malformed*.lean` (§6).
 Every theorem uses only `propext`, `Classical.choice`, `Quot.sound`; no `sorry`.
 
 ## 1. The concrete system (`InvariantsSystem.lean`)
@@ -251,6 +251,22 @@ dangerous frame it reaches.
   against the ABI's `SolmateVault.selectors` / `SolmateAsset.selectors`), reverts in the
   dispatcher (`vault_unknown_reverts`, `vault_short_reverts`, `asset_*`: symbolic execution of
   the whole selector tree for a symbolic selector), with at least 1000 gas.
+* `frameOk_malformed` (`Malformed*.lean`): the selector of a function with arguments but
+  calldata malformed for its ABI decoder (`MalformedData`: fewer argument words than the
+  function takes, or an `address` argument with dirty high bytes after clean ones) reverts
+  (`vault_<f>_short`, `vault_<f>_dirty<j>`, `asset_*`, one theorem per function and address
+  argument, dispatched by `vault_malformed_reverts` / `asset_malformed_reverts` over the
+  function shapes `vaultArgShapes` / `assetArgShapes`), with at least 2000 gas.
+* **Every calldata is accounted for** (`NestedCoverage.lean`, `covered_of_funded`): a funded
+  frame of either contract is `Covered` whatever its calldata, under `CoverOk` — gas for the
+  stored `name`/`symbol` string, `DomainOk` for `DOMAIN_SEPARATOR()`, `PermitFrame` for
+  `permit`. The proof is a case analysis over the 30 + 14 selectors (`vaultSelectors`,
+  `assetSelectors`, checked against the ABI): short or unknown → `UnknownData`; malformed →
+  `MalformedData`; otherwise the arguments decode (`wellFormed_of`: all words present, every
+  `address` clean) to a modelled call (`Executes`), a view (`ViewData`) or a permit
+  (`PermitData`). `txOk_of` turns it into a simple sufficient condition for `TxOk`: every frame
+  of the vault or the asset started by other code carries value with `≥ 100` gas or is funded
+  with `CoverOk`, and its committed calls are admitted.
 
 **`permit` as a modelled call.** The abstraction has no nonces and no invariant mentions them,
 so they are not added to it. Instead (`NestedPermit.lean`):
@@ -288,7 +304,8 @@ admitted (`FrameAdmitted`: the executed modelled call, or for a `permit` the own
 together with the owner's `NonceSlotOk`). `Covered` = value with `≥ 100` gas, or funded
 (`FundedCall`: no value, `≥ minGas` gas, for the vault depth `< 1024`, calldata `< 2⁶⁴` bytes)
 and one of: executing a modelled call (`Executes`), a covered view (`ViewData`), `permit` with
-`PermitFrame`, or calldata selecting no function (`UnknownData`).
+`PermitFrame`, calldata selecting no function (`UnknownData`) or malformed for the selected
+function (`MalformedData`) — by `covered_of_funded`, every funded frame under `CoverOk`.
 **Actors** are thus required per executed call — callers (routers included), receivers,
 owners, spenders, sources — not fixed before the transaction. `txOk_direct`: a direct
 transaction to the vault or the asset is covered as soon as its own frame is (proved with the
@@ -317,7 +334,7 @@ calls are only known to exist.
 ### 6.5 What remains (pending frame summaries, `PendingFrames`)
 
 Every frame of the vault's or the asset's code started by other code during a transaction is
-now covered, except:
+now covered (`covered_of_funded`), except:
 
 * **Low gas** (part 2): frames with less than `minGas` gas, the vault at depth 1024 (its call
   into the asset fails), value with `< 100` gas; `name()`/`symbol()` with less gas than the
@@ -345,11 +362,10 @@ now covered, except:
 * **`DOMAIN_SEPARATOR()` and `permit` outside `DomainOk`**: on a chain other than the token's
   deployment chain, with a name of 32 bytes or more (the out-of-place encoding loop of
   `abi_encode_t_string_storage` is not verified); `permit` with `0x01` EIP-7702-delegated.
-* **Malformed calldata for a known selector**: arguments missing (calldata shorter than
-  `4 + 32·k`) or an `address` argument with dirty high bytes — the function's ABI decoder
-  reverts (solc's `abi_decode_*` size check and `validator_revert_t_address`), not proved.
-  (Unknown selectors and calldata shorter than a selector *are* covered, `frameOk_unknown`;
-  a `uint8 v` above 255 in `permit` is covered: it fails `PermitValid`.)
+* Calldata is **no longer** an exclusion: unknown selectors, calldata shorter than a selector
+  and calldata malformed for the selected function are covered (they revert,
+  `frameOk_unknown`, `frameOk_malformed`); a `uint8 v` above 255 in `permit` fails
+  `PermitValid`; `covered_of_funded` shows nothing else is left.
 * **Calldata of `2⁶⁴` bytes or more** (impossible within `2⁶⁴` gas: memory expansion).
 * **Transaction layer**: `processTransaction` around `processMessageCall` as an `EnvStep`
   (stated, not proved).
