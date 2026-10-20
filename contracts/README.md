@@ -1,15 +1,21 @@
-# ERC-4626 verification targets
+# Verification targets
 
-Pinned Solidity sources, a reproducible build, and the compiled artifacts used by the Lean
-proofs (`defi/Examples/Solmate/`), the generated contract modules
-(`defi/Examples/{Solmate,OpenZeppelin}/Contracts/`) and the differential tester
-(`lake exe difftest`). The verification itself is described in
-[docs/erc4626](../docs/erc4626/README.md).
+Pinned Solidity sources, a reproducible build, pinned mainnet bytecode, and the artifacts used
+by the Lean proofs (`defi/Examples/Solmate/`), the generated contract modules
+(`defi/Examples/<Project>/Contracts/`) and the differential tester (`lake exe difftest`). The
+ERC-4626 verification is described in [docs/erc4626](../docs/erc4626/README.md), the token
+targets in [docs/tokens.md](../docs/tokens.md).
 
 | Target | Asset | Vault |
 |---|---|---|
 | Solmate | `MockERC20` | `MockERC4626` (`totalAssets = asset.balanceOf(this)`; deposit/withdraw hooks count calls) |
 | OpenZeppelin | `ERC20Mock` | `OzVault` (`src/OzVault.sol`: stock `ERC4626`, nothing overridden, `_decimalsOffset() = 0`) |
+| OpenZeppelin, δ = 3 | `ERC20Mock` | `OzVaultOffset` (`src/OzVaultOffset.sol`: `OzVault` with `_decimalsOffset() = 3`) |
+
+| Token target | Kind | Source |
+|---|---|---|
+| `SoladyToken` | compiled | `src/SoladyToken.sol`: Solady `ERC20` with constant metadata, unrestricted `mint`/`burn` |
+| `WETH9` | mainnet bytecode | `mainnet/WETH9/` (see [Mainnet targets](#mainnet-targets)) |
 
 `src/Targets.sol` is the compilation root.
 
@@ -21,13 +27,16 @@ proofs (`defi/Examples/Solmate/`), the generated contract modules
 | Foundry (`forge`, `anvil`, `cast`) | 1.8.5 (`51a52c59`), build tool and reference EVM (revm) |
 | Solmate | `transmissions11/solmate` @ [`89365b88`](https://github.com/transmissions11/solmate/tree/89365b880c4f3c786bdd453d4b8e8fe410344a69) (2025-07-21) |
 | OpenZeppelin Contracts | `v5.7.0` @ [`cab19933`](https://github.com/OpenZeppelin/openzeppelin-contracts/tree/v5.7.0) |
+| Solady | `v0.1.26` @ [`acd959aa`](https://github.com/Vectorized/solady/tree/acd959aa4bd04720d640bf4e6a5c71037510cc4b) (`src/tokens/ERC20.sol`, `LICENSE.txt`) |
 | forge-std (a16z suite only, not vendored) | `v1.17.0` @ `f3dae6e6` |
 | a16z erc4626-tests (not vendored) | `a16z/erc4626-tests` @ `ac485460` (2025-07-29) |
 
 Vendored files in `lib/` are byte-for-byte copies at their upstream paths, licence headers
-and `LICENSE` files kept (Solmate AGPL-3.0-only, OpenZeppelin MIT): Solmate's `ERC20`,
-`ERC4626`, `FixedPointMathLib`, `SafeTransferLib`, `MockERC20`, `MockERC4626`; the import
-closure of OpenZeppelin's `ERC4626` and `ERC20Mock`.
+and `LICENSE` files kept (Solmate AGPL-3.0-only, OpenZeppelin MIT, Solady MIT): Solmate's
+`ERC20`, `ERC4626`, `FixedPointMathLib`, `SafeTransferLib`, `MockERC20`, `MockERC4626`; the
+import closure of OpenZeppelin's `ERC4626` and `ERC20Mock`; Solady's `ERC20` (no imports).
+Adding sources to the compilation shifts the AST ids recorded in `immutableReferences.json`
+(`astId`); the bytecode does not change.
 
 ## Build
 
@@ -53,11 +62,15 @@ code equals the template outside the immutable positions, and generates the Lean
 | `SolmateVault` (`MockERC4626`) | 5,248 B | 6,474 B |
 | `OzAsset` (`ERC20Mock`) | 1,900 B | 2,366 B |
 | `OzVault` | 4,408 B | 5,098 B |
+| `OzVaultOffset` | 4,411 B | 5,105 B |
+| `SoladyToken` | 2,278 B | 2,306 B |
 
 ## Canonical deployment
 
 Each family is deployed on its own fresh chain (chain id 1, Cancun) by
-`0x1000000000000000000000000000000000000000`: asset at nonce 0, vault at nonce 1.
+`0x1000000000000000000000000000000000000000`: asset at nonce 0, vault at nonce 1; the OZ
+δ = 3 family likewise (`OzVaultOffset` at the vault address), `SoladyToken` alone at nonce 0
+(the asset address).
 
 | | Address | Constructor arguments |
 |---|---|---|
@@ -80,6 +93,10 @@ constructor. Byte offsets of the values in the runtime code:
 | | `INITIAL_DOMAIN_SEPARATOR` | 1879 | `0xfc86b75f…85216` |
 | OzVault | `_asset` | 556, 896, 2772, 2924 | asset address |
 | | `_underlyingDecimals` | 1276 | 18 (`asset.decimals()`) |
+| OzVaultOffset | `_asset` | 556, 896, 2775, 2927 | asset address |
+| | `_underlyingDecimals` | 1277 | 18 (`asset.decimals()`) |
+
+`SoladyToken`, `OzAsset` and the mainnet targets have no immutables.
 
 The runtime code of other deployments is obtained either by running the creation code
 (`creationCode ++ constructorArgs`; `difftest` does this in evm-lean and anvil) or by
@@ -89,10 +106,39 @@ immutables from deployment parameters (including Solmate's domain separator,
 runtimeCode` is kernel-checked; `difftest` checks `runtimeCodeFor` against a deployment by a
 second deployer.
 
+## Mainnet targets
+
+Deployed mainnet contracts are verified as deployed: the target is the runtime code itself,
+pinned by its code hash. `scripts/fetch-mainnet.sh <Name> <address>` (network, read-only)
+writes `mainnet/<Name>/`: `source/` (the verified sources as Sourcify serves them),
+`sourcify.json` (compiler, settings, deployment, match status, bytecode transformations),
+`abi.json`, `runtime.hex` (`eth_getCode` at the RPC's latest block; free endpoints serve no
+archive state) and `meta.json` (address, block number and hash, code hash and size), and
+checks the code against Sourcify's on-chain bytecode. Hand-written: `storageLayout.json`
+(solc's format; derived from the source by C3 linearization and checked against mainnet
+storage) and `genesis.json` (the storage the tests install with the code: the constructor's
+state with test parameters; entries are a literal `slot` or a `mapping` slot with `keys`).
+`scripts/build-contracts.sh` is offline for these: it checks `keccak(runtime.hex)` against
+`meta.json`, derives `methodIdentifiers.json`, `events.json`, `errors.json` from the ABI,
+checks that every selector is pushed by the dispatcher, and generates the Lean module.
+
+| Name | Address | Code hash | Size | Read at block | Compiler (mainnet) |
+|---|---|---|---|---|---|
+| WETH9 | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | `0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23` | 3,124 B | 26,236,518 (`0xebf5f600…acfe1`) | 0.4.19+commit.c4cbbb05, optimizer off |
+
+**WETH9 reproducibility.** Deployed at block 4,719,568 (tx `0xb9534341…2fa3`). Sourcify's
+match is partial (`"match"`): recompiling with 0.4.19 gives the deployed code except the
+metadata swarm hash in the 43-byte trailer at offset 3,081, so the deployed bytes cannot be
+reproduced exactly from the published source by any compiler; up to the trailer they can,
+with solc 0.4.19 (not installed here; the installed 0.4.26 gives different code). The check
+is therefore the code hash plus Sourcify's verification, not a local recompilation. Mainnet
+slots 0–2 (`name`, `symbol`, `decimals`) equal `genesis.json`.
+
 ## Lean API
 
-Namespaces `Examples.Solmate.Contracts.{SolmateAsset, SolmateVault}` and
-`Examples.OpenZeppelin.Contracts.{OzAsset, OzVault}`, each with `creationCode`,
+Namespaces `Examples.Solmate.Contracts.{SolmateAsset, SolmateVault}`,
+`Examples.OpenZeppelin.Contracts.{OzAsset, OzVault, OzVaultOffset}` and
+`Examples.Solady.Contracts.SoladyToken`, each with `creationCode`,
 `constructorArgs`, `runtimeCode` (a literal `ByteArray` that reduces in the kernel),
 `address`, `size_runtimeCode`/`size_creationCode`, `selectors`, `events` (topic 0), `errors`,
 `storageLayout`, `immutableRefs` and, with immutables, `Immutables`, `deployment`,
@@ -103,7 +149,15 @@ in the kernel via `.data.toList`: `ByteArray`'s `DecidableEq` does not reduce we
 Storage slots: Solmate `name 0, symbol 1, totalSupply 2, balanceOf 3, allowance 4, nonces 5`
 (vault also `beforeWithdrawHookCalledCounter 6, afterDepositHookCalledCounter 7`);
 OpenZeppelin `_balances 0, _allowances 1, _totalSupply 2, _name 3, _symbol 4`. Mappings:
-`m[k]` at `keccak(k ‖ slot)`, `allowance[o][s]` at `keccak(s ‖ keccak(o ‖ slot))`.
+`m[k]` at `keccak(k ‖ slot)`, `allowance[o][s]` at `keccak(s ‖ keccak(o ‖ slot))`. Solady
+(no Solidity state): `totalSupply` at `0x05345cdf77eb68f44c`, `balanceOf(o)` at
+`keccak(o₂₀ ‖ 0⁸ ‖ 0x87a211a2)`, `allowance(o, s)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x7f5e9f20 ‖ s₂₀)`,
+`nonces(o)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x38377508)` ([docs/tokens.md](../docs/tokens.md)).
+
+Mainnet modules (`Examples.WETH9.Contracts.WETH9`, `Examples.WeirdERC20.<T>.Contracts.<T>`)
+have `runtimeCode`, `size_runtimeCode`, `address` (mainnet), `codeHash`, `fetchBlock`,
+`genesisStorage`, `immutableRefs = []`, `selectors`, `events`, `errors`, `storageLayout`; no
+creation code.
 
 ## Differential testing
 
