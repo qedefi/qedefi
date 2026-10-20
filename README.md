@@ -61,8 +61,14 @@ that revert afterwards. Coverage includes every function and view of both contra
 unknown selectors and malformed calldata (proved to revert). Emitted logs are proved too
 (`EVENTS.md`), as are `name`/`symbol` (`STRINGS.md`).
 
-Hypotheses are explicit (`INVARIANTS.md`): vault/asset frames funded with ≥ 250 000 gas (the
-one open item: low-gas frames), no EIP-7702 authorizations, Keccak freshness of the slots of
+**At any gas and any call depth** (`LowGasHeadline.lean`, `*_anyGas`): a low-gas vault/asset
+frame either does exactly what the same frame does with more gas or rolls back, by a generic
+gas-lockstep theorem (`EvmLeanProofs/Program/GasMono`) whose premises are proved for the
+compiled code, including the vault's and asset's call targets, established by a certified
+abstract interpreter checked in the kernel (`EvmLeanProofs/Program/AbsInt`).
+
+Hypotheses are explicit (`INVARIANTS.md`): no EIP-7702 authorizations (and `0x01` not
+delegated), Keccak freshness of the slots of
 the actors involved (never global injectivity), well-formed initial ledgers,
 `DOMAIN_SEPARATOR` only on the deployment chain or with names under 32 bytes. The model level
 (`specs/`) also proves the a16z/crytic round-trip properties and refutes several for Solmate
