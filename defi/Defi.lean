@@ -1,9 +1,13 @@
 import Defi.ERC20.Permit
 import Defi.ERC20.Rep
 import Defi.ERC20.Token
+import Defi.ERC20.Variant
+import Defi.ERC20.VariantProps
 import Defi.ERC4626.Agree
+import Defi.ERC4626.AssetVariants
 import Defi.ERC4626.Events
 import Defi.ERC4626.Inflation
+import Defi.ERC4626.Integration
 import Defi.ERC4626.Logs
 import Defi.ERC4626.MoreProps
 import Defi.ERC4626.Oz

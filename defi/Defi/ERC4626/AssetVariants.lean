@@ -53,7 +53,7 @@ def oz [Zero A] : Asset (Token A) A :=
   ⟨fun t a => t.balanceOf a, Token.ozTransfer, Token.ozTransferFrom⟩
 
 /-- A token `Variant`, called through `SafeTransferLib`/`SafeERC20`. -/
-def variant [Zero A] (V : Variant A) : Asset (State A) A :=
+def variant [Zero A] (V : Variant A) : Asset (VState A) A :=
   ⟨V.balanceOf, fun s c d v => (V.call s c (.transfer d v)).safe,
     fun s c src d v => (V.call s c (.transferFrom src d v)).safe⟩
 
@@ -102,14 +102,14 @@ theorem oz_exactOn [Zero A] (self : A) : (oz : Asset (Token A) A).ExactOn (fun _
 
 /-- The states in which a variant transfers exactly: no fee on any value, and a positive
 scale if it rebases. -/
-def NoFee [Zero A] (V : Variant A) (s : State A) : Prop :=
+def NoFee [Zero A] (V : Variant A) (s : VState A) : Prop :=
   (∀ v, V.feeOf s v = 0) ∧ (V.rebasing = true → 0 < s.scale)
 
-theorem feeOf_congr [Zero A] (V : Variant A) {s s' : State A} (h1 : s'.feeBps = s.feeBps)
+theorem feeOf_congr [Zero A] (V : Variant A) {s s' : VState A} (h1 : s'.feeBps = s.feeBps)
     (h2 : s'.feeMax = s.feeMax) (v : ℕ) : V.feeOf s' v = V.feeOf s v := by
   unfold Variant.feeOf; rw [h1, h2]
 
-theorem balanceOf_congr [Zero A] (V : Variant A) {s s' : State A} (h1 : s'.bal = s.bal)
+theorem balanceOf_congr [Zero A] (V : Variant A) {s s' : VState A} (h1 : s'.bal = s.bal)
     (h2 : s'.scale = s.scale) (a : A) : V.balanceOf s' a = V.balanceOf s a := by
   unfold Variant.balanceOf; rw [h1, h2]
 
@@ -139,11 +139,11 @@ theorem variant_exactOn [Zero A] (V : Variant A) (self : A) :
     · exact hsame hr.symm
     · exact hsrc (Ne.symm hr)
 
-theorem variant_transferFrom [Zero A] (V : Variant A) (s : State A) (c src d : A) (v : ℕ) :
+theorem variant_transferFrom [Zero A] (V : Variant A) (s : VState A) (c src d : A) (v : ℕ) :
     (variant V).transferFrom s c src d v = V.transferFrom s c src d v := by
   simp [variant, Variant.safe_call, Variant.step]
 
-theorem variant_transfer [Zero A] (V : Variant A) (s : State A) (c d : A) (v : ℕ) :
+theorem variant_transfer [Zero A] (V : Variant A) (s : VState A) (c d : A) (v : ℕ) :
     (variant V).transfer s c d v = V.transfer s c d v := by
   simp [variant, Variant.safe_call, Variant.step]
 

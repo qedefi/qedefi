@@ -14,8 +14,8 @@ blacklist (USDT), rebasing balances stored as gons with a global scale (AMPL), o
 holder-only mint/burn, the fallback (BNB accepts every unknown selector, WETH9 deposits), and
 whether `totalSupply` is stored or the contract's ether balance (WETH9).
 
-The storage `State A` holds every field any variant uses; a variant ignores the fields its
-policies do not mention. Each operation returns `Option (State A)` (`none`: the call fails);
+The storage `VState A` holds every field any variant uses; a variant ignores the fields its
+policies do not mention. Each operation returns `Option (VState A)` (`none`: the call fails);
 `call` adds the observable convention (return data, failure kind) and `Result.safe`,
 `Result.decoded`, `Result.unchecked` are the three ways a calling contract consumes it.
 
@@ -199,7 +199,7 @@ structure Variant (A : Type) where
   supply : SupplyKind
 
 /-- The storage of any of the variants. -/
-structure State (A : Type) where
+structure VState (A : Type) where
   /-- The token's own address. -/
   self : A
   /-- Balances in internal units: gons for a rebasing token, `balanceOf` otherwise. -/
@@ -223,19 +223,19 @@ structure State (A : Type) where
   /-- The token contract's ether balance. -/
   ether : ℕ
 
-namespace State
+namespace VState
 
 variable {A : Type} [DecidableEq A]
 
 /-- The `Token` part of the storage. -/
-def toToken (s : State A) : Token A := ⟨s.bal, s.supply, s.allowance⟩
+def toToken (s : VState A) : Token A := ⟨s.bal, s.supply, s.allowance⟩
 
 /-- Replace the `Token` part of the storage. -/
-def withToken (s : State A) (t : Token A) : State A :=
+def withToken (s : VState A) (t : Token A) : VState A :=
   { s with bal := t.balanceOf, supply := t.totalSupply, allowance := t.allowance }
 
 /-- A `Token` as a variant state: unit scale, nothing paused or blacklisted, no fee, no ether. -/
-def ofToken (t : Token A) (self admin : A) : State A where
+def ofToken (t : Token A) (self admin : A) : VState A where
   self := self
   bal := t.balanceOf
   supply := t.totalSupply
@@ -249,23 +249,23 @@ def ofToken (t : Token A) (self admin : A) : State A where
   ether := 0
 
 /-- `allowance[owner][spender] = v`. -/
-def setAllowance (s : State A) (owner spender : A) (v : ℕ) : State A :=
+def setAllowance (s : VState A) (owner spender : A) (v : ℕ) : VState A :=
   { s with
     allowance := Function.update s.allowance owner (Function.update (s.allowance owner) spender v) }
 
-@[simp] theorem toToken_withToken (s : State A) (t : Token A) : (s.withToken t).toToken = t := rfl
+@[simp] theorem toToken_withToken (s : VState A) (t : Token A) : (s.withToken t).toToken = t := rfl
 
-@[simp] theorem withToken_withToken (s : State A) (t u : Token A) :
+@[simp] theorem withToken_withToken (s : VState A) (t u : Token A) :
     (s.withToken t).withToken u = s.withToken u := rfl
 
-@[simp] theorem withToken_toToken (s : State A) : s.withToken s.toToken = s := rfl
+@[simp] theorem withToken_toToken (s : VState A) : s.withToken s.toToken = s := rfl
 
 theorem toToken_ofToken (t : Token A) (self admin : A) : (ofToken t self admin).toToken = t := rfl
 
-theorem withToken_setAllowance (s : State A) (o sp : A) (v : ℕ) :
+theorem withToken_setAllowance (s : VState A) (o sp : A) (v : ℕ) :
     s.withToken (s.toToken.setAllowance o sp v) = s.setAllowance o sp v := rfl
 
-end State
+end VState
 
 /-- A call of an ERC-20 entry point (without the caller). -/
 inductive Call (A : Type) where
@@ -332,23 +332,23 @@ variable {A : Type} [DecidableEq A] [Zero A] (V : Variant A)
 /-! ## Views -/
 
 /-- `balanceOf(a)`: `gons / scale` for a rebasing token. -/
-def balanceOf (s : State A) (a : A) : ℕ := if V.rebasing then s.bal a / s.scale else s.bal a
+def balanceOf (s : VState A) (a : A) : ℕ := if V.rebasing then s.bal a / s.scale else s.bal a
 
 /-- `totalSupply()`. -/
-def totalSupply (s : State A) : ℕ :=
+def totalSupply (s : VState A) : ℕ :=
   match V.supply with
   | .stored => s.supply
   | .ether => s.ether
 
 /-- `allowance(owner, spender)`: Permit2's is fixed at `MAX` (Solady). -/
-def allowanceOf (s : State A) (o sp : A) : ℕ :=
+def allowanceOf (s : VState A) (o sp : A) : ℕ :=
   if V.permit2 = some sp then MAX else s.allowance o sp
 
 /-- Internal units for `v` tokens. -/
-def units (s : State A) (v : ℕ) : ℕ := if V.rebasing then v * s.scale else v
+def units (s : VState A) (v : ℕ) : ℕ := if V.rebasing then v * s.scale else v
 
 /-- The fee on a transfer of `v`. -/
-def feeOf (s : State A) (v : ℕ) : ℕ :=
+def feeOf (s : VState A) (v : ℕ) : ℕ :=
   match V.fee with
   | .none => 0
   | .bpsCapped => min (v * s.feeBps / 10000) s.feeMax
@@ -358,14 +358,14 @@ def feeOf (s : State A) (v : ℕ) : ℕ :=
 
 /-- The guards of a transfer from `src` to `dst`: pause, blacklist, zero address, the token
 itself as recipient, zero value. -/
-def moveOk (s : State A) (src dst : A) (v : ℕ) : Bool :=
+def moveOk (s : VState A) (src dst : A) (v : ℕ) : Bool :=
   !(V.pausable && s.paused) && !(V.blacklist && s.blacklisted src) &&
   !(V.zero.sender && decide (src = 0)) && !(V.zero.receiver && decide (dst = 0)) &&
   !(V.rejectsSelf && decide (dst = s.self)) && !(V.zeroValueReverts && decide (v = 0))
 
 /-- The state after a transfer of `v` from `src` to `dst`: debit `v`, credit `v`, then move
 the fee from `dst` to its sink (USDT: `bal[from] −= v; bal[to] += v − fee; bal[owner] += fee`). -/
-def credit (s : State A) (src dst : A) (v : ℕ) : State A :=
+def credit (s : VState A) (src dst : A) (v : ℕ) : VState A :=
   if V.feeOf s v = 0 then
     { s with bal := s.bal - single src (V.units s v) + single dst (V.units s v) }
   else
@@ -379,13 +379,13 @@ def credit (s : State A) (src dst : A) (v : ℕ) : State A :=
                supply := s.supply - V.feeOf s v }
 
 /-- The balance update of a transfer: fails on an insufficient balance or a fee above `v`. -/
-def move (s : State A) (src dst : A) (v : ℕ) : Option (State A) :=
+def move (s : VState A) (src dst : A) (v : ℕ) : Option (VState A) :=
   if s.bal src < V.units s v then none
   else if v < V.feeOf s v then none
   else some (V.credit s src dst v)
 
 /-- The allowance step of `transferFrom(owner, …)` by `spender`. -/
-def spend (s : State A) (owner spender : A) (v : ℕ) : Option (State A) :=
+def spend (s : VState A) (owner spender : A) (v : ℕ) : Option (VState A) :=
   if V.selfSpendFree && decide (owner = spender) then some s
   else if V.permit2 = some spender then some s
   else if V.infinite.test (s.allowance owner spender) then some s
@@ -394,29 +394,29 @@ def spend (s : State A) (owner spender : A) (v : ℕ) : Option (State A) :=
   else some (s.setAllowance owner spender (s.allowance owner spender - v))
 
 /-- `transfer(dst, v)` by `caller`. -/
-def transfer (s : State A) (caller dst : A) (v : ℕ) : Option (State A) :=
+def transfer (s : VState A) (caller dst : A) (v : ℕ) : Option (VState A) :=
   if V.moveOk s caller dst v then V.move s caller dst v else none
 
 /-- `transferFrom(src, dst, v)` by `caller`. -/
-def transferFrom (s : State A) (caller src dst : A) (v : ℕ) : Option (State A) :=
+def transferFrom (s : VState A) (caller src dst : A) (v : ℕ) : Option (VState A) :=
   if V.moveOk s src dst v then (V.spend s src caller v).bind fun s1 => V.move s1 src dst v
   else none
 
 /-- The guards of `approve(sp, v)` by `caller`. -/
-def approveOk (s : State A) (caller sp : A) (v : ℕ) : Bool :=
+def approveOk (s : VState A) (caller sp : A) (v : ℕ) : Bool :=
   !(V.zero.owner && decide (caller = 0)) && !(V.zero.spender && decide (sp = 0)) &&
   !(V.zeroValueReverts && decide (v = 0)) &&
   !(V.approveGuard && decide (v ≠ 0) && decide (s.allowance caller sp ≠ 0)) &&
   !(decide (V.permit2 = some sp) && decide (v ≠ MAX))
 
 /-- `approve(sp, v)` by `caller`. -/
-def approve (s : State A) (caller sp : A) (v : ℕ) : Option (State A) :=
+def approve (s : VState A) (caller sp : A) (v : ℕ) : Option (VState A) :=
   if V.approveOk s caller sp v then some (s.setAllowance caller sp v) else none
 
 /-! ## Supply changes -/
 
 /-- The mint entry point (`mint(dst, v)`, USDT `issue(v)` with `dst = owner`). -/
-def mint (s : State A) (caller dst : A) (v : ℕ) : Option (State A) :=
+def mint (s : VState A) (caller dst : A) (v : ℕ) : Option (VState A) :=
   if !V.mintAuth.allows s.admin caller dst then none
   else if V.zero.receiver && decide (dst = 0) then none
   else if V.zeroMintReverts && decide (v = 0) then none
@@ -424,7 +424,7 @@ def mint (s : State A) (caller dst : A) (v : ℕ) : Option (State A) :=
   else some { s with supply := s.supply + v, bal := s.bal + single dst (V.units s v) }
 
 /-- The burn entry point (`burn(src, v)`, USDT `redeem`, BNB `burn`, STA `destroy`). -/
-def burn (s : State A) (caller src : A) (v : ℕ) : Option (State A) :=
+def burn (s : VState A) (caller src : A) (v : ℕ) : Option (VState A) :=
   if !V.burnAuth.allows s.admin caller src then none
   else if V.zero.sender && decide (src = 0) then none
   else if V.zeroBurnReverts && decide (v = 0) then none
@@ -434,14 +434,14 @@ def burn (s : State A) (caller src : A) (v : ℕ) : Option (State A) :=
 /-! ## Ether (WETH9) -/
 
 /-- WETH9 `deposit()` with `value` wei: credits `value` tokens. -/
-def deposit (s : State A) (caller : A) (value : ℕ) : Option (State A) :=
+def deposit (s : VState A) (caller : A) (value : ℕ) : Option (VState A) :=
   if V.supply = .ether then
     some { s with bal := s.bal + single caller value, ether := s.ether + value }
   else none
 
 /-- WETH9 `withdraw(wad)`: debits `wad`, then sends `wad` wei to `caller`; `sendOk` is
 whether the recipient's code accepts it (the call reverts otherwise). -/
-def withdraw (s : State A) (caller : A) (wad : ℕ) (sendOk : Bool) : Option (State A) :=
+def withdraw (s : VState A) (caller : A) (wad : ℕ) (sendOk : Bool) : Option (VState A) :=
   if V.supply ≠ .ether then none
   else if s.bal caller < wad then none
   else if s.ether < wad then none
@@ -449,7 +449,7 @@ def withdraw (s : State A) (caller : A) (wad : ℕ) (sendOk : Bool) : Option (St
   else some { s with bal := s.bal - single caller wad, ether := s.ether - wad }
 
 /-- An unknown selector with `value` wei. -/
-def fallbackCall (s : State A) (caller : A) (value : ℕ) : Option (State A) :=
+def fallbackCall (s : VState A) (caller : A) (value : ℕ) : Option (VState A) :=
   match V.fallback with
   | .revert => none
   | .accept => some { s with ether := s.ether + value }
@@ -458,23 +458,23 @@ def fallbackCall (s : State A) (caller : A) (value : ℕ) : Option (State A) :=
 /-! ## Administration (USDT, AMPL) -/
 
 /-- USDT `pause()`/`unpause()` by `caller`. -/
-def setPaused (s : State A) (caller : A) (b : Bool) : Option (State A) :=
+def setPaused (s : VState A) (caller : A) (b : Bool) : Option (VState A) :=
   if V.pausable && decide (caller = s.admin) then some { s with paused := b } else none
 
 /-- USDT `addBlackList(u)`/`removeBlackList(u)` by `caller`. -/
-def setBlacklisted (s : State A) (caller u : A) (b : Bool) : Option (State A) :=
+def setBlacklisted (s : VState A) (caller u : A) (b : Bool) : Option (VState A) :=
   if V.blacklist && decide (caller = s.admin) then
     some { s with blacklisted := Function.update s.blacklisted u b }
   else none
 
 /-- USDT `destroyBlackFunds(u)`: zeroes a blacklisted balance and lowers the supply. -/
-def destroyBlackFunds (s : State A) (caller u : A) : Option (State A) :=
+def destroyBlackFunds (s : VState A) (caller u : A) : Option (VState A) :=
   if V.blacklist && decide (caller = s.admin) && s.blacklisted u then
     some { s with bal := s.bal - single u (s.bal u), supply := s.supply - s.bal u }
   else none
 
 /-- USDT `setParams(bps, max)`: requires `bps < 20`, `max < 50`; stores `max · 10^decimals`. -/
-def setParams (s : State A) (caller : A) (bps mx : ℕ) : Option (State A) :=
+def setParams (s : VState A) (caller : A) (bps mx : ℕ) : Option (VState A) :=
   if decide (V.fee = .bpsCapped) && decide (caller = s.admin) && decide (bps < 20) &&
       decide (mx < 50) then
     some { s with feeBps := bps, feeMax := mx * V.feeUnit }
@@ -482,7 +482,7 @@ def setParams (s : State A) (caller : A) (bps mx : ℕ) : Option (State A) :=
 
 /-- AMPL `rebase` by the monetary policy, to the new supply `S` (capped at `maxSupply`):
 `_gonsPerFragment = TOTAL_GONS / _totalSupply`; every balance changes, no gons move. -/
-def rebase (s : State A) (caller : A) (S : ℕ) : Option (State A) :=
+def rebase (s : VState A) (caller : A) (S : ℕ) : Option (VState A) :=
   if V.rebasing && decide (caller = s.admin) && decide (0 < S) then
     some { s with supply := min S V.maxSupply, scale := V.totalGons / min S V.maxSupply }
   else none
@@ -490,14 +490,14 @@ def rebase (s : State A) (caller : A) (S : ℕ) : Option (State A) :=
 /-! ## Calls and their observable outcome -/
 
 /-- The state change of a call by `caller`. -/
-def step (s : State A) (caller : A) : Call A → Option (State A)
+def step (s : VState A) (caller : A) : Call A → Option (VState A)
   | .transfer dst v => V.transfer s caller dst v
   | .transferFrom src dst v => V.transferFrom s caller src dst v
   | .approve sp v => V.approve s caller sp v
   | .other value => V.fallbackCall s caller value
 
 /-- Whether the call passes the guards (a failure after them is an arithmetic one). -/
-def guardOk (s : State A) (caller : A) : Call A → Bool
+def guardOk (s : VState A) (caller : A) : Call A → Bool
   | .transfer dst v => V.moveOk s caller dst v
   | .transferFrom src dst v => V.moveOk s src dst v
   | .approve sp v => V.approveOk s caller sp v
@@ -517,7 +517,7 @@ def failWith {σ : Type} (s : σ) : OnFail → Result σ
   | .returnFalse => .ok s (.word false)
 
 /-- The observable outcome of a call by `caller`. -/
-def call (s : State A) (caller : A) (c : Call A) : Result (State A) :=
+def call (s : VState A) (caller : A) (c : Call A) : Result (VState A) :=
   match V.step s caller c with
   | Option.some s' => .ok s' (V.retData c)
   | Option.none => failWith s (if V.guardOk s caller c then V.arithFail else V.guardFail)
@@ -548,7 +548,7 @@ inductive Op (A : Type) where
   | rebase (caller : A) (S : ℕ)
 
 /-- One operation; `none` = it fails. -/
-def stepOp (s : State A) : Op A → Option (State A)
+def stepOp (s : VState A) : Op A → Option (VState A)
   | .call c op => V.step s c op
   | .mint c d v => V.mint s c d v
   | .burn c src v => V.burn s c src v
@@ -562,7 +562,7 @@ def stepOp (s : State A) : Op A → Option (State A)
   | .rebase c S => V.rebase s c S
 
 /-- A sequence of operations; a failed one leaves the state unchanged. -/
-def exec (s : State A) : List (Op A) → State A
+def exec (s : VState A) : List (Op A) → VState A
   | [] => s
   | op :: ops => exec ((V.stepOp s op).getD s) ops
 
@@ -665,38 +665,38 @@ namespace Variant
 
 variable {A : Type} [DecidableEq A] [Zero A]
 
-theorem standard_balanceOf (s : State A) (a : A) : (standard : Variant A).balanceOf s a = s.bal a :=
+theorem standard_balanceOf (s : VState A) (a : A) : (standard : Variant A).balanceOf s a = s.bal a :=
   rfl
 
-theorem standard_totalSupply (s : State A) : (standard : Variant A).totalSupply s = s.supply := rfl
+theorem standard_totalSupply (s : VState A) : (standard : Variant A).totalSupply s = s.supply := rfl
 
-theorem standard_move (s : State A) (src dst : A) (v : ℕ) :
+theorem standard_move (s : VState A) (src dst : A) (v : ℕ) :
     (standard : Variant A).move s src dst v = (s.toToken.transfer src dst v).map s.withToken := by
   unfold move credit Token.transfer
   simp only [units, feeOf, standard, Bool.false_eq_true, ↓reduceIte, Nat.not_lt_zero,
-    State.toToken]
-  by_cases h : s.bal src < v <;> simp [h, State.withToken]
+    VState.toToken]
+  by_cases h : s.bal src < v <;> simp [h, VState.withToken]
 
-theorem standard_spend (s : State A) (o sp : A) (v : ℕ) :
+theorem standard_spend (s : VState A) (o sp : A) (v : ℕ) :
     (standard : Variant A).spend s o sp v = (s.toToken.spend o sp v).map s.withToken := by
   unfold spend Token.spend
   simp only [standard, Bool.false_and, Bool.false_eq_true, ↓reduceIte, reduceCtorEq,
-    Infinite.test, decide_eq_true_eq, State.toToken]
+    Infinite.test, decide_eq_true_eq, VState.toToken]
   by_cases h1 : s.allowance o sp = MAX
   · simp [h1]; rfl
   by_cases h2 : s.allowance o sp < v
   · simp [h1, h2]
   · simp [h1, h2]; rfl
 
-theorem standard_moveOk (s : State A) (src dst : A) (v : ℕ) :
+theorem standard_moveOk (s : VState A) (src dst : A) (v : ℕ) :
     (standard : Variant A).moveOk s src dst v = true := by
   simp [moveOk, standard]
 
-theorem standard_transfer (s : State A) (c d : A) (v : ℕ) :
+theorem standard_transfer (s : VState A) (c d : A) (v : ℕ) :
     (standard : Variant A).transfer s c d v = (s.toToken.transfer c d v).map s.withToken := by
   simp only [transfer, standard_moveOk, ↓reduceIte, standard_move]
 
-theorem standard_transferFrom (s : State A) (c src d : A) (v : ℕ) :
+theorem standard_transferFrom (s : VState A) (c src d : A) (v : ℕ) :
     (standard : Variant A).transferFrom s c src d v =
       (s.toToken.transferFrom c src d v).map s.withToken := by
   simp only [transferFrom, standard_moveOk, ↓reduceIte, standard_spend, Option.bind_map,
@@ -706,29 +706,29 @@ theorem standard_transferFrom (s : State A) (c src d : A) (v : ℕ) :
   rw [Function.comp_apply, standard_move]
   rfl
 
-theorem standard_approve (s : State A) (c sp : A) (v : ℕ) :
+theorem standard_approve (s : VState A) (c sp : A) (v : ℕ) :
     (standard : Variant A).approve s c sp v = some (s.withToken (s.toToken.approve c sp v)) := by
-  simp [approve, approveOk, standard, Token.approve, State.withToken_setAllowance]
+  simp [approve, approveOk, standard, Token.approve, VState.withToken_setAllowance]
 
-theorem standard_mint (s : State A) (c d : A) (v : ℕ) :
+theorem standard_mint (s : VState A) (c d : A) (v : ℕ) :
     (standard : Variant A).mint s c d v = (s.toToken.mint d v).map s.withToken := by
   unfold mint Token.mint
   simp only [standard, Auth.allows, Bool.not_true, Bool.false_eq_true, ↓reduceIte,
-    Bool.false_and, units, State.toToken]
-  by_cases h : MAX < s.supply + v <;> simp [h, State.withToken]
+    Bool.false_and, units, VState.toToken]
+  by_cases h : MAX < s.supply + v <;> simp [h, VState.withToken]
 
-theorem standard_burn (s : State A) (c src : A) (v : ℕ) :
+theorem standard_burn (s : VState A) (c src : A) (v : ℕ) :
     (standard : Variant A).burn s c src v = (s.toToken.burn src v).map s.withToken := by
   unfold burn Token.burn
   simp only [standard, Auth.allows, Bool.not_true, Bool.false_eq_true, ↓reduceIte,
-    Bool.false_and, units, State.toToken]
-  by_cases h : s.bal src < v <;> simp [h, State.withToken]
+    Bool.false_and, units, VState.toToken]
+  by_cases h : s.bal src < v <;> simp [h, VState.withToken]
 
-theorem oz_move (s : State A) (src dst : A) (v : ℕ) :
+theorem oz_move (s : VState A) (src dst : A) (v : ℕ) :
     (oz : Variant A).move s src dst v = (s.toToken.transfer src dst v).map s.withToken :=
   standard_move s src dst v
 
-theorem oz_moveOk (s : State A) (src dst : A) (v : ℕ) :
+theorem oz_moveOk (s : VState A) (src dst : A) (v : ℕ) :
     (oz : Variant A).moveOk s src dst v = (!decide (src = 0) && !decide (dst = 0)) := by
   simp [moveOk, oz, standard]
 
@@ -738,7 +738,7 @@ theorem ozTransfer_eq_transfer (t : Token A) {src dst : A} (hs : src ≠ 0) (hd 
   simp only [Token.ozTransfer, Token.ozUpdate, Token.transfer, hs, hd, ↓reduceIte]
   by_cases h : t.balanceOf src < v <;> simp [h]
 
-theorem oz_transfer (s : State A) (c d : A) (v : ℕ) :
+theorem oz_transfer (s : VState A) (c d : A) (v : ℕ) :
     (oz : Variant A).transfer s c d v = (s.toToken.ozTransfer c d v).map s.withToken := by
   rw [transfer, oz_moveOk, oz_move]
   by_cases hc : c = 0
@@ -747,11 +747,11 @@ theorem oz_transfer (s : State A) (c d : A) (v : ℕ) :
   · simp [hd, Token.ozTransfer]
   simp [hc, hd, ozTransfer_eq_transfer _ hc hd]
 
-theorem oz_spend (s : State A) (o sp : A) (v : ℕ) :
+theorem oz_spend (s : VState A) (o sp : A) (v : ℕ) :
     (oz : Variant A).spend s o sp v = (s.toToken.ozSpend o sp v).map s.withToken := by
   unfold spend Token.ozSpend Token.ozApprove
   simp only [oz, standard, Bool.false_and, Bool.false_eq_true, ↓reduceIte, reduceCtorEq,
-    Infinite.test, decide_eq_true_eq, Bool.true_and, Bool.or_eq_true, State.toToken]
+    Infinite.test, decide_eq_true_eq, Bool.true_and, Bool.or_eq_true, VState.toToken]
   by_cases h1 : s.allowance o sp < MAX
   · have h1' : ¬ MAX ≤ s.allowance o sp := by omega
     by_cases h2 : s.allowance o sp < v
@@ -764,7 +764,7 @@ theorem oz_spend (s : State A) (o sp : A) (v : ℕ) :
   · have h1' : MAX ≤ s.allowance o sp := by omega
     simp [h1, h1']; rfl
 
-theorem oz_transferFrom (s : State A) (c src d : A) (v : ℕ) :
+theorem oz_transferFrom (s : VState A) (c src d : A) (v : ℕ) :
     (oz : Variant A).transferFrom s c src d v =
       (s.toToken.ozTransferFrom c src d v).map s.withToken := by
   rw [transferFrom, oz_moveOk, oz_spend, Option.bind_map, Token.ozTransferFrom, Option.map_bind]
@@ -778,7 +778,7 @@ theorem oz_transferFrom (s : State A) (c src d : A) (v : ℕ) :
   rw [Function.comp_apply, oz_move, Function.comp_apply, ozTransfer_eq_transfer _ hs hd]
   rfl
 
-theorem oz_approve (s : State A) (c sp : A) (v : ℕ) :
+theorem oz_approve (s : VState A) (c sp : A) (v : ℕ) :
     (oz : Variant A).approve s c sp v = (s.toToken.ozApprove c sp v).map s.withToken := by
   unfold approve approveOk Token.ozApprove
   by_cases hc : c = 0
@@ -787,23 +787,23 @@ theorem oz_approve (s : State A) (c sp : A) (v : ℕ) :
   · simp [oz, standard, hs]
   simp [oz, standard, hc, hs]; rfl
 
-theorem oz_mint (s : State A) (c d : A) (v : ℕ) :
+theorem oz_mint (s : VState A) (c d : A) (v : ℕ) :
     (oz : Variant A).mint s c d v = (s.toToken.ozMint d v).map s.withToken := by
   unfold mint Token.ozMint Token.ozUpdate
   by_cases hd : d = 0
   · simp [oz, standard, Auth.allows, hd]
   by_cases h : MAX < s.supply + v
-  · simp [oz, standard, Auth.allows, hd, h, State.toToken]
-  · simp [oz, standard, Auth.allows, hd, h, State.toToken, units, State.withToken]
+  · simp [oz, standard, Auth.allows, hd, h, VState.toToken]
+  · simp [oz, standard, Auth.allows, hd, h, VState.toToken, units, VState.withToken]
 
-theorem oz_burn (s : State A) (c src : A) (v : ℕ) :
+theorem oz_burn (s : VState A) (c src : A) (v : ℕ) :
     (oz : Variant A).burn s c src v = (s.toToken.ozBurn src v).map s.withToken := by
   unfold burn Token.ozBurn Token.ozUpdate
   by_cases hs : src = 0
   · simp [oz, standard, Auth.allows, hs]
   by_cases h : s.bal src < v
-  · simp [oz, standard, Auth.allows, hs, h, State.toToken, units]
-  · simp [oz, standard, Auth.allows, hs, h, State.toToken, units, State.withToken]
+  · simp [oz, standard, Auth.allows, hs, h, VState.toToken, units]
+  · simp [oz, standard, Auth.allows, hs, h, VState.toToken, units, VState.withToken]
 
 end Variant
 
