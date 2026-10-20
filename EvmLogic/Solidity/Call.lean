@@ -4,17 +4,12 @@ import EvmLogic.Solidity.Abi
 /-!
 # Top-level calls into a compiled contract
 
-`callMsg code token caller data gas …` is a top-level, zero-value message call of the
-contract with code `code` deployed at `token`; `start` is the machine `initMachine` builds
-for it; `processMessageCall_callMsg` reduces `processMessageCall` to `run` from `start`
-(no EIP-7702 delegation: before Prague or without authorizations, and the code is not a
-delegation designator; the target is not a precompile).
+`processMessageCall_callMsg` reduces a top-level zero-value call (`callMsg`) to `run` from
+the machine `start`, assuming no EIP-7702 delegation and a non-precompile target.
 -/
 
 namespace EvmLogic.Solidity
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-- A top-level, zero-value message call of the contract at `token` (running `code`) from
 `caller` with calldata `data`, `gas` gas and the given warm sets. -/
@@ -45,7 +40,6 @@ def start (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : 
   frame := Frame.init msg (.call 0 0) (w, tr)
   parents := []
 
-/-- Code of size other than 23 is not an EIP-7702 delegation designator. -/
 theorem delegatedAddress?_of_size {code : ByteArray} (h : code.size ≠ 23) :
     delegatedAddress? code = none := by
   simp only [delegatedAddress?, isValidDelegation, eoaDelegatedCodeLength]

@@ -3,35 +3,18 @@ import EvmLogic.Program.Logic
 /-!
 # Gas monotonicity: shared interface
 
-Definitions shared by the generic gas-lockstep theorem (`GasMono/Lockstep*.lean`) and the
-code-specific facts about the compiled Solmate contracts (`defi/…/Refinement/LowGas*.lean`).
-
-The argument: a frame running code in which `GAS` only ever feeds the gas argument of the
-immediately following `CALL`/`STATICCALL` executes in lockstep with the same frame given more
-gas (`exec_bump` covers every other instruction), except where a child call fails in the
-low-gas run. If, after every call site, a failed call makes the frame revert
-(`FailureReverts`), then a *successful* low-gas frame did exactly what the high-gas frame does.
-
-* `boundaries code`: the instruction boundaries, scanning from 0 and skipping `PUSH`
-  immediates (the same scan as jump-destination analysis).
-* `GasFeedsCall code n`: every `GAS` at a boundary below `n` is immediately followed by `CALL`
-  or `STATICCALL`.
-* `RegionOk code n`: execution never leaves `[0, n)`: `n - 1` is a boundary holding `INVALID`,
-  and every valid jump destination is below `n`. (Solidity appends data after a final
-  `INVALID`; it is unreachable.)
-* `FailureReverts code p`: from any machine executing `code` at `pc = p` with `0` on top of the
-  stack (a failed call's success flag), the frame halts, and not successfully.
+Code predicates for the gas lockstep (`GasMono/Lockstep.lean`): if every `GAS` feeds the next
+`CALL`/`STATICCALL` (`GasFeedsCall`), execution stays below a final `INVALID` (`RegionOk`), and a
+failed call makes the frame fail (`FailureReverts`), then a successful low-gas frame does exactly
+what the same frame does with more gas.
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLogic.Program EvmLean.Interpreter
 
 /-- Number of immediate bytes following opcode byte `b` (`PUSH1`–`PUSH32`). -/
 def immSize (b : UInt8) : Nat := if 0x60 ≤ b.toNat ∧ b.toNat ≤ 0x7f then b.toNat - 0x5f else 0
 
-/-- Instruction boundaries from `p`, with structural fuel. -/
 def boundariesFrom (code : ByteArray) : (fuel p : Nat) → List Nat
   | 0, _ => []
   | fuel + 1, p =>
@@ -63,9 +46,8 @@ instance (code : ByteArray) (n : Nat) : Decidable (RegionOk code n) :=
 def callReturnPoints (code : ByteArray) (n : Nat) : List Nat :=
   (boundaries code).filterMap fun q => if q < n ∧ Bytes.getD code q = 0x5a then some (q + 2) else none
 
-/-- After a failed call returning to `p`, the frame cannot succeed: from any machine executing
-`code` at `pc = p` with `0` on top of the stack, the frame halts with a revert or an exceptional
-halt. -/
+/-- After a failed call returning to `p` (`0` on top of the stack), the frame halts without
+success. -/
 def FailureReverts (code : ByteArray) (p : Nat) : Prop :=
   ∀ m : Machine, m.frame.code = code → m.frame.pc = p → m.frame.stack.head? = some 0 →
     Halts m (fun _ o => ∀ out, o ≠ .success out)

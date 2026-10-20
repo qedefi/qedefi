@@ -5,28 +5,14 @@ import EvmLogic.Program.Call
 /-!
 # What one instruction can change
 
-`exec_frame`: for **every** opcode and every machine, a successful instruction
-
-* keeps the frame's identity (`SameFrame`: message, code, kind, snapshot, parents, context),
-  the created accounts, and never increases the frame's gas;
-* keeps the storage and code of every account that holds code and is not *writable* by the
-  frame (`Writable`: the executing account of a non-static frame) — `SSTORE` only writes the
-  executing account and needs a non-static frame, value transfers and `SELFDESTRUCT` change
-  balances only, and an account holding code is never empty, so it is never deleted;
-* if it requests a child message call (`Action.call`), the child's message is described by
-  `CallOk`: depth, gas taken from the caller, and — for a non-static child — who the caller is
-  and which code runs; if it requests a creation (`Action.create`), the new account holds no
-  code (`CreateOk`).
-
-This is the frame condition the nested-call simulation (`EvmLogic.Program.Nested.Run`) needs: code that is
-not running at a protected account (or runs statically) cannot touch its storage, whatever it
-does.
+`exec_frame`: every successful instruction keeps the frame's identity and never increases its
+gas, keeps storage and code of every code-holding account the frame may not write
+(`Writable`), and describes any requested child call (`CallOk`) or creation (`CreateOk`). This
+is the frame condition of the nested-call simulation (`EvmLogic.Program.Nested.Run`).
 -/
 
 namespace EvmLogic.Program.Nested
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-! ## Accounts that stay unchanged -/
 
@@ -45,8 +31,6 @@ theorem Keep.sload {p : Address} {w w' : World} (h : Keep p w w') (k : Word) :
 
 theorem Keep.code {p : Address} {w w' : World} (h : Keep p w w') : w'.code p = w.code p := h.2
 
-/-- `modifyState` with a function keeping storage and code keeps every account holding code
-(such an account is never empty, so it is never deleted). -/
 theorem keep_modifyState {w : World} {a p : Address} {f : Account → Account}
     (hf : ∀ acc, (f acc).storage = acc.storage ∧ (f acc).code = acc.code)
     (hp : (w.code p).size ≠ 0) : Keep p w (modifyState w a f) := by
@@ -91,7 +75,6 @@ theorem keep_transferValue {w : World} {msg : Message} {p : Address} (hp : (w.co
   · exact keep_moveEther hp
   · exact keep_refl p w
 
-/-- `modifyState` with a function keeping code keeps the size of every account's code. -/
 theorem size_code_modifyState {w : World} {a b : Address} {f : Account → Account}
     (hf : ∀ acc, (f acc).code = acc.code) :
     ((modifyState w a f).code b).size = (w.code b).size := by
@@ -119,7 +102,6 @@ theorem size_code_of_deployable {w : World} {a : Address} (h : accountDeployable
   simp only [accountDeployable, Bool.and_eq_true, decide_eq_true_eq] at h
   exact h.1.2
 
-/-- A byte array that is not empty has positive size. -/
 theorem size_ne_zero_of_ne_empty {b : ByteArray} (h : ¬ b = ByteArray.empty) : b.size ≠ 0 := by
   intro h0; apply h
   cases b with
@@ -160,8 +142,6 @@ theorem InstrFrame.trans {m₁ m₂ m₃ : Machine} (h₁ : InstrFrame m₁ m₂
     unfold Writable at *
     rw [h₁.same.msg]; exact hw
 
-/-- A machine update that only touches the frame's mutable fields (and not the world, or only
-keeping it) is an `InstrFrame` step, when gas does not increase. -/
 theorem instrFrame_iff {m m' : Machine} :
     InstrFrame m m' ↔ m'.ctx = m.ctx ∧ m'.precompiles = m.precompiles ∧
       m'.originalWorld = m.originalWorld ∧ m'.parents = m.parents ∧
@@ -180,17 +160,15 @@ theorem instrFrame_iff {m m' : Machine} :
 
 /-- What a child message call requested by an instruction looks like. -/
 structure CallOk (m m' : Machine) (req : CallRequest) : Prop where
-  /-- One level deeper. -/
   depth : req.msg.depth = m.frame.msg.depth + 1
   /-- Within the depth limit. -/
   depthLe : req.msg.depth ≤ Gas.stackDepthLimit
   /-- The child's gas was taken from the caller. -/
   gas : m'.frame.gasLeft + req.msg.gas ≤ m.frame.gasLeft
-  /-- A message call. -/
   target : req.msg.target = some req.msg.currentTarget
-  /-- A non-static child comes from a non-static frame and either runs at the caller's own
-  account (`CALLCODE`, `DELEGATECALL`) or is a `CALL` from the caller's account running the
-  callee's code (when the callee holds no EIP-7702 designator). -/
+  /-- A non-static child comes from a non-static frame and runs at the caller's account
+  (`CALLCODE`, `DELEGATECALL`), or is a `CALL` from it running the callee's code (no EIP-7702
+  designator). -/
   nonstatic : req.msg.isStatic = false → m.frame.msg.isStatic = false ∧
     (req.msg.currentTarget = m.frame.msg.currentTarget ∨
       (req.msg.caller = m.frame.msg.currentTarget ∧
@@ -200,9 +178,7 @@ structure CallOk (m m' : Machine) (req : CallRequest) : Prop where
 
 /-- What a creation requested by an instruction looks like. -/
 structure CreateOk (m m' : Machine) (msg : Message) : Prop where
-  /-- A creation. -/
   target : msg.target = none
-  /-- Not static. -/
   static : msg.isStatic = false
   /-- The new account holds no code. -/
   code : (m'.world.code msg.currentTarget).size = 0
@@ -240,22 +216,17 @@ def ActionOk (m m' : Machine) : Action → Prop
     | none => simp [hf, hd]
     | some d => simp [hf, hd]
 
-/-- The gas handed to a callee never exceeds what the caller is charged for it (the stipend
-of a value transfer is covered by the value-transfer cost). -/
 theorem messageCallGas_subCall_le {v g L mc e : Nat} (h : v = 0 ∨ Gas.callStipend ≤ e) :
     (Gas.messageCallGas v g L mc e).subCall ≤ (Gas.messageCallGas v g L mc e).cost := by
   unfold Gas.messageCallGas
   split <;> split <;> simp only <;> omega
 
-/-- A call's charge followed by a refund of the callee's gas never increases the caller's
-gas. -/
 theorem refund_le {v g L mc e E G : Nat} (h : v = 0 ∨ Gas.callStipend ≤ e)
     (hle : (Gas.messageCallGas v g L mc e).cost + E ≤ G) :
     G - ((Gas.messageCallGas v g L mc e).cost + E) + (Gas.messageCallGas v g L mc e).subCall ≤ G := by
   have := messageCallGas_subCall_le (g := g) (L := L) (mc := mc) h
   omega
 
-/-- The side condition of `refund_le` for a value transfer. -/
 theorem stipend_side (value : Word) (e : Nat) :
     value.toNat = 0 ∨ Gas.callStipend ≤ e + (if value = 0 then 0 else Gas.callValue) := by
   by_cases hv : value = 0
@@ -269,7 +240,6 @@ abbrev ExecPost (m : Machine) (a : Action) (m' : Machine) : Prop :=
   InstrFrame m m' ∧ ActionOk m m' a
 
 set_option maxHeartbeats 1000000 in
-/-- The `CALL*` family. -/
 theorem execCall_frame (k : CallKind) (m : Machine) : Wp (execCall k) (ExecPost m) m := by
   cases k <;> simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
     setReturnData, genericCall] <;>
@@ -283,7 +253,6 @@ theorem execCall_frame (k : CallKind) (m : Machine) : Wp (execCall k) (ExecPost 
         | (intro h; simp_all)))
 
 set_option maxHeartbeats 1000000 in
-/-- `CREATE` and `CREATE2`. -/
 theorem execCreate_frame (b : Bool) (m : Machine) : Wp (execCreate b) (ExecPost m) m := by
   have hk : ∀ p, ¬ m.world.code p = ByteArray.empty → ¬ Writable m p →
       Keep p m.world (incrementNonce m.world m.frame.msg.currentTarget) :=
@@ -299,14 +268,12 @@ theorem execCreate_frame (b : Bool) (m : Machine) : Wp (execCreate b) (ExecPost 
         | (simp only [Gas.maxMessageCallGas]; omega)
         | (rw [size_code_incrementNonce]; exact size_code_of_deployable (by assumption))))
 
-/-- `SSTORE` writes only the executing account, and only in a non-static frame. -/
 theorem execSstore_frame (m : Machine) : Wp execSstore (ExecPost m) m := by
   simp [ExecPost, execSstore, accessStorageKey, requireNonStatic, instrFrame_iff, ActionOk,
     setStorage]
   intro _ _ _ _ _ _ _
   constructor <;> intro _ _ hs p _ hw <;> exact keep_sstore (fun h => hw ⟨h, hs⟩)
 
-/-- `SELFDESTRUCT` moves the balance only. -/
 theorem execSelfdestruct_frame (m : Machine) : Wp execSelfdestruct (ExecPost m) m := by
   simp [ExecPost, execSelfdestruct, requireNonStatic, instrFrame_iff, ActionOk]
   intro x _ _ _ _

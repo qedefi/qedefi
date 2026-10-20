@@ -4,31 +4,14 @@ import EvmLogic.GasMono.Interface
 /-!
 # Gas monotonicity: where the program counter can go
 
-The lockstep simulation (`GasMono/Lockstep.lean`) needs to know, at every machine of a frame,
-which instruction comes next: every `GAS` is followed by a `CALL`/`STATICCALL`
-(`GasFeedsCall`), and after every call the code reverts on failure (`FailureReverts`). Both are
-facts about instruction **boundaries** (`boundaries`, the jump-destination scan), so the
-simulation carries the invariant that the pc is a boundary below the region end `n`
-(`PcOk`), and this file proves it is preserved:
-
-* `exec_pc`: for every opcode, a successful instruction continuing with `Action.next` moves the
-  pc to `pc + 1 + immOf op` (the `PUSH` immediate skipped) or to a valid jump destination;
-  one requesting a call or a creation leaves it in place (`resume` advances it by one).
-* `next_mem_boundaries`, `boundaries_sorted`: the next boundary after a boundary is the
-  sequential successor; `mem_boundaries_of_validJumpDests`: valid jump destinations are
-  boundaries (the two scans are the same).
-* `pcOk_next`: under `RegionOk`, the invariant survives every instruction that continues.
-
-`CallsFed code n` (decidable, like the frozen interface predicates): every
-`CALL`-family or `CREATE`-family byte at a boundary below `n` immediately follows a `GAS` at a
-boundary. With `GasFeedsCall` it implies that only `CALL` and `STATICCALL` run, and that every
-call returns to a point of `callReturnPoints`.
+The lockstep carries the invariant `PcOk`: the pc is an instruction boundary below the region
+end. `exec_pc` gives the pc after every instruction and `pcOk_of_exec` preserves `PcOk`.
+`CallsFed` (every `CALL`/`CREATE`-family byte follows a `GAS`) with `GasFeedsCall` makes every
+call a `CALL`/`STATICCALL` returning to a point of `callReturnPoints` (`callsFed_call`).
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-! ## Boundaries -/
 
@@ -54,7 +37,6 @@ theorem boundariesFrom_ge {code : ByteArray} :
       · have := ih h; unfold nextPc at this; exact ⟨by omega, this.2⟩
     · simp at h
 
-/-- Boundaries lie inside the code. -/
 theorem lt_size_of_mem_boundaries {code : ByteArray} {q : Nat} (h : q ∈ boundaries code) :
     q < code.size := (boundariesFrom_ge h).2
 
@@ -81,7 +63,6 @@ theorem next_mem_boundariesFrom {code : ByteArray} :
       · exact List.mem_cons_of_mem _ (ih (by unfold nextPc; omega) h hn)
     · simp at h
 
-/-- **The sequential successor of a boundary is a boundary** (inside the code). -/
 theorem next_mem_boundaries {code : ByteArray} {q : Nat} (h : q ∈ boundaries code)
     (hn : nextPc code q < code.size) : nextPc code q ∈ boundaries code :=
   next_mem_boundariesFrom (by omega) h hn
@@ -105,7 +86,6 @@ theorem boundariesFrom_sorted {code : ByteArray} :
       · exact ih hq hr hlt
     · simp at hq
 
-/-- **Boundaries are sorted**: a later boundary is at least the successor. -/
 theorem boundaries_sorted {code : ByteArray} {q r : Nat} (hq : q ∈ boundaries code)
     (hr : r ∈ boundaries code) (hlt : q < r) : nextPc code q ≤ r :=
   boundariesFrom_sorted hq hr hlt
@@ -160,7 +140,6 @@ theorem jumpDestLoop_mem {code : ByteArray} :
           · rw [← hn] at h'; exact .inr (List.mem_cons_of_mem _ h')
     · exact .inl h
 
-/-- **Valid jump destinations are boundaries** holding `JUMPDEST`. -/
 theorem mem_boundaries_of_validJumpDests {code : ByteArray} {i : Nat}
     (h : isValidJumpDest (validJumpDests code) i = true) :
     i ∈ boundaries code ∧ Bytes.getD code i = 0x5b := by
@@ -194,7 +173,6 @@ theorem readsGas_iff (op : Opcode) : ReadsGas op ↔ readsGasB op = true := by
   cases op <;> simp [ReadsGas, readsGasB]
 
 set_option maxRecDepth 4000 in
-/-- The immediate length agrees with the scan's. -/
 theorem immOf_decode (fork : Fork) (b : UInt8) : immOf (Opcode.decode fork b) = immSize b := by
   have key : ∀ n, n < 256 → immOf (Opcode.decode fork (UInt8.ofNat n)) = immSize (UInt8.ofNat n) := by
     cases fork <;> decide
@@ -202,7 +180,6 @@ theorem immOf_decode (fork : Fork) (b : UInt8) : immOf (Opcode.decode fork b) = 
   rwa [UInt8.ofNat_toNat] at this
 
 set_option maxRecDepth 4000 in
-/-- The bytes of the instructions reading the gas. -/
 theorem readsGas_decode (fork : Fork) (b : UInt8) (h : readsGasB (Opcode.decode fork b) = true) :
     b = 0x5a ∨ b = 0xf0 ∨ b = 0xf1 ∨ b = 0xf2 ∨ b = 0xf4 ∨ b = 0xf5 ∨ b = 0xfa := by
   have key : ∀ n, n < 256 → readsGasB (Opcode.decode fork (UInt8.ofNat n)) = true →
@@ -262,16 +239,12 @@ theorem exec_noChild (op : Opcode) (hop : readsGasB op = false) (m : Machine) :
 /-- The pc is an instruction boundary inside the region `[0, n)`. -/
 def PcOk (code : ByteArray) (n pc : Nat) : Prop := pc ∈ boundaries code ∧ pc < n
 
-/-- The region end is inside the code. -/
 theorem RegionOk.lt_size {code : ByteArray} {n : Nat} (h : RegionOk code n) :
     n - 1 < code.size := lt_size_of_mem_boundaries h.2.1
 
-/-- A boundary of the region is inside the code. -/
 theorem PcOk.lt_size {code : ByteArray} {n pc : Nat} (h : PcOk code n pc) : pc < code.size :=
   lt_size_of_mem_boundaries h.1
 
-/-- **The invariant survives every instruction that continues**: a sequential successor of a
-boundary that is not the final `INVALID`, or a valid jump destination. -/
 theorem pcOk_next {code : ByteArray} {n pc pc' : Nat} (hreg : RegionOk code n)
     (hpc : PcOk code n pc) (hb : Bytes.getD code pc ≠ 0xfe)
     (h : pc' = nextPc code pc ∨ isValidJumpDest (validJumpDests code) pc' = true) :
@@ -285,7 +258,6 @@ theorem pcOk_next {code : ByteArray} {n pc pc' : Nat} (hreg : RegionOk code n)
   · obtain ⟨hm, h5b⟩ := mem_boundaries_of_validJumpDests h
     exact ⟨hm, Nat.lt_of_not_le (fun hge => hjd pc' hm hge h5b)⟩
 
-/-- `INVALID` halts. -/
 theorem exec_invalid_run (fork : Fork) (m : Machine) :
     (exec (Opcode.decode fork 0xfe)).run m = .error .invalidOpcode := by
   cases fork <;> rfl
@@ -309,7 +281,6 @@ theorem pcOk_of_exec {code : ByteArray} {n : Nat} (hreg : RegionOk code n) {m m'
     · left; rw [h1, nextPc, hg]
     · right; rw [← hj]; exact h1
 
-/-- After a call at a boundary (`CALL`/`STATICCALL`, no immediate), the return point. -/
 theorem pcOk_return {code : ByteArray} {n pc : Nat} (hreg : RegionOk code n)
     (hpc : PcOk code n pc) (hb : Bytes.getD code pc = 0xf1 ∨ Bytes.getD code pc = 0xfa) :
     PcOk code n (pc + 1) := by
@@ -325,8 +296,7 @@ def IsCallByte (b : UInt8) : Prop :=
 instance (b : UInt8) : Decidable (IsCallByte b) := inferInstanceAs (Decidable (_ ∨ _))
 
 /-- Every `CALL`-family or `CREATE`-family byte at a boundary below `n` immediately follows a
-`GAS` at a boundary. (With `GasFeedsCall`: the byte is `CALL` or `STATICCALL`, and the call
-returns to a point of `callReturnPoints code n`.) -/
+`GAS` at a boundary. -/
 def CallsFed (code : ByteArray) (n : Nat) : Prop :=
   ∀ q ∈ boundaries code, q < n → IsCallByte (Bytes.getD code q) →
     0 < q ∧ q - 1 ∈ boundaries code ∧ Bytes.getD code (q - 1) = 0x5a

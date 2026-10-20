@@ -3,26 +3,16 @@ import EvmLogic.Program.Nested.Frame
 /-!
 # One step of the machine: frame condition and gas
 
-Lifts the per-instruction frame condition (`exec_frame`) to `step`:
-
-* `step_cases`: a step either stays in the frame (`InstrFrame`), ends the frame from a machine
-  related by `InstrFrame` (`finishFrame`), or pushes a child described by `CallOk` /
-  `CreateOk`;
-* `frameResult_world`: the world a finished frame hands over is its current world, the
-  current world with the created code deposited (creations), or its snapshot;
-* `step_gas`, `stepN_gas`: the total gas of the frame stack (`gasSum`) never increases, for
-  every machine whose precompiles return at most the gas they are given (`PrecompilesOk`; the
-  standard ones do, `precompilesOk_standard`).
+Lifts `exec_frame` to `step`: `step_cases` (a step stays in the frame, ends it, or pushes a
+child described by `CallOk`/`CreateOk`), and `step_gas`/`stepN_gas` (the total gas of the frame
+stack, `gasSum`, never increases when the precompiles satisfy `PrecompilesOk`).
 -/
 
 namespace EvmLogic.Program.Nested
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-! ## Precompiles -/
 
-/-- Every standard precompile returns at most the gas it was given. -/
 theorem precompile_gasLeft_le (crypto : Crypto) (fork : Fork) (a : Address) (input : ByteArray)
     (gas : Nat) : (Precompile.run crypto fork a input gas).gasLeft ≤ gas := by
   unfold Precompile.run
@@ -51,7 +41,6 @@ def resultGas : StepResult → Nat
   | .running m => gasSum m
   | .done r => r.gasLeft
 
-/-- Code deposit leaves at most the gas it was given. -/
 theorem depositCode_le {fork : Fork} {g g' : Nat} {out : ByteArray}
     (h : depositCode fork g out = .ok g') : g' ≤ g := by
   unfold depositCode at h
@@ -65,7 +54,6 @@ theorem depositCode_le {fork : Fork} {g g' : Nat} {out : ByteArray}
       · simp only [h1, h2, h3, ite_false, Except.ok.injEq] at h
         omega
 
-/-- A finished frame hands over at most its gas. -/
 theorem frameResult_gasLeft_le (m : Machine) (o : Outcome) :
     (frameResult m o).1.gasLeft ≤ m.frame.gasLeft := by
   cases o with
@@ -79,8 +67,6 @@ theorem frameResult_gasLeft_le (m : Machine) (o : Outcome) :
   | revert out => simp [frameResult]
   | halt e => simp [frameResult]
 
-/-- What a finished frame hands over: its world, its world with deposited code (a successful
-creation), or its rollback snapshot. -/
 theorem frameResult_world (m : Machine) (o : Outcome) :
     (frameResult m o).2.1 = m.world ∨
       (m.frame.kind = .create ∧ ∃ out, (frameResult m o).2.1 =
@@ -105,7 +91,6 @@ theorem frameResult_world (m : Machine) (o : Outcome) :
 @[simp] theorem resume_createdAccounts (M : Machine) (r : ChildResult) :
     (resume M r).createdAccounts = M.createdAccounts := rfl
 
-/-- `finishFrame` does not increase the total gas. -/
 theorem finishFrame_gas (m : Machine) (o : Outcome) :
     resultGas (finishFrame m o) ≤ gasSum m := by
   rw [finishFrame_eq]
@@ -122,8 +107,8 @@ theorem finishFrame_gas (m : Machine) (o : Outcome) :
 
 /-! ## The shape of a step -/
 
-/-- **How a step goes.** It ends the frame, stays in it, or pushes a child, and in each case
-the instruction's frame condition holds. -/
+/-- **How a step goes**: it ends the frame, stays in it, or pushes a child, and the
+instruction's frame condition holds. -/
 theorem step_cases (m : Machine) :
     (∃ m' o, step m = finishFrame m' o ∧ InstrFrame m m') ∨
     (∃ m', step m = .running m' ∧ InstrFrame m m') ∨
@@ -155,8 +140,6 @@ def pushCall (m : Machine) (req : CallRequest) : Machine :=
     frame := Frame.init req.msg (.call req.retOffset req.retSize) (m.world, m.transient)
     parents := m.frame :: m.parents }
 
-/-- A requested call either runs a precompile to completion (the world afterwards is the
-world after the value transfer or the snapshot) or pushes the child frame. -/
 theorem launchCall_cases (m : Machine) (req : CallRequest) :
     (∃ r w t, launchCall m req = resume { m with world := w, transient := t } r ∧
       (w = transferValue m.world req.msg ∨ w = m.world) ∧
@@ -202,7 +185,6 @@ theorem step_gas {m : Machine} (hpre : PrecompilesOk m.precompiles) :
       hf.same.parents]
     omega
 
-/-- The constants of the machine never change. -/
 theorem step_consts {m m' : Machine} (h : step m = .running m') :
     m'.ctx = m.ctx ∧ m'.precompiles = m.precompiles := by
   rcases step_cases m with ⟨m₁, o, h', hf⟩ | ⟨m₁, h', hf⟩ | ⟨m₁, req, h', hf, -⟩ |
@@ -217,7 +199,7 @@ theorem step_consts {m m' : Machine} (h : step m = .running m') :
       exact ⟨hf.same.ctx, hf.same.precompiles⟩
   · rw [h'] at h; cases h; exact ⟨hf.same.ctx, hf.same.precompiles⟩
 
-/-- Over any number of steps, gas never increases and the constants stay. -/
+/-- Over any number of steps, gas never increases. -/
 theorem stepN_gas {m : Machine} (hpre : PrecompilesOk m.precompiles) :
     ∀ n, resultGas (stepN n m) ≤ gasSum m := by
   intro n

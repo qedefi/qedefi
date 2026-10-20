@@ -4,27 +4,13 @@ import EvmLogic.GasMono.Interface
 /-!
 # Abstract interpretation: the stack effect of every instruction
 
-The certified abstract interpreter (`AbsInt/*.lean`) tracks, per reachable program point, the
-exact stack depth and, for some stack slots, the value (a constant or a symbolic immutable).
-Its soundness rests on one theorem about the concrete semantics, proved here once for all
-opcodes with the weakest-precondition calculus of `EvmLogic.Program.Nested.Wp`:
-
-* `effOf op`: the shape of `op` (`Eff`): generic (`gen pops pushes`: pops `pops` words,
-  pushes `pushes` unknown words, continues at `pc + 1`), halting (never continues), or one of
-  the shapes the interpreter tracks precisely (`PUSHn`, `DUPn`, `SWAPn`, `JUMP`, `JUMPI`,
-  `SHL`, `SUB`, `AND`, the `CALL` and `CREATE` families).
-* `exec_eff`: whatever `exec op` does from `m`, if it succeeds the result satisfies
-  `EffPost (effOf op) m`: a `.next` action moves pc and stack as the shape says
-  (`NextPost`), a `.call`/`.create` action leaves the frame at the same pc with the arguments
-  popped (`ChildPost`), and stops, reverts and exceptional halts constrain nothing.
-* `exec_eff_byte`: the same for the decoded byte, for every fork (`decode fork b` is
-  `decode .osaka b` or `invalid`, which always halts).
+`exec_eff`: whatever `exec op` does, a successful result satisfies `EffPost (effOf op)`: a
+`.next` moves pc and stack as the shape `Eff` says, a `.call`/`.create` keeps the pc with the
+arguments popped. `exec_eff_byte` lifts this to decoded bytes in every fork.
 -/
 
 namespace EvmLogic.AbsInt
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The shape of an instruction. -/
 inductive Eff where
@@ -32,25 +18,18 @@ inductive Eff where
   | gen (pops pushes : Nat)
   /-- Never continues (`STOP`, `RETURN`, `REVERT`, `INVALID`, `SELFDESTRUCT`). -/
   | halt
-  /-- `PUSHn` (`n` immediate bytes). -/
   | push (n : Nat)
   /-- `DUP(n+1)`. -/
   | dup (n : Nat)
   /-- `SWAP(n+1)`. -/
   | swap (n : Nat)
-  /-- `JUMP`. -/
   | jump
-  /-- `JUMPI`. -/
   | jumpi
-  /-- `SHL`. -/
   | shl
-  /-- `SUB`. -/
   | sub
-  /-- `AND`. -/
   | and
   /-- A member of the `CALL` family, popping `pops` arguments (target second from the top). -/
   | call (pops : Nat)
-  /-- A member of the `CREATE` family, popping `pops` arguments. -/
   | create (pops : Nat)
   deriving DecidableEq
 
@@ -111,17 +90,13 @@ def NextPost : Eff → Machine → Machine → Prop
   | .call p, m, m' => m'.frame.pc = m.frame.pc + 1 ∧ Shape p 1 m.frame.stack m'.frame.stack
   | .create p, m, m' => m'.frame.pc = m.frame.pc + 1 ∧ Shape p 1 m.frame.stack m'.frame.stack
 
-/-- The machine an instruction hands to `step` when it requests a child: same pc, arguments
-popped. -/
 def Popped (p : Nat) (m m' : Machine) : Prop :=
   m'.frame.pc = m.frame.pc ∧ p ≤ m.frame.stack.length ∧ m'.frame.stack = m.frame.stack.drop p
 
-/-- A `.call` action: only from the `CALL` family. -/
 def CallPost : Eff → Machine → Machine → Prop
   | .call p, m, m' => Popped p m m'
   | _, _, _ => False
 
-/-- A `.create` action: only from the `CREATE` family. -/
 def CreatePost : Eff → Machine → Machine → Prop
   | .create p, m, m' => Popped p m m'
   | _, _, _ => False
@@ -134,13 +109,11 @@ def EffPost (e : Eff) (m : Machine) : Action → Machine → Prop
   | .stop _, _ => True
   | .revert _, _ => True
 
-/-- Arguments popped by a member of the `CALL` family. -/
 def callPops : CallKind → Nat
   | .call | .callcode => 7
   | .delegatecall | .staticcall => 6
 
 set_option maxHeartbeats 1000000 in
-/-- The `CALL` family. -/
 theorem execCall_eff (k : CallKind) (m : Machine) :
     Wp (execCall k) (EffPost (.call (callPops k)) m) m := by
   cases k <;> simp [EffPost, callPops, execCall, memoryExpansion, expandMemory, readMemory,
@@ -148,7 +121,6 @@ theorem execCall_eff (k : CallKind) (m : Machine) :
   intros <;> subst_vars <;> simp_all
 
 set_option maxHeartbeats 1000000 in
-/-- The `CREATE` family. -/
 theorem execCreate_eff (b : Bool) (m : Machine) :
     Wp (execCreate b) (EffPost (.create (if b then 4 else 3)) m) m := by
   cases b <;> simp [EffPost, execCreate, requireNonStatic, memoryExpansion, expandMemory,
@@ -193,7 +165,6 @@ theorem decode_osaka_or_invalid_lt : ∀ n < 256, ∀ fork : Fork,
       Opcode.decode fork n.toUInt8 = .invalid := by
   intro n hn fork; cases fork <;> revert n <;> decide +kernel
 
-/-- Every byte decodes, in every fork, as in Osaka or to `invalid`. -/
 theorem decode_osaka_or_invalid (fork : Fork) (b : UInt8) :
     Opcode.decode fork b = Opcode.decode .osaka b ∨ Opcode.decode fork b = .invalid := by
   simpa using decode_osaka_or_invalid_lt b.toNat b.toNat_lt fork
@@ -208,16 +179,13 @@ theorem exec_eff_byte (fork : Fork) (b : UInt8) (m : Machine) :
   · exact exec_eff _ m
   · simp [exec]
 
-/-- The width of a `PUSHn` shape agrees with `immSize`. -/
 def pushWidthOk (b : UInt8) : Bool :=
   match byteEff b with
   | .push n => n == GasMono.immSize b
   | _ => true
 
-/-- `pushWidthOk` holds for every byte. -/
 theorem pushWidthOk_lt : ∀ k < 256, pushWidthOk k.toUInt8 = true := by decide +kernel
 
-/-- `PUSHn` bytes push their `immSize` immediate bytes. -/
 theorem byteEff_push {b : UInt8} {n : Nat} (h : byteEff b = .push n) : n = GasMono.immSize b := by
   have := pushWidthOk_lt b.toNat b.toNat_lt
   rw [show b.toNat.toUInt8 = b by simp] at this
@@ -234,7 +202,6 @@ def CallTarget (m : Machine) (req : CallRequest) : Prop :=
       req.msg.code = m.world.code (Word.toAddress t) ∧ req.msg.disablePrecompiles = false)
 
 set_option maxHeartbeats 1000000 in
-/-- The target of a member of the `CALL` family. -/
 theorem execCall_target (k : CallKind) (m : Machine) :
     Wp (execCall k) (fun a _ => ∀ req, a = .call req → CallTarget m req) m := by
   cases k <;> simp [CallTarget, execCall, memoryExpansion, expandMemory, readMemory,

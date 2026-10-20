@@ -3,10 +3,8 @@ import EvmLean
 /-!
 # Decoding and jump-destination facts
 
-* Decoding is fork-independent except for `0x1e` (`CLZ`, Osaka), and `decode` inverts
-  `toByte` in Osaka (in earlier forks except for `CLZ`).
-* Valid jump destinations are `JUMPDEST` bytes (`isValidJumpDest_validJumpDests`), and
-  never lie past the end of the code.
+Decoding is fork-independent except for `0x1e` (`CLZ`); valid jump destinations are
+`JUMPDEST` bytes; and `jdCheck` decides validity of a jump destination in linear kernel time.
 -/
 
 section
@@ -15,7 +13,6 @@ namespace EvmLean
 
 namespace Opcode
 
-/-- Decoding does not depend on the fork, except for `0x1e` (`CLZ`). -/
 theorem decode_eq_decode_cancun (fk : Fork) (b : UInt8) (h : b ≠ 0x1e) :
     decode fk b = decode .cancun b := by
   have key : ∀ i : Fin 256, UInt8.ofNat i.val ≠ 0x1e →
@@ -24,14 +21,12 @@ theorem decode_eq_decode_cancun (fk : Fork) (b : UInt8) (h : b ≠ 0x1e) :
   have := key ⟨b.toNat, b.toNat_lt⟩ (by simpa using h)
   simpa using this
 
-/-- In Osaka, `decode` inverts `toByte`. -/
 theorem decode_toByte_osaka (op : Opcode) : decode .osaka op.toByte = op := by
   cases op
   all_goals first
     | rfl
     | (rename_i n; revert n; decide)
 
-/-- Before Osaka, `decode` inverts `toByte` on every opcode except `CLZ`. -/
 theorem decode_toByte (fk : Fork) (op : Opcode) (h : op ≠ .clz) : decode fk op.toByte = op := by
   have hb : op.toByte ≠ 0x1e := by
     cases op
@@ -46,7 +41,6 @@ end Opcode
 
 namespace Interpreter
 
-/-- A valid jump destination is a `JUMPDEST` byte of the code. -/
 theorem isValidJumpDest_validJumpDests {code : ByteArray} {d : Nat}
     (h : isValidJumpDest (validJumpDests code) d = true) : code[d]? = some 0x5b := by
   apply validJumpDests_true
@@ -55,7 +49,6 @@ theorem isValidJumpDest_validJumpDests {code : ByteArray} {d : Nat}
   | none => simp [h'] at h
   | some v => simp_all
 
-/-- A valid jump destination lies inside the code. -/
 theorem lt_size_of_isValidJumpDest {code : ByteArray} {d : Nat}
     (h : isValidJumpDest (validJumpDests code) d = true) : d < code.size := by
   have := isValidJumpDest_validJumpDests h
@@ -73,26 +66,14 @@ section
 /-!
 ## Jump destinations of large code, in linear time
 
-`validJumpDests code` (`EvmLean.Interpreter.JumpDest`) scans the code with array indexing.
-In the kernel a `ByteArray` is a list, so each `code[pc]` costs `O(pc)` and checking one jump
-destination of a 16 KB contract by `decide +kernel` takes many minutes. Here the same bitmap
-is computed by a single pass over `code.data.toList` (`jdBits`), and
-`isValidJumpDest_validJumpDests_eq` shows that the two agree. A jump-destination fact about
-concrete code is then a linear-time kernel computation:
-
-```
-example : isValidJumpDest (validJumpDests code) 0x4e = true :=
-  isValidJumpDest_of_jdCheck (by kernel_decide)
-```
+In the kernel a `ByteArray` is a list, so `validJumpDests` (array indexing, `O(pc)` per byte)
+takes minutes on a 16 KB contract. `jdBits` computes the same bitmap in one pass over the list.
 -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean EvmLean.Interpreter
 
-open EvmLean.Interpreter
-
-/-- The jump-destination bitmap of a byte list, computed by one pass (`fuel` bounds the number
-of instructions; `bs.length + 1` suffices). -/
+/-- The jump-destination bitmap of a byte list, in one pass (`bs.length + 1` fuel suffices). -/
 def jdBits : Nat → List UInt8 → List Bool
   | 0, _ => []
   | _ + 1, [] => []
@@ -129,7 +110,6 @@ private theorem take_of_false (l : List Bool) (pc k : Nat)
   rw [show pc + 1 + k = pc + (k + 1) by omega, List.take_add, drop_eq_replicate l pc hf,
     List.take_replicate]
 
-/-- The array scan and the list scan agree. -/
 theorem jumpDestLoop_toList (code : ByteArray) :
     ∀ (fuel pc : Nat) (acc : Array Bool), acc.size = code.size →
       (∀ i, pc ≤ i → acc.toList[i]?.getD false = false) → code.size - pc < fuel →
@@ -182,7 +162,6 @@ theorem jumpDestLoop_toList (code : ByteArray) :
       rw [List.drop_eq_nil_of_le (by omega), List.take_of_length_le (by omega)]
       cases fuel <;> simp [jdBits]
 
-/-- The bitmap of `validJumpDests`, as a list, is `jdBits`. -/
 theorem toList_validJumpDests (code : ByteArray) :
     (validJumpDests code).toList = jdBits (code.data.toList.length + 1) code.data.toList := by
   unfold validJumpDests
@@ -193,7 +172,6 @@ theorem toList_validJumpDests (code : ByteArray) :
     simp only [Array.toList_replicate, List.getElem?_replicate]
     split <;> rfl
 
-/-- `isValidJumpDest` on `validJumpDests` is `jdCheck`. -/
 theorem isValidJumpDest_validJumpDests_eq (code : ByteArray) (d : Nat) :
     isValidJumpDest (validJumpDests code) d = jdCheck code d := by
   unfold isValidJumpDest jdCheck

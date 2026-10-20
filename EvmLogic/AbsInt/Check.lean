@@ -3,32 +3,14 @@ import EvmLogic.AbsInt.Domain
 /-!
 # Abstract interpretation: the abstract step and the certificate
 
-* `asucc e imm q s`: the abstract successors of the abstract state `(q, s)` at an instruction
-  of shape `e` with abstract immediate `imm`; `none` when a jump target is not a constant
-  (the interpreter gives up). Calls and creations continue at `q + 1` with an unknown word
-  (the child's result) on top of the popped stack. Stack underflows have no successor (the
-  concrete instruction halts).
-* `callOk allowed e s`: at a `CALL`-family instruction the target (the second stack item) is
-  `allowed`; `CREATE`-family instructions are rejected.
-* `Tree`: the table of the certificate, a binary tree over the instruction scan holding the
-  abstract stacks reached at each instruction. Lookups (`find`) and insertions (`add`) follow
-  the same comparisons, so they agree with no balance or ordering invariant (`find_add`); the
-  tree is built balanced from the sorted scan only for speed.
-* `explore`: a worklist algorithm computing the reachable abstract states, failing (`none`)
-  on an unresolved jump, a disallowed call target, a creation, or a pc that is not an
-  instruction. It runs in the kernel (`decide +kernel`), with structural fuel.
-* `explore_sound`: its result is **closed** (`Closed`: every recorded state is allowed and
-  has all its successors recorded) and contains the initial state; `certify_sound` adds that
-  every table entry is right for the code (`InsOk`).
-
-The soundness of the abstract step against the concrete semantics is `asucc_next` (a `.next`
-action), `asucc_child` (the continuation after a call or creation) and `callOk_target`.
+`asucc` is the abstract step (`none` on a non-constant jump target); `explore` computes the
+reachable abstract states in a `Tree` keyed by pc, in the kernel (`decide +kernel`).
+`certify_sound`: its result is a `Cert` (closed, right for the code, containing the start).
+`find`/`add` agree without any balance invariant (`find_add`); balancing is only for speed.
 -/
 
 namespace EvmLogic.AbsInt
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLogic.Program EvmLean.Interpreter
 
 /-! ## The abstract step -/
 
@@ -129,7 +111,6 @@ theorem StackOk.set : ∀ {s : AStack} {st : List Word} (n : Nat) {a : AVal} {w 
   | [], _ :: _, _, _, _, h, _ => h.elim
   | _ :: _, [], _, _, _, h, _ => h.elim
 
-/-- A stack of shape `Shape p k` after `st` is described by `k` unknowns over `s.drop p`. -/
 theorem stackOk_shape {p k : Nat} {s : AStack} {st st' : List Word} (h : StackOk ρ s st)
     (hsh : Shape p k st st') : StackOk ρ (List.replicate k .top ++ s.drop p) st' := by
   obtain ⟨hp, hl, hd⟩ := hsh
@@ -260,7 +241,6 @@ theorem asucc_next {e : Eff} {imm : AVal} {q : Nat} {s : AStack} {succs : List (
     simp only [hp, ↓reduceIte, List.mem_singleton, exists_eq_left]
     exact ⟨by omega, stackOk_shape (k := 1) hs hsh⟩
 
-/-- The continuation after a child: `q + 1`, any word over the popped stack. -/
 theorem asucc_popped {p : Nat} {imm : AVal} {q : Nat} {s : AStack}
     {succs : List (Nat × AStack)} {e : Eff} (he : e = .call p ∨ e = .create p)
     {m m' : Machine} (hs : StackOk ρ s m.frame.stack) (hpop : Popped p m m')
@@ -298,15 +278,12 @@ theorem callOk_target {allowed : AVal → Bool} {p : Nat} {s : AStack} {st : Lis
 /-- The certificate table: a binary tree with, per instruction (pc, shape, abstract
 immediate), the abstract stacks reached there. -/
 inductive Tree where
-  /-- Empty. -/
   | leaf
-  /-- An instruction and its stacks. -/
   | node (l : Tree) (q : Nat) (e : Eff) (imm : AVal) (ss : List AStack) (r : Tree)
 
 namespace Tree
 open EvmLean EvmLogic.Program
 
-/-- The entry at `q`. -/
 def find (q : Nat) : Tree → Option (Eff × AVal × List AStack)
   | leaf => none
   | node l k e imm ss r =>
@@ -332,12 +309,10 @@ def build : (fuel n : Nat) → List (Nat × Eff × AVal) → Tree × List (Nat �
       match build f (n - 1 - (n - 1) / 2) l₂ with
       | (rt, l₃) => (node lt q e imm [] rt, l₃)
 
-/-- No stacks recorded yet. -/
 def Fresh : Tree → Prop
   | leaf => True
   | node l _ _ _ ss r => Fresh l ∧ ss = [] ∧ Fresh r
 
-/-- Every entry satisfies `P`. -/
 def All (P : Nat → Eff → AVal → Prop) : Tree → Prop
   | leaf => True
   | node l q e imm _ r => All P l ∧ P q e imm ∧ All P r
@@ -436,7 +411,6 @@ end Tree
 def InT (t : Tree) (q : Nat) (s : AStack) : Prop :=
   ∃ e imm ss, t.find q = some (e, imm, ss) ∧ s ∈ ss
 
-/-- The recorded state `(q, s)` is allowed and its successors satisfy `R`. -/
 def StepOk (allowed : AVal → Bool) (t : Tree) (R : Nat → AStack → Prop) (q : Nat)
     (s : AStack) : Prop :=
   ∃ e imm ss, t.find q = some (e, imm, ss) ∧ callOk allowed e s = true ∧
@@ -501,8 +475,6 @@ theorem find_add_some {t : Tree} {q q' : Nat} {s : AStack} {e : Eff} {imm : AVal
   · subst hq; simp [h]
   · simp [hq, h]
 
-/-- The exploration invariant: recorded states are allowed, with successors recorded or
-pending. -/
 def ExInv (allowed : AVal → Bool) (t : Tree) (work : List (Nat × AStack)) : Prop :=
   ∀ q s, InT t q s → StepOk allowed t (fun q' s' => InT t q' s' ∨ (q', s') ∈ work) q s
 
@@ -618,11 +590,8 @@ def certify (allowed : AVal → Bool) (code : ByteArray) (syms : List (Nat × Na
 /-- **A certificate**: a closed table, right for the code, containing the initial state. -/
 structure Cert (ρ : Nat → Address) (allowed : AVal → Bool) (code : ByteArray) (init : AStack)
     (t : Tree) : Prop where
-  /-- Closed under the abstract step. -/
   closed : Closed allowed t
-  /-- Every entry is right for the code. -/
   ins : t.All (InsOk ρ code)
-  /-- The initial state. -/
   init : InT t 0 init
 
 /-- **The certificate computed by `certify` is sound.** -/

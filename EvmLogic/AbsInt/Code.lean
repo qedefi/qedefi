@@ -5,20 +5,15 @@ import EvmLogic.Program.Nested.Run
 /-!
 # Abstract interpretation: the code of every account during a frame
 
-No instruction changes the code of any account (`exec_code`: `SSTORE` writes storage, value
-transfers and `SELFDESTRUCT` move balances — an account whose balance or nonce changes keeps
-its code, and an account deleted for being empty had none —, `CREATE` only bumps the
-sender's nonce). Code is only deposited by a finished creation frame. So a frame that starts
-no creation and whose children keep the code (`frame_code`) runs, from its start to its exit,
-in worlds with the code of its starting world.
+No instruction changes any account's code (`exec_code`); code is only deposited by a finished
+creation. `reaches_allWorlds` lifts a code-only property (`CodeProp`) to every world of a
+message call, e.g. `noDesignator` (no EIP-7702 designator).
 -/
 
 section
 
 namespace EvmLogic.AbsInt
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested EvmLogic.GasMono
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested EvmLogic.GasMono
 
 /-- Two worlds with the same code at every address. -/
 def SameCode (w w' : World) : Prop := ∀ a, w'.code a = w.code a
@@ -28,11 +23,9 @@ theorem SameCode.refl (w : World) : SameCode w w := fun _ => rfl
 theorem SameCode.trans {w₁ w₂ w₃ : World} (h₁ : SameCode w₁ w₂) (h₂ : SameCode w₂ w₃) :
     SameCode w₁ w₃ := fun a => (h₂ a).trans (h₁ a)
 
-/-- An empty byte array is `.empty`. -/
 theorem eq_empty_of_size {b : ByteArray} (h : b.size = 0) : b = .empty :=
   Classical.byContradiction fun hne => size_ne_zero_of_ne_empty hne h
 
-/-- `modifyState` with a function keeping code keeps every account's code. -/
 theorem code_modifyState {w : World} {a : Address} {f : Account → Account}
     (hf : ∀ acc, (f acc).code = acc.code) : SameCode w (modifyState w a f) := by
   intro b
@@ -76,13 +69,11 @@ theorem code_sstore' (w : World) (a : Address) (k v : Word) : SameCode w (w.ssto
 abbrev CodePost (m : Machine) (_ : Action) (m' : Machine) : Prop := SameCode m.world m'.world
 
 set_option maxHeartbeats 1000000 in
-/-- The `CALL` family. -/
 theorem execCall_code (k : CallKind) (m : Machine) : Wp (execCall k) (CodePost m) m := by
   cases k <;> simp [CodePost, SameCode.refl, execCall, memoryExpansion, expandMemory,
     readMemory, setReturnData, genericCall]
 
 set_option maxHeartbeats 1000000 in
-/-- The `CREATE` family. -/
 theorem execCreate_code (b : Bool) (m : Machine) : Wp (execCreate b) (CodePost m) m := by
   cases b <;> simp [CodePost, SameCode.refl, code_incrementNonce, execCreate, requireNonStatic,
     memoryExpansion, expandMemory, readMemory, setReturnData]
@@ -124,11 +115,9 @@ theorem within_code {m m' m₁ : Machine} {b : UInt8} {a : Action}
     · exact h.trans (code_transferValue _ _)
     · exact h
 
-/-- A pushed call frame starts after the value transfer. -/
 theorem pushCall_code (m : Machine) (req : CallRequest) : SameCode m.world (pushCall m req).world :=
   code_transferValue _ _
 
-/-- The world a call frame hands back: its own (success) or its snapshot (failure). -/
 theorem resumeAfter_world {p : Frame} {ps : List Frame} {mf : Machine} {o : Outcome}
     {ko ks : Nat} (hk : mf.frame.kind = .call ko ks) :
     (resumeAfter p ps mf o).world = mf.world ∨
@@ -147,24 +136,12 @@ section
 /-!
 ## Code properties along a whole message call
 
-A property `P` of worlds that depends only on the code (`CodeProp`: invariant under `SameCode`)
-and survives the deposit of code that passed the deposit checks (no `0xEF` prefix, EIP-3541)
-holds of every world a message call goes through: instructions keep all code (`exec_code`),
-value transfers and nonce bumps keep it, a finished creation deposits checked code, and a
-failed frame restores a snapshot, which held `P` when it was taken (`AllWorlds`: the current
-world and every frame's snapshot). `reaches_allWorlds`: every machine a top-level message call
-reaches (`Reaches`, before Prague or without authorizations) satisfies `AllWorlds P` if the
-world before the call does.
-
-Instance (`noDesignator`): an account holds no EIP-7702 designator (designators start with
-`0xEF`, so no deployed code is one). Only a transaction's authorizations can delegate an
-account, and they are applied before the call.
+A failed frame restores its snapshot, so `AllWorlds` tracks the current world and every
+frame's snapshot. Deposited code never starts with `0xEF` (EIP-3541), so it is no designator.
 -/
 
 namespace EvmLogic.AbsInt
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- A property of worlds depending only on their code, kept by checked code deposits. -/
 structure CodeProp (P : World → Prop) : Prop where
@@ -180,7 +157,6 @@ def AllWorlds (P : World → Prop) (m : Machine) : Prop :=
 
 variable {P : World → Prop}
 
-/-- A finished frame hands over a world satisfying `P`. -/
 theorem frameResult_P (hP : CodeProp P) {mf : Machine} (h : AllWorlds P mf) (o : Outcome) :
     P (frameResult mf o).2.1 := by
   have hs : P mf.frame.snapshot.1 := h.2 _ List.mem_cons_self
@@ -199,7 +175,6 @@ theorem frameResult_P (hP : CodeProp P) {mf : Machine} (h : AllWorlds P mf) (o :
   | revert out => simpa [frameResult] using hs
   | halt e => simpa [frameResult] using hs
 
-/-- `finishFrame` keeps `AllWorlds`. -/
 theorem finishFrame_allWorlds (hP : CodeProp P) {mf m' : Machine} {o : Outcome}
     (h : AllWorlds P mf) (hst : finishFrame mf o = .running m') : AllWorlds P m' := by
   rw [finishFrame_eq] at hst
@@ -215,7 +190,6 @@ theorem finishFrame_allWorlds (hP : CodeProp P) {mf m' : Machine} {o : Outcome}
     · exact hpar p List.mem_cons_self
     · exact hpar f (List.mem_cons_of_mem _ hf)
 
-/-- An instruction step keeps `AllWorlds`. -/
 theorem instr_allWorlds (hP : CodeProp P) {m m' : Machine} {a : Action} {op : Opcode}
     (h : AllWorlds P m) (he : (exec op).run m = .ok (a, m')) : AllWorlds P m' := by
   have hc := (exec_code op m).of_run he
@@ -227,7 +201,6 @@ theorem instr_allWorlds (hP : CodeProp P) {m m' : Machine} {a : Action} {op : Op
   · rw [hf.same.snapshot]; exact h.2 _ List.mem_cons_self
   · exact h.2 f (List.mem_cons_of_mem _ hf')
 
-/-- **One step keeps `AllWorlds`.** -/
 theorem step_allWorlds (hP : CodeProp P) {m m' : Machine} (h : AllWorlds P m)
     (hst : step m = .running m') : AllWorlds P m' := by
   unfold step at hst
@@ -276,7 +249,6 @@ theorem step_allWorlds (hP : CodeProp P) {m m' : Machine} (h : AllWorlds P m)
   · simp only [hpc, ↓reduceDIte] at hst
     exact finishFrame_allWorlds hP h hst
 
-/-- **Every machine of a run keeps `AllWorlds`.** -/
 theorem stepN_allWorlds (hP : CodeProp P) : ∀ (n : Nat) {m m' : Machine}, AllWorlds P m →
     stepN n m = .running m' → AllWorlds P m'
   | 0, _, _, h, hst => by simp only [stepN_zero, StepResult.running.injEq] at hst; exact hst ▸ h
@@ -289,7 +261,6 @@ theorem stepN_allWorlds (hP : CodeProp P) : ∀ (n : Nat) {m m' : Machine}, AllW
       rw [stepN_succ_of_running hs] at hst
       exact stepN_allWorlds hP n (step_allWorlds hP h hs) hst
 
-/-- Without authorizations to apply, top-level delegation keeps the world. -/
 theorem applyTopLevelDelegation_world {ctx : Context} {isPre : Address → Bool} {w : World}
     {msg : Message} (h : ctx.fork < .prague ∨ ctx.tx.authorizations = []) :
     (applyTopLevelDelegation ctx isPre w msg).1 = w := by
@@ -334,7 +305,6 @@ theorem reaches_allWorlds (hP : CodeProp P) {ctx : Context} {w : World} {tr : Tr
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
       subst hf; exact hw
 
-/-- Top-level delegation keeps the message's gas. -/
 theorem applyTopLevelDelegation_gas (ctx : Context) (isPre : Address → Bool) (w : World)
     (msg : Message) : (applyTopLevelDelegation ctx isPre w msg).2.1.gas = msg.gas := by
   unfold applyTopLevelDelegation
@@ -373,7 +343,6 @@ theorem Reaches.gas_le {ctx : Context} {w : World} {tr : TransientStorage} {msg 
 
 /-! ## No designator -/
 
-/-- A designator starts with `0xEF`. -/
 theorem getElem?_zero_of_delegated {code : ByteArray} {d : Address}
     (h : delegatedAddress? code = some d) : code[0]? = some 0xef := by
   unfold delegatedAddress? at h
@@ -400,14 +369,12 @@ theorem getElem?_zero_of_delegated {code : ByteArray} {d : Address}
 def NoDesignator (fork : Fork) (a : Address) (w : World) : Prop :=
   fork < .prague ∨ delegatedAddress? (w.code a) = none
 
-/-- `setCode` elsewhere keeps the code. -/
 theorem code_setCode_ne {w : World} {a b : Address} {out : ByteArray} (h : b ≠ a) :
     (setCode w b out).code a = w.code a := by
   unfold setCode modifyState World.code
   dsimp only
   split <;> simp [World.account, Std.ExtTreeMap.getD_erase, Std.ExtTreeMap.getD_insert, h]
 
-/-- `setCode` sets the code (or deletes an account left empty). -/
 theorem code_setCode_self (w : World) (a : Address) (out : ByteArray) :
     (setCode w a out).code a = out ∨ (setCode w a out).code a = .empty := by
   unfold setCode modifyState World.code

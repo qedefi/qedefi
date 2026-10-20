@@ -6,37 +6,19 @@ import EvmLogic.Program.Summary
 /-!
 # Calls: pushing the child frame, and callee summaries
 
-`CALL`, `STATICCALL` and `DELEGATECALL` in the step semantics, for a call that does start a
-child frame (enough gas, depth below 1024, for `CALL` an affordable value, a non-precompile
-target without EIP-7702 delegation or a fork before Prague):
-
-* `step_staticcall`, `step_call`, `step_delegatecall`: one `step` charges the caller
-  (`callCost`: EIP-2929 access cost, EIP-150 all-but-1/64 forwarding via
-  `Gas.messageCallGas`, value-transfer and new-account costs, memory expansion), warms the
-  target, clears the return data, and pushes `Frame.init msg (.call outOff outSize) snapshot`
-  for the child message `msg` (gas `(callGas …).subCall`, including the 2300 stipend when
-  value moves; for `CALL` the value is transferred in the world first). The caller's frame,
-  suspended, is `callerFrame …` (pc still at the `CALL*`).
-* `WP.call`: the **callee-summary rule**. If the child's frame `Halts` with `H` (e.g. by a
-  `FunctionSummary` of the callee's code applied to the fresh child machine), the caller
-  continues from `resumeAfter p ps mf o` for every outcome the summary allows.
-* `resumeAfter_success`, `resumeAfter_revert`, `resumeAfter_halt`: what the caller sees: the
-  success flag pushed, the output copied to `[outOff, outOff + min outSize |output|)`,
-  `RETURNDATA` set, unused child gas returned, the child's world (or the snapshot after a
-  failure), the child's logs and warm sets merged on success, and the pc advanced.
-* `step_staticcall_precompile`: a precompile runs to completion within the `step`.
+`step_call`/`step_staticcall`/`step_delegatecall` push the child frame with the exact charges
+(`callCost`). `WP.call` is the callee-summary rule: if the child frame `Halts` with `Hc`, the
+caller continues from `resumeAfter p ps mf o` (`resumeAfter_success`/`_revert`/`_halt`) for
+every end the summary allows. `WP.callNoValue`/`WP.call0` specialise it to value-free `CALL`.
 -/
 
 section
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-! ## Warm sets -/
 
-/-- Inserting an element that is already present changes nothing. -/
 theorem AddressSet.insert_of_contains {s : AddressSet} {a : Address} (h : s.contains a = true) :
     s.insert a = s := by
   apply Std.ExtTreeSet.ext_contains
@@ -46,11 +28,9 @@ theorem AddressSet.insert_of_contains {s : AddressSet} {a : Address} (h : s.cont
   · subst hx; simp [h]
   · simp [hx]
 
-/-- The substate with `a` warm. -/
 def _root_.EvmLean.Interpreter.Substate.warmAddr (sub : Substate) (a : Address) : Substate :=
   { sub with accessedAddresses := sub.accessedAddresses.insert a }
 
-/-- `accessAddress` warms the address and reports whether it already was warm. -/
 theorem run_accessAddress (m : Machine) (a : Address) :
     (accessAddress a).run m = pure (m.frame.sub.accessedAddresses.contains a,
       { m with frame := { m.frame with sub := m.frame.sub.warmAddr a } }) := by
@@ -62,7 +42,6 @@ theorem run_accessAddress (m : Machine) (a : Address) :
       pure_bind, Substate.warmAddr, AddressSet.insert_of_contains hw]
     rfl
 
-/-- `accessDelegation` does nothing before Prague or for code without a designator. -/
 theorem run_accessDelegation (m : Machine) (a : Address)
     (h : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code a) = none) :
     (accessDelegation a).run m = pure ((false, a, m.world.code a, 0), m) := by
@@ -75,24 +54,20 @@ theorem run_accessDelegation (m : Machine) (a : Address)
 
 /-! ## The charges of a call -/
 
-/-- Memory expansion for a call's input and output windows. -/
 def callExt (m : Machine) (inOff inSize outOff outSize : Word) : Gas.ExtendMemory :=
   Gas.extendMemory m.frame.memory.size [(inOff.toNat, inSize.toNat), (outOff.toNat, outSize.toNat)]
 
-/-- Memory after expansion for a call's windows. -/
 def callMemory (m : Machine) (inOff inSize outOff outSize : Word) : Memory :=
   (m.frame.memory.expand inOff.toNat inSize.toNat).expand outOff.toNat outSize.toNat
 
-/-- `Gas.messageCallGas` for a call to `to` with `value`, requesting `gas`, with account
-creation cost `create` and value-transfer cost `transfer` (both zero for `STATICCALL` and
-`DELEGATECALL`; see `createCost`, `transferCost`). -/
+/-- `Gas.messageCallGas` for a call; `create`/`transfer` are zero for `STATICCALL` and
+`DELEGATECALL` (see `createCost`, `transferCost`). -/
 def callGas (m : Machine) (gas value : Word) (to : Address) (create transfer : Nat)
     (inOff inSize outOff outSize : Word) : Gas.MessageCallGas :=
   Gas.messageCallGas value.toNat gas.toNat m.frame.gasLeft (callExt m inOff inSize outOff outSize).cost
     (Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + 0 + create + transfer)
 
-/-- Gas charged to the caller for the call (what the callee does not use comes back on
-return). -/
+/-- Gas charged to the caller for the call (unused child gas comes back on return). -/
 def callCost (m : Machine) (gas value : Word) (to : Address) (create transfer : Nat)
     (inOff inSize outOff outSize : Word) : Nat :=
   (callGas m gas value to create transfer inOff inSize outOff outSize).cost +
@@ -138,9 +113,8 @@ def childMsg (m : Machine) (caller to codeAddress : Address) (value : Word) (gas
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
-/-- **`STATICCALL` to a non-precompile pushes the child frame.** The child runs
-`m.world.code to` in a static context with gas `(callGas …).subCall` (EIP-150: at most all but
-1/64 of what is left after the access and memory costs) and the input window as calldata. -/
+/-- **`STATICCALL` to a non-precompile pushes the child frame**, with gas
+`(callGas …).subCall` (EIP-150 all-but-1/64) and the input window as calldata. -/
 theorem step_staticcall (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
     (hstk : m.frame.stack = gas :: toW :: inOff :: inSize :: outOff :: outSize :: rest)
     (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress toW)) = none)
@@ -177,10 +151,8 @@ theorem step_staticcall (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
 
 /-! ## `CALL` -/
 
-/-- **`CALL` to a non-precompile pushes the child frame.** The value moves from the caller to
-`to` (`transferValue`) before the child starts; the snapshot for rollback is the world before
-the transfer. Needs: not static or no value, an affordable value, enough gas, depth below the
-limit. -/
+/-- **`CALL` to a non-precompile pushes the child frame.** The value moves before the child
+starts; the rollback snapshot is the world before the transfer. -/
 theorem step_call {value : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
     (hstk : m.frame.stack = gas :: toW :: value :: inOff :: inSize :: outOff :: outSize :: rest)
     (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress toW)) = none)
@@ -271,7 +243,6 @@ theorem step_delegatecall (hcode : m.frame.code[m.frame.pc]? = some 0xf4)
 
 /-! ## Returning to the caller -/
 
-/-- `resume` keeps the machine constants and the parent's identity. -/
 theorem sameFrame_resume (M : Machine) (r : ChildResult) : SameFrame M (resume M r) :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
@@ -359,7 +330,6 @@ theorem resumeAfter_halt {p : Frame} {ps : List Frame} {mf : Machine} {e : Excep
     simp
   simp only [this, ite_true]
 
-/-- Returning one word into a 32-byte output window is an `MSTORE`. -/
 theorem returnMemory_ofWord (mem : Memory) (off : Nat) (w : Word) :
     returnMemory mem off 32 (Bytes.ofWord w) = mem.storeWord off w := by
   have hs : (Bytes.ofWord w).size = 32 := Bytes.size_ofWord w
@@ -369,13 +339,9 @@ theorem returnMemory_ofWord (mem : Memory) (off : Nat) (w : Word) :
   rw [he, hs]
   rfl
 
-/-- The EIP-2929 address access cost is at most 2600. -/
 theorem accessCost_le (warm : Bool) : Gas.accessCost warm ≤ 2600 := by
   cases warm <;> decide
 
-/-- `Gas.messageCallGas` without value, when the extra and memory costs are affordable:
-EIP-150 caps the forwarded gas at all but 1/64 of what is left, and the caller pays exactly the
-forwarded gas plus the extra cost. -/
 theorem messageCallGas_zero {g L mc extra : Nat} (h : extra + mc ≤ L) :
     Gas.messageCallGas (0 : Word).toNat g L mc extra =
       { cost := min g (Gas.maxMessageCallGas (L - mc - extra)) + extra,
@@ -385,10 +351,8 @@ theorem messageCallGas_zero {g L mc extra : Nat} (h : extra + mc ≤ L) :
 
 /-! ## The callee-summary rule -/
 
-/-- **Callee-summary rule.** If the next step of `m` pushes a child frame (`mc`, whose parent
-is the suspended caller frame `p`), and the child's frame `Halts` with `Hc` (for instance by a
-summary of the callee's code), then `m` continues, in the same frame, from the caller resumed
-after any end `(mf, o)` of the child that `Hc` allows. -/
+/-- **Callee-summary rule.** If `m` steps to a child frame `mc` (suspended caller `p`) whose
+frame `Halts` with `Hc`, then `m` continues from `resumeAfter p` of every end `Hc` allows. -/
 theorem WP.call {m mc : Machine} {p : Frame} {Q : Machine → Prop}
     {H Hc : Machine → Outcome → Prop}
     (hstep : step m = .running mc) (hpar : mc.parents = p :: m.parents)
@@ -405,8 +369,7 @@ theorem WP.call {m mc : Machine} {p : Frame} {Q : Machine → Prop}
   refine WP.of_steps ⟨n + 1, ?_, hsame⟩ (k mf o hs hH)
   rw [show n + 1 = 1 + n by omega, stepN_add_of_running (by rw [stepN_one, hstep]), hn]
 
-/-- The callee-summary rule for `STATICCALL` (see `step_staticcall`, `WP.call`): `Hc` is what
-the callee's frame, started fresh on the child message, is known to do. -/
+/-- The callee-summary rule for `STATICCALL` (`step_staticcall` + `WP.call`). -/
 theorem WP.staticcall {Q : Machine → Prop} {H Hc : Machine → Outcome → Prop}
     (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
     (hstk : m.frame.stack = gas :: toW :: inOff :: inSize :: outOff :: outSize :: rest)
@@ -443,33 +406,19 @@ end
 
 section
 
-/-!
-## The callee-summary rule for a value-free `CALL`
-
-`WP.callNoValue` is `WP.staticcall` (`EvmLogic.Program.Call`) for `CALL` with value `0`,
-the shape of every ERC-20 call a contract makes (`token.call(abi.encodeCall(transfer, …))`,
-Solmate's `SafeTransferLib`): no value moves (`transferValue` is the identity), no
-value-transfer or account-creation cost is charged, and the child frame is non-static iff the
-caller's is. The child message is `childMsg … 0 … true false …` and the caller resumes from
-`resumeAfter (callerFrame …)` after every end of the child that its summary allows.
--/
+/-! ## `CALL` without value (`WP.callNoValue`) -/
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
-/-- A `CALL` without value: the account-creation cost is zero. -/
 theorem createCost_zero (w : World) (a : Address) : createCost w 0 a = 0 := by
   simp [createCost]
 
-/-- A `CALL` without value: the value-transfer cost is zero. -/
 theorem transferCost_zero : transferCost 0 = 0 := by
   simp [transferCost]
 
-/-- No value moves for a child message of value `0`. -/
 theorem transferValue_childMsg_zero (m : Machine) (caller to : Address) (g : Nat)
     (isStatic : Bool) (inOff inSize outOff outSize : Word) :
     transferValue m.world (childMsg m caller to to 0 g true isStatic inOff inSize outOff outSize) =
@@ -497,8 +446,7 @@ theorem step_callNoValue (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
   rw [createCost_zero, transferCost_zero, transferValue_childMsg_zero] at h
   exact h
 
-/-- **Callee-summary rule for a `CALL` without value** (see `step_callNoValue`, `WP.call`):
-`Hc` is what the callee's frame, started fresh on the child message, is known to do. -/
+/-- **Callee-summary rule for a `CALL` without value** (`step_callNoValue` + `WP.call`). -/
 theorem WP.callNoValue {Q : Machine → Prop} {H Hc : Machine → Outcome → Prop}
     (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
     (hstk : m.frame.stack = gas :: toW :: 0 :: inOff :: inSize :: outOff :: outSize :: rest)
@@ -529,9 +477,8 @@ theorem WP.callNoValue {Q : Machine → Prop} {H Hc : Machine → Outcome → Pr
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
     (fun mf o hs hc => k mf o hc hs)
 
-/-- Copying a child's output into a one-word output window at `0` (Solmate's `SafeTransferLib`
-calls) changes neither the size of a memory of at least one word nor the word at `64` (the
-free-memory pointer). -/
+/-- Copying a child's output into the window `[0, 32)` keeps the memory size and the
+free-memory pointer at `64`. -/
 theorem returnMemory_zero_word (mem : Memory) (out : ByteArray) (h : 32 ≤ mem.size) :
     (returnMemory mem 0 32 out).loadWord 64 = mem.loadWord 64 ∧
       (returnMemory mem 0 32 out).size = mem.size := by
@@ -557,7 +504,6 @@ theorem returnMemory_zero_word (mem : Memory) (out : ByteArray) (h : 32 ≤ mem.
         Memory.read_write_of_disjoint _ _ _ _ _ (.inr (by omega))]
     · rw [Memory.size_write, he]
 
-/-- `returnMemory_zero_word` for a memory named by an equation (as `generalize` leaves it). -/
 theorem returnMemory_zero_word_eq {mem M : Memory} {out : ByteArray}
     (hM : returnMemory mem 0 32 out = M) (h : 32 ≤ mem.size) :
     M.loadWord 64 = mem.loadWord 64 ∧ M.size = mem.size :=
@@ -569,29 +515,11 @@ end
 
 section
 
-/-!
-## `CALL` without value: the callee-summary rule
-
-`WP.call0` is `WP.staticcall` (`EvmLogic.Program.Call`) for a `CALL` that sends no value,
-as Solmate's `SafeTransferLib.safeTransferFrom` / `safeTransfer` do (`call(gas(), token, 0, …)`):
-with value `0` there is no value transfer (`transferValue` is the identity), no
-account-creation or value-transfer charge, no balance or static-context requirement, and the
-child message is non-static exactly when the caller's is.
-
-* `transferValue_zero` (and `createCost_zero`, `transferCost_zero` of `EvmLogic.Program.Call`): the
-  value-dependent parts of `step_call` at value `0`.
-* `step_call0`: `step_call` at value `0`.
-* `WP.call0`: if the child frame, started fresh on the child message, `Halts` with `Hc`
-  (typically a callee summary such as an ERC-20 `transferFrom` of the callee's code), the
-  caller continues from `resumeAfter` of every outcome `Hc` allows.
--/
+/-! ## `CALL` without value, with named child and caller (`WP.call0`) -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean EvmLean.Interpreter
 
-open EvmLean.Interpreter
-
-/-- With value `0` the world is unchanged when the child starts. -/
 theorem transferValue_zero (w : World) (msg : Message) (h : msg.value = 0) :
     transferValue w msg = w := by
   simp [transferValue, h]
@@ -616,8 +544,7 @@ abbrev call0Caller (m : Machine) (gas toW inOff inSize outOff outSize : Word)
   callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff outSize)
     (Word.toAddress toW) inOff inSize outOff outSize
 
-/-- **`CALL` without value to a non-precompile pushes the child frame**, on the unchanged
-world. -/
+/-- **`CALL` without value to a non-precompile pushes the child frame**, world unchanged. -/
 theorem step_call0 (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
     (hstk : m.frame.stack = gas :: toW :: 0 :: inOff :: inSize :: outOff :: outSize :: rest)
     (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress toW)) = none)
@@ -631,8 +558,7 @@ theorem step_call0 (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
   rw [createCost_zero, transferCost_zero, transferValue_zero _ _ rfl] at h
   exact h
 
-/-- **Callee-summary rule for `CALL` without value** (see `step_call0`, `WP.call`): `Hc` is
-what the callee's frame, started fresh on the child message, is known to do. -/
+/-- **Callee-summary rule for `CALL` without value** (`step_call0` + `WP.call`). -/
 theorem WP.call0 {Q : Machine → Prop} {H Hc : Machine → Outcome → Prop}
     (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
     (hstk : m.frame.stack = gas :: toW :: 0 :: inOff :: inSize :: outOff :: outSize :: rest)
@@ -650,14 +576,8 @@ theorem WP.call0 {Q : Machine → Prop} {H Hc : Machine → Outcome → Prop}
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
     (fun mf o hs hc => k mf o hc hs)
 
-/-! ## Unknown return data in a one-word output window at `0`
+/-! ## Unknown return data in the output window `[0, 32)`: only the word at `0` changes -/
 
-After a failed call with output window `[0, 32)` the caller's memory is
-`returnMemory (mem.expand 0 32) 0 32 out` for unknown revert data `out`: only the scratch word
-at `0` is unknown; the size and every word from offset `32` on are those of `mem.expand 0 32`.
--/
-
-/-- Writing at most 32 bytes at `0` into memory of at least one word does not grow it. -/
 theorem size_returnMemory_zero (mem : Memory) (out : ByteArray) :
     (returnMemory (mem.expand 0 32) 0 32 out).size = (mem.expand 0 32).size := by
   unfold returnMemory
@@ -673,7 +593,6 @@ theorem size_returnMemory_zero (mem : Memory) (out : ByteArray) :
     simp only [Memory.wordsAfter, Memory.words]
     split <;> omega
 
-/-- Words from offset `32` on are unaffected by the copied return data. -/
 theorem loadWord_returnMemory_zero (mem : Memory) (out : ByteArray) {off : Nat} (h : 32 ≤ off) :
     (returnMemory (mem.expand 0 32) 0 32 out).loadWord off = (mem.expand 0 32).loadWord off := by
   unfold returnMemory
@@ -683,8 +602,6 @@ theorem loadWord_returnMemory_zero (mem : Memory) (out : ByteArray) {off : Nat} 
       simp only [ByteArray.size_extract]; omega
     rw [Memory.loadWord, Memory.loadWord, Memory.read_write_of_disjoint _ _ _ _ _ (.inr (by omega))]
 
-/-- `size_returnMemory_zero` and `loadWord_returnMemory_zero` for a name `M` of the memory
-(after `generalize`). -/
 theorem returnMemory_zero_facts {mem M : Memory} {out : ByteArray}
     (h : returnMemory (mem.expand 0 32) 0 32 out = M) :
     M.size = (mem.expand 0 32).size ∧

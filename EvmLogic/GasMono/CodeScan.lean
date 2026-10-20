@@ -4,20 +4,11 @@ import EvmLogic.GasMono.Pc
 /-!
 # Gas monotonicity: a fast instruction scan for the code predicates
 
-`GasFeedsCall`, `RegionOk` and `callReturnPoints` (`GasMono.Interface`) are stated with
-`boundaries` and `Bytes.getD`. On a 5 KB runtime code that is far too slow for the kernel:
-`Bytes.getD` indexes a list-backed `ByteArray`, so every lookup walks the list.
-
-`insns code` is the same scan written over `code.data.toList`, structurally: it walks the byte
-list once and returns, for each instruction boundary `q`, the triple
-`(q, opcode byte, following byte)` (the following byte only for instructions without immediate;
-`0` for `PUSHn`). `insns_eq` identifies it with `boundaries code` decorated with `Bytes.getD`,
-and the three predicates are restated over it (`gasFeedsCall_iff`, `regionOk_iff`,
-`callReturnPoints_eq`), so that `decide +kernel` evaluates them in one pass.
-
-The triple deliberately does not record `PUSHn` immediates: patching immutables (which only
-rewrites `PUSH32` immediates) leaves `insns` unchanged, which is a closed equation that the
-kernel checks for symbolic immutables (the scan skips the patched bytes).
+`Bytes.getD` walks the list-backed `ByteArray`, far too slow for the kernel on 5 KB of code.
+`insns code` is the `boundaries` scan written structurally over `code.data.toList`; the code
+predicates are restated over it (`gasFeedsCall_iff`, `regionOk_iff`, `callReturnPoints_eq`,
+`callsFed_of_scan`) so `decide +kernel` evaluates them in one pass. The scan omits `PUSHn`
+immediates, so patching immutables leaves it unchanged.
 -/
 
 section
@@ -43,7 +34,6 @@ def insns (code : ByteArray) : List (Nat × UInt8 × UInt8) :=
 def insnInfo (code : ByteArray) (q : Nat) : Nat × UInt8 × UInt8 :=
   (q, Bytes.getD code q, if immSize (Bytes.getD code q) = 0 then Bytes.getD code (q + 1) else 0)
 
-/-- `Bytes.getD` is a lookup in the byte list. -/
 theorem getD_eq_toList (code : ByteArray) (k : Nat) :
     Bytes.getD code k = (code.data.toList[k]?).getD 0 := by
   unfold Bytes.getD
@@ -54,7 +44,6 @@ theorem getD_eq_toList (code : ByteArray) (k : Nat) :
   · have h' : ¬ k < code.data.toList.length := by simpa using h
     simp only [h, ↓reduceDIte, List.getElem?_eq_none (Nat.le_of_not_lt h'), Option.getD_none]
 
-/-- The scan from `p` is `boundariesFrom` from `p`, decorated. -/
 theorem insnsFrom_eq (code : ByteArray) (fuel p : Nat) :
     insnsFrom fuel (code.data.toList.drop p) p =
       (boundariesFrom code fuel p).map (insnInfo code) := by
@@ -97,7 +86,6 @@ instance (l : List (Nat × UInt8 × UInt8)) (n : Nat) : Decidable (RegionOkL l n
 def callReturnPointsL (l : List (Nat × UInt8 × UInt8)) (n : Nat) : List Nat :=
   l.filterMap fun t => if t.1 < n ∧ t.2.1 = 0x5a then some (t.1 + 2) else none
 
-/-- `GasFeedsCall` from the scan. -/
 theorem gasFeedsCall_iff (code : ByteArray) (n : Nat) :
     GasFeedsCall code n ↔ GasFeedsCallL (insns code) n := by
   unfold GasFeedsCall GasFeedsCallL
@@ -114,7 +102,6 @@ theorem gasFeedsCall_iff (code : ByteArray) (n : Nat) :
     have h0 : immSize (Bytes.getD code q) = 0 := by rw [hg]; decide
     simpa [h0] using h hg
 
-/-- `RegionOk` from the scan. -/
 theorem regionOk_iff (code : ByteArray) (n : Nat) :
     RegionOk code n ↔ RegionOkL (insns code) n := by
   unfold RegionOk RegionOkL
@@ -126,7 +113,6 @@ theorem regionOk_iff (code : ByteArray) (n : Nat) :
   · rintro ⟨h0, ⟨_, ⟨q, hm, rfl⟩, rfl, hb⟩, hj⟩
     exact ⟨h0, hm, hb, hj⟩
 
-/-- `callReturnPoints` from the scan. -/
 theorem callReturnPoints_eq (code : ByteArray) (n : Nat) :
     callReturnPoints code n = callReturnPointsL (insns code) n := by
   unfold callReturnPoints callReturnPointsL
@@ -139,15 +125,7 @@ end
 
 section
 
-/-!
-## Gas monotonicity: `CallsFed` over the instruction scan
-
-`CallsFed code n` (`GasMono/Pc.lean`) asks that every `CALL`/`CREATE`-family byte at a boundary
-below `n` directly follows a `GAS` at a boundary. `callsFedB n prev l` checks it in one pass over
-the scan `insns code` (`GasMono/CodeScan.lean`), comparing each instruction with its
-predecessor; `callsFed_of_scan` turns a successful check into `CallsFed`, so that
-`decide +kernel` establishes it for a concrete code.
--/
+/-! ## `CallsFed` over the scan -/
 
 namespace EvmLogic.GasMono
 open EvmLean EvmLogic.Program

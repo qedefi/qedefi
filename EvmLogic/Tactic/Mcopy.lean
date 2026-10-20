@@ -4,34 +4,16 @@ import EvmLogic.Tactic.Patched
 /-!
 # `MCOPY` in the symbolic executors, and memory facts for dynamic data
 
-The step-lemma tables of `wp_step`/`pwp_step` (`Program.stepLemmasFor`) and
-`sol_step`/`psol_step` (`Solidity.Exec.stepTactics`) are closed lists without `MCOPY`. This
-file adds it from the outside, in the style of `pwp_codecopy`:
-
-* `pwp_mcopy` / `pwp_mcopy_zero`: one `MCOPY` (non-empty / empty) in a `WP` goal, on literal
-  or patched code (side conditions by `pcode_fact`, `pwp_disch`, `omega`);
-  `pwp_msteps [h, …]` is `pwp_steps` that also executes `MCOPY`s.
-* `psol_mcopy` / `psol_msteps [h, …]`: the same for `run` goals (`psol_step`).
-* `wp_generalize_mem M h`: replace the memory of a `WP` goal's machine by a variable (with
-  `h : term = M`), the memory counterpart of `wp_generalize_gas`: after a copy of symbolic
-  length the memory term is best handled through facts about it (`Memory.size`, word reads),
-  which `evm_gas` (`rw_mem_sizes`) and the step normalization then use.
-
-Facts about the copy: `Memory.getD_bytes_mcopy` (bytewise), `Memory.read_mcopy`,
-`Memory.read_mcopy_of_disjoint`, `Memory.size_mcopy`; and closed forms of the expansion
-costs for sizes that are multiples of 32 (`Gas.extendMemory_one`, `Gas.extendMemory_two`),
-for gas side conditions whose ranges have symbolic lengths.
+Adds `MCOPY` to `pwp_step` (`pwp_mcopy`, `pwp_msteps`) and `psol_step` (`psol_mcopy`,
+`psol_msteps`), whose step-lemma tables omit it, plus facts about `Memory.mcopy` and closed
+forms of expansion costs for word-aligned memory, for accesses with symbolic lengths.
 -/
 
 section
 
 namespace EvmLean.Memory
-open EvmLogic
+open EvmLogic EvmLean.Bytes
 
-open EvmLean.Bytes
-
-/-- Bytes after `MCOPY`: inside `[dst, dst + len)` the source bytes (read before the write),
-elsewhere unchanged. -/
 theorem getD_bytes_mcopy (mem : Memory) (dst src len j : Nat) :
     getD (mem.mcopy dst src len).bytes j =
       if dst ≤ j ∧ j < dst + len then getD mem.bytes (src + (j - dst)) else getD mem.bytes j := by
@@ -41,7 +23,6 @@ theorem getD_bytes_mcopy (mem : Memory) (dst src len j : Nat) :
     simp only [read, getD_readPadded, show j - dst < len by omega, ↓reduceIte, getD_bytes_expand]
   · simp only [getD_bytes_expand]
 
-/-- What `MCOPY` wrote: the source range as it was. -/
 theorem read_mcopy (mem : Memory) (dst src len : Nat) :
     (mem.mcopy dst src len).read dst len = mem.read src len := by
   simp only [mcopy]
@@ -52,20 +33,17 @@ theorem read_mcopy (mem : Memory) (dst src len : Nat) :
   rw [size_read] at h
   rw [h, read_expand, read_expand]
 
-/-- `MCOPY` does not affect reads disjoint from the destination. -/
 theorem read_mcopy_of_disjoint (mem : Memory) (dst src len off n : Nat)
     (h : off + n ≤ dst ∨ dst + len ≤ off) :
     (mem.mcopy dst src len).read off n = mem.read off n := by
   simp only [mcopy]
   rw [read_write_of_disjoint _ _ _ _ _ (by rw [size_read]; exact h), read_expand, read_expand]
 
-/-- `MCOPY` does not affect word reads disjoint from the destination. -/
 theorem loadWord_mcopy_of_disjoint (mem : Memory) (dst src len off : Nat)
     (h : off + 32 ≤ dst ∨ dst + len ≤ off) :
     (mem.mcopy dst src len).loadWord off = mem.loadWord off := by
   rw [loadWord, loadWord, read_mcopy_of_disjoint _ _ _ _ _ _ h]
 
-/-- Memory size after a non-empty `MCOPY`: both ranges are covered, rounded up to words. -/
 theorem size_mcopy (mem : Memory) (dst src len : Nat) (h : len ≠ 0) :
     (mem.mcopy dst src len).size =
       max (max mem.size (32 * ((src + len + 31) / 32))) (32 * ((dst + len + 31) / 32)) := by
@@ -77,7 +55,6 @@ end EvmLean.Memory
 namespace EvmLean.Gas
 open EvmLogic
 
-/-- `memoryCost` is monotone. -/
 theorem memoryCost_mono {a b : Nat} (h : a ≤ b) : memoryCost a ≤ memoryCost b := by
   simp only [memoryCost, words, memoryPerWord]
   have h1 : (a + 31) / 32 ≤ (b + 31) / 32 := Nat.div_le_div_right (by omega)
@@ -85,8 +62,6 @@ theorem memoryCost_mono {a b : Nat} (h : a ≤ b) : memoryCost a ≤ memoryCost 
   have h3 := Nat.div_le_div_right (c := 512) h2
   omega
 
-/-- The expansion cost of one access of non-zero length, from a size that is a multiple of
-32: the difference of the memory costs of the sizes after and before. -/
 theorem extendMemory_one {s off len : Nat} (hlen : len ≠ 0) (hs : s % 32 = 0) :
     (extendMemory s [(off, len)]).cost =
       memoryCost (max s ((off + len + 31) / 32 * 32)) - memoryCost s := by
@@ -99,8 +74,6 @@ theorem extendMemory_one {s off len : Nat} (hlen : len ≠ 0) (hs : s % 32 = 0) 
   · rename_i h
     rw [Nat.max_eq_right (by omega), Nat.zero_add]
 
-/-- The expansion cost of `MCOPY` (two accesses of the same non-zero length), from a size
-that is a multiple of 32. -/
 theorem extendMemory_two {s a b len : Nat} (hlen : len ≠ 0) (hs : s % 32 = 0) :
     (extendMemory s [(a, len), (b, len)]).cost =
       memoryCost (max (max s ((a + len + 31) / 32 * 32)) ((b + len + 31) / 32 * 32)) -
@@ -131,22 +104,17 @@ end EvmLean.Gas
 namespace EvmLean.Interpreter
 open EvmLogic
 
-/-- The expansion cost of an `MLOAD`/`MSTORE`-style access of `n ≠ 0` bytes at `x`, when the
-memory size `s` is a multiple of 32 and the size after the access is known to be `t`. -/
 theorem memoryCost_eq {m : Machine} {x : Word} {n s t : Nat} (hs : m.frame.memory.size = s)
     (hs32 : s % 32 = 0) (hn : n ≠ 0) (ht : max s ((x.toNat + n + 31) / 32 * 32) = t) :
     memoryCost m x n = Gas.memoryCost t - Gas.memoryCost s := by
   rw [memoryCost, hs, Gas.extendMemory_one hn hs32, ht]
 
-/-- The expansion cost of an `MCOPY` of `len ≠ 0` bytes, when the memory size `s` is a
-multiple of 32 and the size after the copy is known to be `t`. -/
 theorem mcopyCost_eq {m : Machine} {x y : Word} {len s t : Nat} (hs : m.frame.memory.size = s)
     (hs32 : s % 32 = 0) (hlen : len ≠ 0)
     (ht : max (max s ((y.toNat + len + 31) / 32 * 32)) ((x.toNat + len + 31) / 32 * 32) = t) :
     mcopyCost m x y len = Gas.memoryCost t - Gas.memoryCost s := by
   rw [mcopyCost, hs, Gas.extendMemory_two hlen hs32, ht]
 
-/-- An access inside memory (whose size is a multiple of 32) costs no expansion. -/
 theorem memoryCost_of_le {m : Machine} {x : Word} {n : Nat} (h32 : m.frame.memory.size % 32 = 0)
     (h : x.toNat + n ≤ m.frame.memory.size) : memoryCost m x n = 0 := by
   by_cases hn : n = 0
@@ -154,7 +122,6 @@ theorem memoryCost_of_le {m : Machine} {x : Word} {n : Nat} (h32 : m.frame.memor
   · rw [memoryCost, Gas.extendMemory_one hn h32,
       Nat.max_eq_left (by omega), Nat.sub_self]
 
-/-- `RETURN`/`REVERT` of a range inside memory costs no expansion. -/
 theorem outputCost_of_le {m : Machine} {x y : Word} (h32 : m.frame.memory.size % 32 = 0)
     (h : x.toNat + y.toNat ≤ m.frame.memory.size) : outputCost m x y = 0 := by
   by_cases hn : y.toNat = 0
@@ -166,8 +133,6 @@ end EvmLean.Interpreter
 namespace EvmLean.Memory
 open EvmLogic
 
-/-- Expanding memory (of a size that is a multiple of 32) over a range it covers changes
-nothing. -/
 theorem expand_eq_self {mem : Memory} {off len : Nat} (h32 : mem.size % 32 = 0)
     (h : off + len ≤ mem.size) : mem.expand off len = mem := by
   apply EvmLean.Interpreter.Memory.expand_of_le
@@ -177,13 +142,10 @@ theorem expand_eq_self {mem : Memory} {off len : Nat} (h32 : mem.size % 32 = 0)
 end EvmLean.Memory
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean Lean Elab Tactic EvmLogic.Tactic Meta EvmLean.Interpreter
 
-open Lean Elab Tactic EvmLogic.Tactic Meta
-open EvmLean.Interpreter
-
-/-- `wp_generalize_mem M h`: in a goal `WP m Q H` whose machine is a structure literal,
-replace the frame's memory term by a new variable `M` (with `h : term = M`). -/
+/-- `wp_generalize_mem M h`: replace the memory of a `WP` goal's machine by a variable `M`
+(`h : term = M`); after a copy of symbolic length, reason through facts about `M`. -/
 elab "wp_generalize_mem " M:ident h:ident : tactic => withMainContext do
   let some m ← wpGoalMachine? (← getMainGoal) | throwError "wp_generalize_mem: not a WP goal"
   let fr ← whnfR (mkApp (mkConst ``Machine.frame) m)
@@ -191,9 +153,8 @@ elab "wp_generalize_mem " M:ident h:ident : tactic => withMainContext do
   let memS ← Term.exprToSyntax mem
   evalTactic (← `(tactic| generalize $h : $memS = $M))
 
-/-- For every `Memory.mcopy M d s l` with a numeral length `l ≠ 0` in the goal that has no size
-fact yet, add `hmcopy_size : (Memory.mcopy M d s l).size = …` (`Memory.size_mcopy`, normalized),
-so that `evm_gas` (`rw_mem_sizes`) can compute the cost of later accesses. -/
+/-- Add `hmcopy_size : (Memory.mcopy M d s l).size = …` for each new copy of numeral length,
+so that `evm_gas` (`rw_mem_sizes`) can cost later accesses. -/
 elab "mcopy_size_facts" : tactic => withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let found ← IO.mkRef (#[] : Array Expr)
@@ -227,8 +188,7 @@ elab "mcopy_size_facts" : tactic => withMainContext do
 macro "mcopy_len_disch" : tactic =>
   `(tactic| first | assumption | decide | (dsimp only; omega) | omega)
 
-/-- Discharge the gas side condition of an `MCOPY` step: `evm_gas` after unfolding
-`mcopyCost`, or a hypothesis. -/
+/-- Discharge the gas side condition of an `MCOPY` step. -/
 macro "mcopy_gas_disch" : tactic =>
   `(tactic| first | assumption | (simp only [mcopyCost]; evm_gas) | omega)
 
@@ -279,8 +239,7 @@ macro_rules
       case hs => same_frame
       pwp_norm [$extra,*]))
 
-/-- `pwp_steps` that also executes `MCOPY` (non-empty or empty, whichever side condition can
-be discharged). -/
+/-- `pwp_steps` that also executes `MCOPY`. -/
 syntax "pwp_msteps" (ppSpace num)? (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
@@ -293,8 +252,7 @@ elab_rules : tactic
       if ← tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*]))) then continue
       return
 
-/-- Discharge an in-bounds side condition `x.toNat + n ≤ size` / `size % 32 = 0` of a memory
-access, with the size and offset facts `hs` (rewrite rules). -/
+/-- Discharge `x.toNat + n ≤ size` / `size % 32 = 0` of a memory access using the facts `hs`. -/
 syntax "mem_in_disch" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 macro_rules
@@ -302,8 +260,8 @@ macro_rules
     let hs := (hs.map (·.getElems)).getD #[]
     `(tactic| ((try dsimp only); (try simp only [BitVec.reduceToNat, $hs,*]); omega))
 
-/-- One `MLOAD` inside memory whose size is not a numeral (`memoryCost_of_le`): the facts `hs`
-(memory size, offset values) discharge the bounds; the new machine is normalized with them. -/
+/-- One `MLOAD` inside memory of non-numeral size; the facts `hs` (size, offsets) discharge
+the bounds and normalize the new machine. -/
 syntax "pwp_mload_in" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 macro_rules
@@ -353,8 +311,7 @@ end EvmLogic.Program
 namespace EvmLogic.Tactic.Patched
 open EvmLean EvmLogic.Solidity
 
-/-- Execute a non-empty `MCOPY` in a `run` goal (literal or patched code), as `psol_step`
-does for the other instructions. -/
+/-- Execute a non-empty `MCOPY` in a `run` goal (literal or patched code). -/
 syntax "psol_mcopy" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 macro_rules

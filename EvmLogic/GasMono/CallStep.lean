@@ -3,27 +3,14 @@ import EvmLogic.GasMono.Bump
 /-!
 # Gas monotonicity: the `CALL` step
 
-`exec_bump` (`EvmLogic.Program.Nested.Gas`) covers every instruction except the ones reading the gas. This
-file covers the `CALL` family from a machine related to a low-gas machine `m` by
-
-  `withTop b (bump d x ps m)`: `d` more frame gas, and the requested gas on top of the stack
-  replaced by `b` with `a ≤ b ≤ a + d` (`a` the low request),
-
-which is the relation after a `GAS` (`exec_gas_bump`: the high run pushes `d` more) and, with
-`b = a`, the plain bump. `execCall_mono`: if the low instruction succeeds, so does the high
-one, with
-
-* the same action up to the child's gas: `.next` for both (depth limit, insufficient balance:
-  the call is not made and the forwarded gas is refunded), or `.call req` and
-  `.call (req.withGas c')` with `req.msg.gas ≤ c'` (EIP-150's all-but-1/64 is monotone);
-* a bumped caller afterwards (`BumpOf`): the high caller keeps at least the low caller's gas,
-  because the extra forwarded gas `c' - c` is at most `d` (`mcg_mono`).
+`execCall_call_mono`, `execCall_staticcall_mono`: from `withTop b (bump d x ps m)` with the low
+request `a ≤ b ≤ a + d` (the relation after `GAS`), if the low `CALL`/`STATICCALL` succeeds so
+does the high one, with related actions and a bumped caller (`CallRel`). The arithmetic is
+`mcg_mono`: EIP-150's all-but-1/64 is monotone.
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- `m''` is `m'` with more frame gas, message gas `x` and parents `ps`. -/
 def BumpOf (x : Nat) (ps : List Frame) (m' m'' : Machine) : Prop :=
@@ -41,13 +28,11 @@ def CallRel (x : Nat) (ps : List Frame) : Action → Action → Machine → Mach
   | .call _, .create _, _, _ => False
   | .stop _, _, _, _ | .revert _, _, _, _ | .create _, _, _, _ => False
 
-/-- `BumpOf` as a bump. -/
 theorem BumpOf.eq {x : Nat} {ps : List Frame} {m' m'' : Machine} (h : BumpOf x ps m' m'') :
     ∃ d', m'' = bump d' x ps m' := ⟨_, h.2⟩
 
-/-- **The arithmetic of a monotone call**: with `a ≤ b ≤ a + d` requested and `d` more gas
-left, the high call is affordable, forwards at least as much, and leaves the caller at least as
-much (before and after a refund of the forwarded gas). -/
+/-- **The arithmetic of a monotone call**: with `a ≤ b ≤ a + d` requested and `d` more gas left,
+the high call is affordable, forwards at least as much, and leaves the caller at least as much. -/
 theorem mcg_mono {v a b L d M E : Nat} (hab : a ≤ b) (hbd : b ≤ a + d)
     (hle : (Gas.messageCallGas v a L M E).cost + M ≤ L) :
     (Gas.messageCallGas v b (L + d) M E).cost + M ≤ L + d ∧

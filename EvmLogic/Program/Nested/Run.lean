@@ -3,43 +3,15 @@ import EvmLogic.Program.Nested.Step
 /-!
 # Nested calls into protected accounts: a machine-level simulation
 
-Fix a set `P` of **protected accounts** (in the application: the vault and its asset) and a
-property `Good` of worlds that depends only on the storage and code of the protected accounts
-(`GoodOk.keep`) and implies that they hold code that is not an EIP-7702 designator. Every
-other account runs **arbitrary code**.
-
-A frame is **dangerous** (`Danger`) if it runs at a protected account and is not static:
-only such a frame can write protected storage (`exec_frame`: `SSTORE` writes the executing
-account and needs a non-static frame; nothing else writes storage; accounts holding code are
-never deleted or overwritten). The theorem of this file reduces the whole transaction to the
-dangerous frames: if every dangerous frame that starts during the run ends — successfully, or
-reverting, or halting — in a `Good` world (`hsum`, a **frame summary**, e.g. a refinement
-theorem of the vault's code), then the run ends in a `Good` world.
-
-The **simulation invariant** (`MInv`) of a machine whose executing frame is not dangerous:
-the current world is `Good`; every frame on the stack (the executing one and all suspended
-parents) is not dangerous, its rollback snapshot is `Good`, and a creation frame does not
-create a protected account; the total gas of the stack is at most `G`; the precompiles are the
-standard ones. Rollbacks restore a snapshot, which was the current world when the frame
-started, so a revert or out-of-gas of *any* enclosing frame — after it called a protected
-account any number of times — restores a `Good` world: the invariant needs no log of the
-operations a frame committed.
-
-* `minv_step`: a step from a machine satisfying `MInv` reaches a machine satisfying `MInv`,
-  a finished message with a `Good` world, or a machine that has just pushed a dangerous frame
-  (`DangerStart`: fresh, `CALL`ed from an unprotected account, running the protected
-  account's code, gas at most `G`, depth at most 1024, world `Good` up to a value transfer);
-* `run_good`: from a machine satisfying `MInv`, if every dangerous frame reached is summarised
-  (`hsum`), every finished `run` ends in a `Good` world;
-* `processMessageCall_good`: the same for a top-level message call (any caller without code
-  at a protected account, any target and code, any value, gas, calldata), before Prague or
-  without EIP-7702 authorizations.
+Only a *dangerous* frame (`Danger`: non-static, at a protected account in `P`) can write
+protected storage. `processMessageCall_good`: if every dangerous frame that starts during a
+top-level message call ends in a `Good` world (`hsum`, frame summaries), the call ends in a
+`Good` world. The invariant `MInv` keeps every rollback snapshot `Good`, so a revert of any
+enclosing frame restores a `Good` world (`docs/proving.md` §5).
 -/
 
 namespace EvmLogic.Program.Nested
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 variable {P : Address → Prop} {Good : World → Prop}
 
@@ -55,8 +27,7 @@ structure GoodOk (P : Address → Prop) (Good : World → Prop) : Prop where
   /-- Their code is not an EIP-7702 delegation designator. -/
   deleg : ∀ w, Good w → ∀ p, P p → delegatedAddress? (w.code p) = none
 
-/-- A frame that may write protected storage: it runs at a protected account and is not
-static. -/
+/-- A frame that may write protected storage: non-static, at a protected account. -/
 def Danger (P : Address → Prop) (f : Frame) : Prop := P f.msg.currentTarget ∧ f.msg.isStatic = false
 
 /-- The invariant of every frame on the stack. -/
@@ -72,39 +43,28 @@ structure FrameInv (P : Address → Prop) (Good : World → Prop) (f : Frame) : 
 structure MInv (P : Address → Prop) (Good : World → Prop) (G : Nat) (m : Machine) : Prop where
   /-- The current world is `Good`. -/
   world : Good m.world
-  /-- The executing frame. -/
   frame : FrameInv P Good m.frame
-  /-- Every suspended frame. -/
   parents : ∀ f ∈ m.parents, FrameInv P Good f
-  /-- The gas of the stack is bounded. -/
   gas : gasSum m ≤ G
-  /-- Standard precompiles. -/
   pre : m.precompiles = PrecompileImpl.standard m.ctx
 
-/-- A machine that has just started a dangerous frame: what a frame summary of a protected
-account's code may assume. -/
+/-- A machine that has just started a dangerous frame: what a frame summary may assume. -/
 structure DangerStart (P : Address → Prop) (Good : World → Prop) (G : Nat) (m : Machine) :
     Prop where
   /-- A fresh message-call frame. -/
   fresh : ∃ o s, m.frame = Frame.init m.frame.msg (.call o s) m.frame.snapshot
-  /-- Dangerous. -/
   danger : Danger P m.frame
   /-- The world before the call (the rollback snapshot) is `Good`. -/
   snapshot : Good m.frame.snapshot.1
-  /-- The current world differs from it only outside protected storage and code (value
-  transfer). -/
+  /-- The current world differs from it only by a value transfer. -/
   keep : KeepP P m.frame.snapshot.1 m.world
   /-- The protected account's own code runs. -/
   code : m.frame.msg.code = m.world.code m.frame.msg.currentTarget
-  /-- … as a call to it. -/
   target : m.frame.msg.target = some m.frame.msg.currentTarget
-  /-- … reached directly. -/
   codeAddress : m.frame.msg.codeAddress = some m.frame.msg.currentTarget
   /-- The caller is not protected. -/
   caller : ¬ P m.frame.msg.caller
-  /-- The gas is bounded. -/
   gas : m.frame.msg.gas ≤ G
-  /-- Within the depth limit. -/
   depth : m.frame.msg.depth ≤ Gas.stackDepthLimit
   /-- Standard precompiles. -/
   pre : m.precompiles = PrecompileImpl.standard m.ctx
@@ -120,7 +80,6 @@ theorem GoodOk.transferValue (S : GoodOk P Good) {w : World} (hw : Good w) (msg 
     Good (Interpreter.transferValue w msg) :=
   S.keep _ _ hw fun p hp => keep_transferValue (S.code w hw p hp)
 
-/-- Deploying code at an unprotected account. -/
 theorem keep_setCode {w : World} {a p : Address} {c : ByteArray} (h : p ≠ a) : Keep p w (setCode w a c) := by
   unfold setCode modifyState
   dsimp only
@@ -128,12 +87,10 @@ theorem keep_setCode {w : World} {a p : Address} {c : ByteArray} (h : p ≠ a) :
   · refine ⟨?_, ?_⟩ <;> simp [World.account, Std.ExtTreeMap.getD_erase, Ne.symm h]
   · refine ⟨?_, ?_⟩ <;> simp [World.account, Std.ExtTreeMap.getD_insert, Ne.symm h]
 
-/-- An instruction of a non-dangerous frame keeps `Good`. -/
 theorem InstrFrame.good (S : GoodOk P Good) {m m' : Machine} (h : InstrFrame m m')
     (hsafe : ¬ Danger P m.frame) (hw : Good m.world) : Good m'.world :=
   S.keep _ _ hw fun p hp => h.keep p (S.code _ hw p hp) fun ⟨he, hs⟩ => hsafe ⟨he ▸ hp, hs⟩
 
-/-- The world a finished non-dangerous frame hands over is `Good`. -/
 theorem frameResult_good (S : GoodOk P Good) {m : Machine} (hf : FrameInv P Good m.frame)
     (hw : Good m.world) (o : Outcome) : Good (frameResult m o).2.1 := by
   rcases frameResult_world m o with h | ⟨hk, out, h⟩ | h <;> rw [h]
@@ -144,7 +101,6 @@ theorem frameResult_good (S : GoodOk P Good) {m : Machine} (hf : FrameInv P Good
 
 /-! ## One step -/
 
-/-- Frame invariants survive updates of the mutable fields. -/
 theorem FrameInv.of_same {f f' : Frame} (h : FrameInv P Good f) (hm : f'.msg = f.msg)
     (hs : f'.snapshot = f.snapshot) (hk : f'.kind = f.kind) : FrameInv P Good f' where
   snapshot := hs ▸ h.snapshot
@@ -162,7 +118,6 @@ inductive StepOut (P : Address → Prop) (Good : World → Prop) (G : Nat) : Ste
       m.parents = p :: ps → FrameInv P Good p → (∀ f ∈ ps, FrameInv P Good f) →
       gasSum m ≤ G → StepOut P Good G (.running m)
 
-/-- Ending a non-dangerous frame preserves the invariant. -/
 theorem finishFrame_out (S : GoodOk P Good) {G : Nat} {m : Machine} (hf : FrameInv P Good m.frame)
     (hps : ∀ f ∈ m.parents, FrameInv P Good f) (hw : Good m.world) (hgas : gasSum m ≤ G)
     (hpre : m.precompiles = PrecompileImpl.standard m.ctx) (o : Outcome) :
@@ -251,7 +206,6 @@ theorem minv_step (S : GoodOk P Good) {G : Nat} {m : Machine} (h : MInv P Good G
 
 /-! ## Runs -/
 
-/-- A run that finishes passes through every machine reached on the way. -/
 theorem run_of_stepN_running {m m' : Machine} {n fuel : Nat} {r : MessageResult}
     (h : stepN n m = .running m') (hr : run fuel m = .ok r) :
     n < fuel ∧ run (fuel - n) m' = .ok r := by
@@ -264,7 +218,6 @@ theorem run_of_stepN_running {m m' : Machine} {n fuel : Nat} {r : MessageResult}
     rw [← run_add_of_stepN h (fuel - n), show n + (fuel - n) = fuel by omega]
     exact hr
 
-/-- Finished runs are deterministic. -/
 theorem run_of_stepN_done {m : Machine} {n fuel : Nat} {r r' : MessageResult}
     (h : stepN n m = .done r') (hr : run fuel m = .ok r) : r = r' := by
   have h1 := stepN_add_of_done (run_eq_ok_iff.1 hr) n
@@ -273,9 +226,8 @@ theorem run_of_stepN_done {m : Machine} {n fuel : Nat} {r r' : MessageResult}
   rw [h1] at h2
   cases h2; rfl
 
-/-- **The simulation, for runs.** From a machine satisfying the invariant (reached from `m₀`),
-if every dangerous frame reached from `m₀` outside dangerous frames (all its parents are not
-dangerous) ends in a `Good` world (`hsum`), every finished
+/-- **The simulation, for runs.** From a machine satisfying `MInv` reached from `m₀`, if every
+dangerous frame reached with no dangerous parent ends in a `Good` world (`hsum`), every finished
 run ends in a `Good` world. -/
 theorem run_good (S : GoodOk P Good) {G : Nat} {m₀ : Machine}
     (hsum : ∀ n m, stepN n m₀ = .running m → DangerStart P Good G m →
@@ -332,9 +284,6 @@ theorem run_good_top {m₀ : Machine} (hp : m₀.parents = [])
 
 /-! ## Top-level message calls -/
 
-/-- Before Prague or without authorizations, top-level delegation changes neither the world
-nor the refund, and only the code-related fields of the message; it changes nothing for code
-that is not a delegation designator. -/
 theorem applyTopLevelDelegation_spec {ctx : Context} {isPre : Address → Bool} {w : World}
     {msg : Message} (h : ctx.fork < .prague ∨ ctx.tx.authorizations = []) :
     ∃ msg', applyTopLevelDelegation ctx isPre w msg = (w, msg', 0) ∧
@@ -355,12 +304,10 @@ theorem applyTopLevelDelegation_spec {ctx : Context} {isPre : Address → Bool} 
       · rename_i d hd
         exact ⟨_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, fun h' => by rw [h'] at hd; cases hd⟩
 
-/-- A top-level message the simulation covers: depth zero, a caller that is not protected (a
-transaction's sender holds no code, EIP-3607), a call or a creation of `msg.currentTarget`,
-and — for a call to a protected account — that account's own code. Any target, code, value,
-gas, calldata and access lists otherwise. -/
+/-- A top-level message the simulation covers: depth zero, an unprotected caller (a sender holds
+no code, EIP-3607), a call or creation of `currentTarget`, running a protected account's own
+code when calling one. -/
 structure TopOk (P : Address → Prop) (w : World) (msg : Message) : Prop where
-  /-- Depth zero. -/
   depth : msg.depth = 0
   /-- The caller is not protected. -/
   caller : ¬ P msg.caller
@@ -382,8 +329,6 @@ def Reaches (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) 
     Prop :=
   ∃ m₀ n, StartsAt ctx w tr msg m₀ ∧ stepN n m₀ = .running m
 
-/-- How `initMachine` starts a covered top-level message: it finishes at once in a `Good`
-world, or starts a machine satisfying the invariant, or starts a dangerous top-level frame. -/
 theorem initMachine_out (S : GoodOk P Good) {G : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} (hw : Good w) (hmsg : TopOk P w msg)
     (hG : msg.gas ≤ G) :
@@ -397,8 +342,7 @@ theorem initMachine_out (S : GoodOk P Good) {G : Nat} {ctx : Context} {w : World
   split
   · exact .inl ⟨_, rfl, hw⟩
   split
-  · -- a creation
-    rename_i hnone
+  · rename_i hnone
     split
     · exact .inl ⟨_, rfl, hw⟩
     · rename_i hdep
@@ -435,7 +379,6 @@ theorem initMachine_out (S : GoodOk P Good) {G : Nat} {ctx : Context} {w : World
       · refine .inr ⟨_, rfl, .inl ⟨S.transferValue hw _, ⟨hw, hd, fun h => by cases h⟩,
           by simp, by simp [gasSum, Frame.init]; exact hG, rfl⟩⟩
 
-/-- `stepN` keeps the context and the precompiles. -/
 theorem stepN_consts {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
     m'.ctx = m.ctx ∧ m'.precompiles = m.precompiles
   | 0, h => by cases h; exact ⟨rfl, rfl⟩
@@ -448,7 +391,6 @@ theorem stepN_consts {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
       have h3 := stepN_consts h
       exact ⟨h3.1.trans h2.1, h3.2.trans h2.2⟩
 
-/-- The machines a top-level message call reaches run in its context. -/
 theorem Reaches.ctx {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     {m : Machine} (h : Reaches ctx w tr msg m) : m.ctx = ctx := by
   obtain ⟨m₀, n, hs, hn⟩ := h
@@ -476,8 +418,6 @@ theorem getLast?_cons_getD {α : Type} (a : α) (l : List α) (x : α) :
   | nil => rfl
   | cons b l => simp [List.getLast?_cons]
 
-/-- **The top-level frame stays at the bottom**: a step that does not finish the message
-keeps the message of the bottom frame. -/
 theorem step_bottom {m m' : Machine} (h : step m = .running m') :
     (bottom m').msg = (bottom m).msg := by
   rcases step_cases m with ⟨m₁, o, he, hf⟩ | ⟨m₁, he, hf⟩ | ⟨m₁, req, he, hf, -⟩ |
@@ -513,7 +453,6 @@ theorem step_bottom {m m' : Machine} (h : step m = .running m') :
     | nil => exact hf.same.msg
     | cons q qs => rfl
 
-/-- Over any number of steps. -/
 theorem stepN_bottom {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
     (bottom m').msg = (bottom m).msg
   | 0, h => by cases h; rfl
@@ -524,8 +463,6 @@ theorem stepN_bottom {m m' : Machine} : ∀ {n}, stepN n m = .running m' →
     · rename_i m₁ h₁
       exact (stepN_bottom h).trans (step_bottom h₁)
 
-/-- The bottom frame of a machine a top-level message call reaches runs that message (after
-top-level delegation). -/
 theorem Reaches.bottom {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     {m : Machine} (h : Reaches ctx w tr msg m) :
     (bottom m).msg =
@@ -546,11 +483,9 @@ theorem Reaches.bottom {ctx : Context} {w : World} {tr : TransientStorage} {msg 
     · cases hs
     · cases hs; rfl
 
-/-- **The simulation, for a top-level message call.** From a `Good` world, a top-level message
-(`TopOk`: any unprotected caller, any target and code, at most `G` gas), before Prague or
-without EIP-7702 authorizations, ends in a `Good` world — provided every dangerous frame the
-run reaches outside dangerous frames ends in a `Good` world (`hsum`: frame summaries of the
-protected accounts' code). -/
+/-- **The simulation, for a top-level message call.** From a `Good` world, a `TopOk` message with
+at most `G` gas, before Prague or without EIP-7702 authorizations, ends in a `Good` world,
+provided every dangerous frame reached with no dangerous parent ends in a `Good` world (`hsum`). -/
 theorem processMessageCall_good (S : GoodOk P Good) {G fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult} (hw : Good w)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hmsg : TopOk P w msg)

@@ -5,31 +5,11 @@ import EvmLogic.Solidity.Abi
 /-!
 # Compiled contracts: shared definitions
 
-The verification targets (`contracts/`, see `contracts/README.md`) are compiled by
-`scripts/build-contracts.sh`, which generates one Lean module per contract:
-
-| Module | Solidity contract | Role |
-|---|---|---|
-| `Contracts.SolmateAsset` | Solmate `MockERC20` | asset of the Solmate vault |
-| `Contracts.SolmateVault` | Solmate `MockERC4626` | Solmate ERC-4626 vault |
-| `Contracts.OzAsset` | OpenZeppelin `ERC20Mock` | asset of the OpenZeppelin vault |
-| `Contracts.OzVault` | `OzVault` (OpenZeppelin `ERC4626`, nothing overridden) | OpenZeppelin vault |
-
-Each module defines `creationCode`, `constructorArgs`, `runtimeCode` (the code deployed in
-the canonical deployment, `Deployment`), `address`, `selectors`, `events`, `errors`,
-`storageLayout`, `immutableRefs` and, for contracts with immutables, `Immutables`,
-`runtimeCodeWith` and `deployment`.
-
-This file holds the immutables types those modules use (the storage-layout types are in
-`EvmLogic.Solidity.Layout`, the canonical deployment parameters in `Examples.Deployment`).
-
-## Immutables
-
-solc compiles a Solidity `immutable` into 32-byte `PUSH32` placeholders in the runtime code;
-the constructor writes the value into each placeholder before returning the code. The
-positions are part of the compiler output (`immutableReferences`), so the runtime code for
-other deployment parameters is `runtimeCodeWith` (the canonical code patched by position).
-`Contracts.Deploy` computes the immutables from the deployment parameters.
+solc compiles an `immutable` into 32-byte `PUSH32` placeholders that the constructor fills.
+Generated contract modules (`scripts/build-contracts.sh`) expose `runtimeCodeWith i =
+patchWords code ps`, so theorems hold for arbitrary immutables. Symbolic execution only needs
+bytes outside the patches (unchanged), the patched words, and the jump table (unchanged, as
+`JUMPDEST` scanning skips `PUSH32` immediates: `JumpDestsAgree`).
 -/
 
 section
@@ -39,7 +19,6 @@ open EvmLean
 
 /-- An immutable variable and the byte offsets of its 32-byte placeholders in the runtime code. -/
 structure ImmutableRef where
-  /-- The Solidity name of the immutable. -/
   name : String
   /-- Offsets of the 32-byte slots holding its value. -/
   offsets : List Nat
@@ -57,9 +36,8 @@ def writeList : List UInt8 → Nat → List UInt8 → List UInt8
 def patchWords (code : ByteArray) (ps : List (Nat × Word)) : ByteArray :=
   ⟨⟨ps.foldl (fun l p => writeList l p.1 (Bytes.ofWord p.2).data.toList) code.data.toList⟩⟩
 
-/-- Byte arrays with the same bytes are equal. Kernel checks of code equality should compare
-`.data.toList` (structural) rather than use `ByteArray`'s `DecidableEq`, which does not
-reduce well in the kernel. -/
+/-- For kernel checks of code equality: compare `.data.toList` (structural), since
+`ByteArray`'s `DecidableEq` does not reduce well in the kernel. -/
 theorem eq_of_data_toList_eq {a b : ByteArray} (h : a.data.toList = b.data.toList) : a = b := by
   rcases a with ⟨⟨a⟩⟩
   rcases b with ⟨⟨b⟩⟩
@@ -74,27 +52,9 @@ section
 /-!
 ## Code with immutables: reading around the patches
 
-solc compiles a Solidity `immutable` into 32-byte `PUSH32` placeholders that the constructor
-fills in; `Contracts.patchWords code ps` is the canonical runtime code with the word `w`
-written at offset `o` for each `(o, w) ∈ ps` (`runtimeCodeWith i` of a generated contract
-module). Theorems about a deployment with **arbitrary** immutables are about
-`patchWords code ps` for symbolic words, which is not a byte literal; but symbolic execution
-only ever needs
-
-* the opcode byte at `pc` (`code[pc]? = some b`): outside the patched windows it is the
-  canonical byte (`getElem?_patchWords_of_offsets`);
-* `PUSHn` immediates and `CODECOPY` sources (`readBytes code off n`): outside the windows
-  they are the canonical bytes (`readBytes_patchWords_of_offsets`); inside, they are the
-  patched word (`readBytes_patchWords_last`, for a read of the last patch at its offset);
-* the jump table: patches only change `PUSH32` immediates, which the `JUMPDEST` scan skips,
-  so the scan lists the same destinations. `JumpDestsAgree code base` packages this; for a
-  concrete contract it is proved once, for all immutables, by kernel evaluation (the scan
-  never inspects the patched bytes).
-
-The side conditions are stated over the list of patch *offsets* (`ps.map Prod.fst = offs`),
-which reduces to a literal list for symbolic words, so the disjointness checks are closed
-`decide` goals. `EvmLogic.Tactic.Patched` uses these lemmas to run
-`sol_step` on patched code.
+Side conditions are stated over the patch *offsets* (`ps.map Prod.fst = offs`), a literal
+list even for symbolic words, so disjointness checks are closed `decide` goals (used by
+`EvmLogic.Tactic.Patched`).
 -/
 
 namespace EvmLogic.Solidity
@@ -102,7 +62,6 @@ open EvmLean
 
 /-! ## `writeList` -/
 
-/-- `writeList` keeps the length. -/
 theorem length_writeList (l : List UInt8) (off : Nat) (ys : List UInt8) :
     (writeList l off ys).length = l.length := by
   induction l generalizing off ys with
@@ -115,7 +74,6 @@ theorem length_writeList (l : List UInt8) (off : Nat) (ys : List UInt8) :
       | zero => simp [writeList, ih]
       | succ n => simp [writeList, ih]
 
-/-- `writeList` changes nothing outside the written window. -/
 theorem getElem?_writeList_of_disjoint (l : List UInt8) (off : Nat) (ys : List UInt8) (j : Nat)
     (h : j < off ∨ off + ys.length ≤ j) : (writeList l off ys)[j]? = l[j]? := by
   induction l generalizing off ys j with
@@ -137,7 +95,6 @@ theorem getElem?_writeList_of_disjoint (l : List UInt8) (off : Nat) (ys : List U
           simp only [writeList, List.getElem?_cons_succ]
           exact ih n (y :: ys) j (by simp only [List.length_cons] at h ⊢; omega)
 
-/-- `writeList` of `ys` reads back `ys` inside the window, if the window fits. -/
 theorem getElem?_writeList_self (l : List UInt8) (off : Nat) (ys : List UInt8) (j : Nat)
     (hfit : off + ys.length ≤ l.length) (hj : j < ys.length) :
     (writeList l off ys)[off + j]? = ys[j]? := by
@@ -164,18 +121,15 @@ theorem getElem?_writeList_self (l : List UInt8) (off : Nat) (ys : List UInt8) (
 def patchList (l : List UInt8) (ps : List (Nat × Word)) : List UInt8 :=
   ps.foldl (fun l p => writeList l p.1 (Bytes.ofWord p.2).data.toList) l
 
-/-- A word encodes to 32 bytes. -/
 theorem length_ofWord_toList (w : Word) : (Bytes.ofWord w).data.toList.length = 32 := by
   simp [Bytes.ofWord, Bytes.ofNatBE]
 
-/-- Patching keeps the length. -/
 theorem length_patchList (l : List UInt8) (ps : List (Nat × Word)) :
     (patchList l ps).length = l.length := by
   induction ps generalizing l with
   | nil => rfl
   | cons p ps ih => simp only [patchList, List.foldl_cons] at ih ⊢; rw [ih, length_writeList]
 
-/-- Patching changes nothing outside the windows. -/
 theorem getElem?_patchList_of_disjoint (l : List UInt8) (ps : List (Nat × Word)) (j : Nat)
     (h : ∀ o ∈ ps.map Prod.fst, j < o ∨ o + 32 ≤ j) : (patchList l ps)[j]? = l[j]? := by
   induction ps generalizing l with
@@ -186,8 +140,6 @@ theorem getElem?_patchList_of_disjoint (l : List UInt8) (ps : List (Nat × Word)
       getElem?_writeList_of_disjoint _ _ _ _
         (by rw [length_ofWord_toList]; exact h p.1 (List.mem_cons_self ..))]
 
-/-- The last patch at a window reads back its word, provided no later patch overlaps it and
-the window fits. -/
 theorem getElem?_patchList_last (l : List UInt8) (ps₁ ps₂ : List (Nat × Word)) (o : Nat)
     (w : Word) (hfit : o + 32 ≤ l.length)
     (h₂ : ∀ o' ∈ ps₂.map Prod.fst, o + 32 ≤ o' ∨ o' + 32 ≤ o) (j : Nat) (hj : j < 32) :
@@ -205,11 +157,9 @@ theorem getElem?_patchList_last (l : List UInt8) (ps₁ ps₂ : List (Nat × Wor
     omega
   · rw [length_ofWord_toList]; exact hj
 
-/-- `patchWords` is `patchList` on the bytes. -/
 theorem data_patchWords (c : ByteArray) (ps : List (Nat × Word)) :
     (patchWords c ps).data.toList = patchList c.data.toList ps := rfl
 
-/-- Byte lookup on a `ByteArray` is lookup on its list of bytes. -/
 theorem getElem?_byteArray (c : ByteArray) (j : Nat) : c[j]? = c.data.toList[j]? := by
   rw [Array.getElem?_toList]
   by_cases h : j < c.size
@@ -217,7 +167,6 @@ theorem getElem?_byteArray (c : ByteArray) (j : Nat) : c[j]? = c.data.toList[j]?
       ByteArray.getElem_eq_getElem_data]
   · rw [getElem?_neg c j h, getElem?_neg c.data j (by simpa using h)]
 
-/-- Patching keeps the size. -/
 theorem size_patchWords (c : ByteArray) (ps : List (Nat × Word)) :
     (patchWords c ps).size = c.size := by
   have h := length_patchList c.data.toList ps
@@ -231,7 +180,6 @@ theorem getElem?_patchWords_of_offsets (c : ByteArray) (ps : List (Nat × Word))
   rw [getElem?_byteArray, getElem?_byteArray, data_patchWords]
   exact getElem?_patchList_of_disjoint _ _ _ (hoffs ▸ h)
 
-/-- `getD` agrees when lookups agree. -/
 theorem getD_eq_of_getElem? {a b : ByteArray} {i j : Nat} (h : a[i]? = b[j]?) :
     Bytes.getD a i = Bytes.getD b j := by
   unfold Bytes.getD
@@ -260,8 +208,8 @@ theorem readBytes_patchWords_of_offsets (c : ByteArray) (ps : List (Nat × Word)
   have := h o ho
   omega
 
-/-- **The patched word**: a 32-byte read at the offset of the last patch there is the patched
-word (the window fits the code, and no later patch overlaps it). -/
+/-- **The patched word**: a 32-byte read at the last patch's offset (window fits, no later
+patch overlaps). -/
 theorem readBytes_patchWords_last (c : ByteArray) (ps₁ ps₂ : List (Nat × Word)) (o : Nat)
     (w : Word) (hfit : o + 32 ≤ c.size)
     (h₂ : ∀ o' ∈ ps₂.map Prod.fst, o + 32 ≤ o' ∨ o' + 32 ≤ o) :
@@ -280,14 +228,13 @@ theorem readBytes_patchWords_last (c : ByteArray) (ps₁ ps₂ : List (Nat × Wo
 
 /-! ## Jump destinations -/
 
-/-- `code` has the size and the `JUMPDEST` scan of `base` (true of `patchWords base ps` when
-every patch lies in a `PUSH32` immediate). Proved per contract by kernel evaluation. -/
+/-- `code` has the size and `JUMPDEST` scan of `base` (true of `patchWords base ps` when every
+patch lies in a `PUSH32` immediate). Proved per contract by kernel evaluation. -/
 def JumpDestsAgree (code base : ByteArray) : Prop :=
   code.size = base.size ∧
     Solidity.jumpDestList (base.size + 1) code.data.toList 0 =
       Solidity.jumpDestList (base.size + 1) base.data.toList 0
 
-/-- A destination listed by the scan of `base` is valid in `code`. -/
 theorem isValidJumpDest_of_agree {code base : ByteArray} {d : Nat} (h : JumpDestsAgree code base)
     (hd : d ∈ Solidity.jumpDestList (base.size + 1) base.data.toList 0) :
     Interpreter.isValidJumpDest (Interpreter.validJumpDests code) d = true :=

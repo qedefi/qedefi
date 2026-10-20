@@ -5,39 +5,14 @@ import EvmLogic.Solidity.SimpAttr
 /-!
 # Solidity ABI: calldata and return data of static types
 
-The ABI encoding of a call to an external function with *static* arguments (`uintN`,
-`address`, `bool`, `bytes32`, …) is
-
-```
-selector (4 bytes) ‖ arg₀ (32 bytes) ‖ arg₁ (32 bytes) ‖ …
-```
-
-where the selector is the first four bytes of `keccak256("name(type₀,type₁,…)")` and each
-argument is one big-endian word (addresses and `bool`s zero-extended). Return data of static
-values is the same without the selector.
-
-## Selectors are data
-
-A selector is a hash, but the compiled dispatcher only compares the first four calldata bytes
-with *literals* (`PUSH4 sel EQ`). Selectors are therefore plain numbers here (taken from the
-compiler's `--hashes` / `methodIdentifiers` output), never computed with `Crypto.keccak256`:
-the semantics is parametric in `Crypto`, so a theorem about "the selector of `transfer`"
-would otherwise have to assume something about the hash function. `selector` documents the
-intended relation without being used by any proof.
-
-## Main facts
-
-* `size_encodeCall`: `CALLDATASIZE` of an encoded call is `4 + 32 · #args`.
-* `calldataload_encodeCall`: `CALLDATALOAD (4 + 32 i)` of an encoded call is argument `i`.
-* `shr_calldataload_zero`: `CALLDATALOAD 0 >> 224` (solc's `PUSH0 CALLDATALOAD PUSH1 0xe0
-  SHR`) is the big-endian value of the first four calldata bytes, for *any* calldata
-  (zero-padded); `selectorOf_encodeCall` computes it for an encoded call.
-* `Bytes.toNat_append`, `Bytes.toNat_lt`, `readPadded_add`: the byte-level facts behind them.
+A call with static arguments is `selector (4 bytes) ‖ arg₀ ‖ arg₁ ‖ …`, one big-endian word
+per argument. Selectors are literals from the compiler output (the dispatcher compares with
+`PUSH4 sel EQ`), never computed with `Crypto.keccak256`, so no theorem assumes anything about
+the hash. Main facts: `size_encodeCall`, `calldataload_encodeCall`, `shr_calldataload_zero`.
 -/
 
 namespace EvmLean.Interpreter
 
-/-- The bytes read by `readBytes` have the requested length. -/
 theorem size_readBytes (b : ByteArray) (off len : Nat) : (readBytes b off len).size = len := by
   rw [readBytes_eq_readPadded, Bytes.size_readPadded]
 
@@ -47,7 +22,6 @@ namespace EvmLean.Bytes
 
 /-! ## Big-endian values of concatenations -/
 
-/-- Folding bytes big-endian from an accumulator. -/
 private theorem foldl_bigEndian (l : List UInt8) (a : Nat) :
     l.foldl (fun acc x => acc * 256 + x.toNat) a =
       a * 256 ^ l.length + l.foldl (fun acc x => acc * 256 + x.toNat) 0 := by
@@ -59,7 +33,6 @@ private theorem foldl_bigEndian (l : List UInt8) (a : Nat) :
     simp only [Nat.add_mul, Nat.mul_assoc, Nat.add_assoc]
     rw [Nat.mul_comm 256 (256 ^ xs.length)]
 
-/-- A big-endian fold is below `(a + 1) · 256 ^ length`. -/
 private theorem foldl_bigEndian_lt (l : List UInt8) :
     l.foldl (fun acc x => acc * 256 + x.toNat) 0 < 256 ^ l.length := by
   induction l with
@@ -73,12 +46,10 @@ private theorem foldl_bigEndian_lt (l : List UInt8) :
       exact Nat.mul_le_mul_right _ hx
     omega
 
-/-- The big-endian value of a byte array, as a list fold. -/
 private theorem toNat_eq_foldl_toList (b : ByteArray) :
     Bytes.toNat b = b.data.toList.foldl (fun acc x => acc * 256 + x.toNat) 0 := by
   rw [toNat_eq_foldl, Array.foldl_toList]
 
-/-- The big-endian value of `x ‖ y`. -/
 theorem toNat_append (x y : ByteArray) :
     Bytes.toNat (x ++ y) = Bytes.toNat x * 256 ^ y.size + Bytes.toNat y := by
   rw [toNat_eq_foldl_toList, toNat_eq_foldl_toList x, toNat_eq_foldl_toList y,
@@ -86,7 +57,6 @@ theorem toNat_append (x y : ByteArray) :
     Array.length_toList]
   rfl
 
-/-- The big-endian value of `n` bytes is below `256 ^ n`. -/
 theorem toNat_lt (b : ByteArray) : Bytes.toNat b < 256 ^ b.size := by
   rw [toNat_eq_foldl_toList]
   have := foldl_bigEndian_lt b.data.toList
@@ -95,13 +65,10 @@ theorem toNat_lt (b : ByteArray) : Bytes.toNat b < 256 ^ b.size := by
 end EvmLean.Bytes
 
 namespace EvmLogic.Solidity
-open EvmLean
-
-open EvmLean.Bytes EvmLean.Interpreter
+open EvmLean EvmLean.Bytes EvmLean.Interpreter
 
 /-! ## Slicing -/
 
-/-- A padded read splits at any point. -/
 theorem readPadded_add (b : ByteArray) (off m n : Nat) :
     readPadded b off (m + n) = readPadded b off m ++ readPadded b (off + m) n := by
   apply ext_getD (by simp [size_readPadded, ByteArray.size_append])
@@ -114,12 +81,10 @@ theorem readPadded_add (b : ByteArray) (off m n : Nat) :
   · have : off + m + (j - m) = off + j := by omega
     simp [h, hj, show j - m < n by omega, this]
 
-/-- `readBytes` splits at any point. -/
 theorem readBytes_add (b : ByteArray) (off m n : Nat) :
     readBytes b off (m + n) = readBytes b off m ++ readBytes b (off + m) n := by
   simp only [readBytes_eq_readPadded, readPadded_add]
 
-/-- Reading past a prefix. -/
 theorem readPadded_append_shift (x y : ByteArray) (off len : Nat) :
     readPadded (x ++ y) (x.size + off) len = readPadded y off len := by
   apply ext_getD (by simp [size_readPadded])
@@ -130,7 +95,6 @@ theorem readPadded_append_shift (x y : ByteArray) (off len : Nat) :
   have h2 : x.size + off + j - x.size = off + j := by omega
   simp only [h1, ↓reduceIte, h2]
 
-/-- Reading inside a prefix. -/
 theorem readPadded_append_of_le (x y : ByteArray) (off len : Nat) (h : off + len ≤ x.size) :
     readPadded (x ++ y) off len = readPadded x off len := by
   apply ext_getD (by simp [size_readPadded])
@@ -138,12 +102,10 @@ theorem readPadded_append_of_le (x y : ByteArray) (off len : Nat) (h : off + len
   rw [size_readPadded] at hj
   simp only [getD_readPadded, hj, ↓reduceIte, getD_append, show off + j < x.size by omega]
 
-/-- `readBytes` past a prefix. -/
 theorem readBytes_append_shift (x y : ByteArray) (off len : Nat) :
     readBytes (x ++ y) (x.size + off) len = readBytes y off len := by
   simp only [readBytes_eq_readPadded, readPadded_append_shift]
 
-/-- `readBytes` inside a prefix. -/
 theorem readBytes_append_of_le (x y : ByteArray) (off len : Nat) (h : off + len ≤ x.size) :
     readBytes (x ++ y) off len = readBytes x off len := by
   simp only [readBytes_eq_readPadded, readPadded_append_of_le x y off len h]
@@ -177,7 +139,6 @@ def selector (crypto : Crypto) (signature : String) : Nat :=
 first four bytes, zero-padded. -/
 def selectorOf (data : ByteArray) : Nat := Bytes.toNat (readBytes data 0 4)
 
-/-- `encodeArgs` has one word per argument. -/
 theorem size_encodeArgs (as : List Word) : (encodeArgs as).size = 32 * as.length := by
   induction as with
   | nil => rfl
@@ -190,7 +151,6 @@ theorem size_encodeArgs (as : List Word) : (encodeArgs as).size = 32 * as.length
     (encodeCall sel args).size = 4 + 32 * args.length := by
   simp only [encodeCall, selectorBytes, ByteArray.size_append, size_ofNatBE, size_encodeArgs]
 
-/-- Word `i` of encoded static values. -/
 theorem readBytes_encodeArgs (as : List Word) (i : Nat) (h : i < as.length) :
     readBytes (encodeArgs as) (32 * i) 32 = Bytes.ofWord as[i] := by
   induction as generalizing i with
@@ -215,16 +175,14 @@ theorem calldataload_encodeCall (sel : Nat) (args : List Word) (i : Nat) (h : i 
   rw [selectorBytes, size_ofNatBE] at this
   rw [encodeCall, selectorBytes, this, readBytes_encodeArgs args i h, toWord_ofWord]
 
-/-- The first four bytes of an encoded call are the selector. -/
 @[sol_norm] theorem selectorOf_encodeCall (sel : Nat) (args : List Word) :
     selectorOf (encodeCall sel args) = sel % 2 ^ 32 := by
   have := readBytes_append_left (selectorBytes sel) (encodeArgs args)
   rw [selectorBytes, size_ofNatBE] at this
   rw [selectorOf, encodeCall, selectorBytes, this, toNat_ofNatBE]
 
-/-- **solc's selector extraction** (`PUSH0 CALLDATALOAD PUSH1 0xe0 SHR`): the first calldata
-word shifted right by 224 bits is the big-endian value of the first four calldata bytes. Holds
-for all calldata, including calldata shorter than four bytes (zero-padded). -/
+/-- **solc's selector extraction** (`CALLDATALOAD 0 >> 224`): the first four calldata bytes,
+for any calldata (zero-padded). -/
 @[sol_norm] theorem shr_calldataload_zero (data : ByteArray) :
     Word.shr (BitVec.ofNat 256 224) (Bytes.toWord (readBytes data 0 32)) =
       BitVec.ofNat 256 (selectorOf data) := by
@@ -249,22 +207,18 @@ for all calldata, including calldata shorter than four bytes (zero-padded). -/
   rw [h4, Nat.add_comm, Nat.add_mul_div_right _ _ (by decide), Nat.div_eq_of_lt hb]
   omega
 
-/-- `CALLDATALOAD 4`: the first argument. -/
 @[sol_norm] theorem calldataload_encodeCall_0 (sel : Nat) (a : Word) (as : List Word) :
     Bytes.toWord (readBytes (encodeCall sel (a :: as)) 4 32) = a :=
   calldataload_encodeCall sel _ 0 (by simp)
 
-/-- `CALLDATALOAD 36`: the second argument. -/
 @[sol_norm] theorem calldataload_encodeCall_1 (sel : Nat) (a b : Word) (as : List Word) :
     Bytes.toWord (readBytes (encodeCall sel (a :: b :: as)) 36 32) = b :=
   calldataload_encodeCall sel _ 1 (by simp)
 
-/-- `CALLDATALOAD 68`: the third argument. -/
 @[sol_norm] theorem calldataload_encodeCall_2 (sel : Nat) (a b c : Word) (as : List Word) :
     Bytes.toWord (readBytes (encodeCall sel (a :: b :: c :: as)) 68 32) = c :=
   calldataload_encodeCall sel _ 2 (by simp)
 
-/-- `CALLDATALOAD 100`: the fourth argument. -/
 @[sol_norm] theorem calldataload_encodeCall_3 (sel : Nat) (a b c d : Word) (as : List Word) :
     Bytes.toWord (readBytes (encodeCall sel (a :: b :: c :: d :: as)) 100 32) = d :=
   calldataload_encodeCall sel _ 3 (by simp)

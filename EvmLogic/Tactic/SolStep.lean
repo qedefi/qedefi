@@ -8,59 +8,25 @@ import EvmLogic.Solidity.Word
 /-!
 # Symbolic execution of compiled contracts: `sol_step`
 
-`evm_step` (`EvmLogic.Tactic.EvmStep`) tries every step lemma in turn and checks the opcode
-byte with `exact rfl`. That is fine for hand-written programs of a few dozen bytes; on
-solc output (1–25 kB) it breaks down:
-
-* long bytecode literals are elaborated as chains of `have`s (Lean's list-literal macro
-  chunks long lists), which `reduceByteArrayGetElem` does not see through, so pushed
-  immediates stay unevaluated;
-* `exact rfl` on `code[pc]? = some b` unfolds the list in the elaborator, hitting the
-  recursion limit (an error `first` cannot recover from) for large `pc`;
-* jump-destination side conditions evaluate `validJumpDests` (minutes in the kernel for
-  1.6 kB, see `EvmLogic.Solidity.JumpDest`);
-* `PUSH3`–`PUSH32` and `CODECOPY` are not in the lemma search.
-
-`sol_step` reads the opcode byte at `pc` itself (zeta-reducing the literal once per step),
-applies only the step lemmas for that byte, and discharges side goals with `sol_disch`:
-
-* code bytes `code[i]? = some b` by `decide +kernel` (closed after projecting the machine
-  literal; the kernel indexes the literal in microseconds);
-* jump destinations by `isValidJumpDest_of_mem` + `decide +kernel` on the list scan;
-* other closed goals (literal `JUMPI` conditions, stack bounds) by `decide +kernel`;
-* everything else by `evm_disch` (runtime errors such as the recursion limit are turned into
-  ordinary failures, so that the next candidate lemma is tried).
-
-The new machine is normalized by `evm_norm` plus `reduceCodeImm`, which evaluates
-`Bytes.toWord (readBytes code i n)` (pushed immediates) and `readBytes code i 32`
-(`CODECOPY` of a word) for literal code, each by a kernel-checked `decide` (a `dsimproc`
-would leave the kernel to compare the two sides by lazy unfolding, which recurses too deeply
-on numerals such as 4-byte selectors). `sol_steps [h₁, …]` repeats `sol_step` until no
-lemma applies (a symbolic `JUMPI` condition, or a halt).
-
-Everything `sol_step` produces is checked by the kernel: code bytes, jump destinations and
-immediates are auxiliary theorems proved by kernel evaluation.
+`evm_step` does not scale to solc output (1–25 kB). `sol_step` reads the opcode byte at `pc`
+itself, applies only the step lemmas for that byte, and checks code bytes, jump destinations
+and pushed immediates by kernel evaluation (`decide +kernel`, auxiliary theorems): the
+elaborator's `rfl`/`decide` hit the recursion limit on long literals.
 -/
 
 namespace EvmLogic.Tactic.SolStep
-open EvmLean EvmLogic.Solidity
-
-open Lean Elab Tactic EvmLogic.Tactic Meta Simp
-open EvmLean.Interpreter
+open EvmLean EvmLogic.Solidity Lean Elab Tactic EvmLogic.Tactic Meta Simp EvmLean.Interpreter
 
 /-! ## Reading literal bytecode -/
 
-/-- The value of a byte literal `(n : UInt8)` (as elaborated: `OfNat.ofNat n`). -/
 def byteLit? (e : Expr) : Option Nat :=
   match e.getAppFnArgs with
   | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit?
   | _ => e.rawNatLit?
 
-/-- The bytes of a `ByteArray` given by a literal `⟨#[b₀, b₁, …]⟩` (after unfolding
-definitions and zeta-reducing the `have` chain of long list literals). -/
+/-- The bytes of a literal `ByteArray` (zeta-reducing the `have` chain of long list literals). -/
 def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) :=
-  -- Long literals are deep terms (`b₀ :: b₁ :: …` or nested `have`s); Meta traversals count
-  -- their depth against `maxRecDepth`.
+  -- Long literals are deep terms; Meta traversals count their depth against `maxRecDepth`.
   withTheReader Core.Context (fun ctx => { ctx with maxRecDepth := 1000000 }) do
   let c ← whnfD c
   let_expr ByteArray.mk arr := c | return none
@@ -76,20 +42,16 @@ def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) :=
     out := out.push v
   return some out
 
-/-- Big-endian value of `n` bytes of `bytes` at `off`, zero-padded past the end. -/
 def readNat (bytes : Array Nat) (off n : Nat) : Nat :=
   (List.range n).foldl (fun acc j => acc * 256 + bytes.getD (off + j) 0) 0
 
-/-- A kernel-checked proof of the closed equation `lhs = rhs` by evaluation (`decide`),
-stored as an auxiliary theorem so that the kernel evaluates it once, by `whnf` (comparing
-the two sides by lazy unfolding instead can recurse deeply on large numerals). -/
+/-- A proof of the closed `lhs = rhs` by `decide`, as an auxiliary theorem (comparing the sides
+by lazy unfolding instead recurses too deeply on large numerals). -/
 def kernelEq (lhs rhs : Expr) : MetaM Expr := do
   let eq ← mkEq lhs rhs
   return mkConst (← mkAuxLemma [] eq (← mkDecideProof eq))
 
-/-- Evaluate pushed immediates `Bytes.toWord (readBytes code i n)` and word-sized code reads
-`readBytes code i 32` for literal `code` and numerals `i`, `n`. Each rewrite is proved by a
-kernel evaluation (`kernelEq`). -/
+/-- Evaluate `Bytes.toWord (readBytes code i n)` and `readBytes code i 32` for literal code. -/
 simproc_decl reduceCodeImm (_) := fun e => do
   match_expr e with
   | Bytes.toWord b =>
@@ -113,8 +75,8 @@ simproc_decl reduceCodeImm (_) := fun e => do
 
 /-! ## Side conditions -/
 
-/-- Discharge a side goal of a step lemma applied to a machine with literal code: code
-bytes and jump destinations in the kernel, the rest with `evm_disch`. -/
+/-- Discharge a step-lemma side goal on literal code: code bytes and jump destinations in the
+kernel, the rest with `evm_disch`. -/
 elab "sol_disch" : tactic => withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let lhs? := match_expr t with
@@ -135,9 +97,8 @@ elab "sol_disch" : tactic => withMainContext do
     evalTactic (← `(tactic| apply EvmLogic.Solidity.isValidJumpDest_of_mem))
     evalTactic (← `(tactic| decide +kernel))
   else
-    -- Closed side goals (literal JUMPI conditions, stack bounds) are evaluated by the kernel:
-    -- the elaborator's `rfl`/`decide` can unfold large numerals until the recursion limit,
-    -- a runtime error that `first` does not catch.
+    -- Closed goals go to the kernel: the elaborator's `rfl`/`decide` can hit the recursion
+    -- limit on large numerals, a runtime error that `first` does not catch.
     if !t.hasFVar && !t.hasMVar then
       let s ← saveState
       try
@@ -149,8 +110,7 @@ elab "sol_disch" : tactic => withMainContext do
 
 /-! ## Lemma selection by opcode -/
 
-/-- The step lemmas (for a running machine) that can apply to opcode byte `b`, as tactic
-scripts. -/
+/-- The step lemmas that can apply to opcode byte `b`, as tactic scripts. -/
 def stepTactics (b : Nat) : MetaM (List (TSyntax `tactic)) := do
   let app (n : Name) : MetaM (TSyntax `tactic) :=
     `(tactic| (apply $(mkIdent (`EvmLean.Interpreter ++ n)); all_goals sol_disch))
@@ -203,7 +163,6 @@ def findRunMachine? (e : Expr) : Option Expr :=
   | some (.app _ m) => some m
   | _ => none
 
-/-- The opcode byte at the `pc` of the machine in the goal's `run n m`. -/
 def currentByte : TacticM Nat := withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let some m := findRunMachine? t | throwError "sol_step: no `run _ m` in the goal"
@@ -225,8 +184,8 @@ def firstOf (tacs : List (TSyntax `tactic)) (msg : String) : TacticM Unit := do
     catch _ => s.restore
   throwError msg
 
-/-- Advance `run (n + 1) m` by one instruction of literal bytecode (see the module doc).
-`sol_step [h₁, …]` adds simp lemmas to the normalization of the new machine. -/
+/-- Advance `run (n + 1) m` by one instruction of literal bytecode; `sol_step [h₁, …]` adds
+simp lemmas to the normalization. -/
 syntax "sol_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
