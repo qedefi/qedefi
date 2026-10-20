@@ -52,13 +52,22 @@ then lifted to the bytecode along arbitrary traces
 | `price_mono_deployed` | along user operations, assets per share never decreases |
 | `donation_attack_deployed` | the first-depositor attack plays out exactly as the model predicts |
 
-Hypotheses are explicit and listed in the file docstring and
-`specs/EvmLeanSpecs/Refinement/INVARIANTS.md`: enough gas, no ETH, no EIP-7702 authorizations,
-Keccak freshness of the finitely many slots involved (never global injectivity), well-formed
-initial ledgers, top-level calls (nested calls are covered at frame level for the entry
-points and views). The model level (`specs/`, 315+ theorems) also proves the a16z/crytic
-round-trip properties and refutes several for Solmate (`docs/erc4626-invariants.md`).
-Everything depends only on `propext`, `Classical.choice`, `Quot.sound`.
+**Any transaction, not just direct calls** (`specs/EvmLeanSpecs/Refinement/NestedInvariants.lean`):
+`supply_eq_sum_any_tx`, `solvent_any_tx`, `invariant_any_tx`, `price_mono_any_tx` and the
+multi-transaction `*_nested` versions hold for arbitrary transactions from any EOA into any
+code — routers and other contracts calling the vault at any depth, including enclosing frames
+that revert afterwards. Coverage includes every function and view of both contracts, EIP-2612
+`permit` (for every `Crypto`: signature unforgeability is an assumption you add, not a claim),
+unknown selectors and malformed calldata (proved to revert). Emitted logs are proved too
+(`EVENTS.md`), as are `name`/`symbol` (`STRINGS.md`).
+
+Hypotheses are explicit (`INVARIANTS.md`): vault/asset frames funded with ≥ 250 000 gas (the
+one open item: low-gas frames), no EIP-7702 authorizations, Keccak freshness of the slots of
+the actors involved (never global injectivity), well-formed initial ledgers,
+`DOMAIN_SEPARATOR` only on the deployment chain or with names under 32 bytes. The model level
+(`specs/`) also proves the a16z/crytic round-trip properties and refutes several for Solmate
+(`docs/erc4626-invariants.md`). Everything depends only on `propext`, `Classical.choice`,
+`Quot.sound`.
 
 The compiled contracts are differential-tested against Foundry/anvil (`lake exe difftest`):
 0 mismatches over 20,008 + 2,430 transactions, checking status, return data, logs, gas and
