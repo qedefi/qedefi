@@ -1,6 +1,9 @@
 import EvmLeanSpecs.Refinement.NestedCalls
 import EvmLeanSpecs.Refinement.SharesFrameViews
 import EvmLeanSpecs.Refinement.VaultViewsSpec
+import EvmLeanSpecs.Refinement.ViewsRest
+import EvmLeanSpecs.Refinement.StringsAssetSpec
+import EvmLeanSpecs.Refinement.PermitSpec
 
 /-!
 # Frame summaries of views and of calls carrying value
@@ -9,10 +12,19 @@ import EvmLeanSpecs.Refinement.VaultViewsSpec
 world is unchanged on success:
 
 * `frameOk_view`: a funded frame (`Funded`, at least 60000 gas) calling one of the covered views
-  (`ViewData`): the vault's twelve ERC-4626 views (`VaultViews*.lean`), its share-token views
-  `totalSupply`, `balanceOf`, `allowance`, `decimals` (`SharesFrameViews.lean`), and the asset's
-  `balanceOf` (`AssetBalanceOf.lean`) — called with a non-static `CALL` (a `STATICCALL` frame
-  is not dangerous and needs no summary);
+  (`ViewData`) — called with a non-static `CALL` (a `STATICCALL` frame is not dangerous and
+  needs no summary):
+  - the vault's twelve ERC-4626 views (`VaultViews*.lean`), its share-token views
+    `totalSupply`, `balanceOf`, `allowance`, `decimals` (`SharesFrameViews.lean`), its hook
+    counters `beforeWithdrawHookCalledCounter`, `afterDepositHookCalledCounter`
+    (`ViewsRest.lean`) and `nonces` (`PermitVaultDS.lean`);
+  - the asset's `balanceOf` (`AssetBalanceOf.lean`), `totalSupply`, `allowance`, `decimals`
+    (`ViewsRest.lean`) and `nonces` (`PermitAssetDS.lean`);
+  - for both tokens `name()` and `symbol()` (`Strings*Spec.lean`, with the gas the stored
+    string's length needs, `Str.getterGas`) and `DOMAIN_SEPARATOR()` (`Permit*DS.lean`) in the
+    cases `Permit.DomainCase` covers (`DomainOk`: the deployment chain, or a name shorter than
+    32 bytes). `DOMAIN_SEPARATOR()` on another chain with a name of 32 bytes or more is **not**
+    covered (the out-of-place string encoder is not verified);
 * `frameOk_value`: any call with non-zero value to the vault or the asset: both are compiled
   with every function non-payable, so the dispatcher's first instructions revert
   (`CALLVALUE ISZERO JUMPI … REVERT`), with at least 100 gas.
@@ -36,7 +48,8 @@ theorem frameOk_of_world {m : Machine} (hdep : Deployed m.world vault asset)
 
 /-! ## Views -/
 
-/-- Calldata selecting one of the vault's views with a frame summary. -/
+/-- Calldata selecting one of the vault's views with a frame summary (selector and ABI-clean
+arguments): the twelve ERC-4626 views, the share-token views, the hook counters, `nonces`. -/
 def VaultViewData (d : ByteArray) : Prop :=
   (∃ x, WordCall d 0xc6e6f592 x) ∨ (∃ x, WordCall d 0x07a2d13a x) ∨
   (∃ x, WordCall d 0xef8b30f7 x) ∨ (∃ x, WordCall d 0xb3d7f6b9 x) ∨
@@ -46,56 +59,151 @@ def VaultViewData (d : ByteArray) : Prop :=
   NoArgCall d 0x01e1d114 ∨ NoArgCall d 0x38d52e0f ∨
   NoArgCall d 0x18160ddd ∨ (∃ a, AddrCall d 0x70a08231 a) ∨
   (∃ o s, TwoWordCall d 0xdd62ed3e (Word.ofAddress o) (Word.ofAddress s)) ∨
-  NoArgCall d 0x313ce567
+  NoArgCall d 0x313ce567 ∨ NoArgCall d 0xbc368a8a ∨ NoArgCall d 0xfc407ae7 ∨
+  (∃ a, AddrCall d 0x7ecebe00 a)
 
-/-- The frame calls one of the views with a frame summary: a view of the vault, or the
-asset's `balanceOf`. -/
+/-- Calldata selecting one of the asset's views with a frame summary: `balanceOf`,
+`totalSupply`, `allowance`, `decimals`, `nonces`. -/
+def AssetViewData (d : ByteArray) : Prop :=
+  (∃ a, AddrCall d balanceOfSelector a) ∨ NoArgCall d 0x18160ddd ∨
+  (∃ o s, TwoWordCall d 0xdd62ed3e (Word.ofAddress o) (Word.ofAddress s)) ∨
+  NoArgCall d 0x313ce567 ∨ (∃ a, AddrCall d 0x7ecebe00 a)
+
+/-- The chain and the token's stored name are in a case `DOMAIN_SEPARATOR()` (and `permit`) is
+proved for (`Permit.DomainCase`): `block.chainid` is the chain id immutable of the code running
+at the frame's account (the deployment chain), or the name in slot 0 is stored in Solidity's
+short form (fewer than 32 bytes). -/
+def DomainOk (m : Machine) : Prop :=
+  (∀ i : SolmateVault.Immutables,
+    m.world.code m.frame.msg.currentTarget = SolmateVault.runtimeCodeWith i →
+    Permit.DomainCase i.initialChainId (ofNat m.ctx.block.chainId)
+      (m.world.sload m.frame.msg.currentTarget 0#256)) ∧
+  (∀ ia : SolmateAsset.Immutables,
+    m.world.code m.frame.msg.currentTarget = SolmateAsset.runtimeCodeWith ia →
+    Permit.DomainCase ia.initialChainId (ofNat m.ctx.block.chainId)
+      (m.world.sload m.frame.msg.currentTarget 0#256))
+
+/-- The views both tokens share whose summaries need more than the calldata: `name()` and
+`symbol()` with the gas the stored string needs (`Str.getterGas` of its length), and
+`DOMAIN_SEPARATOR()` in the covered cases (`DomainOk`). -/
+def TokenViewData (m : Machine) : Prop :=
+  (NoArgCall m.frame.msg.data 0x06fdde03 ∧ Str.getterGas (Str.slotLen
+    (m.world.sload m.frame.msg.currentTarget 0#256)) ≤ m.frame.gasLeft) ∨
+  (NoArgCall m.frame.msg.data 0x95d89b41 ∧ Str.getterGas (Str.slotLen
+    (m.world.sload m.frame.msg.currentTarget 1#256)) ≤ m.frame.gasLeft) ∨
+  (NoArgCall m.frame.msg.data 0x3644e515 ∧ DomainOk m)
+
+/-- The frame calls one of the views with a frame summary: a view of the vault, a view of the
+asset, or a string / domain-separator view of either. -/
 def ViewData (vault asset : Address) (m : Machine) : Prop :=
   (m.frame.msg.currentTarget = vault ∧ VaultViewData m.frame.msg.data) ∨
-  (m.frame.msg.currentTarget = asset ∧
-    ∃ a, AddrCall m.frame.msg.data balanceOfSelector a)
+  (m.frame.msg.currentTarget = asset ∧ AssetViewData m.frame.msg.data) ∨
+  ((m.frame.msg.currentTarget = vault ∨ m.frame.msg.currentTarget = asset) ∧ TokenViewData m)
 
 /-- A view post leaves the world unchanged. -/
 theorem viewPost_world {m mf : Machine} {r : Option ℕ} {o : Outcome} (h : ViewPost m r mf o) :
     mf.world = m.world := h.1
 
+/-- A summary whose post fixes the world gives the success-only world summary. -/
+theorem halts_world {m : Machine} {H : Machine → Outcome → Prop} (hH : Halts m H)
+    (hw : ∀ mf o, H mf o → mf.world = m.world) :
+    Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) :=
+  hH.mono fun mf o _ hp _ _ => hw mf o hp
+
 set_option maxHeartbeats 1000000 in
+/-- The vault's views, in any frame: on success the world is unchanged. -/
+theorem vaultView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
+    (h : FrameHyp crypto vault asset Act minGas m) (ht : m.frame.msg.currentTarget = vault)
+    (hd : VaultViewData m.frame.msg.data) :
+    Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) := by
+  have hval := h.funded.value
+  have hsz := h.funded.size
+  have hg := h.funded.gas
+  obtain ⟨i, hia, hf⟩ := vault_fresh h.start h.dep ht
+  have hp := viewPre_of hmin h hia ht hf
+  rcases hd with ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨a, hd⟩ |
+    ⟨a, hd⟩ | ⟨a, hd⟩ | ⟨a, hd⟩ | hd | hd | hd | ⟨a, hd⟩ | ⟨o, s, hd⟩ | hd | hd | hd | ⟨a, hd⟩
+  · exact halts_world (convertToShares_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (convertToAssets_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (previewDeposit_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (previewMint_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (previewWithdraw_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (previewRedeem_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (maxDeposit_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (maxMint_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (maxWithdraw_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (maxRedeem_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (totalAssets_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (asset_halts m hp hd) fun _ _ h => h.1
+  · exact halts_world (sharesTotalSupply_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (sharesBalanceOf_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (sharesAllowance_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (sharesDecimals_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (vaultBeforeWithdrawCounter_halts m hf hval hd hsz (by omega))
+      fun _ _ h => h.2
+  · exact halts_world (vaultAfterDepositCounter_halts m hf hval hd hsz (by omega))
+      fun _ _ h => h.2
+  · exact halts_world (Permit.vault_nonces_halts m hf a hval hd.selector hd.size hsz hd.arg
+      (by omega)) fun _ _ h => h.2.1
+
+set_option maxHeartbeats 1000000 in
+/-- The asset's views, in any frame: on success the world is unchanged. -/
+theorem assetView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
+    (h : FrameHyp crypto vault asset Act minGas m) (ht : m.frame.msg.currentTarget = asset)
+    (hd : AssetViewData m.frame.msg.data) :
+    Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) := by
+  have hval := h.funded.value
+  have hsz := h.funded.size
+  have hg := h.funded.gas
+  obtain ⟨ia, hf⟩ := asset_fresh h.start h.dep ht
+  rcases hd with ⟨a, hd⟩ | hd | ⟨o, s, hd⟩ | hd | ⟨a, hd⟩
+  · exact halts_world (balanceOf_halts m hf a hval hd.selector hd.size hsz hd.arg (by omega))
+      fun _ _ h => h.2.1
+  · exact halts_world (assetTotalSupply_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (assetAllowance_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (assetDecimals_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
+  · exact halts_world (Permit.asset_nonces_halts m hf a hval hd.selector hd.size hsz hd.arg
+      (by omega)) fun _ _ h => h.2.1
+
+set_option maxHeartbeats 1000000 in
+/-- `name()`, `symbol()`, `DOMAIN_SEPARATOR()` of either token, in any frame: on success the
+world is unchanged. -/
+theorem tokenView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
+    (h : FrameHyp crypto vault asset Act minGas m)
+    (ht : m.frame.msg.currentTarget = vault ∨ m.frame.msg.currentTarget = asset)
+    (hd : TokenViewData m) :
+    Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) := by
+  have hval := h.funded.value
+  have hsz := h.funded.size
+  have hg := h.funded.gas
+  have hlt := h.funded.gasLt
+  rcases ht with ht | ht
+  · obtain ⟨i, -, hc⟩ := h.dep.vaultCode
+    have hf : Fresh (SolmateVault.runtimeCodeWith i) m := by
+      have := h.start.fresh; rw [ht, hc] at this; exact this
+    rcases hd with ⟨hd, hgs⟩ | ⟨hd, hgs⟩ | ⟨hd, hdom⟩
+    · exact halts_world (vaultName_refines m ⟨hf, hval, hgs, hlt, hsz⟩ hd) fun _ _ h => h.1
+    · exact halts_world (vaultSymbol_refines m ⟨hf, hval, hgs, hlt, hsz⟩ hd) fun _ _ h => h.1
+    · exact halts_world (Permit.vault_domainSeparator_halts m hf hval hd.selector hd.size hsz
+        (hdom.1 i (by rw [ht, hc])) (by omega) hlt) fun _ _ h => h.2.1
+  · obtain ⟨ia, hc⟩ := h.dep.assetCode
+    have hf : Fresh (SolmateAsset.runtimeCodeWith ia) m := by
+      have := h.start.fresh; rw [ht, hc] at this; exact this
+    rcases hd with ⟨hd, hgs⟩ | ⟨hd, hgs⟩ | ⟨hd, hdom⟩
+    · exact halts_world (assetName_refines m ⟨hf, hval, hgs, hlt, hsz⟩ hd) fun _ _ h => h.1
+    · exact halts_world (assetSymbol_refines m ⟨hf, hval, hgs, hlt, hsz⟩ hd) fun _ _ h => h.1
+    · exact halts_world (Permit.asset_domainSeparator_halts m hf hval hd.selector hd.size hsz
+        (hdom.2 ia (by rw [ht, hc])) (by omega) hlt) fun _ _ h => h.2.1
+
 /-- **The covered views, in any frame**: on success the world is unchanged. -/
 theorem frameOk_view {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
     (h : FrameHyp crypto vault asset Act minGas m) (hv : ViewData vault asset m) :
     FrameOk crypto vault asset Act K m := by
   refine frameOk_of_world h.dep ?_
-  have hval := h.funded.value
-  have hsz := h.funded.size
-  have hg := h.funded.gas
-  rcases hv with ⟨ht, hd⟩ | ⟨ht, a, hd⟩
-  · obtain ⟨i, hia, hf⟩ := vault_fresh h.start h.dep ht
-    have hp := viewPre_of hmin h hia ht hf
-    have w : ∀ {H : Machine → Outcome → Prop}, Halts m H →
-        (∀ mf o, H mf o → mf.world = m.world) →
-        Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) :=
-      fun hH hw => hH.mono fun mf o _ hp _ _ => hw mf o hp
-    rcases hd with ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨x, hd⟩ | ⟨a, hd⟩ |
-      ⟨a, hd⟩ | ⟨a, hd⟩ | ⟨a, hd⟩ | hd | hd | hd | ⟨a, hd⟩ | ⟨o, s, hd⟩ | hd
-    · exact w (convertToShares_halts m hp hd) fun _ _ h => h.1
-    · exact w (convertToAssets_halts m hp hd) fun _ _ h => h.1
-    · exact w (previewDeposit_halts m hp hd) fun _ _ h => h.1
-    · exact w (previewMint_halts m hp hd) fun _ _ h => h.1
-    · exact w (previewWithdraw_halts m hp hd) fun _ _ h => h.1
-    · exact w (previewRedeem_halts m hp hd) fun _ _ h => h.1
-    · exact w (maxDeposit_halts m hp hd) fun _ _ h => h.1
-    · exact w (maxMint_halts m hp hd) fun _ _ h => h.1
-    · exact w (maxWithdraw_halts m hp hd) fun _ _ h => h.1
-    · exact w (maxRedeem_halts m hp hd) fun _ _ h => h.1
-    · exact w (totalAssets_halts m hp hd) fun _ _ h => h.1
-    · exact w (asset_halts m hp hd) fun _ _ h => h.1
-    · exact w (sharesTotalSupply_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
-    · exact w (sharesBalanceOf_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
-    · exact w (sharesAllowance_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
-    · exact w (sharesDecimals_halts m hf hval hd hsz (by omega)) fun _ _ h => h.2
-  · obtain ⟨ia, hf⟩ := asset_fresh h.start h.dep ht
-    exact (balanceOf_halts m hf a hval hd.selector hd.size hsz hd.arg (by omega)).mono
-      fun mf o _ hp _ _ => hp.2.1
+  rcases hv with ⟨ht, hd⟩ | ⟨ht, hd⟩ | ⟨ht, hd⟩
+  · exact vaultView_world hmin h ht hd
+  · exact assetView_world hmin h ht hd
+  · exact tokenView_world hmin h ht hd
 
 /-! ## Calls carrying value -/
 
