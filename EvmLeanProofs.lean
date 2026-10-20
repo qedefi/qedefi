@@ -92,6 +92,7 @@ import EvmLeanProofs.Program.GasMono.CallsFedScan
 import EvmLeanProofs.Program.GasMono.CodeScan
 import EvmLeanProofs.Program.GasMono.CodeFails
 import EvmLeanProofs.Program.GasMono.CodeFailsTactic
+import EvmLeanProofs.Program.GasMono.Depth
 import EvmLeanProofs.Program.AbsInt.Effect
 import EvmLeanProofs.Program.AbsInt.Domain
 import EvmLeanProofs.Program.AbsInt.Check
