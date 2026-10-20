@@ -4,24 +4,20 @@ import Defi.ERC4626.Logs
 /-!
 # Events of the vault's share-token functions: bytecode
 
-Companions of `transfer_ok`, `approve_ok`, `transferFrom_ok` (`SharesTransfer.lean`, …): the
-same top-level symbolic executions, whose conclusions also give the result's logs —
-`Transfer(caller, dst, amount)`, `Approval(caller, spender, amount)`, and
-`Transfer(src, dst, amount)` (Solmate's `transferFrom` emits no `Approval`), each emitted by the
-vault. The reverting runs need no companion: a failed top-level call has no logs
-(`run_logs_of_fail`).
+Companions of `transfer_ok`, `approve_ok`, `transferFrom_ok` that also give the result's logs.
+Reverting runs need none: a failed top-level call has no logs (`run_logs_of_fail`).
 -/
 
 namespace Examples.Solmate.ERC4626.Shares
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst spender : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
   {warmKeys : StorageKeySet}
 
-/-- The logs of a successful top-level result are the frame's. -/
 theorem topLevelResult_logs_of_success {t : Option Address} {w : World} {tr : TransientStorage}
     {r : ChildResult} (h : r.success = true) : (topLevelResult t w tr r).logs = r.sub.logs := by
   unfold topLevelResult

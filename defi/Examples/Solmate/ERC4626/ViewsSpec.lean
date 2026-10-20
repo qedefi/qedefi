@@ -5,19 +5,10 @@ import Examples.Solmate.ERC20.BalanceOf
 /-!
 # The vault's views refine the model
 
-For every view of the compiled vault, deployed with any immutables `i` (any asset address):
-run in **any** frame that `ViewPre i` describes (a fresh frame of the vault's code, top level
-or called by another contract, for any `Crypto`, any world with the asset deployed, enough
-gas), it returns exactly the model's value (`Vault.Solmate.State.convertToShares` …, at
-`absOf i.asset m`, the model state read from the frame's world) when the model returns
-`some v`, and reverts with empty data when it returns `none` (`mulDiv` overflow or division by
-zero); the world is unchanged in both cases (`ViewPost`). These are `Halts` statements, so they
-also serve as callee summaries for `WP.call` / `WP.staticcall`.
-
-`*_call` restate them for a top-level transaction (`processMessageCall`) calling the vault at
-`vault` with `Abi.encodeCall` calldata, in a world where the vault is `Deployed`.
-
-`asset()` has no model counterpart: it returns the asset address (`asset_refines`).
+`*_refines`: in any frame satisfying `ViewPre i`, each view returns the model's value at
+`absOf i.asset m` when the model gives `some v` and reverts on `none`, world unchanged
+(`ViewPost`); usable as callee summaries. `*_call`: the same for a top-level transaction on a
+`Deployed` vault. Also the hook counters and the asset's `totalSupply`/`allowance`/`decimals`.
 -/
 
 section
@@ -25,8 +16,9 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20
 
 /-! ## Callee role: any frame -/
 
@@ -125,8 +117,8 @@ def ViewResult (res : MessageResult) (r : Option ℕ) : Prop :=
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {data : ByteArray} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
-/-- A view summary of the start machine of a top-level call to the vault gives the result of
-`processMessageCall`: the world is unchanged and the result is `ViewResult`. -/
+/-- A view summary of the start machine gives `processMessageCall`'s result: world unchanged,
+`ViewResult`. -/
 theorem view_call {i : SolmateVault.Immutables} {r : Option ℕ}
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
     (hpre : Precompile.isPrecompile ctx.fork vault = false)
@@ -161,7 +153,6 @@ theorem view_call {i : SolmateVault.Immutables} {r : Option ℕ}
       topLevelResult_reverted, ViewResult, ChildResult.success, hsnap]
     decide
 
-/-- The start of a top-level call to the vault (immutables `i`) satisfies `ViewPre`. -/
 theorem viewPre_start {i : SolmateVault.Immutables}
     (hasset : ∃ ia, w.code i.asset = SolmateAsset.runtimeCodeWith ia)
     (hapre : ∀ fork, Precompile.isPrecompile fork i.asset = false) (hgas : 60000 ≤ gas)
@@ -178,24 +169,20 @@ theorem viewPre_start {i : SolmateVault.Immutables}
   gasLt := hgas'
   sizeLt := hsize
 
-/-- `absOf` at the start of a top-level call is `abs` of the world. -/
 theorem absOf_start {code : ByteArray} :
     absOf asset (startMachine ctx w tr (callMsg code vault caller data gas wa wk)) =
       abs ctx.crypto w vault asset := rfl
 
-/-- `Abi.encodeCall sel [x]` is a `WordCall`. -/
 theorem wordCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (x : Word) :
     WordCall (Abi.encodeCall sel [x]) sel x :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
    by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _⟩
 
-/-- `Abi.encodeCall sel [a]` is an `AddrCall`. -/
 theorem addrCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (a : Address) :
     AddrCall (Abi.encodeCall sel [Word.ofAddress a]) sel a :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
    by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _⟩
 
-/-- `Abi.encodeCall sel []` is a `NoArgCall`. -/
 theorem noArgCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) :
     NoArgCall (Abi.encodeCall sel []) sel :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel], by rw [Abi.size_encodeCall]; simp⟩
@@ -397,26 +384,13 @@ end
 
 section
 
-/-!
-## The remaining views of the vault and the asset, in any frame
-
-Frame forms (fresh frame, any parents) of the getters not covered by `SharesFrameViews.lean`,
-`VaultViews*.lean`, `AssetBalanceOf.lean`, `Strings*Spec.lean` and `Permit*DS.lean`:
-
-* the vault's hook counters of `MockERC4626`: `beforeWithdrawHookCalledCounter()` (slot 6) and
-  `afterDepositHookCalledCounter()` (slot 7): `vaultBeforeWithdrawCounter_halts`,
-  `vaultAfterDepositCounter_halts`;
-* the asset's `totalSupply()`, `allowance(owner, spender)` and `decimals()`:
-  `assetTotalSupply_halts`, `assetAllowance_halts`, `assetDecimals_halts`.
-
-Each returns the ABI word of the value read from storage (`decimals`: the immutable masked to
-`uint8`) and leaves the world unchanged (`SharesViewPost`).
--/
+/-! ## Remaining getters, in any frame (world unchanged, `SharesViewPost`) -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## The vault's hook counters -/
 
@@ -454,7 +428,6 @@ theorem vaultAfterDepositCounter_halts {i : SolmateVault.Immutables} (m : Machin
 
 /-! ## The asset's views -/
 
-/-- The asset's `decimals` immutable, as its `PUSH32` reads it. -/
 theorem readBytes_assetCode_decimals (ia : SolmateAsset.Immutables) :
     readBytes (SolmateAsset.runtimeCodeWith ia) 345 32 = Bytes.ofWord ia.decimals := by
   have hp : ia.patches = [(1063, ia.initialChainId), (1116, ia.initialDomainSeparator)] ++

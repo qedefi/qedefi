@@ -6,44 +6,25 @@ import Examples.Solmate.ERC4626.Invariants.Deployed
 /-!
 # The event stream of a trace
 
-The trace-level corollary of the per-call event theorems: along any trace of modelled
-top-level calls (interleaved with environment steps), the logs of the calls' results,
-concatenated in order, are the encoding of the model's event stream
-`Solmate.stream (abs w₀) ops` from the initial world's abstraction.
-
-* `CallStepLogs … w c w' L`: `CallStep` (a terminating top-level call `c` from `w` to `w'`)
-  whose result has logs `L`; `LogTrace … w₀ cs w L`: a trace (`Invariants.Trace`) recording
-  the concatenated logs `L` of its calls (environment steps contribute nothing: their logs are
-  not about the modelled calls).
-* `OpEventsAt … c`: the per-call obligation, in the shape of `OpRefinesAt`: under `SlotsOk`,
-  from a deployed world with a well-formed abstraction, a call `c` has the logs
-  `encode vault asset (events (abs w) c.op)`. `opEvents_all`: every call kind, from the
-  top-level theorems `*_events_call` (`250000 ≤ minGas`, the fixed-slot hypothesis of
-  `refinesFor_all_of`).
-* `events_agree`: the model's events only read what `AgreeOn` keeps (balances, supplies,
-  counters, the allowances of actor pairs), so the drift of the concrete abstraction from
-  `Solmate.exec` (up to non-actor allowances) does not change them.
-* **`trace_logs`**: `LogTrace … w₀ cs w L` from a deployed `w₀` with `Solmate.Inv (abs w₀)`,
-  actors in `Act`, under `SlotsOk` and the fixed-slot hypothesis ⇒
-  `L = encode vault asset (Solmate.stream (abs crypto w₀ vault asset) (cs.map VCall.op))`.
+Along any trace of modelled top-level calls, the concatenated logs of the calls' results are
+the encoding of the model's event stream from the initial abstraction (`trace_logs`), from the
+per-call `*_events_call` theorems. See `docs/erc4626/details.md` §6.
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
 /-! ## Events only read what agreement keeps -/
 
-/-- Related options are both `some` or both `none`. -/
 theorem rel_isSome {α β : Type} {R : α → β → Prop} {a : Option α} {b : Option β}
     (h : Option.Rel R a b) : a.isSome = b.isSome := by
   cases h <;> rfl
 
-/-- The events of an entry point only depend on the returned amount. -/
 theorem rel_snd {β : Type} {R : State Address → State Address → Prop}
     {a b : Option (State Address × ℕ)} (h : Option.Rel (fun x y => R x.1 y.1 ∧ x.2 = y.2) a b)
     (f : Option (State Address × ℕ) → β) (hf : ∀ s t v, f (some (s, v)) = f (some (t, v))) :
@@ -57,8 +38,8 @@ theorem rel_snd {β : Type} {R : State Address → State Address → Prop}
     obtain ⟨-, rfl⟩ := hxy
     exact hf _ _ _
 
-/-- **The model's events respect agreement** on operations that read only allowances in
-`G`. -/
+/-- **The model's events respect agreement** on operations that read only allowances in `G`
+(so the drift of `abs` up to non-actor allowances does not change them). -/
 theorem events_agree {G : Address → Address → Prop} {s t : State Address} (h : AgreeOn G s t)
     {op : Op Address} (hr : Reads G s.self op) : events s op = events t op := by
   cases op with
@@ -104,7 +85,6 @@ def CallStepLogs (crypto : Crypto) (vault asset : Address) (minGas : Nat) (w : W
       c.data gas wa wk) r ∧
     r.world = w' ∧ r.logs = L
 
-/-- A call with its logs is a call. -/
 theorem CallStepLogs.callStep {w w' : World} {c : VCall} {L : Array Log}
     (h : CallStepLogs crypto vault asset minGas w c w' L) :
     CallStep crypto vault asset minGas w c w' :=
@@ -119,7 +99,6 @@ def OpEventsAt (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : L
       CallStepLogs crypto vault asset minGas w c w' L →
       L = encode vault asset (events (abs crypto w vault asset) c.op)
 
-/-- `OpEventsAt` from a top-level theorem about every large enough fuel. -/
 theorem opEvents_of {c : VCall}
     (h : SlotsOk crypto vault Act → (∀ a ∈ c.actors, a ∈ Act) →
       ∀ (w : World) (ctx : Context) (tr : TransientStorage) (gas : Nat) (wa : AddressSet)
@@ -198,19 +177,15 @@ theorem opEvents_all (hmin : 250000 ≤ minGas)
 contribute none). -/
 inductive LogTrace (crypto : Crypto) (vault asset : Address) (minGas : Nat) :
     World → List VCall → World → Array Log → Prop
-  /-- The empty trace. -/
   | refl (w : World) : LogTrace crypto vault asset minGas w [] w #[]
-  /-- An environment step, then a trace. -/
   | env {w w' w'' : World} {cs : List VCall} {L : Array Log} :
       EnvStep vault asset w w' → LogTrace crypto vault asset minGas w' cs w'' L →
       LogTrace crypto vault asset minGas w cs w'' L
-  /-- A call with logs `L₁`, then a trace with logs `L₂`. -/
   | call {w w' w'' : World} {c : VCall} {cs : List VCall} {L₁ L₂ : Array Log} :
       CallStepLogs crypto vault asset minGas w c w' L₁ →
       LogTrace crypto vault asset minGas w' cs w'' L₂ →
       LogTrace crypto vault asset minGas w (c :: cs) w'' (L₁ ++ L₂)
 
-/-- A trace with logs is a trace. -/
 theorem LogTrace.trace {w w' : World} {cs : List VCall} {L : Array Log}
     (h : LogTrace crypto vault asset minGas w cs w' L) :
     Trace crypto vault asset minGas w cs w' := by
@@ -219,8 +194,6 @@ theorem LogTrace.trace {w w' : World} {cs : List VCall} {L : Array Log}
   | env he _ ih => exact Trace.env he ih
   | call hc _ ih => exact Trace.cons hc.callStep ih
 
-/-- The logs of a trace follow the event stream of any model state the initial abstraction
-agrees with. -/
 theorem logTrace_stream (hs : SlotsOk crypto vault Act)
     (hR : RefinesFor crypto vault asset minGas Act (fun _ => True))
     (hE : ∀ c, OpEventsAt crypto vault asset minGas Act c) {w w' : World} {cs : List VCall}
@@ -259,11 +232,9 @@ theorem logTrace_stream (hs : SlotsOk crypto vault Act)
     rw [hL₁, hev, this]
     simp only [List.map_cons, stream, encode_append]
 
-/-- **The event stream of a trace**: along any trace of modelled top-level calls (any callers
-and arguments, actors in `Act`, interleaved with environment steps) from a deployed world with
-well-formed ledgers, under `SlotsOk` and the fixed-slot hypothesis, the concatenated logs of
-the calls' results are the encoding of the model's event stream from the initial
-abstraction. -/
+/-- **The event stream of a trace**: along any trace of modelled top-level calls (actors in
+`Act`) from a deployed world with well-formed ledgers, under `SlotsOk` and the fixed-slot
+hypothesis, the concatenated logs encode the model's event stream from the initial `abs`. -/
 theorem trace_logs (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall} {L : Array Log}

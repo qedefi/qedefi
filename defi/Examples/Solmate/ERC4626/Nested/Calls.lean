@@ -4,28 +4,19 @@ import Examples.Solmate.ERC4626.SharesFrame
 /-!
 # Frame summaries of every modelled call, in any frame
 
-`FrameOk` (`NestedSystem.lean`) for a dangerous frame of the vault or the asset that executes
-a modelled state-changing call (`Executes`: caller, target and ABI calldata of a `VCall`, as
-the decoder reads it — calldata assembled in memory by a calling contract included) with
-enough gas and no value (`Funded`), from the frame-level refinement theorems:
-
-* vault: `deposit_refines`, `mint_refines` (`Deposit.lean`, `Mint.lean`), `withdraw_refines`,
-  `redeem_refines` (`WithdrawRefines.lean`), `sharesTransfer_refines`,
-  `sharesTransferFrom_refines`, `sharesApprove_refines` (`SharesFrameSpec.lean`);
-* asset: `assetTransfer_refines`, `assetTransferFrom_refines` (`AssetSpec.lean`),
-  `assetApprove_refines`, `assetMint_refines`, `assetBurn_refines`.
-
-`frameOk_of_executes` dispatches on the call. Hypotheses: the trace-level `SlotsOk` for the
-actors (the call admitted, `Admitted`), the fixed-slot hypothesis `hk` (no balance slot is
-slot 2, 6 or 7), at least 250000 gas.
+`FrameOk` for a vault or asset frame that executes a modelled state-changing call (`Executes`,
+calldata as the decoder reads it) with enough gas and no value (`Funded`), from the frame-level
+`*_refines` theorems; `frameOk_of_executes` dispatches on the call. See
+`docs/erc4626/details.md` §4.
 -/
 
 namespace Examples.Solmate.ERC4626.Nested
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants
 open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
@@ -53,44 +44,29 @@ def CallData : VCall → ByteArray → Prop
 
 /-- The frame `m` executes the modelled call `c`: its caller, its account and its calldata. -/
 structure Executes (vault asset : Address) (m : Machine) (c : VCall) : Prop where
-  /-- The caller. -/
   caller : m.frame.msg.caller = c.caller
-  /-- The called account. -/
   target : m.frame.msg.currentTarget = c.target vault asset
-  /-- The calldata. -/
   data : CallData c m.frame.msg.data
 
-/-- A non-static frame that has just started running the code of the vault or the asset,
-called from another account (what `DangerStart` provides, independently of the simulation's
-`Good`). -/
+/-- A non-static frame that has just started running the code of the vault or the asset, called
+from another account (what `DangerStart` provides). -/
 structure VaultStart (vault asset : Address) (m : Machine) : Prop where
-  /-- Fresh, running the account's own code. -/
   fresh : Fresh (m.world.code m.frame.msg.currentTarget) m
-  /-- Not static. -/
   static : m.frame.msg.isStatic = false
-  /-- At the vault or the asset. -/
   prot : Prot vault asset m.frame.msg.currentTarget
-  /-- Standard precompiles. -/
   pre : m.precompiles = PrecompileImpl.standard m.ctx
-  /-- Called from another account. -/
   caller : ¬ Prot vault asset m.frame.msg.caller
 
 /-- The frame is funded: no value, at least `minGas` and below `2⁶⁴` gas, room for the vault's
 call into the asset (a frame of the vault below the depth limit), calldata below `2⁶⁴`
 bytes. -/
 structure Funded (vault : Address) (minGas : Nat) (m : Machine) : Prop where
-  /-- No value. -/
   value : m.frame.msg.value = 0
-  /-- Enough gas. -/
   gas : minGas ≤ m.frame.gasLeft
-  /-- Gas fits 64 bits. -/
   gasLt : m.frame.gasLeft < 2 ^ 64
-  /-- A frame of the vault has room for one more call level. -/
   depth : m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
-  /-- Calldata length fits 64 bits. -/
   size : m.frame.msg.data.size < 2 ^ 64
 
-/-- A dangerous frame of the simulation is a `VaultStart`. -/
 theorem DangerStart.vaultStart {Good : World → Prop} {G : Nat} {m : Machine}
     (h : DangerStart (Prot vault asset) Good G m) : VaultStart vault asset m where
   fresh := by
@@ -104,20 +80,13 @@ theorem DangerStart.vaultStart {Good : World → Prop} {G : Nat} {m : Machine}
 /-- The common hypotheses of the frame summaries. -/
 structure FrameHyp (crypto : Crypto) (vault asset : Address) (Act : List Address)
     (minGas : Nat) (m : Machine) : Prop where
-  /-- The frame. -/
   start : VaultStart vault asset m
-  /-- Deployed. -/
   dep : Deployed m.world vault asset
-  /-- Well-formed ledgers. -/
   inv : Solmate.Inv (abs crypto m.world vault asset)
-  /-- The chain's hash. -/
   hash : m.ctx.crypto = crypto
-  /-- Funded. -/
   funded : Funded vault minGas m
-  /-- The trace-level hash hypothesis. -/
   slots : SlotsOk crypto vault Act
 
-/-- `FrameOk` from a one-call summary. -/
 theorem frameOk_one {m : Machine} {c : VCall} (hadm : Admitted Act K c)
     (h : Halts m (fun mf o => ∀ out, o = .success out → Deployed mf.world vault asset ∧
       AgreeOn (ActorPairs Act) (abs crypto mf.world vault asset)
@@ -127,21 +96,18 @@ theorem frameOk_one {m : Machine} {c : VCall} (hadm : Admitted Act K c)
     obtain ⟨hd, ha⟩ := hp out ho
     exact ⟨hd, [c], fun c' hc' => by rw [List.mem_singleton.1 hc']; exact hadm, ha⟩
 
-/-- `stepD` of a successful step. -/
 theorem stepD_of_some {s s' : State Address} {op : Op Address} (h : step s op = some s') :
     Lift.stepD step s op = s' := by
   unfold Lift.stepD; rw [h]; rfl
 
 /-! ## The vault's entry points -/
 
-/-- The vault frame's code and immutables. -/
 theorem vault_fresh {m : Machine} (hv : VaultStart vault asset m) (hdep : Deployed m.world vault asset)
     (ht : m.frame.msg.currentTarget = vault) :
     ∃ i : SolmateVault.Immutables, i.asset = asset ∧ Fresh (SolmateVault.runtimeCodeWith i) m := by
   obtain ⟨i, hia, hc⟩ := hdep.vaultCode
   exact ⟨i, hia, by have := hv.fresh; rw [ht, hc] at this; exact this⟩
 
-/-- The view preconditions of a funded vault frame. -/
 theorem viewPre_of {minGas : Nat} {m : Machine} {i : SolmateVault.Immutables}
     (hmin : 60000 ≤ minGas) (h : FrameHyp crypto vault asset Act minGas m)
     (hi : i.asset = asset) (ht : m.frame.msg.currentTarget = vault)
@@ -231,7 +197,6 @@ theorem frameOk_mint {minGas : Nat} {m : Machine} (hmin : 250000 ≤ minGas)
     exact agree_of_entry hs hc hR
   · obtain ⟨out', ho'⟩ := hp; rw [ho] at ho'; cases ho'
 
-/-- The withdraw preconditions of a funded vault frame. -/
 theorem outPre_of {minGas : Nat} {m : Machine} {i : SolmateVault.Immutables}
     (hmin : 200000 ≤ minGas) (h : FrameHyp crypto vault asset Act minGas m)
     (hi : i.asset = asset) (ht : m.frame.msg.currentTarget = vault)
@@ -355,7 +320,6 @@ theorem frameOk_transfer {minGas : Nat} {m : Machine} (hmin : 100000 ≤ minGas)
   · exact hT.mono fun mf o _ hp out ho' => by
       obtain ⟨⟨out', ho⟩, -⟩ := hp; rw [ho] at ho'; cases ho'
 
-/-- `transferFrom` writes only the allowance and the two balance slots. -/
 theorem sload_transferFromWorld_slot {w : World} {token sp src dst : Address} {v k : Word}
     (h1 : k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate src)
     (h2 : k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate dst)
@@ -444,7 +408,6 @@ theorem frameOk_approve {minGas : Nat} {m : Machine} (hmin : 100000 ≤ minGas)
 
 /-! ## The asset's functions -/
 
-/-- The asset frame's code and immutables. -/
 theorem asset_fresh {m : Machine} (hv : VaultStart vault asset m)
     (hdep : Deployed m.world vault asset) (ht : m.frame.msg.currentTarget = asset) :
     ∃ ia : SolmateAsset.Immutables, Fresh (SolmateAsset.runtimeCodeWith ia) m := by

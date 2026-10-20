@@ -14,32 +14,10 @@ import Defi.ERC4626.Logs
 /-!
 # EIP-2612 as the bytecode computes it
 
-The specification side of the `permit` refinement: every value the compiled Solmate `ERC20`
-(both the vault's share token and the asset) computes for `permit`, `DOMAIN_SEPARATOR()` and
-`nonces(owner)`, as an explicit expression in the context's `Crypto` (`crypto.keccak256`,
-`crypto.ecrecover`). Nothing here assumes anything about `Crypto`.
-
-* `PERMIT_TYPEHASH`, `DOMAIN_TYPEHASH`, `VERSION_HASH`: the three `keccak256` constants that
-  solc folded into the bytecode (`keccak256("Permit(address owner,…)")`,
-  `keccak256("EIP712Domain(…)")`, `keccak256("1")`). They are literals of the code, *not*
-  `crypto.keccak256` of the strings: for the real Keccak they agree (checked by
-  `lake exe difftest`), for an arbitrary `Crypto` the code still uses these words.
-* `structHash`, `digest`: `keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonce,
-  deadline))` and `keccak256("\x19\x01" ‖ domainSeparator ‖ structHash)`.
-* `SigOk`: the signature check of `permit`: `ECRECOVER` (`ecrecoverAddress?`, exactly what the
-  precompile at `0x01` returns for the four words the code passes) recovers `owner`, and
-  `owner ≠ 0`.
-* `domainSeparator`: `DOMAIN_SEPARATOR()`: the immutable `INITIAL_DOMAIN_SEPARATOR` while
-  `block.chainid` is the immutable `INITIAL_CHAIN_ID`, otherwise `computedDomainSeparator`,
-  which hashes the token's `name` from storage slot 0. The recomputation is covered for names
-  stored in Solidity's short-string form (`ShortString`: fewer than 32 bytes, as both canonical
-  names are); a long name (more than 31 bytes, stored out of place) is not covered.
-* `PermitValid`: when `permit` succeeds: `v < 256` (the ABI decoder of `uint8 v`), the deadline
-  has not passed, and `SigOk` at the owner's current nonce.
-* `nonceSlot`, `permitWorld`: the storage effect of a successful `permit` (the nonce
-  increment, then the allowance write).
-* `SigUnforgeable`: the cryptographic assumption under which `SigOk` means "the owner
-  signed". It is **not** used by any theorem; see `PERMIT.md`.
+The specification of `permit`, `DOMAIN_SEPARATOR()` and `nonces(owner)` as explicit expressions
+in the context's `Crypto` (nothing assumed about it), and the asset's bytecode theorems:
+`asset_permit_halts` succeeds exactly when `PermitValid` holds. A long `name` (over 31 bytes)
+off the deployment chain is not covered (`DomainCase`). `docs/erc4626/details.md` §7.
 -/
 
 section
@@ -47,25 +25,24 @@ section
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic
 
 /-! ## Constants of the bytecode -/
 
-/-- `keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256
-deadline)")`, as compiled into the code. -/
+/-- `keccak256("Permit(…)")` as a literal of the code, *not* `crypto.keccak256` of the string:
+for an arbitrary `Crypto` the code still uses this word (agreement with Keccak: `difftest`). -/
 def PERMIT_TYPEHASH : Word :=
   0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9#256
 
-/-- `keccak256("EIP712Domain(string name,string version,uint256 chainId,address
-verifyingContract)")`, as compiled into the code. -/
+/-- `keccak256("EIP712Domain(…)")`, a literal of the code. -/
 def DOMAIN_TYPEHASH : Word :=
   0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f#256
 
-/-- `keccak256("1")` (the EIP-712 version), as compiled into the code. -/
+/-- `keccak256("1")`, a literal of the code. -/
 def VERSION_HASH : Word :=
   0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6#256
 
-/-- The two-byte EIP-191 prefix `"\x19\x01"` of an EIP-712 digest. -/
 def eip712Prefix : ByteArray := ⟨#[0x19, 0x01]⟩
 
 /-! ## The EIP-712 message -/
@@ -80,9 +57,8 @@ def structHash (crypto : Crypto) (owner spender : Address) (value nonce deadline
 def digest (crypto : Crypto) (domainSep sh : Word) : Word :=
   crypto.keccak256 (eip712Prefix ++ (Bytes.ofWord domainSep ++ Bytes.ofWord sh))
 
-/-- **The signature check of `permit`**: `owner ≠ 0` and `ecrecover(digest, v, r, s)` (the
-precompile at `0x01`, for this `crypto`) recovers `owner`, where the digest is that of the
-permit message at nonce `nonce` under the domain separator `domainSep`. -/
+/-- **The signature check of `permit`**: `owner ≠ 0` and `ecrecover` (precompile `0x01`) of the
+permit digest at `nonce` under `domainSep` recovers `owner`. -/
 def SigOk (crypto : Crypto) (domainSep : Word) (owner spender : Address)
     (value nonce deadline v r s : Word) : Prop :=
   owner ≠ 0 ∧
@@ -91,35 +67,28 @@ def SigOk (crypto : Crypto) (domainSep : Word) (owner spender : Address)
 
 /-! ## The domain separator -/
 
-/-- The length field of a short string stored in slot word `slot` (`(slot >> 1) & 0x7f`). -/
 def shortLength (slot : Word) : Word := Word.shr 1#256 slot &&& 127#256
 
-/-- The storage word of a `string` holds it in Solidity's short form: the low bit is clear and
-the length (`shortLength`, from the low byte) is below 32. -/
+/-- A `string` slot word in Solidity's short form (low bit clear, length below 32). -/
 def ShortString (slot : Word) : Prop := slot &&& 1#256 = 0#256 ∧ (shortLength slot).toNat < 32
 
-/-- The bytes of a short string, as the code copies them to memory (the slot word with its low
-byte cleared, truncated to the length). -/
 def shortStringBytes (slot : Word) : ByteArray :=
   (Bytes.ofWord (slot &&& ~~~255#256)).extract 0 (shortLength slot).toNat
 
-/-- `computeDomainSeparator()` for a short `name` stored as `nameSlot`:
-`keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256(bytes(name)), VERSION_HASH, chainid,
-address(this)))`. -/
+/-- `computeDomainSeparator()` for a short `name` stored as `nameSlot`. -/
 def computedDomainSeparator (crypto : Crypto) (nameSlot chainId : Word) (self : Address) : Word :=
   crypto.keccak256 (Bytes.ofWord DOMAIN_TYPEHASH ++
     (Bytes.ofWord (crypto.keccak256 (shortStringBytes nameSlot)) ++ (Bytes.ofWord VERSION_HASH ++
       (Bytes.ofWord chainId ++ Bytes.ofWord (Word.ofAddress self)))))
 
-/-- **`DOMAIN_SEPARATOR()`**: the immutable separator on the deployment chain, else the
-recomputed one (`chainId` is `block.chainid` as a word, `nameSlot` the word in slot 0). -/
+/-- **`DOMAIN_SEPARATOR()`**: the immutable on the deployment chain, else recomputed from the
+name in slot 0. -/
 def domainSeparator (crypto : Crypto) (initialChainId initialDomainSeparator chainId nameSlot : Word)
     (self : Address) : Word :=
   if chainId = initialChainId then initialDomainSeparator
   else computedDomainSeparator crypto nameSlot chainId self
 
-/-- The cases of `DOMAIN_SEPARATOR()` the theorems cover: on the deployment chain (any name),
-or a short name. -/
+/-- The covered cases of `DOMAIN_SEPARATOR()`: the deployment chain, or a short name. -/
 def DomainCase (initialChainId chainId nameSlot : Word) : Prop :=
   chainId = initialChainId ∨ ShortString nameSlot
 
@@ -128,50 +97,36 @@ def DomainCase (initialChainId chainId nameSlot : Word) : Prop :=
 /-- The slot of `nonces[a]` (slot 5 of Solmate's `ERC20`). -/
 def nonceSlot (crypto : Crypto) (a : Address) : Word := mappingSlot crypto (Word.ofAddress a) 5#256
 
-/-- **When `permit` succeeds**, at the owner's current nonce `nonce`: `v` is a `uint8` (the ABI
-decoder reverts otherwise), the deadline is not before the block timestamp, and the signature
-check `SigOk` passes. -/
+/-- **When `permit` succeeds**, at the owner's current nonce: `v < 256`, the deadline not passed,
+and `SigOk`. -/
 def PermitValid (crypto : Crypto) (domainSep : Word) (timestamp : Nat) (owner spender : Address)
     (value deadline v r s nonce : Word) : Prop :=
   v.toNat < 256 ∧ (ofNat timestamp).toNat ≤ deadline.toNat ∧
     SigOk crypto domainSep owner spender value nonce deadline v r s
 
-/-- The world after a successful `permit`, as the code writes it: `nonces[owner]++` (word
-arithmetic), then `allowance[owner][spender] = value`. -/
+/-- The world after `permit`: `nonces[owner]++` (wrapping), then the allowance write. -/
 def permitWorld (crypto : Crypto) (w : World) (token owner spender : Address) (value : Word) :
     World :=
   (w.sstore token (nonceSlot crypto owner) (w.sload token (nonceSlot crypto owner) + 1#256)).sstore
     token (ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender) value
 
-/-- Calldata of `permit(owner, spender, value, deadline, v, r, s)`, described by what the ABI
-decoder reads (so `Abi.encodeCall 0xd505accf [...]` and calldata assembled by a calling
-contract both qualify; `permitCall_encodeCall`). -/
+/-- Calldata of `permit(owner, spender, value, deadline, v, r, s)`, as the ABI decoder reads it
+(covers `Abi.encodeCall` and calldata assembled by a caller). -/
 structure PermitCall (data : ByteArray) (owner spender : Address) (value deadline v r s : Word) :
     Prop where
-  /-- The selector of `permit(address,address,uint256,uint256,uint8,bytes32,bytes32)`. -/
   selector : Abi.selectorOf data = 0xd505accf
-  /-- Seven argument words. -/
   size : 228 ≤ data.size
-  /-- `owner`. -/
   arg0 : Bytes.toWord (readBytes data 4 32) = Word.ofAddress owner
-  /-- `spender`. -/
   arg1 : Bytes.toWord (readBytes data 36 32) = Word.ofAddress spender
-  /-- `value`. -/
   arg2 : Bytes.toWord (readBytes data 68 32) = value
-  /-- `deadline`. -/
   arg3 : Bytes.toWord (readBytes data 100 32) = deadline
-  /-- `v` (a word; the decoder checks that it is a `uint8`). -/
   arg4 : Bytes.toWord (readBytes data 132 32) = v
-  /-- `r`. -/
   arg5 : Bytes.toWord (readBytes data 164 32) = r
-  /-- `s`. -/
   arg6 : Bytes.toWord (readBytes data 196 32) = s
 
-/-- Calldata of `permit`. -/
 def permitData (owner spender : Address) (value deadline v r s : Word) : ByteArray :=
   Abi.encodeCall 0xd505accf [Word.ofAddress owner, Word.ofAddress spender, value, deadline, v, r, s]
 
-/-- ABI-encoded `permit` calldata is a `Examples.Solmate.ERC4626.PermitSpec`. -/
 theorem permitCall_encodeCall (owner spender : Address) (value deadline v r s : Word) :
     PermitCall (permitData owner spender value deadline v r s) owner spender value deadline v r s :=
   ⟨by rw [permitData, Abi.selectorOf_encodeCall],
@@ -183,19 +138,12 @@ theorem permitCall_encodeCall (owner spender : Address) (value deadline v r s : 
 
 /-! ## What is *not* assumed -/
 
-/-- **Unforgeability of ECDSA signatures (documentation only).** For a given owner, nobody
-without the owner's key can produce `(v, r, s)` that recover to the owner for a message the
-owner did not sign. This is a computational assumption about secp256k1 and Keccak; it cannot be
-stated as a property of a single `crypto` function without a model of adversaries and keys,
-so this predicate fixes only its shape: a set `Signed owner hash` of the digests the owner
-signed, and the claim that every signature recovering to `owner` is for such a digest. **No
-theorem uses it**: the refinement theorems hold for every `Crypto` and say exactly *when*
-`permit` succeeds (`SigOk`); a user who wants "only the owner can grant an allowance by
-`permit`" adds `SigUnforgeable crypto Signed` as a hypothesis. -/
+/-- **ECDSA unforgeability (documentation only; no theorem uses it)**: every signature recovering
+to `owner` is for a digest in `Signed owner`. Add it as a hypothesis to conclude "only the
+owner can grant an allowance by `permit`". -/
 def SigUnforgeable (crypto : Crypto) (Signed : Address → Word → Prop) : Prop :=
   ∀ owner hash v r s, ecrecoverAddress? crypto hash v r s = some owner → Signed owner hash
 
-/-- Under `SigUnforgeable`, a valid permit was signed by its owner (for the permit's digest). -/
 theorem signed_of_sigOk {crypto : Crypto} {Signed : Address → Word → Prop}
     (hu : SigUnforgeable crypto Signed) {ds : Word} {owner spender : Address}
     {value nonce deadline v r s : Word}
@@ -210,26 +158,17 @@ end
 section
 
 /-!
-## The asset's `DOMAIN_SEPARATOR()`, internal and external
+## The asset's `DOMAIN_SEPARATOR()`
 
-Solmate's `DOMAIN_SEPARATOR()` in the compiled asset (`MockERC20`, any immutables `ia`) is an
-internal function at pc `0x0424` (called by `permit` and by the external
-`DOMAIN_SEPARATOR()`): if `block.chainid` is the `INITIAL_CHAIN_ID` immutable it pushes the
-`INITIAL_DOMAIN_SEPARATOR` immutable; otherwise it calls `computeDomainSeparator()` (`0x0749`),
-which encodes the `name` from storage slot 0 (`abi_encode_t_string_storage`, `0x0a66`) at the
-free-memory pointer, hashes it, and hashes the `abi.encode` of the EIP-712 domain.
-
-* `asset_ds_wp`: the internal function, both branches (the second for a name in short-string
-  form, `Permit.ShortString`): it returns `Permit.domainSeparator …` to its return address;
-  the memory either is unchanged or has the free pointer at `0x140` and ten words
-  (`DsMem`); at most 6000 gas.
-* `asset_domainSeparator_halts`: the external `DOMAIN_SEPARATOR()` in any fresh frame.
+Internal function at `0x0424` (called by `permit` and the external getter); off the deployment
+chain it calls `computeDomainSeparator()` (`0x0749`), which encodes `name` (`0x0a66`).
 -/
 
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The `INITIAL_CHAIN_ID` immutable, as the `PUSH32` at `0x0426` reads it. -/
 theorem readBytes_asset_chainId (ia : SolmateAsset.Immutables) :
@@ -249,13 +188,11 @@ theorem readBytes_asset_ds (ia : SolmateAsset.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateAsset.size_runtimeCode]; decide)
     (by simp)
 
-/-- The memory after `DOMAIN_SEPARATOR()` (entered with solc's initial memory): unchanged (free
-pointer `0x80`, three words), or, after `computeDomainSeparator()`, free pointer `0x140` and ten
-words. -/
+/-- Memory after `DOMAIN_SEPARATOR()`: unchanged (free pointer `0x80`), or free pointer `0x140`
+after `computeDomainSeparator()`. -/
 def DsMem (mem : Memory) : Prop :=
   (mem.loadWord 64 = 128#256 ∧ mem.size = 96) ∨ (mem.loadWord 64 = 320#256 ∧ mem.size = 320)
 
-/-- The cleared-low-byte mask `~0xff` as a literal (how symbolic execution shows it). -/
 theorem not_255 : (~~~255#256 : Word) =
     115792089237316195423570985008687907853269984665640564039457584007913129639680#256 := by
   decide
@@ -266,11 +203,8 @@ def dsOf (initialChainId initialDomainSeparator : Word) (m : Machine) : Word :=
     (m.world.sload m.frame.msg.currentTarget 0#256) m.frame.msg.currentTarget
 
 set_option maxHeartbeats 0 in
-/-- **`DOMAIN_SEPARATOR()` of the asset, internal (entry `0x0424`, stack `r :: rest`)**: returns
-to `r` with `Permit.domainSeparator …` on the stack. Entered with solc's initial memory
-(`FmpInit`); the world, transient storage and return data are unchanged; memory as in
-`DsMem`; no logs; at most 6000 gas. Covers the deployment chain (any name) and other chains for a
-short name (`DomainCase`). -/
+/-- The internal `DOMAIN_SEPARATOR()` (entry `0x0424`, stack `r :: rest`) returns to `r` with
+`Permit.domainSeparator …`, memory as in `DsMem`, at most 6000 gas. -/
 theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
     (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
@@ -348,12 +282,11 @@ end Examples.Solmate.ERC20.Permit
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- **`DOMAIN_SEPARATOR()` of the asset**, in any fresh frame: returns
-`Permit.domainSeparator …` (the immutable on the deployment chain, else recomputed from the
-short name in slot 0) as one word; the world is unchanged. -/
+/-- **`DOMAIN_SEPARATOR()` of the asset**, in any fresh frame; the world is unchanged. -/
 theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0)
@@ -392,16 +325,15 @@ end Examples.Solmate.ERC20.Permit
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- `nonceSlot` as symbolic execution computes it (`keccak256(owner ‖ 5)`). -/
 theorem nonceSlot_eq (crypto : Crypto) (a : Address) :
     nonceSlot crypto a = crypto.keccak256 (Bytes.ofWord (Word.ofAddress a) ++ Bytes.ofWord 5#256) :=
   rfl
 
 set_option maxHeartbeats 0 in
-/-- **`nonces(owner)` of the asset**, in any fresh frame: returns the word in `nonces[owner]`
-(slot `keccak(owner ‖ 5)`); the world is unchanged. -/
+/-- **`nonces(owner)` of the asset**, in any fresh frame; the world is unchanged. -/
 theorem asset_nonces_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (owner : Address)
     (hval : m.frame.msg.value = 0)
@@ -433,34 +365,21 @@ end
 section
 
 /-!
-## The asset's `permit`: from the `ECRECOVER` call to the end
+## The asset's `permit`: from the `ECRECOVER` call (`0x065f`) to the end
 
-`asset_permit_tail`: the last part of the compiled `permit` of the asset (pc `0x065f`, the
-`STATICCALL` to `ecrecover`, to the end of the frame). The machine there is described by its
-stack (the call's arguments, the decoded `permit` arguments below them) and by what its memory
-holds: the four input words `digest ‖ v ‖ r ‖ s`, a zero in the output word, the free pointer.
-The free pointer `F` at the start of the `permit` body is `0x80` or, after
-`computeDomainSeparator()`, `0x140` (`Permit.DsMem`); every offset is `F` plus a constant.
-
-* `ECRECOVER` runs through `WP.staticcall_ecrecover` (any `Crypto`);
-* if it recovers `owner ≠ 0`, the code writes `allowance[owner][spender] = value`, emits
-  `Approval` and stops (success, empty output);
-* otherwise (`none`, another address, or the zero address) it reverts with
-  `INVALID_SIGNER`.
+Memory holds `digest ‖ v ‖ r ‖ s`, a zero output word and the free pointer `F` (`0x80`, or
+`0x140` after `computeDomainSeparator()`); every offset is `F` plus a constant.
 -/
 
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- The signature part of `SigOk`, for a given digest. -/
 def RecoversTo (crypto : Crypto) (dg v r s : Word) (owner : Address) : Prop :=
   owner ≠ 0 ∧ ecrecoverAddress? crypto dg v r s = some owner
 
-/-- What the end of `permit` does, from a machine `m` at the `ECRECOVER` call: on a signature
-recovering `owner ≠ 0`, success with the allowance written (in `m.world`), transient storage and
-created accounts unchanged, `Approval(owner, spender, value)` appended to the logs; otherwise a revert; at most `40000` gas in both cases. -/
 def TailPost (owner spender : Address) (value dg v r s : Word) (m mf : Machine) (o : Outcome) :
     Prop :=
   (RecoversTo m.ctx.crypto dg v r s owner →
@@ -473,7 +392,6 @@ def TailPost (owner spender : Address) (value dg v r s : Word) (m mf : Machine) 
   (¬ RecoversTo m.ctx.crypto dg v r s owner → ∃ out, o = .revert out) ∧
   m.frame.gasLeft ≤ mf.frame.gasLeft + 40000
 
-/-- `iszero` of a nonzero address word. -/
 theorem iszero_ofAddress {a : Address} (h : a ≠ 0) : Word.iszero (Word.ofAddress a) = 0#256 := by
   apply iszero_of_ne
   intro he; apply h
@@ -484,14 +402,11 @@ theorem iszero_ofAddress {a : Address} (h : a ≠ 0) : Word.iszero (Word.ofAddre
   rw [Nat.mod_eq_of_lt (by omega)] at this
   exact this
 
-/-- `EQ` of two different address words. -/
 theorem eq_ofAddress_ne {a b : Address} (h : a ≠ b) :
     Word.eq (Word.ofAddress a) (Word.ofAddress b) = 0#256 :=
   eq_of_ne fun he => h (Word.ofAddress_injective he)
 
 set_option maxHeartbeats 0 in
-/-- **The end of the asset's `permit`**, from the `ECRECOVER` call (pc `0x065f`), for the free
-pointer `F ∈ {0x80, 0x140}` at the start of the body. -/
 theorem asset_permit_tail {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {F : Nat}
     {dg v r s deadline value : Word} {owner spender : Address}
     (hF : F = 128 ∨ F = 320)
@@ -593,26 +508,14 @@ end
 
 section
 
-/-!
-## The asset's `permit`: the body after `DOMAIN_SEPARATOR()`
-
-`asset_permit_body`: from pc `0x0566` (back from the internal `DOMAIN_SEPARATOR()`, the
-separator on the stack) to the end of the frame. The code increments `nonces[owner]`
-(`SSTORE`, unchecked), hashes the EIP-712 struct (`structHash`) at the free pointer, hashes
-`"\x19\x01" ‖ separator ‖ structHash` (`digest`), lays out `digest ‖ v ‖ r ‖ s` for
-`ecrecover` with a zero in the output word, and continues with `asset_permit_tail`. Memory is
-as `DOMAIN_SEPARATOR()` left it (`DsMem`: free pointer `0x80` or `0x140`).
--/
+/-! ## The asset's `permit`: the body after `DOMAIN_SEPARATOR()` (`0x0566` to the end) -/
 
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- What the body of `permit` does, from a machine `m` back from `DOMAIN_SEPARATOR()` with
-separator `ds`, at the owner's nonce `nonce` read from `m.world`: if the signature recovers
-`owner ≠ 0` for the permit digest, success with `permitWorld`, transient storage and created
-accounts unchanged, `Approval(owner, spender, value)` logged; otherwise a revert; at most `80000` gas. -/
 def BodyPost (ds : Word) (owner spender : Address) (value deadline v r s : Word) (m mf : Machine)
     (o : Outcome) : Prop :=
   (RecoversTo m.ctx.crypto (digest m.ctx.crypto ds (structHash m.ctx.crypto owner spender value
@@ -628,15 +531,12 @@ def BodyPost (ds : Word) (owner spender : Address) (value deadline v r s : Word)
       owner → ∃ out, o = .revert out) ∧
   m.frame.gasLeft ≤ mf.frame.gasLeft + 80000
 
-/-- The two-byte prefix the code stores (`shl(240, 0x1901)`), as the digest reads it. -/
 theorem prefix_eq :
     (Bytes.ofWord 11309588061646438093662687302255421419811724423900836950936401294474059186176#256).extract
       0 2 = eip712Prefix := by
   decide +kernel
 
 set_option maxHeartbeats 0 in
-/-- **The body of the asset's `permit`** (pc `0x0566` to the end), for both memory layouts that
-`DOMAIN_SEPARATOR()` leaves. -/
 theorem asset_permit_body {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {F S : Nat}
     {ds deadline value v r s : Word} {owner spender : Address}
     (hFS : (F = 128 ∧ S = 96) ∨ (F = 320 ∧ S = 320))
@@ -731,35 +631,16 @@ end
 
 section
 
-/-!
-## The asset's `permit`, in any frame
-
-`asset_permit_halts`: `permit(owner, spender, value, deadline, v, r, s)` of the compiled asset
-(Solmate `MockERC20`, any immutables), run in any fresh non-static frame (a top-level call or a
-callee frame), for every `Crypto`:
-
-* it **succeeds** (empty output) exactly when `PermitValid` holds at the owner's current nonce:
-  `v < 256`, the deadline is not before the block timestamp, and `SigOk` (the `ECRECOVER`
-  precompile, for this `crypto`, recovers `owner ≠ 0` from the EIP-712 digest under the
-  domain separator `dsOf …` that `DOMAIN_SEPARATOR()` computes); the world is then
-  `permitWorld` (`nonces[owner] += 1`, `allowance[owner][spender] = value`);
-* otherwise it **reverts** (so the world is rolled back to the snapshot);
-* on success it appends `Approval(owner, spender, value)` to the frame's logs;
-* it uses at most 100000 gas.
-
-Assumptions: a call of the standard precompiles of the context (`hstd`), address `0x01` not
-delegated (before Prague, or no EIP-7702 designator there), room for one more call frame,
-`100000 ≤ gas < 2⁶⁴`, and `DomainCase` (the deployment chain, or a short `name`).
--/
+/-! ## The asset's `permit`, in any frame -/
 
 namespace Examples.Solmate.ERC20.Permit
 open Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- What `permit` ends with, relative to the start machine `m`, for the domain separator `ds`:
-success with `permitWorld` exactly when `PermitValid` holds at the owner's current nonce, a
-revert otherwise, at most `100000` gas. -/
+/-- A `permit` result for separator `ds`: success with `permitWorld` and one `Approval` log
+exactly when `PermitValid` at the owner's current nonce, else a revert; ≤ 100000 gas. -/
 def PermitPost (ds : Word) (owner spender : Address) (value deadline v r s : Word) (m mf : Machine)
     (o : Outcome) : Prop :=
   (PermitValid m.ctx.crypto ds m.ctx.block.timestamp owner spender value deadline v r s
@@ -774,13 +655,11 @@ def PermitPost (ds : Word) (owner spender : Address) (value deadline v r s : Wor
     ∃ out, o = .revert out) ∧
   m.frame.gasLeft ≤ mf.frame.gasLeft + 100000
 
-/-- Masking to `uint8` keeps a value below 256. -/
 theorem and_255_of_lt {x : Word} (h : x.toNat < 256) : x &&& 255#256 = x := by
   apply BitVec.eq_of_toNat_eq
   have h255 : (255#256).toNat = 2 ^ 8 - 1 := by simp
   rw [BitVec.toNat_and, h255, Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt (by simpa using h)]
 
-/-- Masking to `uint8` changes a value of at least 256. -/
 theorem and_255_ne {x : Word} (h : 256 ≤ x.toNat) : x &&& 255#256 ≠ x := by
   intro he
   have := congrArg BitVec.toNat he
@@ -790,7 +669,9 @@ theorem and_255_ne {x : Word} (h : 256 ≤ x.toNat) : x &&& 255#256 ≠ x := by
   omega
 
 set_option maxHeartbeats 0 in
-/-- **`permit` of the asset, in any frame** (see the module docstring). -/
+/-- **`permit` of the asset, in any fresh non-static frame**, for every `Crypto`: `PermitPost`
+under the domain separator `dsOf …`. Assumes the standard precompiles (`hstd`), `0x01` not
+delegated, room for one more frame, `100000 ≤ gas < 2⁶⁴`, and `DomainCase`. -/
 theorem asset_permit_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false)

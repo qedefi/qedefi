@@ -8,33 +8,10 @@ import EvmLogic.Tactic.Patched
 /-!
 # `SolmateAsset.transfer` refines the ERC-20 model
 
-End-to-end verification of `transfer(address,uint256)` of the **deployed bytecode** of the
-vault's asset, Solmate `MockERC20` (`Contracts.SolmateAsset.runtimeCode`, solc 0.8.28,
-2870 bytes), for **every `Crypto`**, context, world, transient storage, caller, recipient,
-amount, gas ≥ 100 000 and warm sets:
-
-* `reaches_transfer`: the dispatcher takes selector `a9059cbb` to the ABI decoder of
-  `transfer` (pc 515) in 39 steps for 162 gas, for every machine (`Dispatch.Reaches`);
-* `transfer_ok`: with sufficient balance, the call succeeds, returns ABI `true`, and the world
-  is `transferWorld` (two `SSTORE`s to the balance slots);
-* `transfer_revert`: with insufficient balance (checked subtraction), the call reverts
-  (`Panic(0x11)`) and the world is unchanged;
-* `transfer_spec`: through the storage abstraction (`Erc20.view`, Solmate layout:
-  `totalSupply` 2, `balanceOf` 3, `allowance` 4), `processMessageCall` yields exactly the
-  `balanceOf` and `totalSupply` of `Erc20.Model.transfer`, every allowance whose slot is not
-  one of the two written slots is unchanged, and no other account's storage changes, under
-  the non-collision hypothesis `BalanceSlotOk` for `caller` and `to` only (a self-transfer is
-  allowed).
-
-## How the proof runs
-
-1. `processMessageCall_callMsg` reduces the call to `run` from `start`;
-2. `run_start_transfer` (`reaches_transfer.run_eq`) jumps over the dispatcher;
-3. `sol_steps` executes the ABI decoder, the body (two mapping lookups with `KECCAK256` of
-   scratch memory, `SLOAD`, checked `SUB`, two `SSTORE`s, the `Transfer` event) and the
-   return-data encoder, stopping only at the underflow-check `JUMPI`, which
-   `gt_sub_self_of_le` / `gt_sub_self_of_lt` decide;
-4. `sol_steps` finishes at `RETURN` / `REVERT`.
+`transfer(address,uint256)` of the deployed asset: top-level success/revert (`transfer_ok`,
+`transfer_revert`), the refinement `transfer_spec` through `ERC20.view`, and callee summaries
+for any frame (`transfer_halts_ok`/`_revert`). The proof skips the dispatcher
+(`reaches_transfer`) and runs `sol_steps`, deciding only the underflow-check `JUMPI`.
 -/
 
 section
@@ -42,12 +19,11 @@ section
 namespace Examples.Solmate.ERC20
 open EvmLean EvmLogic EvmLogic.Solidity EvmLogic.Tactic EvmLogic.Solidity.ERC20
 
-open EvmLean.Interpreter EvmLogic.Solidity.Dispatch EvmLean.Bytes EvmLogic.Solidity.ERC20 EvmLogic.Solidity Examples.Solmate.Contracts
+open EvmLean.Interpreter EvmLogic.Solidity.Dispatch EvmLean.Bytes Examples.Solmate.Contracts
 
 /-- The selector of `transfer(address,uint256)`. -/
 def transferSelector : Nat := 0xa9059cbb
 
-/-- `transferSelector` is the artifact's method identifier. -/
 theorem transferSelector_mem :
     ("transfer(address,uint256)", (0xa9059cbb : UInt32)) ∈ SolmateAsset.selectors := by
   decide
@@ -62,17 +38,14 @@ abbrev transferCall (token caller to : Address) (amount : Word) (gas : Nat)
   callMsg SolmateAsset.runtimeCode token caller (transferCalldata to amount) gas warmAddrs
     warmKeys
 
-/-- The selector of `transferCalldata`. -/
 theorem selectorOf_transferCalldata (to : Address) (amount : Word) :
     Abi.selectorOf (transferCalldata to amount) = transferSelector := by
   rw [transferCalldata, Abi.selectorOf_encodeCall]; rfl
 
-/-- `CALLDATASIZE` of `transferCalldata`. -/
 theorem size_transferCalldata (to : Address) (amount : Word) :
     (transferCalldata to amount).size = 68 := by
   rw [transferCalldata, Abi.size_encodeCall]; rfl
 
-/-- The asset code is not an EIP-7702 delegation designator. -/
 theorem delegatedAddress?_runtimeCode : delegatedAddress? SolmateAsset.runtimeCode = none :=
   delegatedAddress?_of_size (by rw [SolmateAsset.size_runtimeCode]; decide)
 
@@ -84,7 +57,6 @@ theorem reaches_transfer : Reaches SolmateAsset.runtimeCode transferSelector 515
 variable {ctx : Context} {w : World} {tr : TransientStorage} {token caller to : Address}
   {amount : Word} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
 
-/-- The dispatcher on a `transfer` call, from `start`. -/
 theorem run_start_transfer (hgas : 162 ≤ gas) (k : Nat) :
     run (k + 39) (start ctx w tr (transferCall token caller to amount gas warmAddrs warmKeys)) =
       run k { start ctx w tr (transferCall token caller to amount gas warmAddrs warmKeys) with
@@ -103,8 +75,8 @@ theorem run_start_transfer (hgas : 162 ≤ gas) (k : Nat) :
     hgas k
 
 set_option maxHeartbeats 10000000 in
-/-- **`transfer`, success.** If `amount ≤ balanceOf[caller]`, the call returns `true` and
-the world is `transferWorld`. -/
+/-- **`transfer`, success**: if `amount ≤ balanceOf[caller]`, returns `true` with
+`transferWorld`. -/
 theorem transfer_ok (hgas : 100000 ≤ gas)
     (hbal : amount.toNat ≤ ((view ctx.crypto Layout.solmate w token).balanceOf caller).toNat)
     (k : Nat) :
@@ -128,8 +100,7 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
     rfl
 
 set_option maxHeartbeats 10000000 in
-/-- **`transfer`, insufficient balance.** If `balanceOf[caller] < amount`, the checked
-subtraction panics: the call reverts and the world is unchanged. -/
+/-- **`transfer`, insufficient balance**: the checked subtraction panics; world unchanged. -/
 theorem transfer_revert (hgas : 100000 ≤ gas)
     (hbal : ((view ctx.crypto Layout.solmate w token).balanceOf caller).toNat < amount.toNat)
     (k : Nat) :
@@ -154,34 +125,21 @@ end
 
 section
 
-/-!
-## `SolmateAsset.transfer`: the refinement theorem
-
-`transfer_spec` lifts `transfer_ok` / `transfer_revert` (bytecode level) through the ERC-20
-storage abstraction: a top-level call of `transfer(to, amount)` on the deployed asset
-behaves as `Erc20.Model.transfer` on `Erc20.view` of the world.
--/
+/-! ## The refinement theorem -/
 
 namespace Examples.Solmate.ERC20
 open EvmLean EvmLogic EvmLogic.Solidity EvmLogic.Tactic EvmLogic.Solidity.ERC20
 
-open EvmLean.Interpreter EvmLogic.Solidity.ERC20 EvmLogic.Solidity Examples.Solmate.Contracts
+open EvmLean.Interpreter Examples.Solmate.Contracts
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {token caller to : Address}
   {amount : Word} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
 
 set_option maxHeartbeats 1000000 in
-/-- **`transfer` refines `Model.transfer`** on the deployed `SolmateAsset` bytecode, for every
-`Crypto`, context without EIP-7702 authorizations (or before Prague), world, transient
-storage, caller, recipient (possibly the caller), amount, gas ≥ 100 000, warm sets and fuel
-≥ 300, assuming only that the balance slots of `caller` and `to` do not collide with other
-balance/allowance-row slots or with `totalSupply` (`BalanceSlotOk`):
-
-* if the model succeeds with `s'`, the call succeeds, returns `true`, and the abstract
-  `totalSupply` and `balanceOf` after the call are those of `s'`; allowances whose slots are
-  not the written slots equal those of `s'` (that is, are unchanged); no other account's
-  storage changes;
-* if the model reverts (insufficient balance), the call reverts and the world is unchanged. -/
+/-- **`transfer` refines `Model.transfer`** for a top-level call (no EIP-7702 authorizations
+or before Prague, gas ≥ 100000, fuel ≥ 300), assuming `BalanceSlotOk` for `caller` and `to`:
+on `some s'` it returns `true` with `s'`'s supply, balances and the allowances in unwritten
+slots, other accounts untouched; on `none` it reverts with the world unchanged. -/
 theorem transfer_spec (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
     (hpre : Precompile.isPrecompile ctx.fork token = false) (hgas : 100000 ≤ gas)
     (hc : BalanceSlotOk ctx.crypto Layout.solmate caller)
@@ -230,37 +188,22 @@ end
 
 section
 
-/-!
-## The asset's `transfer` as a callee summary
-
-`transfer_halts_ok` / `transfer_halts_revert`: `transfer(to, amount)` of the deployed asset
-(Solmate `MockERC20`, any immutables), run in any fresh frame (non-static for the success
-case: the code writes storage and emits a log), either returns ABI `true` with the world
-`transferWorld` (the two balance writes, in the code's order; shared with the solidity
-package's top-level `transfer_spec`), or, when the caller's balance does not cover `amount`,
-reverts with `Panic(0x11)`. Both bound the gas used, so that a caller can continue after the
-call (`WP.call`). `Examples.Solmate.ERC20.Spec` relates them to `Token.transfer`.
--/
+/-! ## The asset's `transfer` as a callee summary (any immutables, any frame) -/
 
 namespace Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
 /-- Calldata of a function taking two static words `x`, `y`, with selector `sel`. -/
 structure TwoWordCall (data : ByteArray) (sel : Nat) (x y : Word) : Prop where
-  /-- The selector. -/
   selector : Abi.selectorOf data = sel
-  /-- Two argument words. -/
   size : 68 ≤ data.size
-  /-- The first argument. -/
   arg0 : Bytes.toWord (readBytes data 4 32) = x
-  /-- The second argument. -/
   arg1 : Bytes.toWord (readBytes data 36 32) = y
 
-/-- What a successful `transfer(to, amount)` of the asset ends with: it returns ABI `true`, the
-world is `transferWorld` (the two balance writes, in the order the code does them), transient
-storage and created accounts are unchanged, and at most 55000 gas is used. -/
+/-- A successful asset `transfer`: ABI `true`, world `transferWorld`, ≤ 55000 gas. -/
 def TransferOk (to : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord 1) ∧
   mf.world = transferWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
@@ -273,8 +216,7 @@ def Reverts (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
   (∃ out, o = .revert out) ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + g
 
 set_option maxHeartbeats 0 in
-/-- **`transfer(to, amount)` of the asset, success**, in any non-static frame: when the
-caller's balance covers `amount`. -/
+/-- **The asset's `transfer`, success**, in any non-static frame, when the balance covers it. -/
 theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {to : Address}
@@ -303,8 +245,7 @@ theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
   evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transfer(to, amount)` of the asset, insufficient balance**, in any frame: the checked
-subtraction panics (`Panic(0x11)`). -/
+/-- **The asset's `transfer`, insufficient balance**, in any frame: `Panic(0x11)`. -/
 theorem transfer_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) {to : Address}

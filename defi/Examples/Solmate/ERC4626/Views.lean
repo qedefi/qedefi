@@ -1,20 +1,12 @@
 import Examples.Solmate.ERC4626.Convert
 
 /-!
-# The vault's conversion and preview views, at the bytecode level
+# The vault's views, at the bytecode level
 
-`*_halts`: `convertToShares`, `convertToAssets`, `previewDeposit`, `previewMint`,
-`previewWithdraw`, `previewRedeem` of the vault deployed with any immutables `i`, run in **any**
-fresh frame satisfying `ViewPre i` (top level or called by another contract), end the frame with
-`ViewPost`: the world unchanged, and the ABI word of the `Nat`-level specification
-(`convertToSharesN` … at `supplyOf m`, `assetsOf i.asset m`) or `revert(0, 0)` when it is
-`none`. Each proof runs the dispatcher and ABI decoder symbolically (`pwp_run_to`), then
-composes the summaries of the internal conversion (`Examples.Solmate.ERC4626.Convert`) and of the return encoder
-(`returnWord_wp`) with `WP.bind_mono`. `Examples.Solmate.ERC4626.ViewsSpec` restates them against the model.
-
-`WordCall data sel x` describes calldata through what the decoder reads (selector, length,
-argument word), so the theorems apply both to `Abi.encodeCall sel [x]` and to calldata that a
-calling contract assembled in memory.
+`*_halts`: each view of the vault (any immutables), run in any frame satisfying `ViewPre` (top
+level or called by another contract), ends with `ViewPost`: world unchanged, and the ABI word of
+the `Nat`-level specification at `supplyOf m`, `assetsOf i.asset m`, or `revert(0, 0)` on
+`none`. `ViewsSpec.lean` restates them against the model.
 -/
 
 section
@@ -22,57 +14,44 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- What a view call ends with: the world is unchanged, and the call returns the ABI word of
-`v` when the specification gives `some v`, or reverts with empty data when it gives `none`. -/
+/-- What a view call ends with: world unchanged; returns the ABI word of `v` when the
+specification gives `some v`, reverts with empty data on `none`. -/
 def ViewPost (m : Machine) (r : Option Nat) (mf : Machine) (o : Outcome) : Prop :=
   mf.world = m.world ∧
     match r with
     | some v => o = .success (Bytes.ofWord (BitVec.ofNat 256 v))
     | none => o = .revert .empty
 
-/-- The start of a call frame of the vault deployed with immutables `i` that can run its views:
-fresh frame of the vault's code, no value, the asset deployed at `i.asset` (any immutables, not
-a precompile), room for the asset call, enough gas (`60000 ≤ gas < 2⁶⁴`), and calldata
-shorter than `2⁶⁴` bytes. -/
+/-- A fresh frame of the vault (immutables `i`) that can run its views: no value, the asset
+deployed at `i.asset` (not a precompile), room for the asset call, `60000 ≤ gas < 2⁶⁴`, and
+calldata shorter than `2⁶⁴` bytes. -/
 structure ViewPre (i : SolmateVault.Immutables) (m : Machine) : Prop where
-  /-- A fresh frame of the vault's code. -/
   fresh : Fresh (SolmateVault.runtimeCodeWith i) m
-  /-- No value is sent (the views are not payable). -/
   value : m.frame.msg.value = 0
-  /-- The asset is deployed. -/
   assetCode : ∃ ia, m.world.code i.asset = SolmateAsset.runtimeCodeWith ia
-  /-- The asset is not a precompile. -/
   assetNotPrecompile : m.precompiles.isPrecompile i.asset = false
-  /-- A call from this frame does not exceed the depth limit. -/
   depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
-  /-- Enough gas. -/
   gas : 60000 ≤ m.frame.gasLeft
-  /-- Gas fits 64 bits (as it does in every transaction). -/
   gasLt : m.frame.gasLeft < 2 ^ 64
-  /-- Calldata length fits 64 bits. -/
   sizeLt : m.frame.msg.data.size < 2 ^ 64
 
-/-- Calldata of a function taking one static word argument `x`, with selector `sel`. -/
+/-- Calldata with selector `sel` and one word argument `x`, described through what the decoder
+reads (so it covers calldata a calling contract assembled in memory). -/
 structure WordCall (data : ByteArray) (sel : Nat) (x : Word) : Prop where
-  /-- The selector. -/
   selector : Abi.selectorOf data = sel
-  /-- One argument word. -/
   size : 36 ≤ data.size
-  /-- The argument. -/
   arg : Bytes.toWord (readBytes data 4 32) = x
 
-/-- solc's initial memory satisfies `FmpInit`. -/
 theorem initMemory_fmpInit : FmpInit ((({} : Memory).expand 64 32).storeWord 64 128#256) :=
   ⟨Memory.loadWord_storeWord _ _ _, by
     simp [Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]⟩
 
 set_option hygiene false in
-/-- The common start of a view proof: turn the `Halts` goal into a `WP`, unpack `ViewPre` (into
-`hval`, `hcode`, `hpre`, `hdepth`, `hg`, `hg'`, `hsz'`) and the fresh frame, destructure the
-machine into `m_ctx`, `m_world`, `m_msg`, … and substitute the frame's start values. Expects
-`h : ViewPre i m` and `hsz4 : 4 ≤ m.frame.msg.data.size` in context. -/
+/-- Common start of a view proof: `Halts` to `WP`, unpack `ViewPre` and the fresh frame,
+destructure the machine. Expects `h : ViewPre i m` and `hsz4 : 4 ≤ m.frame.msg.data.size`. -/
 macro "view_intro" : tactic => `(tactic| (
   apply WP.halts_of_false
   obtain ⟨hf, hval, hcode, hpre, hdepth, hg, hg', hsz'⟩ := h
@@ -89,8 +68,7 @@ macro "view_intro" : tactic => `(tactic| (
   try simp only [supplyOf, assetsOf]))
 
 set_option maxHeartbeats 0 in
-/-- The return encoder of the vault's word-returning functions (`0x01dd`): `mstore(fmp, v)`,
-`return(fmp, 32)`. -/
+/-- The return encoder of word-returning functions (`0x01dd`): `return(fmp, 32)` of `v`. -/
 theorem returnWord_wp {i : SolmateVault.Immutables} (m : Machine) {v : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i) (hpc : m.frame.pc = 0x1dd)
     (hs : m.frame.stack = v :: rest) (hlen : rest.length ≤ 1000) (hmem : FmpOk m.frame.memory)
@@ -107,8 +85,7 @@ theorem returnWord_wp {i : SolmateVault.Immutables} (m : Machine) {v : Word} {re
     exact ⟨trivial, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **`convertToShares(uint256)`** of the vault, in any frame: the specification's `convertToSharesN` at the vault's
-total supply and total assets. -/
+/-- **`convertToShares(uint256)`**: `convertToSharesN` at the vault's supply and total assets. -/
 theorem convertToShares_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0xc6e6f592 x) :
     Halts m (ViewPost m (convertToSharesN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -133,8 +110,7 @@ theorem convertToShares_halts {i : SolmateVault.Immutables} (m : Machine) (h : V
   exact ⟨hw, by rw [hv]; exact ho⟩
 
 set_option maxHeartbeats 0 in
-/-- **`convertToAssets(uint256)`** of the vault, in any frame: the specification's `convertToAssetsN` at the vault's
-total supply and total assets. -/
+/-- **`convertToAssets(uint256)`**: `convertToAssetsN` at the vault's supply and total assets. -/
 theorem convertToAssets_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0x07a2d13a x) :
     Halts m (ViewPost m (convertToAssetsN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -159,8 +135,7 @@ theorem convertToAssets_halts {i : SolmateVault.Immutables} (m : Machine) (h : V
   exact ⟨hw, by rw [hv]; exact ho⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewDeposit(uint256)`** of the vault, in any frame: the specification's `convertToSharesN` at the vault's
-total supply and total assets. -/
+/-- **`previewDeposit(uint256)`**: `convertToSharesN` at the vault's supply and total assets. -/
 theorem previewDeposit_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0xef8b30f7 x) :
     Halts m (ViewPost m (convertToSharesN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -186,8 +161,7 @@ theorem previewDeposit_halts {i : SolmateVault.Immutables} (m : Machine) (h : Vi
   exact ⟨hw, by rw [hv]; exact ho⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewMint(uint256)`** of the vault, in any frame: the specification's `previewMintN` at the vault's
-total supply and total assets. -/
+/-- **`previewMint(uint256)`**: `previewMintN` at the vault's supply and total assets. -/
 theorem previewMint_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0xb3d7f6b9 x) :
     Halts m (ViewPost m (previewMintN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -212,8 +186,7 @@ theorem previewMint_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewP
   exact ⟨hw, by rw [hv]; exact ho⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewWithdraw(uint256)`** of the vault, in any frame: the specification's `previewWithdrawN` at the vault's
-total supply and total assets. -/
+/-- **`previewWithdraw(uint256)`**: `previewWithdrawN` at the vault's supply and total assets. -/
 theorem previewWithdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0x0a28a477 x) :
     Halts m (ViewPost m (previewWithdrawN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -238,8 +211,7 @@ theorem previewWithdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : V
   exact ⟨hw, by rw [hv]; exact ho⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewRedeem(uint256)`** of the vault, in any frame: the specification's `convertToAssetsN` at the vault's
-total supply and total assets. -/
+/-- **`previewRedeem(uint256)`**: `convertToAssetsN` at the vault's supply and total assets. -/
 theorem previewRedeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {x : Word}
     (hd : WordCall m.frame.msg.data 0x4cdad506 x) :
     Halts m (ViewPost m (convertToAssetsN (supplyOf m).toNat (assetsOf i.asset m).toNat x.toNat)) := by
@@ -270,50 +242,35 @@ end
 
 section
 
-/-!
-## The vault's remaining views, at the bytecode level: `totalAssets`, `asset`, `max*`
-
-As in `Examples.Solmate.ERC4626.Views`: `totalAssets()` (the `totalAssets` internal function with its `STATICCALL`
-to the asset, `totalAssets_wp`), `asset()` (the `asset` immutable, read from the patched code
-by `readBytes_code_asset688`), `maxDeposit` / `maxMint` (`type(uint256).max`), `maxRedeem`
-(the owner's share balance, `sharesOf`) and `maxWithdraw` (`convertToAssets` of it), for the
-vault deployed with any immutables, in any frame satisfying `ViewPre`.
--/
+/-! ## `totalAssets`, `asset`, `max*` -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- The vault-share balance word of `a` (`balanceOf[a]`, slot `keccak(a ‖ 3)` of the executing
-account). -/
+/-- The share balance word of `a` (`balanceOf[a]` of the executing account). -/
 def sharesOf (m : Machine) (a : Address) : Word :=
   m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
 
 /-- Calldata of a function without arguments, with selector `sel`. -/
 structure NoArgCall (data : ByteArray) (sel : Nat) : Prop where
-  /-- The selector. -/
   selector : Abi.selectorOf data = sel
-  /-- At least the selector. -/
   size : 4 ≤ data.size
 
-/-- Calldata of a function taking one `address` argument `a` (ABI-clean: high bytes zero),
-with selector `sel`. -/
+/-- Calldata with selector `sel` and one ABI-clean `address` argument `a`. -/
 structure AddrCall (data : ByteArray) (sel : Nat) (a : Address) : Prop where
-  /-- The selector. -/
   selector : Abi.selectorOf data = sel
-  /-- One argument word. -/
   size : 36 ≤ data.size
-  /-- The argument. -/
   arg : Bytes.toWord (readBytes data 4 32) = Word.ofAddress a
 
-/-- An address as a word is the `ofNat` of its value. -/
 theorem ofNat_toNat_address (a : Address) : BitVec.ofNat 256 a.toNat = Word.ofAddress a := by
   apply BitVec.eq_of_toNat_eq
   simp only [BitVec.toNat_ofNat, Word.ofAddress, BitVec.toNat_setWidth]
 
 set_option maxHeartbeats 0 in
-/-- **`totalAssets()`** of the vault, in any frame: the asset balance of the vault. -/
+/-- **`totalAssets()`**: the vault's asset balance. -/
 theorem totalAssets_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hd : NoArgCall m.frame.msg.data 0x01e1d114) :
     Halts m (ViewPost m (some (assetsOf i.asset m).toNat)) := by
@@ -332,7 +289,7 @@ theorem totalAssets_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewP
   exact ⟨hw, by simp only [ho, assetsOf, ofNat_toNat_word]⟩
 
 set_option maxHeartbeats 0 in
-/-- **`asset()`** of the vault, in any frame: the immutable `i.asset`. -/
+/-- **`asset()`**: the immutable `i.asset`. -/
 theorem asset_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) (hd : NoArgCall m.frame.msg.data 0x38d52e0f) :
     Halts m (ViewPost m (some i.asset.toNat)) := by
   obtain ⟨hsel, hsz4⟩ := hd
@@ -343,7 +300,7 @@ theorem asset_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m
   exact ⟨rfl, by dsimp only; rw [ofNat_toNat_address]⟩
 
 set_option maxHeartbeats 0 in
-/-- **`maxDeposit(address)`** of the vault, in any frame: `type(uint256).max`. -/
+/-- **`maxDeposit(address)`**: `type(uint256).max`. -/
 theorem maxDeposit_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {a : Address}
     (hd : AddrCall m.frame.msg.data 0x402d267d a) :
     Halts m (ViewPost m (some MAXN)) := by
@@ -358,7 +315,7 @@ theorem maxDeposit_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPr
   exact ⟨rfl, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **`maxMint(address)`** of the vault, in any frame: `type(uint256).max`. -/
+/-- **`maxMint(address)`**: `type(uint256).max`. -/
 theorem maxMint_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {a : Address}
     (hd : AddrCall m.frame.msg.data 0xc63d75b6 a) :
     Halts m (ViewPost m (some MAXN)) := by
@@ -373,7 +330,7 @@ theorem maxMint_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i
   exact ⟨rfl, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **`maxRedeem(address)`** of the vault, in any frame: the share balance of the owner. -/
+/-- **`maxRedeem(address)`**: the owner's share balance. -/
 theorem maxRedeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {a : Address}
     (hd : AddrCall m.frame.msg.data 0xd905777e a) :
     Halts m (ViewPost m (some (sharesOf m a).toNat)) := by
@@ -388,8 +345,8 @@ theorem maxRedeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
   exact ⟨rfl, by simp only [sharesOf, balanceSlot_solmate, ofNat_toNat_word]⟩
 
 set_option maxHeartbeats 0 in
-/-- **`maxWithdraw(address)`** of the vault, in any frame: `convertToAssets(balanceOf[owner])`
-(which reverts on `mulDivDown` overflow, see `Vault.Solmate.maxWithdraw_reverts_of_overflow`). -/
+/-- **`maxWithdraw(address)`**: `convertToAssets(balanceOf[owner])` (reverts on `mulDivDown`
+overflow). -/
 theorem maxWithdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m) {a : Address}
     (hd : AddrCall m.frame.msg.data 0xce96cb77 a) :
     Halts m (ViewPost m

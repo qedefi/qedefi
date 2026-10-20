@@ -4,54 +4,24 @@ import EvmLogic.Program.Call
 /-!
 # The vault's `safeTransferFrom` into the asset
 
-`deposit` and `mint` pull the assets with Solmate's `SafeTransferLib.safeTransferFrom(asset,
-msg.sender, address(this), assets)`, compiled once as an internal function of the vault (entry
-`0x0f38`). It is the only external call of the two functions:
-
-```
-mstore(fmp, 0x23b872dd…); mstore(fmp+4, from); mstore(fmp+36, to); mstore(fmp+68, amount)
-success := call(gas(), token, 0, fmp, 100, 0, 32)
-if and(iszero(and(eq(mload(0), 1), gt(returndatasize(), 31))), success) {
-  success := iszero(or(iszero(extcodesize(token)), returndatasize())) }
-require(success, "TRANSFER_FROM_FAILED")
-```
-
-`safeTransferFrom_wp` summarises it, for the vault deployed with any immutables `i`, in any
-non-static frame with solc's memory discipline (`FmpOk`), against the model's
-`Token.transferFrom` of the asset ledger (`tokenView`, spender = the vault):
-
-* the `CALL` (no value) is handled by the callee-summary rule `WP.call0`
-  (`EvmLogic.Program.Call`) with the asset's model-level summary
-  `assetTransferFrom_halts` (from `assetTransferFrom_refines`) on the child frame: the
-  calldata the vault assembled in memory is a `ThreeWordCall`;
-* **success** (the model returns `some t'`): the asset returns the ABI word `1` (32 bytes), so
-  the return-data check passes without `EXTCODESIZE`; the function returns to its caller with
-  the world `Erc20.transferFromWorld` (the asset's exact writes), whose asset view represents
-  `t'` (`RepOn`), memory `FmpAfterTransfer`, and at most 90000 gas used;
-* **failure** (`none`): the asset reverts (`success = 0`, whatever the revert data copied to
-  the scratch word), and the vault reverts.
-
-The asset is `MockERC20` (it makes no calls), so there is no reentrancy into the vault; this
-is what makes the callee summary exact.
-
-Hypotheses: `BalanceSlotOk` of `src` and `dst`, `AllowanceSlotOk` of `allowance[src][vault]`
-(the written entries, pointwise Keccak freshness) and `Token.WF` of the asset ledger, as in
-`assetTransferFrom_refines`; `100000 ≤ gas < 2⁶⁴` (the asset needs 90000 of the forwarded
-63/64).
+`safeTransferFrom_wp`: the internal `SafeTransferLib.safeTransferFrom` (entry `0x0f38`, used by
+`deposit` / `mint`) `CALL`s the asset, whose effect is the model's `Token.transferFrom` (spender
+= the vault); it returns with the asset's writes applied, or reverts exactly when the model
+does. The asset (`MockERC20`) makes no calls, so its callee summary is exact.
 -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
-/-- Memory after `safeTransferFrom`: the free pointer unchanged (`0x80` or `0xa0`), the call's
-input window `[fmp, fmp + 100)` allocated. -/
+/-- Memory after `safeTransferFrom`: free pointer unchanged (`0x80` or `0xa0`), the call's input
+window `[fmp, fmp + 100)` allocated. -/
 def FmpAfterTransfer (mem : Memory) : Prop :=
   (mem.loadWord 64 = 128#256 ∧ mem.size = 256) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 288)
 
-/-- `assetTransferFrom_refines` with the model's result as a disjunction (for `WP.call0`). -/
 theorem assetTransferFrom_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src dst : Address} {amount : Word}
@@ -74,21 +44,12 @@ theorem assetTransferFrom_halts {ia : SolmateAsset.Immutables} (m : Machine)
   | some t' => exact fun h => h.mono fun _ _ _ h => .inl ⟨t', rfl, h⟩
   | none => exact fun h => h.mono fun _ _ _ h => .inr ⟨rfl, h⟩
 
-/-- `x AND 0 = 0` for the literal `0` that a failed call pushes. -/
 theorem word_and_zero (x : Word) : x &&& (0 : Word) = 0#256 := BitVec.and_zero
 
 set_option maxHeartbeats 0 in
-/-- **`safeTransferFrom(asset, src, dst, amount)` (internal, entry `0x0f38`, stack
-`amount :: dst :: src :: asset :: r :: rest`)**: Solmate's `SafeTransferLib.safeTransferFrom`
-in the vault (immutables `i`). It writes the calldata of `transferFrom(src, dst, amount)` at the
-free pointer, `CALL`s the asset with all remaining gas and no value (`WP.call0`, the asset's
-callee summary `assetTransferFrom_halts`), and checks `success && (returndata == 1 ||
-(returndatasize == 0 && extcodesize(asset) > 0))`. When the model's
-`Token.transferFrom` of the asset ledger (spender: the vault) succeeds, the call returns
-`true`, the check passes and the function returns to `r` with the asset's `transferFrom`
-writes applied to the world (`Erc20.transferFromWorld`), whose asset view represents the
-model's ledger; otherwise the asset reverts and so does the vault
-(`TRANSFER_FROM_FAILED`). -/
+/-- **`safeTransferFrom(asset, src, dst, amount)`** (internal, entry `0x0f38`, stack
+`amount :: dst :: src :: asset :: r :: rest`): when the model's asset `transferFrom` (spender: the
+vault) succeeds, returns to `r` with `ERC20.transferFromWorld` applied; otherwise reverts. -/
 theorem safeTransferFrom_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {src dst : Address} {rest : List Word}
     (hv : VaultFrame i m) (hstatic : m.frame.msg.isStatic = false)

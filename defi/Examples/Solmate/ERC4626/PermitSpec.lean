@@ -3,21 +3,11 @@ import Examples.Solmate.ERC4626.Abstraction
 import Examples.Solmate.ERC4626.Events
 
 /-!
-# `permit`, `DOMAIN_SEPARATOR()`, `nonces(owner)` as top-level calls
+# `permit`, `DOMAIN_SEPARATOR()`, `nonces(owner)`: top level, refinement, events
 
-`processMessageCall` forms of the frame theorems (`asset_permit_halts`, `vault_permit_halts`,
-`*_domainSeparator_halts`, `*_nonces_halts`), in the shape of the other `*_call` refinement
-theorems: for every large enough fuel the interpreter returns a result `res` with
-
-* `permit`: `PermitResult`: if `PermitValid` (at the owner's nonce in `w`, for the domain
-  separator `DOMAIN_SEPARATOR()` computes) the call succeeds with empty output, world
-  `permitWorld` and the single log `Approval(owner, spender, value)`; otherwise it reverts,
-  the world is `w` and there are no logs;
-* `DOMAIN_SEPARATOR()`: success, the separator as one word, world `w`;
-* `nonces(owner)`: success, the nonce word, world `w`.
-
-Assumptions as in the frame theorems, plus the top-level ones of `processMessageCall_of_halts`
-(no EIP-7702 authorizations or a fork before Prague; the token is not a precompile).
+Top-level (`processMessageCall`) forms of the `permit`, `DOMAIN_SEPARATOR()` and `nonces` frame
+theorems; the refinement of `permit` against `PermitToken.permit` (frame, top-level and
+`opRefines` forms); and its events. See `docs/erc4626/details.md` §7.
 -/
 
 section
@@ -25,9 +15,11 @@ section
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- The result of a top-level `permit` call of the token at `token` from world `w`. -/
+/-- The result of a top-level `permit` call: success with `permitWorld` and one `Approval` log
+iff `PermitValid` at the owner's stored nonce, else a revert with world `w` and no logs. -/
 def PermitResult (crypto : Crypto) (ds : Word) (timestamp : Nat) (w : World) (token : Address)
     (owner spender : Address) (value deadline v r s : Word) (res : MessageResult) : Prop :=
   (PermitValid crypto ds timestamp owner spender value deadline v r s
@@ -39,15 +31,12 @@ def PermitResult (crypto : Crypto) (ds : Word) (timestamp : Nat) (w : World) (to
       (w.sload token (nonceSlot crypto owner)) →
     res.success = false ∧ res.reverted = true ∧ res.world = w ∧ res.logs = #[])
 
-/-- The top-level result of a reverting call frame. -/
 theorem topLevelResult_revert {t : Option Address} {mf : Machine} {out : ByteArray} :
     let r := topLevelResult t (frameResult mf (.revert out)).2.1 (frameResult mf (.revert out)).2.2
       (frameResult mf (.revert out)).1
     r.success = false ∧ r.reverted = true ∧ r.world = mf.frame.snapshot.1 ∧ r.logs = #[] := by
   simp [frameResult_revert, topLevelResult, ChildResult.success, MessageResult.success]
 
-/-- **Top-level glue for `permit`**: a `PermitPost` frame summary of the start machine gives
-`PermitResult`. -/
 theorem permit_call_of_halts {ctx : Context} {w : World} {tr : TransientStorage}
     {code : ByteArray} {token caller : Address} {data : ByteArray} {gas : Nat}
     {wa : AddressSet} {wk : StorageKeySet} {ds : Word} {owner spender : Address}
@@ -78,16 +67,14 @@ theorem permit_call_of_halts {ctx : Context} {w : World} {tr : TransientStorage}
     refine ⟨hsu, hrv, hwr.trans ?_, hlr⟩
     rw [hs.snapshot]; rfl
 
-/-- The asset's code is not a delegation designator. -/
 theorem delegatedAddress?_asset (ia : SolmateAsset.Immutables) :
     delegatedAddress? (SolmateAsset.runtimeCodeWith ia) = none :=
   delegatedAddress?_of_size (by
     rw [SolmateAsset.runtimeCodeWith, size_patchWords, SolmateAsset.size_runtimeCode]; decide)
 
 set_option maxHeartbeats 1000000 in
-/-- **`permit` of the asset, top level.** The domain separator is `dsOf` of the start machine,
-i.e. `domainSeparator ctx.crypto ia.initialChainId ia.initialDomainSeparator
-(ofNat ctx.block.chainId) (w.sload asset 0) asset`. -/
+/-- **`permit` of the asset, top level.** The domain separator is the one
+`DOMAIN_SEPARATOR()` returns (`domainSeparator …`). -/
 theorem asset_permit_call {ia : SolmateAsset.Immutables} {ctx : Context} {w : World}
     {tr : TransientStorage} {asset caller : Address} {gas : Nat} {wa : AddressSet}
     {wk : StorageKeySet} {owner spender : Address} {value deadline v r s : Word}
@@ -136,8 +123,6 @@ theorem vault_permit_call {i : SolmateVault.Immutables} {ctx : Context} {w : Wor
 
 /-! ## Views -/
 
-/-- **Top-level glue for a view**: a frame summary that succeeds with output `out` and keeps the
-world gives a successful result with output `out` and world `w`. -/
 theorem view_call_of_halts {ctx : Context} {w : World} {tr : TransientStorage}
     {code : ByteArray} {token caller : Address} {data : ByteArray} {gas : Nat}
     {wa : AddressSet} {wk : StorageKeySet} {out : ByteArray} {H : Machine → Outcome → Prop}
@@ -165,8 +150,8 @@ def domainSeparatorData : ByteArray := Abi.encodeCall 0x3644e515 []
 def noncesData (owner : Address) : ByteArray := Abi.encodeCall 0x7ecebe00 [Word.ofAddress owner]
 
 set_option maxHeartbeats 1000000 in
-/-- **`DOMAIN_SEPARATOR()` of the asset, top level**: returns `Permit.domainSeparator …` (the
-immutable on the deployment chain, else recomputed from the short name), world unchanged. -/
+/-- **`DOMAIN_SEPARATOR()` of the asset, top level**: the immutable on the deployment chain, else
+recomputed from the short name; world unchanged. -/
 theorem asset_domainSeparator_call {ia : SolmateAsset.Immutables} {ctx : Context} {w : World}
     {tr : TransientStorage} {asset caller : Address} {gas : Nat} {wa : AddressSet}
     {wk : StorageKeySet}
@@ -266,37 +251,16 @@ section
 /-!
 ## `permit` refines the model
 
-The bytecode theorems (`Examples.Solmate.ERC20.Permit`, `Examples.Solmate.ERC4626.Permit`, `Examples.Solmate.ERC4626.PermitSpec`) against the extended ledger
-`Vault.PermitToken` (`../Vault/Permit.lean`):
-
-* `noncesView`, `permitView`: the nonces and the extended ledger of the Solmate token at `token`,
-  read from storage (`tokenView` for the ledger; nonces at `keccak(a ‖ 5)`). Reading needs no
-  hash hypothesis.
-* `validAt`: the model's validity predicate, instantiated with the bytecode's check
-  (`PermitValid`, any `Crypto`).
-* `PermitSlotsOk`: the hash hypotheses for the two written slots, pointwise and plausible
-  (`KeccakFresh`, never injectivity): `allowance[owner][spender]` is fresh
-  (`Erc20.AllowanceSlotOk`), `nonces[owner]` is fresh among the address-keyed rows of slots 3,
-  4, 5 and is not slot 2, and the two written slots differ.
-* `PermitRepOn P Pn`: the storage represents a `PermitToken`, for the allowance entries in `P`
-  and the nonces in `Pn` (entries whose slot is not a written one; nested-mapping and
-  nonce frames are only available pointwise).
-* `rep_permitWorld`: `permitWorld` represents the model's `permit` result.
-* `asset_permit_refines` / `vault_permit_refines` (frame form, any frame) and
-  `asset_permit_call_refines` / `vault_permit_call_refines` (top level): the model's
-  `PermitToken.permit` returns `some l'` exactly when the call succeeds, and then the new
-  storage represents `l'` and the logs are `Approval(owner, spender, value)`; `none` exactly when
-  it reverts, with the world unchanged.
-* `PermitCallRefines` / `asset_permit_opRefines`, `vault_permit_opRefines`: the same in the shape
-  of `Invariants.CallRefines` (over the extended state), for every terminating top-level call:
-  what trace integration consumes.
+`permitView` reads the extended ledger `PermitToken` (nonces at `keccak(a ‖ 5)`) from storage,
+with no hash hypothesis; `PermitSlotsOk` covers the two written slots.
 -/
 
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20
 
 /-! ## The abstraction -/
 
@@ -309,7 +273,6 @@ noncomputable def permitView (crypto : Crypto) (w : World) (token : Address) :
     PermitToken Address :=
   ⟨tokenView crypto w token, noncesView crypto w token⟩
 
-/-- A nonce of the view. -/
 @[simp] theorem noncesView_apply (crypto : Crypto) (w : World) (token a : Address) :
     noncesView crypto w token a = (w.sload token (nonceSlot crypto a)).toNat := by
   simp [noncesView]
@@ -319,7 +282,6 @@ def validAt (crypto : Crypto) (ds : Word) (timestamp : Nat) (owner spender : Add
     (value deadline v r s : Word) (n : ℕ) : Prop :=
   PermitValid crypto ds timestamp owner spender value deadline v r s (BitVec.ofNat 256 n)
 
-/-- `validAt` is decidable (classically). -/
 noncomputable instance (crypto : Crypto) (ds : Word) (timestamp : Nat) (owner spender : Address)
     (value deadline v r s : Word) :
     DecidablePred (validAt crypto ds timestamp owner spender value deadline v r s) :=
@@ -331,7 +293,6 @@ noncomputable def modelPermit (crypto : Crypto) (ds : Word) (timestamp : Nat) (w
   (permitView crypto w token).permit owner spender value.toNat
     (validAt crypto ds timestamp owner spender value deadline v r s)
 
-/-- The model's validity at the view's nonce is the bytecode's at the stored nonce word. -/
 theorem validAt_view {crypto : Crypto} {ds : Word} {timestamp : Nat} {w : World}
     {token owner spender : Address} {value deadline v r s : Word} :
     validAt crypto ds timestamp owner spender value deadline v r s
@@ -344,24 +305,19 @@ theorem validAt_view {crypto : Crypto} {ds : Word} {timestamp : Nat} {w : World}
 
 /-- The hash hypotheses for the slots a `permit(owner, spender, …)` writes. -/
 structure PermitSlotsOk (crypto : Crypto) (owner spender : Address) : Prop where
-  /-- `allowance[owner][spender]` is fresh (`Erc20.AllowanceSlotOk`). -/
   allow : ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate owner spender
   /-- `nonces[owner]` is the hash of no other address-keyed row of `balanceOf`, `allowance`,
   `nonces` (one target against `3 · 2¹⁶⁰` candidates). -/
   nonceFresh : KeccakFresh crypto (AddressKeyed [3#256, 4#256, 5#256])
     (slotPreimage (Word.ofAddress owner) 5#256)
-  /-- `nonces[owner]` is not the `totalSupply` slot. -/
   nonceTotal : nonceSlot crypto owner ≠ 2#256
-  /-- The two written slots differ. -/
   sep : ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender ≠ nonceSlot crypto owner
 
 /-- The storage of `token` in `w` represents the extended ledger `l`: the ledger in the sense
 of `Shares.RepOn P`, the nonces of the owners in `Pn`. -/
 structure PermitRepOn (P : Address → Address → Prop) (Pn : Address → Prop) (crypto : Crypto)
     (w : World) (token : Address) (l : PermitToken Address) : Prop where
-  /-- The ledger. -/
   ledger : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w token) l.token
-  /-- The nonces. -/
   nonce : ∀ a, Pn a → (w.sload token (nonceSlot crypto a)).toNat = l.nonces a
 
 /-- The allowance entries known after `permit(owner, spender, …)`: the written entry, and every
@@ -377,7 +333,6 @@ is not the written allowance slot. -/
 def PermitNonces (crypto : Crypto) (owner spender : Address) (a : Address) : Prop :=
   a = owner ∨ nonceSlot crypto a ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender
 
-/-- The view represents itself. -/
 theorem permitRep_view (crypto : Crypto) (w : World) (token : Address) :
     PermitRepOn (fun _ _ => True) (fun _ => True) crypto w token (permitView crypto w token) :=
   ⟨rep_toToken _, fun a _ => (noncesView_apply crypto w token a).symm⟩
@@ -399,7 +354,6 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
   have hbal' := ERC20.balanceSlot_ne_allowanceSlot hs.allow
   have hat : ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender ≠ 2#256 :=
     hs.allow.2.2
-  -- reading the final world
   have hread : ∀ k, (permitWorld crypto w token owner spender value).sload token k =
       if k = ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender then value
       else if k = nonceSlot crypto owner then w.sload token (nonceSlot crypto owner) + 1#256
@@ -447,7 +401,6 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
       simp only [ha', hna, ↓reduceIte]
       simp [Finsupp.update_apply, hao, permitView]
 
-/-- `permitWorld` writes only the two slots. -/
 theorem sload_permitWorld {crypto : Crypto} {w : World} {token owner spender b : Address}
     {value k : Word}
     (h : b ≠ token ∨ (k ≠ nonceSlot crypto owner ∧
@@ -458,7 +411,6 @@ theorem sload_permitWorld {crypto : Crypto} {w : World} {token owner spender b :
   · simp [h]
   · simp [h1, h2]
 
-/-- `permitWorld` keeps every code. -/
 theorem code_permitWorld (crypto : Crypto) (w : World) (token owner spender : Address)
     (value : Word) (a : Address) :
     (permitWorld crypto w token owner spender value).code a = w.code a := by
@@ -466,10 +418,8 @@ theorem code_permitWorld (crypto : Crypto) (w : World) (token owner spender : Ad
 
 /-! ## Refinement, frame form -/
 
-/-- The model-level post of `permit` from the start machine `m` (domain separator `ds`): the
-model's `permit` at the view of the executing account succeeds iff the frame succeeds, and
-then the new storage represents its result and the frame logged `Approval`; it fails iff the
-frame reverts. -/
+/-- The model-level post of `permit` from the start machine `m`: the model's `permit` succeeds
+iff the frame does, and then the storage represents its result and the frame logged `Approval`. -/
 def PermitRefinesPost (ds : Word) (owner spender : Address) (value deadline v r s : Word)
     (m mf : Machine) (o : Outcome) : Prop :=
   match modelPermit m.ctx.crypto ds m.ctx.block.timestamp m.world m.frame.msg.currentTarget owner
@@ -481,7 +431,6 @@ def PermitRefinesPost (ds : Word) (owner spender : Address) (value deadline v r 
       (approvalLog m.frame.msg.currentTarget owner spender value)
   | none => ∃ out, o = .revert out
 
-/-- `PermitPost` gives the model-level post, under `PermitSlotsOk`. -/
 theorem refinesPost_of_permitPost {ds : Word} {owner spender : Address}
     {value deadline v r s : Word} {m mf : Machine} {o : Outcome}
     (hs : PermitSlotsOk m.ctx.crypto owner spender)
@@ -553,10 +502,9 @@ theorem vault_permit_refines {i : SolmateVault.Immutables} (m : Machine)
 
 /-! ## Refinement, top level and `opRefines` form -/
 
-/-- **The per-call refinement statement of `permit`** in the shape of `Invariants.CallRefines`,
-over the extended state: if the model's `permit` (at the view of `token` in `w`) gives `some l'`,
-the world `w'` after the call represents `l'` (allowances in `PermitAllowances`, nonces in
-`PermitNonces`) and only the two written slots of `token` changed; if it gives `none`, `w' = w`. -/
+/-- **The per-call refinement statement of `permit`** (shape of `Invariants.CallRefines`): on
+`some l'` the new world represents `l'` and only the two written slots of `token` changed; on
+`none`, `w' = w`. -/
 def PermitCallRefines (crypto : Crypto) (ds : Word) (timestamp : Nat) (token : Address)
     (owner spender : Address) (value deadline v r s : Word) (w w' : World) : Prop :=
   match modelPermit crypto ds timestamp w token owner spender value deadline v r s with
@@ -568,7 +516,6 @@ def PermitCallRefines (crypto : Crypto) (ds : Word) (timestamp : Nat) (token : A
     (∀ a, w'.code a = w.code a)
   | none => w' = w
 
-/-- `PermitResult` gives `PermitCallRefines` for the result's world, under `PermitSlotsOk`. -/
 theorem callRefines_of_result {crypto : Crypto} {ds : Word} {timestamp : Nat} {w : World}
     {token owner spender : Address} {value deadline v r s : Word} {res : MessageResult}
     (hs : PermitSlotsOk crypto owner spender)
@@ -594,9 +541,8 @@ theorem callRefines_of_result {crypto : Crypto} {ds : Word} {timestamp : Nat} {w
     rw [hl] at this
     exact absurd this (by simp)
 
-/-- **`permit` of the asset, top level, against the model**: every large enough fuel gives a
-result whose world refines the model's `permit` (`PermitCallRefines`), with the exact result
-`PermitResult` (success flag, `permitWorld`, logs). -/
+/-- **`permit` of the asset, top level, against the model**: `PermitResult` and
+`PermitCallRefines`. -/
 theorem asset_permit_call_refines {ia : SolmateAsset.Immutables} {ctx : Context} {w : World}
     {tr : TransientStorage} {asset caller : Address} {gas : Nat} {wa : AddressSet}
     {wk : StorageKeySet} {owner spender : Address} {value deadline v r s : Word}
@@ -644,9 +590,8 @@ theorem vault_permit_call_refines {i : SolmateVault.Immutables} {ctx : Context} 
   exact ⟨n, fun fuel hle => let ⟨res, h1, h2⟩ := hn fuel hle;
     ⟨res, h1, h2, callRefines_of_result hs h2⟩⟩
 
-/-- **`opRefines` form (asset)**: every *terminating* top-level `permit` call (the interpreter
-returns `res` for all fuel from some `n` on) refines the model: `PermitCallRefines w res.world`,
-and the logs are the model's (`Approval` on success, none on failure). -/
+/-- **`opRefines` form (asset)**: every terminating top-level `permit` call gives
+`PermitCallRefines` and `PermitResult`. -/
 theorem asset_permit_opRefines {ia : SolmateAsset.Immutables} {ctx : Context} {w : World}
     {tr : TransientStorage} {asset caller : Address} {gas : Nat} {wa : AddressSet}
     {wk : StorageKeySet} {owner spender : Address} {value deadline v r s : Word}
@@ -709,19 +654,14 @@ section
 /-!
 ## The events of `permit`
 
-`permit` emits `Approval(owner, spender, value)` on success and nothing on failure. The frame
-theorems of `permit` (`PermitPost`) already state the success logs, so these companions are
-corollaries, in the `EventsPost` form of `Events.lean`:
-
-* `asset_permit_events`, `vault_permit_events` (any frame): `EventsPost m (permitEvents …)`;
-* top level: `PermitResult` (`PermitCall.lean`) gives `res.logs = #[approvalLog …]` on success
-  and `#[]` on failure (`permit_logs`).
+Corollaries of `PermitPost`: `Approval(owner, spender, value)` on success, nothing on failure.
 -/
 
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 open Classical in
 /-- The logs `permit` emits from the start machine `m`: `Approval(owner, spender, value)` by
@@ -733,7 +673,6 @@ noncomputable def permitEvents (ds : Word) (owner spender : Address) (value dead
     #[approvalLog m.frame.msg.currentTarget owner spender value]
   else #[]
 
-/-- `PermitPost` gives `EventsPost` for `permitEvents`. -/
 theorem eventsPost_of_permitPost {ds : Word} {owner spender : Address}
     {value deadline v r s : Word} {m mf : Machine} {o : Outcome}
     (h : PermitPost ds owner spender value deadline v r s m mf o) :

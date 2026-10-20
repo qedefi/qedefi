@@ -3,23 +3,10 @@ import Examples.Solmate.ERC4626.ViewsSpec
 /-!
 # Unknown selectors and short calldata revert
 
-solc's dispatcher (`EvmLogic/Solidity/Dispatch.lean`) compares the selector
-`calldata[0:4]` against the contract's function selectors — a binary split on `GT` against
-pivots, then linear `EQ` chains — and falls through to `PUSH0 PUSH0 REVERT` when nothing
-matches; calldata shorter than four bytes jumps straight to the fallback, which reverts too
-(neither contract has a `fallback` or `receive` function). Proved for the deployed bytecode
-(any immutables), in any fresh frame, with no value (a call with value reverts earlier,
-`Nested.vault_value_reverts`):
-
-* `vault_unknown_reverts`, `asset_unknown_reverts`: a selector not in `vaultSelectors` /
-  `assetSelectors` (the selectors of the contracts' ABI, `SolmateVault.selectors` /
-  `SolmateAsset.selectors`: `vaultSelectors_eq`, `assetSelectors_eq`) reverts, whatever the
-  rest of the calldata;
-* `vault_short_reverts`, `asset_short_reverts`: calldata of fewer than four bytes reverts.
-
-Each run is the dispatcher only (at most 1000 gas). Calldata that selects a function but is
-malformed (too short for the arguments, dirty address words, `v` not a `uint8` in `permit`) is
-rejected by that function's ABI decoder; that is **not** proved here.
+`*_unknown_reverts`: a selector outside the contract's ABI reverts in solc's dispatcher, whatever
+the rest of the calldata; `*_short_reverts`: calldata shorter than four bytes reverts. For both
+contracts (any immutables), any fresh frame, no value. Also the definitions used by
+`Malformed.lean`. See `docs/erc4626/details.md` §5.
 -/
 
 section
@@ -27,7 +14,8 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## Selectors -/
 
@@ -60,7 +48,6 @@ theorem assetSelectors_eq (n : Nat) :
 
 /-! ## Comparisons with a selector -/
 
-/-- `EQ` of two different 32-bit numbers. -/
 theorem eq_lit_zero {C S : Nat} (hC : C < 2 ^ 32) (hS : S < 2 ^ 32) (h : S ≠ C) :
     Word.eq (BitVec.ofNat 256 C) (BitVec.ofNat 256 S) = 0 := by
   unfold Word.eq Word.ofBool
@@ -73,13 +60,11 @@ theorem eq_lit_zero {C S : Nat} (hC : C < 2 ^ 32) (hS : S < 2 ^ 32) (h : S ≠ C
     exact h this.symm
   rw [this]; rfl
 
-/-- `GT` of 32-bit numbers, true. -/
 theorem gt_lit_one {C S : Nat} (hC : C < 2 ^ 32) (hS : S < 2 ^ 32) (h : S < C) :
     Word.gt (BitVec.ofNat 256 C) (BitVec.ofNat 256 S) = 1 := by
   rw [Word.gt_eq_one_iff]; simp only [BitVec.toNat_ofNat]
   rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]; exact h
 
-/-- `GT` of 32-bit numbers, false. -/
 theorem gt_lit_zero {C S : Nat} (hC : C < 2 ^ 32) (hS : S < 2 ^ 32) (h : C ≤ S) :
     Word.gt (BitVec.ofNat 256 C) (BitVec.ofNat 256 S) = 0 := by
   unfold Word.gt Word.ofBool
@@ -88,12 +73,10 @@ theorem gt_lit_zero {C S : Nat} (hC : C < 2 ^ 32) (hS : S < 2 ^ 32) (h : C ≤ S
     rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]; exact h
   rw [this]; rfl
 
-/-- The selector is a 32-bit number. -/
 theorem selectorOf_lt (data : ByteArray) : Abi.selectorOf data < 2 ^ 32 := by
   have := Bytes.toNat_lt (readBytes data 0 4)
   rw [size_readBytes] at this; unfold Abi.selectorOf; omega
 
-/-- The dispatcher's `CALLDATASIZE < 4` test holds for calldata shorter than a selector. -/
 theorem lt_size_four_one {n : Nat} (h : n < 4) : Word.lt (ofNat n) (BitVec.ofNat 256 4) = 1 := by
   rw [Word.lt_eq_one_iff]; simp only [ofNat, BitVec.toNat_ofNat]
   rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]; exact h
@@ -284,19 +267,13 @@ end
 
 section
 
-/-!
-## Malformed calldata: definitions
-
-The argument words of calldata (`argWord`), clean `address` arguments (`CleanAddr`), calldata
-malformed for a function shape (`Malformed`), the function shapes of the vault and the asset
-(`vaultArgShapes`, `assetArgShapes`) and the word facts the decoder proofs use. The theorems are
-in `MalformedVault*.lean`, `MalformedAsset.lean` and `MalformedCalldata.lean`.
--/
+/-! ## Malformed calldata: definitions (theorems in `Malformed.lean`) -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## Argument words -/
 
@@ -313,12 +290,10 @@ def Malformed (d : ByteArray) (k : Nat) (addrs : List Nat) : Prop :=
   d.size < 4 + 32 * k ∨
     (4 + 32 * k ≤ d.size ∧ ∃ j ∈ addrs, (∀ j' ∈ addrs, j' < j → CleanAddr d j') ∧ ¬ CleanAddr d j)
 
-/-- A clean argument, with the mask as symbolic execution produces it. -/
 theorem cleanAddr_lit {d : ByteArray} {j : Nat} (h : CleanAddr d j) :
     argWord d j &&& 1461501637330902918203684832716283019655932542975#256 = argWord d j := by
   rw [← addressMask_eq]; exact h
 
-/-- The address validator fails on a dirty argument. -/
 theorem eq_and_mask_zero {d : ByteArray} {j : Nat} (h : ¬ CleanAddr d j) :
     Word.eq (argWord d j)
       (argWord d j &&& 1461501637330902918203684832716283019655932542975#256) = 0 := by
@@ -330,8 +305,6 @@ theorem eq_and_mask_zero {d : ByteArray} {j : Nat} (h : ¬ CleanAddr d j) :
     exact h (by unfold CleanAddr; rw [addressMask_eq]; exact he.symm)
   rw [this]; rfl
 
-/-- The ABI decoder's calldata-length check fails when the calldata is shorter than the
-selector and `n` bytes of arguments. -/
 theorem iszero_slt_short {size n : Nat} (h1 : 4 ≤ size) (h2 : size < 4 + n) (hn : n < 2 ^ 255) :
     Word.iszero (Word.slt (BitVec.ofNat 256 size - 4#256) (BitVec.ofNat 256 n)) = 0 := by
   have hx : (BitVec.ofNat 256 size - 4#256).toNat = size - 4 := by

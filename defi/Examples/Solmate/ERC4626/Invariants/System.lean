@@ -7,112 +7,51 @@ import Examples.Solmate.ERC20.MintBurn
 /-!
 # The concrete system: deployed vault and asset under arbitrary call sequences
 
-The precise statement of *which* concrete executions the invariant theorems are about.
-
-## States
-
-Worlds `w : World` with `Deployed w vault asset`: the compiled Solmate `MockERC4626` at
-`vault` (any immutables whose `asset` is `asset`) and the compiled `MockERC20` at `asset`
-(`Abstraction.lean`). The abstraction is `abs crypto w vault asset`, for one fixed `crypto`
-(the hash function of the chain).
-
-## Transitions
-
-* **Modelled calls** (`CallStep`): a top-level message call (`processMessageCall`, i.e. the
-  message part of a transaction) from an **arbitrary caller** (other than the vault and the
-  asset themselves, which have code and so cannot send transactions, EIP-3607) to the vault
-  or to the asset,
-  with zero value, calldata `VCall.data c` encoding one of the modelled state-changing
-  functions with arbitrary arguments (`VCall`, mirroring `Solmate.Op`: the four ERC-4626
-  entry points, the vault's `transfer`/`transferFrom`/`approve`, and the asset's
-  `transfer`/`transferFrom`/`approve`/`mint`/`burn` — `asset.transfer(vault, D)` is a
-  donation), at least `minGas` and fewer than `2⁶⁴` gas, in any context of `crypto` that is
-  before Prague or has no EIP-7702 authorizations, and that **terminates**: for all large
-  enough fuel `processMessageCall` returns the same result (`Terminates`). Successful and
-  reverting calls are both included; the next world is the result's world.
-* **Environment steps** (`EnvStep`): any transition that changes neither the storage nor the
-  code of the vault and the asset: transactions to other contracts that do not reach them,
-  ETH transfers (also to the vault or the asset: the model has no ETH), the transaction-level
-  bookkeeping around a message call (nonce, gas purchase and refund, coinbase fee), block
-  rewards, and **view calls** to the vault or the asset (`envStep_of_world_eq`; the view
-  refinement theorems `*_call` of `VaultViewsSpec.lean` say they return the model's values
-  and keep the world).
-
-## Hash hypotheses, once per trace
-
-`SlotsOk crypto vault Act` for a finite list `Act` of actors containing the vault and every
-address appearing in the trace's calls (`VCall.actors`): each actor's balance slot and each
-actor-pair's allowance slot is fresh among the single-level address-keyed preimages
-(`Erc20.BalanceSlotOk`, `Erc20.AllowanceSlotOk`: one target against `2¹⁶¹` candidates,
-plausible), the allowance slots of distinct actor pairs differ, and none of these slots is one
-of the hook-counter slots 6 and 7. This is a statement about finitely many hashes.
-
-The concrete world is then related to the model up to the allowances of non-actor pairs
-(`AgreeOn (ActorPairs Act)`): an allowance entry `allowance[o][sp]` with `o ∉ Act` might, by a
-collision no plausible hypothesis excludes, share a slot with a written balance.
-
-## The system
-
-`system crypto vault asset minGas Act K : Lift.System World (State Address) VCall`, where `K`
-selects the call kinds admitted (`fun _ => True` for all of them; `VCall.Proven` for those
-whose bytecode refinement is on `main` today). `refinement` builds its
-`Lift.System.Refinement` from one `OpRefinesAt` theorem per admitted call.
+Which concrete executions the invariant theorems are about: worlds with `Deployed`, modelled
+top-level calls (`CallStep`, any caller, success or revert), environment steps (`EnvStep`,
+e.g. view calls), the trace-level hash hypothesis `SlotsOk`, and `system`/`refinement`
+instantiating `Defi.Trace.Lift`. See `docs/erc4626/details.md` §3.
 -/
 
 section
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 /-! ## Calls -/
 
-/-- A modelled state-changing call, with its ABI arguments. -/
+/-- A modelled state-changing call, with its ABI arguments (mirrors `Solmate.Op`; `asset.mint`
+and `asset.burn` are `MockERC20`'s unrestricted functions). -/
 inductive VCall where
-  /-- `vault.deposit(assets, receiver)` from `caller`. -/
   | deposit (caller : Address) (assets : Word) (receiver : Address)
-  /-- `vault.mint(shares, receiver)` from `caller`. -/
   | mint (caller : Address) (shares : Word) (receiver : Address)
-  /-- `vault.withdraw(assets, receiver, owner)` from `caller`. -/
   | withdraw (caller : Address) (assets : Word) (receiver owner : Address)
-  /-- `vault.redeem(shares, receiver, owner)` from `caller`. -/
   | redeem (caller : Address) (shares : Word) (receiver owner : Address)
-  /-- `vault.transfer(dst, amount)` from `caller`. -/
   | transfer (caller dst : Address) (amount : Word)
-  /-- `vault.transferFrom(src, dst, amount)` from `caller`. -/
   | transferFrom (caller src dst : Address) (amount : Word)
-  /-- `vault.approve(spender, amount)` from `caller`. -/
   | approve (caller spender : Address) (amount : Word)
-  /-- `asset.transfer(dst, amount)` from `caller` (a donation when `dst` is the vault). -/
   | assetTransfer (caller dst : Address) (amount : Word)
-  /-- `asset.transferFrom(src, dst, amount)` from `caller`. -/
   | assetTransferFrom (caller src dst : Address) (amount : Word)
-  /-- `asset.approve(spender, amount)` from `caller`. -/
   | assetApprove (caller spender : Address) (amount : Word)
-  /-- `asset.mint(dst, amount)` from `caller` (`MockERC20.mint` is unrestricted). -/
   | assetMint (caller dst : Address) (amount : Word)
-  /-- `asset.burn(src, amount)` from `caller` (`MockERC20.burn` is unrestricted). -/
   | assetBurn (caller src : Address) (amount : Word)
 
 namespace VCall
-open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-/-- The caller. -/
 def caller : VCall → Address
   | .deposit c _ _ | .mint c _ _ | .withdraw c _ _ _ | .redeem c _ _ _ | .transfer c _ _
   | .transferFrom c _ _ _ | .approve c _ _ | .assetTransfer c _ _ | .assetTransferFrom c _ _ _
   | .assetApprove c _ _ | .assetMint c _ _ | .assetBurn c _ _ => c
 
-/-- Whether the call goes to the asset (otherwise to the vault). -/
 def onAsset : VCall → Bool
   | .deposit .. | .mint .. | .withdraw .. | .redeem .. | .transfer .. | .transferFrom ..
   | .approve .. => false
   | .assetTransfer .. | .assetTransferFrom .. | .assetApprove .. | .assetMint ..
   | .assetBurn .. => true
 
-/-- The called account. -/
 def target (c : VCall) (vault asset : Address) : Address := if c.onAsset then asset else vault
 
 /-- The ABI calldata (selectors from `SolmateVault.selectors` / `SolmateAsset.selectors`). -/
@@ -153,8 +92,8 @@ def actors : VCall → List Address
   | .assetMint c d _ | .assetBurn c d _ => [c, d]
   | .transferFrom c s d _ | .assetTransferFrom c s d _ => [c, s, d]
 
-/-- The calls whose bytecode refinement is proved on `main` today (`InvariantsCalls.lean`):
-the vault's share-token functions and the asset's `transfer` / `transferFrom` (so donations). -/
+/-- The calls refined under `SlotsOk` alone: the vault's share-token functions and the asset's
+`transfer` / `transferFrom` (so donations). -/
 def Proven : VCall → Prop
   | .transfer .. | .transferFrom .. | .approve .. | .assetTransfer .. | .assetTransferFrom .. =>
       True
@@ -171,11 +110,9 @@ def Terminates (ctx : Context) (w : World) (tr : TransientStorage) (msg : Messag
     (r : MessageResult) : Prop :=
   ∃ n, ∀ fuel, n ≤ fuel → processMessageCall fuel ctx w tr msg = .ok r
 
-/-- **A modelled call.** `w'` is the world after a terminating top-level call `c` (from any
-caller other than the vault and the asset themselves — a transaction's sender has no code,
-EIP-3607 — zero value, at least `minGas` and fewer than `2⁶⁴` gas, any transient storage and warm
-sets, any context with hash `crypto` before Prague or without EIP-7702 authorizations), whether
-it succeeded or reverted. -/
+/-- **A modelled call.** `w'` is the world after a terminating top-level call `c`, successful
+or reverting: caller neither the vault nor the asset (EIP-3607), zero value, at least `minGas`
+and fewer than `2⁶⁴` gas, hash `crypto`, before Prague or without EIP-7702 authorizations. -/
 def CallStep (crypto : Crypto) (vault asset : Address) (minGas : Nat) (w : World) (c : VCall)
     (w' : World) : Prop :=
   ∃ (ctx : Context) (tr : TransientStorage) (gas : Nat) (wa : AddressSet) (wk : StorageKeySet)
@@ -191,25 +128,25 @@ def EnvStep (vault asset : Address) (w w' : World) : Prop :=
   (∀ k, w'.sload vault k = w.sload vault k) ∧ (∀ k, w'.sload asset k = w.sload asset k) ∧
     w'.code vault = w.code vault ∧ w'.code asset = w.code asset
 
-/-- A call that leaves the world unchanged (e.g. every view call, `VaultViewsSpec.*_call`, or a
-call to an unrelated contract that does not touch the vault or the asset) is an environment
-step. -/
+/-- A call that leaves the world unchanged (e.g. every view call, `ViewsSpec.lean`) is an
+environment step. -/
 theorem envStep_of_world_eq {vault asset : Address} {w w' : World} (h : w' = w) :
     EnvStep vault asset w w' := by
   subst h; exact ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩
 
 /-! ## Hash hypotheses -/
 
-/-- The allowance pairs of actors. -/
+/-- The allowance pairs of actors. Agreement holds only on these: a non-actor allowance slot
+may, by a collision no plausible hypothesis excludes, be a written balance slot. -/
 def ActorPairs (Act : List Address) (o sp : Address) : Prop := o ∈ Act ∧ sp ∈ Act
 
 /-- **The trace-level hash hypothesis** for the actors `Act` (finitely many slots). -/
 structure SlotsOk (crypto : Crypto) (vault : Address) (Act : List Address) : Prop where
-  /-- The vault is an actor (its asset balance is written by the vault's functions). -/
+  /-- The vault is an actor (the vault's functions write its asset balance). -/
   vault_mem : vault ∈ Act
-  /-- Every actor's balance slot is fresh (`Erc20.BalanceSlotOk`). -/
+  /-- Every actor's balance slot is fresh. -/
   bal : ∀ a ∈ Act, ERC20.BalanceSlotOk crypto ERC20.Layout.solmate a
-  /-- Every actor pair's allowance slot is fresh (`Erc20.AllowanceSlotOk`). -/
+  /-- Every actor pair's allowance slot is fresh. -/
   allow : ∀ o ∈ Act, ∀ sp ∈ Act, ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate o sp
   /-- Distinct actor pairs have distinct allowance slots. -/
   allowInj : ∀ o ∈ Act, ∀ sp ∈ Act, ∀ o' ∈ Act, ∀ sp' ∈ Act,
@@ -224,9 +161,8 @@ structure SlotsOk (crypto : Crypto) (vault : Address) (Act : List Address) : Pro
 
 /-! ## The system -/
 
-/-- The concrete system: deployed worlds, modelled calls admitted by `K` whose actors are in
-`Act`, environment steps; the model is `Solmate.step` with the invariant `Solmate.Inv` (and the
-vault's address), and states agree up to the allowances of non-actor pairs. -/
+/-- The concrete system: deployed worlds, modelled calls admitted by `K` with actors in `Act`,
+environment steps; states agree up to the allowances of non-actor pairs. -/
 noncomputable def system (crypto : Crypto) (vault asset : Address) (minGas : Nat)
     (Act : List Address) (K : VCall → Prop) : System World (State Address) VCall where
   step s c := step s c.op
@@ -259,7 +195,6 @@ def OpRefinesAt (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : 
 
 /-! ## Deployment and abstraction frames -/
 
-/-- `Deployed` depends only on the code of the two accounts. -/
 theorem _root_.Examples.Solmate.ERC4626.Deployed.of_code {w w' : World} {vault asset : Address} (h : Deployed w vault asset)
     (hv : w'.code vault = w.code vault) (ha : w'.code asset = w.code asset) :
     Deployed w' vault asset where
@@ -268,12 +203,10 @@ theorem _root_.Examples.Solmate.ERC4626.Deployed.of_code {w w' : World} {vault a
   vaultNotPrecompile := h.vaultNotPrecompile
   assetNotPrecompile := h.assetNotPrecompile
 
-/-- The asset code (any immutables) has 2870 bytes. -/
 theorem size_assetCode (ia : SolmateAsset.Immutables) :
     (SolmateAsset.runtimeCodeWith ia).size = 2870 :=
   (size_patchWords _ _).trans SolmateAsset.size_runtimeCode
 
-/-- The vault and the asset are different accounts (their codes have different sizes). -/
 theorem _root_.Examples.Solmate.ERC4626.Deployed.vault_ne_asset {w : World} {vault asset : Address}
     (h : Deployed w vault asset) : vault ≠ asset := by
   rintro rfl
@@ -285,19 +218,15 @@ theorem _root_.Examples.Solmate.ERC4626.Deployed.vault_ne_asset {w : World} {vau
   simp only [Shares.code] at h2
   omega
 
-/-- A token's ledger depends only on its storage. -/
 theorem tokenView_congr {crypto : Crypto} {w w' : World} {token : Address}
     (h : ∀ k, w'.sload token k = w.sload token k) : tokenView crypto w' token = tokenView crypto w token := by
   simp only [tokenView, ERC20.view, h]
 
-/-- The abstraction depends only on the storage of the vault and the asset. -/
 theorem abs_congr {crypto : Crypto} {w w' : World} {vault asset : Address}
     (hv : ∀ k, w'.sload vault k = w.sload vault k) (ha : ∀ k, w'.sload asset k = w.sload asset k) :
     abs crypto w' vault asset = abs crypto w vault asset := by
   simp only [abs, tokenView_congr hv, tokenView_congr ha, hv]
 
-/-- A storage view representing `t` on the allowances `P ⊇ G` gives a ledger agreeing with `t`
-on `G`. -/
 theorem tokAgree_of_repOn {crypto : Crypto} {w : World} {token : Address}
     {P G : Address → Address → Prop} {t : Token Address}
     (h : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w token) t)
@@ -307,8 +236,8 @@ theorem tokAgree_of_repOn {crypto : Crypto} {w : World} {token : Address}
   totalSupply := h.totalSupply
   allowance o sp hg := h.allowance o sp (hG o sp hg)
 
-/-- **Bridge for a vault call**: the share storage represents `t'` on `P ⊇ actor pairs`, and
-every slot of the asset and the hook-counter slots are unchanged. -/
+/-- **Bridge for a vault call**: the share storage represents `t'` on `P ⊇ actor pairs`; the
+asset's storage and the hook counters are unchanged. -/
 theorem agree_of_shares {crypto : Crypto} {w w' : World} {vault asset : Address}
     {Act : List Address} {P : Address → Address → Prop} {t' : Token Address}
     (hrep : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w' vault) t')
@@ -324,8 +253,8 @@ theorem agree_of_shares {crypto : Crypto} {w w' : World} {vault asset : Address}
   afterDeposit := congrArg BitVec.toNat h7
   beforeWithdraw := congrArg BitVec.toNat h6
 
-/-- **Bridge for an asset call**: the asset storage represents `t'` on `P ⊇ actor pairs`, and
-every slot of the vault is unchanged. -/
+/-- **Bridge for an asset call**: the asset storage represents `t'` on `P ⊇ actor pairs`; the
+vault's storage is unchanged. -/
 theorem agree_of_asset {crypto : Crypto} {w w' : World} {vault asset : Address}
     {Act : List Address} {P : Address → Address → Prop} {t' : Token Address}
     (hrep : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w' asset) t')
@@ -339,11 +268,8 @@ theorem agree_of_asset {crypto : Crypto} {w w' : World} {vault asset : Address}
   afterDeposit := by simp only [abs, hv]
   beforeWithdraw := by simp only [abs, hv]
 
-/-- **Bridge for the ERC-4626 entry points** (both ledgers and a hook counter change): the
-share and asset storage represent the model's new ledgers on allowance predicates containing
-the actor pairs (`Shares.RepOn`, as the deposit/mint/withdraw/redeem refinement theorems give
-them), and the counter slots hold the model's counters. This is `Refines` weakened to
-`RepOn`; it is all the wiring of a `Pending` obligation needs on the model side. -/
+/-- **Bridge for the ERC-4626 entry points**: both ledgers represented (`RepOn`) on allowance
+predicates containing the actor pairs, and the counter slots hold the model's counters. -/
 theorem agree_of_reps {crypto : Crypto} {w' : World} {vault asset : Address}
     {Act : List Address} {P₁ P₂ : Address → Address → Prop} {s' : State Address}
     (hself : s'.self = vault)
@@ -361,12 +287,10 @@ theorem agree_of_reps {crypto : Crypto} {w' : World} {vault asset : Address}
 
 /-! ## The refinement, from per-call theorems -/
 
-/-- Admissible operations read only actor allowances. -/
 theorem reads_of_actors {Act : List Address} {vault : Address} (hv : vault ∈ Act) {c : VCall}
     (hc : ∀ a ∈ c.actors, a ∈ Act) : Reads (ActorPairs Act) vault c.op := by
   cases c <;> simp_all [VCall.actors, VCall.op, Reads, ActorPairs]
 
-/-- `CallRefines` is the system's `OpRefines`. -/
 theorem opRefines_of_callRefines {crypto : Crypto} {vault asset : Address} {minGas : Nat}
     {Act : List Address} {K : VCall → Prop} {w w' : World} {c : VCall}
     (h : CallRefines crypto vault asset Act w c w') :
@@ -405,31 +329,17 @@ end
 section
 
 /-!
-## Per-call refinement obligations proved on `main`
+## Per-call obligations: share-token functions and the asset's transfers
 
-`OpRefinesAt` (the abs-level per-call refinement statement of `InvariantsSystem.lean`) for the
-calls whose bytecode refinement exists today:
-
-* the vault's share-token functions `transfer`, `transferFrom`, `approve`, from the top-level
-  theorems `Shares.transfer_refines`, `Shares.transferFrom_refines`, `Shares.approve_refines`;
-* the asset's `transfer` (in particular donations to the vault) and `transferFrom`, from the
-  frame-level (callee) theorems `assetTransfer_refines`, `assetTransferFrom_refines`, lifted to
-  a top-level call by `call_of_halts`.
-
-Each proof: the terminating call's result is the one the refinement theorem describes (the
-interpreter is deterministic in the fuel, `Terminates`); on success the written storage
-represents the model's new ledger on the allowances whose slots are not written, which
-includes every actor pair under `SlotsOk`; the other contract's storage and the hook-counter
-slots are untouched; the codes are unchanged (`SSTORE` only). Reverts keep the world.
-
-All five need only `100000 ≤ minGas`.
+`OpRefinesAt` from `Shares.*_refines` (top level) and the asset's frame-level `*_refines`
+lifted by `call_of_halts`.
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 /-! ## World lemmas -/
 
@@ -459,8 +369,8 @@ theorem sload_transferFromWorld_other {crypto : Crypto} {w : World} {token sp sr
 
 /-! ## Top-level glue -/
 
-/-- A frame summary of a top-level call gives the result of `processMessageCall`: on success
-the result's world is the final frame's, on revert it is the initial world. -/
+/-- A frame summary gives the result of a top-level call: on success the final frame's world,
+on revert the initial world. -/
 theorem call_of_halts {ctx : Context} {w : World} {tr : TransientStorage} {code : ByteArray}
     {a caller : Address} {data : ByteArray} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
     {H : Machine → Outcome → Prop} (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
@@ -482,21 +392,18 @@ theorem call_of_halts {ctx : Context} {w : World} {tr : TransientStorage} {code 
     have hsnap : mf.frame.snapshot.1 = w := by rw [hs.snapshot]; rfl
     simp only [frameResult_revert, topLevelResult_world, hsnap]
 
-/-- `Abi.encodeCall sel [x, y]` is a `TwoWordCall`. -/
 theorem twoWordCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (x y : Word) :
     TwoWordCall (Abi.encodeCall sel [x, y]) sel x y :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
    by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _,
    Abi.calldataload_encodeCall_1 _ _ _ _⟩
 
-/-- `Abi.encodeCall sel [x, y, z]` is a `ThreeWordCall`. -/
 theorem threeWordCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (x y z : Word) :
     ThreeWordCall (Abi.encodeCall sel [x, y, z]) sel x y z :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
    by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _,
    Abi.calldataload_encodeCall_1 _ _ _ _, Abi.calldataload_encodeCall_2 _ _ _ _ _⟩
 
-/-- Unpacking `CallStep`: deterministic results. -/
 theorem terminates_unique {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     {r r' : MessageResult} {n fuel : Nat} (hn : ∀ fuel, n ≤ fuel → processMessageCall fuel ctx w tr msg = .ok r)
     (hle : n ≤ fuel) (h : processMessageCall fuel ctx w tr msg = .ok r') : r' = r := by
@@ -504,14 +411,12 @@ theorem terminates_unique {ctx : Context} {w : World} {tr : TransientStorage} {m
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
-/-- `CallRefines` from a successful model step. -/
 theorem callRefines_some {w w' : World} {c : VCall} {s' : State Address}
     (hop : Solmate.step (abs crypto w vault asset) c.op = some s')
     (h : AgreeOn (ActorPairs Act) (abs crypto w' vault asset) s') :
     CallRefines crypto vault asset Act w c w' := by
   unfold CallRefines; rw [hop]; exact h
 
-/-- `CallRefines` from a reverting model step. -/
 theorem callRefines_none {w w' : World} {c : VCall}
     (hop : Solmate.step (abs crypto w vault asset) c.op = none) (h : w' = w) :
     CallRefines crypto vault asset Act w c w' := by
@@ -557,7 +462,6 @@ theorem opRefines_transfer (hmin : 100000 ≤ minGas) (caller dst : Address) (am
     rw [show (abs ctx.crypto w vault asset).shares.transfer caller dst amount.toNat = none
       from ht]; rfl
 
-/-- Actor pairs avoid the slot of another actor pair's allowance, unless they are that pair. -/
 theorem SlotsOk.allowP {crypto : Crypto} {vault : Address} {Act : List Address}
     (hs : SlotsOk crypto vault Act) {o sp a b : Address} (ho : o ∈ Act) (hsp : sp ∈ Act)
     (ha : a ∈ Act) (hb : b ∈ Act) :
@@ -567,7 +471,6 @@ theorem SlotsOk.allowP {crypto : Crypto} {vault : Address} {Act : List Address}
   · exact .inl h
   · exact .inr fun e => h (hs.allowInj o ho sp hsp a ha b hb e)
 
-/-- Actor pairs avoid every actor's balance slot. -/
 theorem SlotsOk.balP {crypto : Crypto} {vault : Address} {Act : List Address}
     (hs : SlotsOk crypto vault Act) {o sp : Address} (ho : o ∈ Act) (hsp : sp ∈ Act) (a : Address) :
     ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
@@ -747,7 +650,7 @@ theorem opRefines_assetTransferFrom (hmin : 100000 ≤ minGas) (caller src dst :
     rw [show (abs ctx.crypto w vault asset).asset.transferFrom caller src dst amount.toNat = none
       from ht]; rfl
 
-/-- **Every call on `main` today refines its operation** (`VCall.Proven`). -/
+/-- **Every `VCall.Proven` call refines its operation.** -/
 theorem opRefines_proven (hmin : 100000 ≤ minGas) (c : VCall) (hc : c.Proven) :
     OpRefinesAt crypto vault asset minGas Act c := by
   cases c with
@@ -770,21 +673,13 @@ end
 
 section
 
-/-!
-## `asset.approve` at the top level: the invariants layer's obligation
-
-`opRefines_assetApprove`: the `OpRefinesAt` obligation of `InvariantsSystem.lean` for a
-top-level call of the asset's `approve(spender, amount)` (any caller, any arguments), from the
-frame-level `assetApprove_refines` lifted by `call_of_halts`, as for the asset's
-`transfer` in `InvariantsCalls.lean`. The call always succeeds; the asset's storage represents
-`Token.approve` on every actor pair (`SlotsOk`), the vault's storage is untouched.
--/
+/-! ## `asset.approve` -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -830,27 +725,20 @@ end
 section
 
 /-!
-## `asset.mint` at the top level: the invariants layer's obligation
+## `asset.mint`
 
-`opRefines_assetMint`: the `OpRefinesAt` obligation of `InvariantsSystem.lean` for a top-level
-call of the asset's unrestricted `mint(dst, amount)` (any caller, any arguments), from the
-frame-level `assetMint_refines` lifted by `call_of_halts`. On success the asset's storage
-represents `Token.mint` (balances and supply exactly, allowances on every actor pair under
-`SlotsOk`), the vault's storage is untouched; on overflow the call reverts.
-
-Besides `SlotsOk` it needs the hash hypothesis `KeccakAvoids crypto (AddressKeyed [3]) [2]`
-(no balance slot is the `totalSupply` slot; see `AssetMint.lean` for why it is necessary).
+`hk`: no balance slot is the `totalSupply` slot 2, which `mint` writes; without it the
+refinement is false (the ledger view would double-count the minted amount).
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
-/-- Actor pairs avoid both slots a `mint` / `burn` of `a` writes. -/
 theorem SlotsOk.mintP (hs : SlotsOk crypto vault Act) {o sp : Address} (ho : o ∈ Act)
     (hsp : sp ∈ Act) (a : Address) : MintAllowances crypto a o sp :=
   ⟨(hs.allow o ho sp hsp).2.2, hs.balP ho hsp a⟩
@@ -908,20 +796,13 @@ end
 
 section
 
-/-!
-## `asset.burn` at the top level: the invariants layer's obligation
-
-`opRefines_assetBurn`: the `OpRefinesAt` obligation of `InvariantsSystem.lean` for a top-level
-call of the asset's unrestricted `burn(src, amount)` (any caller, any arguments; with
-`src = vault` this is the model's "loss"), from the frame-level `assetBurn_refines` lifted by
-`call_of_halts`. Same hypotheses as `opRefines_assetMint`.
--/
+/-! ## `asset.burn` (same hash hypothesis as `asset.mint`) -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 

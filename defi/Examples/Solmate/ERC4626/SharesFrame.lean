@@ -6,21 +6,10 @@ import Examples.Solmate.ERC4626.Views
 /-!
 # The vault's share-token functions in any frame
 
-Frame forms (`Halts` from a fresh frame, for **any** parents: a top-level call or a call from
-another contract) of the vault's ERC-20 share functions, in the shape of the asset's callee
-summaries (`AssetTransfer.lean`, `AssetTransferFrom.lean`, `AssetApprove.lean`; the vault's
-share token is the same Solmate `ERC20` code, compiled into `MockERC4626`):
-
-* `sharesTransfer_halts_ok` / `_revert`: `transfer(to, amount)`; success with the world
-  `transferWorld` (`TransferOk`) when the caller's balance covers `amount`, else a revert;
-* `sharesTransferFrom_halts_ok` / `_revert`: `transferFrom(src, dst, amount)`
-  (`TransferFromOk`, world `Erc20.transferFromWorld`), or a revert;
-* `sharesApprove_halts`: `approve(spender, amount)` always succeeds (`ApproveOk`, world
-  `Erc20.approveWorld`).
-
-The calldata is described by what the ABI decoder reads (`TwoWordCall`, `ThreeWordCall`), so
-calldata assembled in memory by a calling contract is covered. The top-level theorems
-`Shares.transfer_refines` etc. (run-level symbolic execution from `start`) are kept.
+`Halts` summaries and `*_refines` theorems for the vault's share `transfer`, `transferFrom`,
+`approve` and views from a fresh frame with **any** parents (top level or called by another
+contract), in the shape of the asset's callee summaries (`ERC20/Transfer.lean` etc.). Calldata is
+described by what the ABI decoder reads (`TwoWordCall`, `ThreeWordCall`).
 -/
 
 section
@@ -28,7 +17,8 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
 set_option maxHeartbeats 0 in
@@ -61,8 +51,7 @@ theorem sharesTransfer_halts_ok {i : SolmateVault.Immutables} (m : Machine)
   evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transfer(to, amount)` of the vault's shares, insufficient balance**, in any frame: the
-checked subtraction panics (`Panic(0x11)`). -/
+/-- **`transfer(to, amount)` of the vault's shares, insufficient balance**: `Panic(0x11)`. -/
 theorem sharesTransfer_halts_revert {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m)
     (hval : m.frame.msg.value = 0) {dst : Address}
@@ -90,8 +79,7 @@ theorem sharesTransfer_halts_revert {i : SolmateVault.Immutables} (m : Machine)
   evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`approve(spender, amount)` of the vault's shares**, in any non-static frame: always
-succeeds. -/
+/-- **`approve(spender, amount)` of the vault's shares**: always succeeds. -/
 theorem sharesApprove_halts {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {spender : Address}
@@ -115,9 +103,8 @@ theorem sharesApprove_halts {i : SolmateVault.Immutables} (m : Machine)
     evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transferFrom(src, dst, amount)` of the vault's shares, success**, in any non-static
-frame: when the allowance is infinite or covers `amount`, and the source balance (after the
-allowance step) covers `amount`. -/
+/-- **`transferFrom(src, dst, amount)` of the vault's shares, success**: the allowance is
+infinite or covers `amount`, and the source balance covers `amount`. -/
 theorem sharesTransferFrom_halts_ok {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}
@@ -177,9 +164,8 @@ theorem sharesTransferFrom_halts_ok {i : SolmateVault.Immutables} (m : Machine)
       evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transferFrom(src, dst, amount)` of the vault's shares, revert**, in any non-static
-frame: when the allowance (unless infinite) or the source balance (after the allowance step)
-does not cover `amount`. -/
+/-- **`transferFrom(src, dst, amount)` of the vault's shares, revert**: the allowance (unless
+infinite) or the source balance does not cover `amount`. -/
 theorem sharesTransferFrom_halts_revert {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}
@@ -245,32 +231,17 @@ end
 
 section
 
-/-!
-## The vault's share-token functions refine `Token`, in any frame
-
-Model-level versions of `SharesFrame.lean`, in the shape of `AssetSpec.lean`: from a fresh frame
-of the vault's code (any parents) whose share storage represents a well-formed ledger `t`
-(`Shares.Rep`, `Token.WF`):
-
-* `sharesTransfer_refines`: `match t.transfer caller dst amount` — `some t'`: `TransferOk` and
-  the new share storage represents `t'` on the allowances whose slot is not a written balance
-  slot; `none`: a revert;
-* `sharesTransferFrom_refines`: likewise for `Token.transferFrom`;
-* `sharesApprove_refines`: always succeeds; the new storage represents `Token.approve`.
-
-Hash hypotheses as in the asset's versions: `BalanceSlotOk` for the balances written,
-`AllowanceSlotOk` for the allowance written.
--/
+/-! ## Share-token functions refine `Token` (hash hypotheses as for the asset) -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
-/-- **`transfer(dst, amount)` of the vault's shares refines `Token.transfer`**, in any
-non-static frame. -/
+/-- **`transfer(dst, amount)` of the vault's shares refines `Token.transfer`**, any frame. -/
 theorem sharesTransfer_refines {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {dst : Address} {amount : Word}
@@ -314,7 +285,7 @@ theorem sharesTransfer_refines {i : SolmateVault.Immutables} (m : Machine)
     exact sharesTransfer_halts_revert m hf hval hd hsz (by omega) hbal
 
 /-- **`transferFrom(src, dst, amount)` of the vault's shares refines `Token.transferFrom`**,
-in any non-static frame. -/
+any frame. -/
 theorem sharesTransferFrom_refines {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src dst : Address} {amount : Word}
@@ -378,8 +349,7 @@ theorem sharesTransferFrom_refines {i : SolmateVault.Immutables} (m : Machine)
       · omega
       · cases htr
 
-/-- **`approve(spender, amount)` of the vault's shares refines `Token.approve`**, in any
-non-static frame. -/
+/-- **`approve(spender, amount)` of the vault's shares refines `Token.approve`**, any frame. -/
 theorem sharesApprove_refines {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {spender : Address} {amount : Word}
@@ -403,21 +373,13 @@ end
 
 section
 
-/-!
-## The vault's share-token views in any frame
-
-Frame forms of `totalSupply()`, `balanceOf(a)`, `allowance(owner, spender)` and `decimals()`
-of the vault (any immutables), from a fresh frame with any parents: each returns the ABI word
-of the value read from storage (`decimals`: the immutable masked to `uint8`) and leaves the
-world unchanged (`SharesViewPost`). These are the share-token counterparts of the asset's
-`balanceOf_halts` and complete the frame-level coverage of the vault's view functions
-(`VaultViewsSpec.lean` covers the ERC-4626 views).
--/
+/-! ## Share-token views: return the stored word, world unchanged -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- A view returning the word `v` and changing nothing. -/
 def SharesViewPost (v : Word) (m mf : Machine) (o : Outcome) : Prop :=

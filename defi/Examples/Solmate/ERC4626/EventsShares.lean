@@ -5,30 +5,20 @@ import Examples.Solmate.ERC4626.Shares
 /-!
 # Events of the vault's share-token functions against the model
 
-For the compiled vault (any immutables), a top-level call of `transfer`, `approve` or
-`transferFrom` returns a result whose logs are the encoding of the model's events
-(`Solmate.Events.transfer` / `approve` / `transferFrom` of the share ledger `t` that the vault's
-storage represents): the vault's `Transfer` / `Approval` on success, nothing on revert
-(`run_logs_of_fail`). Same hypotheses as `Shares.transfer_refines`, … (fewer: no hash or
-well-formedness hypothesis is needed to know the events, except `AllowanceSlotOk` of the spent
-entry for `transferFrom`).
-
-* `transfer_events`, `approve_events`, `transferFrom_events`: in the form of the refinement
-  theorems (`vaultCall i …`, a ledger `t` with `Rep`);
-* `transfer_events_call`, `approve_events_call`, `transferFrom_events_call`: for the
-  `Deployed` vault, against `events (abs ctx.crypto w vault asset) op`, the form of the other
-  call kinds (`Examples.Solmate.ERC20.Events`, `EventsEntry`).
+A top-level `transfer`, `approve` or `transferFrom` of the vault returns logs encoding the model's
+events: the vault's `Transfer`/`Approval` on success, nothing on revert. Only `AllowanceSlotOk`
+of the spent entry (for `transferFrom`) is needed, no other hash hypothesis.
 -/
 
 namespace Examples.Solmate.ERC4626.Shares
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.ERC20 Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.ERC20 Defi.Math Defi.ERC4626.Solmate
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller : Address} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
 
-/-- The logs of one event. -/
 theorem encode_single (vault asset : Address) (e : Event Address) :
     encode vault asset [e] = #[e.toLog vault asset] := rfl
 

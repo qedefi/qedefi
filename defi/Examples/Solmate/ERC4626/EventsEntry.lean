@@ -5,12 +5,11 @@ import Examples.Solmate.ERC4626.Events
 import Examples.Solmate.ERC4626.Withdraw
 
 /-!
-# Events of `deposit`
+# Events of `deposit`, `mint`, `withdraw`, `redeem`
 
-`deposit_events`: the companion of `deposit_refines` (`Deposit.lean`) that also
-determines the frame's logs — the same proof, composing the log-tracking summaries
-(`*_wp_gas_logs`, `safeTransferFrom_wp_logs`, `mintShares_wp_logs`, `afterDeposit_wp_logs`) and the inline
-`Deposit` event.
+Companions of the refinement theorems (same proofs, composing the log-tracking summaries of
+`EventsInternal`/`EventsConvert`) that also fix the frame's logs: `*_events` (any frame,
+`EventsPost`) and `*_events_call` (top level). See `docs/erc4626/details.md` §6.
 -/
 
 section
@@ -18,14 +17,14 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
-/-- **`deposit` emits the model's events**, in any frame: as `deposit_refines`, and the frame
-ends as `EventsPost` with the encoded events of the model — on success the asset's
-`Transfer(caller, vault, assets)` (inside `safeTransferFrom`), the shares' `Transfer(0,
-receiver, shares)` and `Deposit(caller, receiver, assets, shares)`, in this order. -/
+/-- **`deposit` emits the model's events**, in any frame: as `deposit_refines`, and `EventsPost`
+with the asset's `Transfer(caller, vault, assets)`, the shares' `Transfer(0, receiver, shares)`
+and `Deposit(caller, receiver, assets, shares)`, in this order. -/
 theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {assets : Word} {receiver : Address}
@@ -160,26 +159,18 @@ end
 
 section
 
-/-!
-## Events of `mint`
-
-`mint_events`: the companion of `mint_refines` (`Mint.lean`) that also
-determines the frame's logs — the same proof, composing the log-tracking summaries
-(`*_wp_gas_logs`, `safeTransferFrom_wp_logs`, `mintShares_wp_logs`, `afterDeposit_wp_logs`) and the inline
-`Deposit` event.
--/
+/-! ## Events of `mint` -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
-/-- **`mint` emits the model's events**, in any frame: as `mint_refines`, and the frame
-ends as `EventsPost` with the encoded events of the model — on success the asset's
-`Transfer(caller, vault, assets)` (inside `safeTransferFrom`), the shares' `Transfer(0,
-receiver, shares)` and `Deposit(caller, receiver, assets, shares)`, in this order. -/
+/-- **`mint` emits the model's events**, in any frame: as `mint_refines`, with the same three
+logs as `deposit_events`. -/
 theorem mint_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {shares : Word} {receiver : Address}
@@ -302,23 +293,19 @@ end
 
 section
 
-/-!
-## Logs of `withdraw`, at the bytecode level
-
-`withdraw_halts_events`: the companion of `withdraw_halts` (`Withdraw.lean`) that also determines the frame's
-logs (`OutPostLogs`), composing the log-tracking summaries of `Examples.Solmate.ERC4626.EventsInternal` and
-`EventsConvert` and the inline `Withdraw` event.
--/
+/-! ## Logs of `withdraw`, at the bytecode level -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
-/-- **`withdraw(uint256,address,address)`** of the vault, in any frame: ends as
-`withdrawWorld?` prescribes. -/
+/-- **`withdraw` with its logs**, in any frame: as `withdraw_halts`, and on success the logs gain
+`Transfer(owner, 0, shares)`, `Withdraw(…)`, then the asset's
+`Transfer(vault, receiver, assets)`. -/
 theorem withdraw_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i m)
     {assets : Word} {receiver owner : Address}
     (hd : ThreeWordCall m.frame.msg.data 0xb460af94 assets (Word.ofAddress receiver)
@@ -429,25 +416,18 @@ end
 
 section
 
-/-!
-## Logs of `redeem`, at the bytecode level
-
-`redeem_halts_events`: the companion of `redeem_halts` (`Redeem.lean`) that also determines the frame's
-logs (`OutPostLogs`), composing the log-tracking summaries of `Examples.Solmate.ERC4626.EventsInternal` and
-`EventsConvert` and the inline `Withdraw` event.
--/
+/-! ## Logs of `redeem`, at the bytecode level -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
-/-- **`redeem(uint256,address,address)` with its logs**, in any frame: as `redeem_halts`, and on
-success the frame's logs gain the vault's `Transfer(owner, 0, shares)`, then
-`Withdraw(caller, receiver, owner, assets, shares)`, then the asset's `Transfer(vault,
-receiver, assets)`. -/
+/-- **`redeem` with its logs**, in any frame: as `redeem_halts`, with the same three logs as
+`withdraw_halts_events`. -/
 theorem redeem_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i m)
     {shares : Word} {receiver owner : Address}
     (hd : ThreeWordCall m.frame.msg.data 0xba087652 shares (Word.ofAddress receiver)
@@ -583,30 +563,17 @@ section
 /-!
 ## Events of the ERC-4626 entry points against the model
 
-For the compiled vault (any immutables, any asset address):
-
-* **Frame form.** `deposit_events`, `mint_events` (`Examples.Solmate.ERC4626.EventsEntry`, `Examples.Solmate.ERC4626.EventsEntry`) and
-  `withdraw_events`, `redeem_events` (here, from the bytecode-level `withdraw_halts_events` /
-  `redeem_halts_events` and the model-level `Out.withdrawWorld?_refines` /
-  `Out.redeemWorld?_refines`): in any frame (top level or called by another contract), with the
-  hypotheses of `deposit_refines` / `withdraw_refines`, the frame ends as the refinement
-  theorem says **and** as `EventsPost` with the encoded events of the model (`Events.deposit`,
-  …): on success it appended exactly the asset's and the vault's logs, in emission order —
-  for `deposit` / `mint` the asset's `Transfer(caller, vault, assets)` (emitted by the asset's
-  frame, inside `safeTransferFrom`, and merged into the vault's on return), the shares'
-  `Transfer(0, receiver, shares)`, `Deposit(caller, receiver, assets, shares)`; for `withdraw` /
-  `redeem` the shares' `Transfer(owner, 0, shares)`, `Withdraw(caller, receiver, owner, assets,
-  shares)`, the asset's `Transfer(vault, receiver, assets)`; on revert the model emits nothing
-  (and the caller drops the frame's logs, `resumeAfter_eventsPost`).
-* **Top-level form.** `deposit_events_call`, …: a top-level call of the `Deployed` vault returns a
-  result whose `logs` are `encode vault asset (events (abs ctx.crypto w vault asset) op)`.
+`withdraw_events`, `redeem_events` (frame form, from `*_halts_events` and `Out.*World?_refines`)
+and the top-level `*_events_call`: the result's logs are
+`encode vault asset (events (abs ctx.crypto w vault asset) op)`.
 -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Out
 
 /-- **`withdraw(assets, receiver, owner)` emits the model's events**, in any frame: as
 `withdraw_refines`, and the frame ends as `EventsPost` with the encoded `Events.withdraw`. -/

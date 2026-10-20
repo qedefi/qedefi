@@ -3,25 +3,20 @@ import Examples.Solmate.ERC20.Spec
 /-!
 # The asset's `approve`
 
-`approve(spender, amount)` of the deployed asset (Solmate `MockERC20`, any immutables):
-
-* `approve_halts`: in any non-static fresh frame (a top-level call or a callee frame) the call
-  always succeeds, returns ABI `true`, and the world is `Erc20.approveWorld` (one `SSTORE` to
-  `allowance[msg.sender][spender]`; the definition is shared with the vault's share token);
-* `assetApprove_refines`: the same, against the model: the asset's storage view represents
-  `Token.approve` of the represented ledger, for every allowance entry that is the written one
-  or has another slot (`ApproveAllowances`). Needs `AllowanceSlotOk` for the written entry.
+`approve(spender, amount)` of the deployed asset (any immutables) always succeeds in a
+non-static frame with `ERC20.approveWorld` (`approve_halts`) and refines `Token.approve`
+(`assetApprove_refines`, given `AllowanceSlotOk` for the written entry).
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
-/-- What a successful `approve(spender, amount)` of the asset ends with: it returns ABI `true`,
-the world is `Erc20.approveWorld`, transient storage and created accounts are unchanged, and at
-most 40000 gas is used. -/
+/-- A successful asset `approve`: returns ABI `true`, the world is `ERC20.approveWorld`, at most
+40000 gas used. -/
 def ApproveOk (spender : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord 1) ∧
   mf.world = ERC20.approveWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
@@ -53,14 +48,12 @@ theorem approve_halts {ia : SolmateAsset.Immutables} (m : Machine)
   · dsimp only [outputMachine]
     evm_gas
 
-/-- The allowance predicate of an `approve`'s result: the written entry, and every entry whose
-slot is not the written slot. -/
+/-- Allowance entries represented after `approve`: the written one and those in other slots. -/
 def ApproveAllowances (crypto : Crypto) (owner spender : Address) (o sp : Address) : Prop :=
   (o = owner ∧ sp = spender) ∨ ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
     ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender
 
-/-- **`approve(spender, amount)` of the asset refines `Token.approve`**, in any non-static
-frame: success with the model's ledger. -/
+/-- **The asset's `approve` refines `Token.approve`**, in any non-static frame. -/
 theorem assetApprove_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {spender : Address} {amount : Word}

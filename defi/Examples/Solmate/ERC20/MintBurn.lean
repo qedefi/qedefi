@@ -1,33 +1,13 @@
 import Examples.Solmate.ERC20.Approve
 
 /-!
-# The asset's `mint`
+# The asset's `mint` and `burn`
 
-`MockERC20.mint(to, amount)` is public and unrestricted: it runs Solmate's `_mint`,
-
-```solidity
-totalSupply += amount;                       // checked
-unchecked { balanceOf[to] += amount; }
-emit Transfer(address(0), to, amount);
-```
-
-and returns nothing. For the deployed asset (any immutables), in any non-static fresh frame:
-
-* `mint_halts_ok`: if `totalSupply + amount` fits in 256 bits, the call succeeds with empty
-  output and the world `mintWorld` (the two `SSTORE`s in the code's order);
-* `mint_halts_revert`: otherwise the checked addition panics;
-* `assetMint_refines`: against `Token.mint` of the represented ledger (`match`: success with
-  the model's new ledger, `RepOn` on the allowances whose slot is neither written slot, or a
-  revert).
-
-## Hypotheses
-
-Writing the `totalSupply` slot 2 changes the balance of every address whose balance slot is 2,
-so the model-level theorem needs that **no balance slot is slot 2**:
-`KeccakAvoids crypto (AddressKeyed [3]) [2]` (one target against `2¹⁶⁰` candidates; plausible,
-see `EvmLogic.Solidity.Keccak`). Without it the refinement is false (a `Crypto` with such a
-collision makes the ledger view double-count the minted amount). Plus `BalanceSlotOk` of the
-recipient and `Token.WF` (the unchecked addition does not wrap).
+`MockERC20.mint`/`burn` (public, unrestricted Solmate `_mint`/`_burn`) in any non-static frame:
+`*_halts_ok`/`*_halts_revert` (checked `totalSupply +=` / `balanceOf[from] -=`) and
+`assetMint_refines`/`assetBurn_refines` against `Token.mint`/`Token.burn`. The refinements need
+`KeccakAvoids crypto (AddressKeyed [3]) [2]`: a balance slot equal to the supply slot 2 would
+make the view double-count, so the theorem is false without it.
 -/
 
 section
@@ -35,19 +15,18 @@ section
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## Word lemmas: the checked addition -/
 
-/-- Checked addition does not overflow: `x > y + x` is false when `x + y < 2²⁵⁶`. -/
 theorem gt_add_self_of_lt {x y : Word} (h : x.toNat + y.toNat < 2 ^ 256) :
     Word.gt x (y + x) = 0#256 := by
   simp only [Word.gt, Word.ofBool, BitVec.ult, decide_eq_true_eq]
   rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by omega)]
   simp
 
-/-- Checked addition overflows: `x > y + x` (wrapping) when `2²⁵⁶ ≤ x + y`. -/
 theorem gt_add_self_of_le {x y : Word} (h : 2 ^ 256 ≤ x.toNat + y.toNat) :
     Word.gt x (y + x) = 1#256 := by
   simp only [Word.gt, Word.ofBool, BitVec.ult, decide_eq_true_eq]
@@ -59,14 +38,12 @@ theorem gt_add_self_of_le {x y : Word} (h : 2 ^ 256 ≤ x.toNat + y.toNat) :
 
 /-! ## The world -/
 
-/-- The world after a successful `mint(dst, amount)`: `totalSupply += amount`, then
-`balanceOf[dst] += amount` (reading the updated storage), in the order the code does it. -/
+/-- The world after `mint`: `totalSupply += amount`, then `balanceOf[dst] += amount`. -/
 def mintWorld (crypto : Crypto) (w : World) (token dst : Address) (amount : Word) : World :=
   let st := ERC20.balanceSlot crypto ERC20.Layout.solmate dst
   let w₁ := w.sstore token 2#256 (amount + w.sload token 2#256)
   w₁.sstore token st (amount + w₁.sload token st)
 
-/-- `mint` writes only the `totalSupply` slot and the balance slot of the recipient. -/
 theorem sload_mintWorld {crypto : Crypto} {w : World} {token dst b : Address} {amount k : Word}
     (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate dst)) :
     (mintWorld crypto w token dst amount).sload b k = w.sload b k := by
@@ -74,13 +51,11 @@ theorem sload_mintWorld {crypto : Crypto} {w : World} {token dst b : Address} {a
   rw [sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.2),
     sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.1)]
 
-/-- `mint` changes no code. -/
 theorem code_mintWorld (crypto : Crypto) (w : World) (token dst : Address) (amount : Word)
     (b : Address) : (mintWorld crypto w token dst amount).code b = w.code b := by
   simp [mintWorld]
 
-/-- What a successful `mint(dst, amount)` of the asset ends with: empty output, the world
-`mintWorld`, transient storage and created accounts unchanged, at most 55000 gas used. -/
+/-- A successful asset `mint`: empty output, world `mintWorld`, ≤ 55000 gas. -/
 def MintOk (dst : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success .empty ∧
   mf.world = mintWorld m.ctx.crypto m.world m.frame.msg.currentTarget dst amount ∧
@@ -90,8 +65,7 @@ def MintOk (dst : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop
 /-! ## Bytecode -/
 
 set_option maxHeartbeats 0 in
-/-- **`mint(dst, amount)` of the asset, success**, in any non-static frame: when
-`totalSupply + amount` does not overflow. -/
+/-- **The asset's `mint`, success**: when `totalSupply + amount` does not overflow. -/
 theorem mint_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {dst : Address}
@@ -120,8 +94,7 @@ theorem mint_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
   · evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`mint(dst, amount)` of the asset, overflow**, in any frame: the checked addition
-`totalSupply + amount` panics (`Panic(0x11)`). -/
+/-- **The asset's `mint`, overflow**, in any frame: `Panic(0x11)`. -/
 theorem mint_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) {dst : Address} {amount : Word}
@@ -147,22 +120,17 @@ theorem mint_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
 
 /-! ## Against the model -/
 
-/-- No balance slot of a Solmate `ERC20` is the `totalSupply` slot 2 (from the hash
-hypothesis). -/
 theorem balanceSlot_ne_two {crypto : Crypto}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256]) (a : Address) :
     ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 2#256 :=
   mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp)
 
-/-- The allowance predicate of a `mint`'s result: entries whose slot is neither written slot. -/
+/-- Allowance entries represented after `mint`/`burn`: those in neither written slot. -/
 def MintAllowances (crypto : Crypto) (dst : Address) (o sp : Address) : Prop :=
   ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 2#256 ∧
     ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
       ERC20.balanceSlot crypto ERC20.Layout.solmate dst
 
-/-- **`mintWorld` represents `Token.mint`**: on a well-formed ledger, when the model's `mint`
-succeeds, the storage view after the two writes represents its result (allowances on
-`MintAllowances`). -/
 theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amount : Word}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     (hd : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate dst)
@@ -178,14 +146,12 @@ theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amo
   have hle := Token.balanceOf_le_totalSupply hw dst
   have hM : MAX < 2 ^ 256 := by unfold MAX; omega
   refine ⟨?_, fun a => ?_, fun o sp hp => ?_⟩
-  · -- the total supply
-    show ((mintWorld crypto w token dst amount).sload token 2#256).toNat = _
+  · show ((mintWorld crypto w token dst amount).sload token 2#256).toNat = _
     simp only [mintWorld]
     rw [World.sload_sstore_ne_key _ _ _ (fun e => hd2 e.symm), World.sload_sstore_self,
       BitVec.toNat_add, hts, Nat.mod_eq_of_lt (by omega)]
     omega
-  · -- the balances
-    show ((mintWorld crypto w token dst amount).sload token
+  · show ((mintWorld crypto w token dst amount).sload token
       (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat = _
     dsimp only
     rw [Token.add_single_apply]
@@ -199,14 +165,12 @@ theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amo
       rw [sload_mintWorld (.inr ⟨balanceSlot_ne_two hk a,
         ERC20.balanceSlot_ne hd (Ne.symm ha)⟩)]
       exact hr.balanceOf a
-  · -- the allowances off the written slots
-    show ((mintWorld crypto w token dst amount).sload token
+  · show ((mintWorld crypto w token dst amount).sload token
       (ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp)).toNat = _
     rw [sload_mintWorld (.inr hp)]
     exact hr.allowance o sp trivial
 
-/-- **`mint(dst, amount)` of the asset refines `Token.mint`**, in any non-static frame:
-success with the model's ledger, or a revert. -/
+/-- **The asset's `mint` refines `Token.mint`**, in any non-static frame. -/
 theorem assetMint_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {dst : Address} {amount : Word}
@@ -244,46 +208,23 @@ end
 
 section
 
-/-!
-## The asset's `burn`
-
-`MockERC20.burn(from, amount)` is public and unrestricted (anyone can burn anyone's tokens; in
-the model this is the vault's "loss" when `from` is the vault): it runs Solmate's `_burn`,
-
-```solidity
-balanceOf[from] -= amount;                   // checked
-unchecked { totalSupply -= amount; }
-emit Transfer(from, address(0), amount);
-```
-
-and returns nothing. For the deployed asset (any immutables), in any non-static fresh frame:
-
-* `burn_halts_ok`: if `from`'s balance covers `amount`, the call succeeds with empty output and
-  the world `burnWorld` (the two `SSTORE`s in the code's order);
-* `burn_halts_revert`: otherwise the checked subtraction panics;
-* `assetBurn_refines`: against `Token.burn` of the represented ledger.
-
-Hypotheses as for `mint` (`AssetMint.lean`): no balance slot is the `totalSupply` slot 2
-(`KeccakAvoids crypto (AddressKeyed [3]) [2]`), `BalanceSlotOk` of `from`, and `Token.WF`
-(the unchecked subtraction from the supply does not wrap).
--/
+/-! ## `burn` (anyone can burn anyone's tokens; the model's "loss" when `from` is the vault) -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## The world -/
 
-/-- The world after a successful `burn(src, amount)`: `balanceOf[src] -= amount`, then
-`totalSupply -= amount` (reading the updated storage), in the order the code does it. -/
+/-- The world after `burn`: `balanceOf[src] -= amount`, then `totalSupply -= amount`. -/
 def burnWorld (crypto : Crypto) (w : World) (token src : Address) (amount : Word) : World :=
   let ss := ERC20.balanceSlot crypto ERC20.Layout.solmate src
   let w₁ := w.sstore token ss (w.sload token ss - amount)
   w₁.sstore token 2#256 (w₁.sload token 2#256 - amount)
 
-/-- `burn` writes only the balance slot of `src` and the `totalSupply` slot. -/
 theorem sload_burnWorld {crypto : Crypto} {w : World} {token src b : Address} {amount k : Word}
     (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate src)) :
     (burnWorld crypto w token src amount).sload b k = w.sload b k := by
@@ -291,13 +232,11 @@ theorem sload_burnWorld {crypto : Crypto} {w : World} {token src b : Address} {a
   rw [sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.1),
     sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.2)]
 
-/-- `burn` changes no code. -/
 theorem code_burnWorld (crypto : Crypto) (w : World) (token src : Address) (amount : Word)
     (b : Address) : (burnWorld crypto w token src amount).code b = w.code b := by
   simp [burnWorld]
 
-/-- What a successful `burn(src, amount)` of the asset ends with: empty output, the world
-`burnWorld`, transient storage and created accounts unchanged, at most 55000 gas used. -/
+/-- A successful asset `burn`: empty output, world `burnWorld`, ≤ 55000 gas. -/
 def BurnOk (src : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success .empty ∧
   mf.world = burnWorld m.ctx.crypto m.world m.frame.msg.currentTarget src amount ∧
@@ -307,8 +246,7 @@ def BurnOk (src : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop
 /-! ## Bytecode -/
 
 set_option maxHeartbeats 0 in
-/-- **`burn(src, amount)` of the asset, success**, in any non-static frame: when `src`'s
-balance covers `amount`. -/
+/-- **The asset's `burn`, success**: when `src`'s balance covers `amount`. -/
 theorem burn_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src : Address}
@@ -339,8 +277,7 @@ theorem burn_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
   · evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`burn(src, amount)` of the asset, insufficient balance**, in any frame: the checked
-subtraction panics (`Panic(0x11)`). -/
+/-- **The asset's `burn`, insufficient balance**, in any frame: `Panic(0x11)`. -/
 theorem burn_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) {src : Address} {amount : Word}
@@ -368,14 +305,10 @@ theorem burn_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
 
 /-! ## Against the model -/
 
-/-- The allowance predicate of a `burn`'s result: entries whose slot is neither written slot
-(the same shape as for `mint`). -/
+/-- Allowance entries represented after `burn` (as for `mint`). -/
 abbrev BurnAllowances (crypto : Crypto) (src : Address) : Address → Address → Prop :=
   MintAllowances crypto src
 
-/-- **`burnWorld` represents `Token.burn`**: on a well-formed ledger, when the model's `burn`
-succeeds, the storage view after the two writes represents its result (allowances on
-`BurnAllowances`). -/
 theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amount : Word}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     (hs : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate src)
@@ -390,13 +323,11 @@ theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amo
       t.balanceOf src := hr.balanceOf src
   have hle := Token.balanceOf_le_totalSupply hw src
   refine ⟨?_, fun a => ?_, fun o sp hp => ?_⟩
-  · -- the total supply
-    show ((burnWorld crypto w token src amount).sload token 2#256).toNat = _
+  · show ((burnWorld crypto w token src amount).sload token 2#256).toNat = _
     simp only [burnWorld]
     rw [World.sload_sstore_self, World.sload_sstore_ne_key _ _ _ (fun e => hs2 e.symm),
       BitVec.toNat_sub_of_le (BitVec.le_def.2 (by rw [hts]; omega)), hts]
-  · -- the balances
-    show ((burnWorld crypto w token src amount).sload token
+  · show ((burnWorld crypto w token src amount).sload token
       (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat = _
     dsimp only
     rw [Token.sub_single_apply]
@@ -409,14 +340,12 @@ theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amo
       rw [sload_burnWorld (.inr ⟨balanceSlot_ne_two hk a,
         ERC20.balanceSlot_ne hs (Ne.symm ha)⟩)]
       exact hr.balanceOf a
-  · -- the allowances off the written slots
-    show ((burnWorld crypto w token src amount).sload token
+  · show ((burnWorld crypto w token src amount).sload token
       (ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp)).toNat = _
     rw [sload_burnWorld (.inr hp)]
     exact hr.allowance o sp trivial
 
-/-- **`burn(src, amount)` of the asset refines `Token.burn`**, in any non-static frame:
-success with the model's ledger, or a revert. -/
+/-- **The asset's `burn` refines `Token.burn`**, in any non-static frame. -/
 theorem assetBurn_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src : Address} {amount : Word}

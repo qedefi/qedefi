@@ -4,37 +4,18 @@ import EvmLogic.Program.Nested.Run
 /-!
 # Nested calls: the vault system as an instance of the machine-level simulation
 
-`EvmLogic.Program.Nested.Run` proves, for any set `P` of protected accounts and any
-property `Good` of worlds that only depends on their storage and code, that a top-level
-message call — running **arbitrary code** at every other account, calling the protected
-accounts any number of times at any depth, reverting or running out of gas around those calls
-— ends in a `Good` world, provided every *dangerous* frame (a non-static frame running at a
-protected account) ends in a `Good` world (a frame summary). This file instantiates it:
-
-* `Prot vault asset`: the vault and its asset;
-* `Follows crypto vault asset Act K w₀ w` (the `Good` of the simulation): the vault and the
-  asset are deployed in `w` and the abstraction of `w` agrees (up to non-actor allowances,
-  `AgreeOn (ActorPairs Act)`) with `Solmate.exec (abs w₀)` of some list of **admitted** model
-  calls (`Admitted Act K`: actors in `Act`, kind admitted by `K`);
-* `FrameOk m`: the frame summary in model terms — a dangerous frame, if it succeeds, ends in a
-  deployed world whose abstraction is reached from the frame's starting abstraction by some
-  admitted calls (one for a state-changing function, none for a view);
-* `follows_of_frameOk`: a `FrameOk` frame keeps `Follows` (on success by composing the call
-  lists, on revert or exceptional halt because the frame's snapshot is restored);
-* `processMessageCall_follows`: **any top-level message call** from a `Follows` world, whose
-  dangerous frames are `FrameOk`, ends in a `Follows` world.
-
-Model laws used: `AgreeOn` is an equivalence preserving `Solmate.Inv`; `Solmate.step` preserves
-`Inv` and respects `AgreeOn` on admitted operations (`stepD_agree`, the actor allowances are
-the only ones the operations read).
+Instantiates `EvmLogic.Program.Nested.Run` with protected accounts `Prot vault asset` and
+`Good = Follows` (deployed, and `abs` agrees with the model run of some admitted calls): any
+top-level message call whose dangerous frames satisfy `FrameOk` keeps `Follows`
+(`processMessageCall_follows`). See `docs/erc4626/details.md` §4.
 -/
 
 namespace Examples.Solmate.ERC4626.Nested
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants
 open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
@@ -45,8 +26,8 @@ variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCa
 /-- The protected accounts: the vault and its asset. -/
 def Prot (vault asset : Address) (a : Address) : Prop := a = vault ∨ a = asset
 
-/-- A modelled call is admitted: its actors are in `Act` (so the trace-level hash hypothesis
-`SlotsOk` covers it) and its kind is admitted by `K`. -/
+/-- A modelled call is admitted: its actors are in `Act` (so `SlotsOk` covers it) and its kind
+is admitted by `K`. -/
 def Admitted (Act : List Address) (K : VCall → Prop) (c : VCall) : Prop :=
   (∀ a ∈ c.actors, a ∈ Act) ∧ K c
 
@@ -60,7 +41,6 @@ def Follows (crypto : Crypto) (vault asset : Address) (Act : List Address) (K : 
 
 /-! ## Model laws -/
 
-/-- Executions of admitted calls respect `AgreeOn` and keep the invariant. -/
 theorem exec_agree (hs : SlotsOk crypto vault Act) {s t : State Address}
     (hst : AgreeOn (ActorPairs Act) s t) (hi : Solmate.Inv s) (hself : s.self = vault)
     {cs : List VCall} (hcs : ∀ c ∈ cs, Admitted Act K c) :
@@ -83,13 +63,10 @@ theorem exec_agree (hs : SlotsOk crypto vault Act) {s t : State Address}
     have hs1 : (Lift.stepD step s c.op).self = vault := (self_stepD s c.op).trans hself
     exact ih h1 hi1 hs1 (fun c' hc' => hcs c' (List.mem_cons_of_mem _ hc'))
 
-/-- `Solmate.exec` of a concatenation. -/
 theorem exec_append' (s : State Address) (l₁ l₂ : List (Op Address)) :
     Solmate.exec s (l₁ ++ l₂) = Solmate.exec (Solmate.exec s l₁) l₂ := by
   rw [exec_eq, exec_eq, exec_eq, Lift.exec_append]
 
-/-- `Follows` is transitive along executions: a world following `w₀` by `cs₀`, then a world
-whose abstraction agrees with a further execution of admitted calls. -/
 theorem Follows.trans (hs : SlotsOk crypto vault Act)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) {w w' : World}
     (h : Follows crypto vault asset Act K w₀ w) (hd : Deployed w' vault asset)
@@ -108,7 +85,6 @@ theorem Follows.trans (hs : SlotsOk crypto vault Act)
   · rw [List.map_append, exec_append']
     exact ha.trans h1
 
-/-- `Follows` gives the model invariant of the abstraction. -/
 theorem Follows.inv (hs : SlotsOk crypto vault Act)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) {w : World}
     (h : Follows crypto vault asset Act K w₀ w) : Solmate.Inv (abs crypto w vault asset) := by
@@ -116,25 +92,20 @@ theorem Follows.inv (hs : SlotsOk crypto vault Act)
   obtain ⟨-, hi₀, -⟩ := exec_agree (K := K) hs (AgreeOn.refl _) hinv rfl hcs₀
   exact ha₀.symm.inv hi₀
 
-/-- The initial world follows itself. -/
 theorem follows_refl {w₀ : World} (hd : Deployed w₀ vault asset) :
     Follows crypto vault asset Act K w₀ w₀ :=
   ⟨hd, [], ⟨fun _ h => absurd h List.not_mem_nil, AgreeOn.refl _⟩⟩
 
 /-! ## The simulation's requirements -/
 
-/-- The vault's code is not empty. -/
 theorem size_vaultCode_ne {w : World} (hd : Deployed w vault asset) : (w.code vault).size ≠ 0 := by
   obtain ⟨i, -, hc⟩ := hd.vaultCode
   rw [hc]; have := Shares.size_code i; simp only [Shares.code] at this; rw [this]; decide
 
-/-- The asset's code is not empty. -/
 theorem size_assetCode_ne {w : World} (hd : Deployed w vault asset) : (w.code asset).size ≠ 0 := by
   obtain ⟨ia, hc⟩ := hd.assetCode
   rw [hc, size_assetCode]; decide
 
-/-- Keeping the storage and code of the vault and the asset keeps the deployment and the
-abstraction. -/
 theorem deployed_abs_of_keep {w w' : World} (hd : Deployed w vault asset)
     (hk : KeepP (Prot vault asset) w w') :
     Deployed w' vault asset ∧ abs crypto w' vault asset = abs crypto w vault asset := by
@@ -142,7 +113,6 @@ theorem deployed_abs_of_keep {w w' : World} (hd : Deployed w vault asset)
   have ha := hk asset (.inr rfl)
   exact ⟨hd.of_code hv.code ha.code, abs_congr hv.sload ha.sload⟩
 
-/-- **`Follows` meets the simulation's requirements.** -/
 theorem goodOk {w₀ : World} :
     GoodOk (Prot vault asset) (Follows crypto vault asset Act K w₀) where
   keep w w' h hk := by
@@ -162,10 +132,9 @@ theorem goodOk {w₀ : World} :
 
 /-! ## Frame summaries -/
 
-/-- **The frame summary** a dangerous frame of the vault or the asset must satisfy: if it
-succeeds, the world is deployed and its abstraction is reached from the frame's starting
-abstraction by admitted calls (one for a modelled state-changing function, none for a view).
-Reverts and exceptional halts are unconstrained: the frame's snapshot is restored. -/
+/-- **The frame summary** of a dangerous frame: on success the world is deployed and `abs` is
+reached from the frame's starting `abs` by admitted calls (one for a state-changing function,
+none for a view). Reverts and halts are unconstrained: the snapshot is restored. -/
 def FrameOk (crypto : Crypto) (vault asset : Address) (Act : List Address) (K : VCall → Prop)
     (m : Machine) : Prop :=
   Halts m (fun mf o => ∀ out, o = .success out → Deployed mf.world vault asset ∧
@@ -192,10 +161,9 @@ theorem follows_of_frameOk (hs : SlotsOk crypto vault Act)
   | revert out => rw [frameResult_revert, hsnap]; exact hd.snapshot
   | halt e => rw [frameResult_halt, hsnap]; exact hd.snapshot
 
-/-- **Any top-level message call keeps `Follows`**, given frame summaries of every dangerous
-frame it reaches outside dangerous frames (calls made by unprotected code). The message is any `TopOk` message (caller not the vault or the asset, any
-target and code, any value and calldata) with at most `G` gas, before Prague or without
-EIP-7702 authorizations; the context's hash is `crypto`. -/
+/-- **Any top-level message call keeps `Follows`**, given `FrameOk` for every dangerous frame
+started by unprotected code. `TopOk`: caller not the vault or the asset, any target, code,
+value and calldata; at most `G` gas; before Prague or without EIP-7702 authorizations. -/
 theorem processMessageCall_follows (hs : SlotsOk crypto vault Act)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) {G fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult}

@@ -3,13 +3,12 @@ import Examples.Solmate.ERC20.BalanceOf
 import EvmLogic.Solidity.Strings
 
 /-!
-# `name()` / `symbol()` of the compiled asset: short strings
+# `name()` / `symbol()` of the compiled asset
 
-The asset (`SolmateAsset.runtimeCodeWith ia`, Solmate `MockERC20`, any immutables) compiles
-the `string public` getters exactly as the vault does (`Examples.Solmate.ERC4626.Strings`), at other offsets:
-`extract_byte_array_length` at `0x0a07` (called from the getter with return address
-`0x025f`), the getter returning to `0x00f1`, the ABI encoder at `0x0897` (its `MCOPY` at
-`0x08ae`). The lemmas mirror the vault's: `assetEncodeShort_wp`, `assetStringShort_wp`.
+The asset compiles the `string public` getters exactly as the vault does
+(`Examples.Solmate.ERC4626.Strings`), at other offsets: `extract_byte_array_length` at `0x0a07`
+(return address `0x025f`), getter return `0x00f1`, ABI encoder `0x0897`, copy loop
+`0x02b9`–`0x02cc`. The lemmas mirror the vault's; `docs/erc4626/details.md` §8.
 -/
 
 section
@@ -17,11 +16,10 @@ section
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
-/-- **The asset's string encoder from its `MCOPY`, for a short string** (1–31 bytes at
-`0xa0`, its length at `0x80`, the head at the free pointer `0xc0`). -/
 theorem assetEncodeShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {L : Nat}
     {rest : List Word} {data : ByteArray}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
@@ -98,11 +96,10 @@ end Examples.Solmate.ERC20
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
-/-- **The asset's string getter, short (even) slot word**, from the entry of
-`extract_byte_array_length` (`0xa07`, called from the getter with return address `0x025f`). -/
 theorem assetStringShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
@@ -173,54 +170,34 @@ end
 
 section
 
-/-!
-## `name()` / `symbol()` of the compiled asset: long strings
-
-The asset's copy loop (`0x02b9`–`0x02cc`, exit `0x02cd`) and encoder are the vault's
-(`Examples.Solmate.ERC4626.Strings`) at other offsets; the lemmas mirror the vault's: `AssetCopy`,
-`assetCopyBody_wp`, `assetCopyLoop_wp`, `assetLongTail_wp`, `assetStringLong_wp`.
--/
+/-! ## Long strings: the copy loop (`0x02b9`–`0x02cc`, exit `0x02cd`) -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
-/-- The state of the copy loop of the asset's string getter after `k` words, at pc `pc`:
-`dst = 0xa0 + 32 k`, `ptr = h + k` (`h` the first data slot), `end = 0xa0 + L` on the stack;
-memory of `0xa0 + 32 k` bytes holding the free pointer `fmp`, the length at `0x80` and the
-first `k` data words at `0xa0`; the gas potential covers `R`, the rest of the copy
-(`2300` per word) and the final memory (`256 + 64 n` bytes). -/
+/-- Copy-loop invariant after `k` words: stack `dst = 0xa0 + 32k`, `ptr = h + k`,
+`end = 0xa0 + L`; the first `k` words copied to `0xa0`; gas covers `R`, 2300 per remaining
+word and the final memory. -/
 structure AssetCopy (ia : SolmateAsset.Immutables) (w : World) (a : Address) (h : Word)
     (L n R : Nat) (fmp : Word) (tl : List Word) (k pc : Nat) (m : Machine) : Prop where
-  /-- The asset's code. -/
   code : m.frame.code = SolmateAsset.runtimeCodeWith ia
-  /-- Its jump table. -/
   jd : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia)
-  /-- The program counter. -/
   pcEq : m.frame.pc = pc
-  /-- The world (read only). -/
   world : m.world = w
-  /-- The executing account. -/
   target : m.frame.msg.currentTarget = a
-  /-- The loop variables. -/
   stack : ∃ dst ptr endw, m.frame.stack = dst :: ptr :: endw :: tl ∧
     dst.toNat = 160 + 32 * k ∧ ptr = h + BitVec.ofNat 256 k ∧ endw.toNat = 160 + L
-  /-- Memory size. -/
   size : m.frame.memory.size = 160 + 32 * k
-  /-- The free memory pointer. -/
   fmpEq : m.frame.memory.loadWord 64 = fmp
-  /-- The length word of the `string memory`. -/
   len : m.frame.memory.read 128 32 = ofWord (BitVec.ofNat 256 L)
-  /-- The words copied so far. -/
   data : m.frame.memory.read 160 (32 * k) = Str.wordsFrom (w.sload a) h k
-  /-- Gas, as a potential. -/
   gas : R + 2300 * (n - k) + Gas.memoryCost (256 + 64 * n) ≤
     m.frame.gasLeft + Gas.memoryCost (160 + 32 * k)
 
 set_option maxHeartbeats 0 in
-/-- **One iteration of the copy loop**: from the loop head with `k < n` words copied, back to
-the head with `k + 1`, or to the exit when `k + 1 = n`. -/
 theorem assetCopyBody_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address} {h fmp : Word}
     {L n R k : Nat} {tl : List Word} (m : Machine)
     (hst : AssetCopy ia w a h L n R fmp tl k 0x2b9 m) (hkn : k < n) (hn : n = (L + 31) / 32)
@@ -265,7 +242,6 @@ theorem assetCopyBody_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address
     simp only [BitVec.reduceToNat]; omega
   by_cases hk1 : k + 1 < n
   · pwp_run_to 697 [Str.gt_eq_one (show (32#256 + dst).toNat < endw.toNat by omega)]
-    -- memory after the store
     have hM'size : ((m_memory.expand (160 + 32 * k) 32).storeWord (160 + 32 * k)
         (m_world.sload m_msg.currentTarget ptr)).size = 160 + 32 * (k + 1) := by
       rw [Memory.size_storeWord, Memory.size_expand, hsize]
@@ -291,7 +267,6 @@ theorem assetCopyBody_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address
     generalize sloadCost _ = sl at *
     omega
   · pwp_run_to 717 [Str.gt_eq_zero (show endw.toNat ≤ (32#256 + dst).toNat by omega)]
-    -- memory after the store
     have hM'size : ((m_memory.expand (160 + 32 * k) 32).storeWord (160 + 32 * k)
         (m_world.sload m_msg.currentTarget ptr)).size = 160 + 32 * (k + 1) := by
       rw [Memory.size_storeWord, Memory.size_expand, hsize]
@@ -317,7 +292,6 @@ theorem assetCopyBody_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address
     generalize sloadCost _ = sl at *
     omega
 
-/-- **The copy loop**: from its head with `k < n` words copied to its exit with all `n`. -/
 theorem assetCopyLoop_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address} {h fmp : Word}
     {L n R k : Nat} {tl : List Word} (m : Machine)
     (hst : AssetCopy ia w a h L n R fmp tl k 0x2b9 m) (hkn : k < n) (hn : n = (L + 31) / 32)
@@ -332,10 +306,6 @@ theorem assetCopyLoop_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address
   · exact .inr (hk1 ▸ h')
 
 set_option maxHeartbeats 0 in
-/-- **The end of the getter for a long string**: from the loop exit with all `n` words copied
-(`0x02cd`) through the ABI encoder (`0x0897`, with the head at the free pointer
-`0xa0 + 32 n`) to the `RETURN`: the call returns `Abi.encodeString` of the first `L` bytes of
-the copied words. -/
 theorem assetLongTail_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address} {h slot : Word}
     {L n R : Nat} {rest : List Word} (m : Machine)
     (hst : AssetCopy ia w a h L n R (BitVec.ofNat 256 (160 + 32 * n))
@@ -531,9 +501,6 @@ theorem assetLongTail_wp {ia : SolmateAsset.Immutables} {w : World} {a : Address
   exact ⟨trivial, trivial⟩
 
 set_option maxHeartbeats 0 in
-/-- **The asset's string getter, long (odd) slot word**, from the entry of
-`extract_byte_array_length` (`0xa07`): with enough gas for the copy, the call returns
-`Abi.encodeString` of the decoded string, or panics if the slot is inconsistent. -/
 theorem assetStringLong_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
@@ -615,26 +582,22 @@ end
 section
 
 /-!
-## `name()` / `symbol()` of the compiled asset refine the storage strings
+## Refinement: the storage strings
 
-The asset's counterparts of `Examples.Solmate.ERC4626.Strings` (`SolmateAsset.runtimeCodeWith ia`, any
-immutables): `assetName_refines`, `assetSymbol_refines` (any frame) and `assetName_call`,
-`assetSymbol_call` (top level, the asset of a `Deployed` vault): the call returns
-`Abi.encodeString s` for `stringAt crypto world asset slot = some s` (slot 0: `name`, slot 1:
-`symbol`), reverts for `none`, and leaves the world unchanged.
+The getter returns `Abi.encodeString s` when `stringAt crypto w asset slot = some s` (slot 0
+`name`, slot 1 `symbol`), reverts on `none`, and leaves the world unchanged.
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
 set_option maxHeartbeats 0 in
-/-- **The asset's string getter** from the entry of `extract_byte_array_length` (`0xa07`),
-any slot word. -/
 theorem assetString_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
@@ -696,7 +659,7 @@ theorem assetSymbol_refines {ia : SolmateAsset.Immutables} (m : Machine)
   generalize sloadCost _ = sl at *
   exact getterGas_le hg _ (by omega)
 
-/-- **`name()` as a top-level transaction** on the deployed asset: the string at slot 0. -/
+/-- **`name()` as a top-level transaction** on the deployed asset. -/
 theorem assetName_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
     (hgas : Str.getterGas (Str.slotLen (w.sload asset 0#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
@@ -709,7 +672,7 @@ theorem assetName_call (hdep : Deployed w vault asset)
     (assetName_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
       (noArgCall_encodeCall (by decide)))
 
-/-- **`symbol()` as a top-level transaction** on the deployed asset: the string at slot 1. -/
+/-- **`symbol()` as a top-level transaction** on the deployed asset. -/
 theorem assetSymbol_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
     (hgas : Str.getterGas (Str.slotLen (w.sload asset 1#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
@@ -729,32 +692,25 @@ end
 section
 
 /-!
-## `name()` / `symbol()` for the canonical deployment strings
+## The canonical deployment strings
 
-The canonical deployment (`contracts/artifacts/deployment.json`) constructs the asset with
-`("Solmate Asset", "SAST")` and the vault with `("Solmate Vault", "svSAST")`; Solidity stores
-these short strings (at most 31 bytes) in their slots in the short form `Str.shortWord`. When
-a slot holds that word, the getter returns its ABI encoding: corollaries of the `*_call`
-theorems and of `Str.decode_shortWord`. Short strings live in the slot itself, so no Keccak
-is involved at all (the theorems hold for every `Crypto`).
-
-`stringAt_shortWord` is the general step: a slot holding `Str.shortWord s` reads as `s`.
+`("Solmate Asset", "SAST")` and `("Solmate Vault", "svSAST")` are stored in short form
+(`Str.shortWord`), so the getters return their encoding with no Keccak involved.
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
-/-- A slot holding the short form of `s` reads as `s`. -/
 theorem stringAt_shortWord {crypto : Crypto} {a : Address} {p : Word} {s : ByteArray}
     (hs : s.size ≤ 31) (h : w.sload a p = Str.shortWord s) : stringAt crypto w a p = some s :=
   Str.decode_shortWord crypto hs h
 
-/-- The getter's gas for a short string slot. -/
 theorem getterGas_shortWord {s : ByteArray} (hs : s.size ≤ 31) :
     Str.getterGas (Str.slotLen (Str.shortWord s)) ≤ 10430 := by
   rw [Str.slotLen_shortWord hs, Str.getterGas]
@@ -762,7 +718,6 @@ theorem getterGas_shortWord {s : ByteArray} (hs : s.size ≤ 31) :
   · rw [h0]; decide
   · rw [show (s.size + 31) / 32 = 1 by omega]; decide
 
-/-- A string getter call returning the short string `s`. -/
 theorem stringResult_some {res : MessageResult} {s : ByteArray}
     (h : StringResult res (some s)) : res.success = true ∧ res.output = Abi.encodeString s := h
 

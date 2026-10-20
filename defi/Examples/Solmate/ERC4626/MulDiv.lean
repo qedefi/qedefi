@@ -6,29 +6,17 @@ import EvmLogic.Tactic.Patched
 import Examples.Solmate.ERC4626.SharesCode
 
 /-!
-# Solmate `FixedPointMathLib.mulDivDown` / `mulDivUp` in the compiled vault
+# Solmate `mulDivDown` / `mulDivUp` in the compiled vault
 
-The compiled `MockERC4626`, deployed with any immutables `i`
-(`SolmateVault.runtimeCodeWith i`), contains each of Solmate's
-two assembly `mulDiv` functions once, as an internal function called with
-`JUMP` and stack `denominator :: y :: x :: return :: rest`:
-
-| function | entry pc | gas on success |
-|---|---|---|
-| `mulDivDown(x, y, denominator)` | `0x0e62` | 81 |
-| `mulDivUp(x, y, denominator)` | `0x0e7d` | 107 |
-
-`mulDivDown_wp` / `mulDivUp_wp` summarise them once, for every machine executing the vault's
-code at the entry pc: if the Solidity function does not revert (`mulDivDownN … = some v`,
-the `Nat` mirror of the source and of the specification's `Vault.mulDivDown`), execution
-returns to `return` with `v` on the stack and only pc, stack and gas changed
-(`Machine.resumeAt`); otherwise the frame ends with `revert(0, 0)` and the world unchanged.
-Callers compose them with `WP.bind_mono`.
+Summaries of the two internal `mulDiv` functions (entries `0x0e62`, `0x0e7d`; stack
+`denominator :: y :: x :: return :: rest`) for any immutables: on success they return to
+`return` with the `Nat` mirror's value (`mulDivDownN`/`mulDivUpN`), else `revert(0, 0)`.
 -/
 
 namespace Examples.Solmate.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- `type(uint256).max`. -/
 def MAXN : Nat := 2 ^ 256 - 1
@@ -47,7 +35,6 @@ def mulDivUpN (x y d : Nat) : Option Nat :=
 def MulDivRevert (m mf : Machine) (o : Outcome) : Prop :=
   o = .revert .empty ∧ mf.world = m.world
 
-/-- A zero-length memory read is empty. -/
 theorem Memory.read_zero_len (mem : Memory) (off : Nat) : mem.read off 0 = .empty := by
   rw [Memory.read, ← readBytes_eq_readPadded, readBytes_zero]
 

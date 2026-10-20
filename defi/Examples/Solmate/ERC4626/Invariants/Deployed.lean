@@ -7,65 +7,19 @@ import Examples.Solmate.ERC4626.Deposit
 /-!
 # The model's invariants hold for the deployed bytecode
 
-The generic lifting theorem (`Lift.lean`) instantiated with the concrete system of
-`InvariantsSystem.lean` (deployed Solmate `MockERC4626` + `MockERC20`, arbitrary callers,
-arbitrary interleaving of unrelated transactions) and the per-call refinement theorems.
-
-## Traces and refinement hypotheses
-
-* `Trace crypto vault asset minGas w₀ cs w`: `w` is reached from `w₀` by the modelled calls
-  `cs` (each a terminating top-level call, successful or reverting, `CallStep`), in order,
-  interleaved with environment steps (`EnvStep`: anything that leaves the storage and code of
-  the vault and the asset unchanged, including view calls).
-* `RefinesFor crypto vault asset minGas Act K`: every call kind admitted by `K` refines its
-  model operation (`OpRefinesAt`). Three instances:
-  - `refinesFor_now hmin hk`: `K = VCall.NotEntry` — every modelled call except the four
-    ERC-4626 entry points: the vault's `transfer`/`transferFrom`/`approve` and the asset's
-    `transfer`/`transferFrom` (so donations), `approve`, and the unrestricted `mint`/`burn`
-    (`InvariantsCalls.lean`, `AssetApproveCall.lean`, `AssetMintCall.lean`,
-    `AssetBurnCall.lean`). `hk : KeccakAvoids crypto (AddressKeyed [3]) [2]` (no balance slot
-    is the `totalSupply` slot; needed by `mint`/`burn`, which write slot 2);
-  - `refinesFor_proven` (no hash hypothesis beyond `SlotsOk`): `K = VCall.Proven`, the share
-    functions and the asset's `transfer`/`transferFrom`;
-  - `refinesFor_all hmin hk (hp : Pending …)`: every call kind, given the `Pending`
-    obligations (`deposit`, `mint`, `withdraw`, `redeem`). **Wiring** once the deposit/mint
-    and withdraw/redeem refinements land: prove the four `Pending` fields from their
-    `X_refines` theorems via `callRefines_some` / `callRefines_none` and the bridge
-    `agree_of_reps` (both ledgers as `Shares.RepOn`, the hook counters), as in
-    `InvariantsCalls.lean`; see `INVARIANTS.md`.
-
-## Headline theorems (for any `K` with `RefinesFor`, any trace whose calls are admitted by
-`K` and whose actors are in `Act`, under `SlotsOk crypto vault Act`, from a deployed world
-whose two ledgers are well formed)
-
-* `lift`: the final world is deployed, its ledgers are well formed, and its abstraction
-  agrees with `Solmate.exec (abs w₀) (cs.map VCall.op)` up to non-actor allowances;
-* `invariant`: every model invariant (preserved by every successful `step`, insensitive to
-  non-actor allowances) holds on `abs` of the final world;
-* `supply_eq_sum`: **`totalSupply` = Σ `balanceOf`**, read from storage, for the shares and for
-  the asset;
-* `solvent`: **solvency**, `Σₐ ⌊balanceOf[a]·T/S⌋ ≤ T` with `T` the vault's asset balance and
-  `S` its share supply, read from storage;
-* `no_dilution`: every user call (`UserOp`) inside a trace, from a world in which the vault
-  has shares, satisfies `T·S' ≤ T'·S` between the worlds just before and after it;
-  `price_mono`: along a trace of user calls during which the vault is never empty, the price
-  `T/S` never decreases;
-* `donation_attack`: the Solmate first-depositor attack run on the bytecode (`deposit(1)`,
-  `asset.transfer(vault, D)`, victim `deposit(a)`) ends in the model's predicted state;
-  `donation_attack_view`: a `convertToAssets(1)` call on the final world returns the victim's
-  share value `⌊(a+D+1)/2⌋`. These take the `deposit` refinement as a hypothesis.
-
-`*_now` versions (`supply_eq_sum_now`, `solvent_now`, `no_dilution_now`, `price_mono_now`)
-instantiate `refinesFor_now` (every call but the four entry points).
+The lifting theorem (`Defi/Trace/Lift.lean`) instantiated with the concrete system of
+`Invariants/System.lean` and the per-call refinement theorems: along any trace of modelled
+top-level calls, supply = Σ balances, solvency, no dilution, price monotonicity, and the
+donation attack, on storage (`*_deployed`). See `docs/erc4626/details.md` §3.
 -/
 
 section
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
   {K : VCall → Prop}
@@ -77,27 +31,22 @@ def Trace (crypto : Crypto) (vault asset : Address) (minGas : Nat) :
     World → List VCall → World → Prop :=
   (system crypto vault asset minGas [] (fun _ => True)).Reach
 
-/-- The empty trace. -/
 theorem Trace.nil (w : World) : Trace crypto vault asset minGas w [] w := .refl w
 
-/-- A call, then a trace. -/
 theorem Trace.cons {w w' w'' : World} {c : VCall} {cs : List VCall}
     (h : CallStep crypto vault asset minGas w c w') (t : Trace crypto vault asset minGas w' cs w'') :
     Trace crypto vault asset minGas w (c :: cs) w'' := System.Reach.call h t
 
-/-- An environment step, then a trace. -/
 theorem Trace.env {w w' w'' : World} {cs : List VCall} (h : EnvStep vault asset w w')
     (t : Trace crypto vault asset minGas w' cs w'') : Trace crypto vault asset minGas w cs w'' :=
   System.Reach.env h t
 
-/-- A trace is a trace of every instance of the system. -/
 theorem Trace.reach {w w' : World} {cs : List VCall} (h : Trace crypto vault asset minGas w cs w') :
     (system crypto vault asset minGas Act K).Reach w cs w' :=
   System.Reach.mono (σ := system crypto vault asset minGas [] (fun _ => True))
     (σ' := system crypto vault asset minGas Act K)
     (fun _ _ _ h => h) (fun _ _ h => h) h
 
-/-- A trace splits along its call list. -/
 theorem Trace.split {w w' : World} {cs₁ cs₂ : List VCall}
     (h : Trace crypto vault asset minGas w (cs₁ ++ cs₂) w') :
     ∃ v, Trace crypto vault asset minGas w cs₁ v ∧ Trace crypto vault asset minGas v cs₂ w' :=
@@ -110,33 +59,24 @@ def RefinesFor (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : L
     (K : VCall → Prop) : Prop :=
   ∀ c, K c → OpRefinesAt crypto vault asset minGas Act c
 
-/-- The share-token functions and the asset's `transfer`/`transferFrom`, which need no hash
-hypothesis beyond `SlotsOk` (`refinesFor_now` adds the asset's `approve`, `mint`, `burn`). -/
 theorem refinesFor_proven (hmin : 100000 ≤ minGas) :
     RefinesFor crypto vault asset minGas Act VCall.Proven :=
   fun c hc => opRefines_proven hmin c hc
 
-/-- **The obligations still open**: the four ERC-4626 entry points (deposit/mint and
-withdraw/redeem work packages). -/
+/-- The refinement obligations of the four ERC-4626 entry points (discharged by `pending_of`). -/
 structure Pending (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : List Address) :
     Prop where
-  /-- `vault.deposit`. -/
   deposit : ∀ c a r, OpRefinesAt crypto vault asset minGas Act (.deposit c a r)
-  /-- `vault.mint`. -/
   mint : ∀ c n r, OpRefinesAt crypto vault asset minGas Act (.mint c n r)
-  /-- `vault.withdraw`. -/
   withdraw : ∀ c a r o, OpRefinesAt crypto vault asset minGas Act (.withdraw c a r o)
-  /-- `vault.redeem`. -/
   redeem : ∀ c n r o, OpRefinesAt crypto vault asset minGas Act (.redeem c n r o)
 
-/-- The calls whose bytecode refinement is proved: every modelled call except the four
-ERC-4626 entry points (`deposit`, `mint`, `withdraw`, `redeem`). -/
+/-- Every modelled call except the four ERC-4626 entry points. -/
 def VCall.NotEntry : VCall → Prop
   | .deposit .. | .mint .. | .withdraw .. | .redeem .. => False
   | .transfer .. | .transferFrom .. | .approve .. | .assetTransfer .. | .assetTransferFrom ..
   | .assetApprove .. | .assetMint .. | .assetBurn .. => True
 
-/-- The calls proved without the supply-slot hypothesis are among them. -/
 theorem VCall.Proven.notEntry {c : VCall} (h : c.Proven) : c.NotEntry := by
   cases c <;> first | exact h.elim | trivial
 
@@ -158,14 +98,14 @@ theorem opRefines_notEntry (hmin : 100000 ≤ minGas)
   | withdraw => exact hc.elim
   | redeem => exact hc.elim
 
-/-- **Proved today**: every modelled call except the four ERC-4626 entry points, under the
-hash hypothesis that no balance slot is the `totalSupply` slot (for the asset's `mint`/`burn`). -/
+/-- Every call but the four entry points, under the hash hypothesis that no balance slot is the
+`totalSupply` slot (the asset's `mint`/`burn` write it). -/
 theorem refinesFor_now (hmin : 100000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256]) :
     RefinesFor crypto vault asset minGas Act VCall.NotEntry :=
   fun c hc => opRefines_notEntry hmin hk c hc
 
-/-- **Everything**, given the pending obligations. -/
+/-- Every call kind, given the entry-point obligations. -/
 theorem refinesFor_all (hmin : 100000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     (hp : Pending crypto vault asset minGas Act) :
@@ -178,14 +118,12 @@ theorem refinesFor_all (hmin : 100000 ≤ minGas)
   | redeem c n r o => exact hp.redeem c n r o
   | _ => exact opRefines_notEntry hmin hk _ trivial
 
-/-- Refinement hypotheses for fewer kinds. -/
 theorem RefinesFor.mono {K' : VCall → Prop} (h : RefinesFor crypto vault asset minGas Act K)
     (hK : ∀ c, K' c → K c) : RefinesFor crypto vault asset minGas Act K' :=
   fun c hc => h c (hK c hc)
 
 /-! ## The lifting theorem on bytecode -/
 
-/-- The system's execution is `Solmate.exec` of the calls' operations. -/
 theorem exec_system (s : State Address) (cs : List VCall) :
     Lift.exec (system crypto vault asset minGas Act K).step s cs =
       Solmate.exec s (cs.map VCall.op) := by
@@ -194,10 +132,9 @@ theorem exec_system (s : State Address) (cs : List VCall) :
   | nil => rfl
   | cons c cs ih => exact ih _
 
-/-- **The lifting theorem.** Along every trace of admitted calls whose actors are in `Act`
-(under the hash hypothesis for `Act`), from a deployed world whose two ledgers are well formed,
-the final world is deployed, its ledgers are well formed, and its abstraction agrees (up to
-allowances of non-actor pairs) with the model's execution of the same operations. -/
+/-- **The lifting theorem.** Along every trace of admitted calls with actors in `Act`, under
+`SlotsOk`, from a deployed world with well-formed ledgers: the final world is deployed, its
+ledgers are well formed, and `abs` agrees (up to non-actor allowances) with `Solmate.exec`. -/
 theorem lift (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault asset minGas Act K)
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
@@ -209,9 +146,8 @@ theorem lift (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault asset
     htr.reach (fun c hc => ⟨hact c hc, hK c hc⟩) hdep ⟨hinv, rfl⟩
   exact ⟨h1, h2.1, exec_system (K := K) (minGas := minGas) _ cs ▸ h3⟩
 
-/-- **Invariants transfer to the bytecode.** Every model invariant `I` that is preserved by
-every successful step (from well-formed states) and does not depend on allowances of non-actor
-pairs, and that holds initially, holds on the abstraction of every world reached by a trace. -/
+/-- **Invariants transfer to the bytecode.** A model invariant preserved by every successful
+step and insensitive to non-actor allowances, holding initially, holds after every trace. -/
 theorem invariant (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault asset minGas Act K)
     {I : State Address → Prop} (hI : ∀ s op s', Solmate.Inv s → I s → step s op = some s' → I s')
     (hIa : ∀ s t, AgreeOn (ActorPairs Act) s t → I s → I t)
@@ -249,8 +185,6 @@ theorem abs_sharesOf (w : World) (a : Address) :
     (abs crypto w vault asset).shares.balanceOf a = sharesAt crypto w vault a :=
   tokenView_balanceOf crypto w vault a
 
-/-- A well-formed ledger read from storage: `totalSupply = Σ balances` as a sum over all
-addresses. -/
 theorem supply_eq_sum_of_wf {w : World} {token : Address} (h : (tokenView crypto w token).WF) :
     (w.sload token 2#256).toNat =
       ∑ a : Address, (w.sload token (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
@@ -270,9 +204,7 @@ theorem supply_eq_sum (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto va
   obtain ⟨-, hi, -⟩ := lift hs hR hdep hinv htr hact hK
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
-/-- `supply_eq_sum` with the refinements proved today: every modelled call except the four
-ERC-4626 entry points (the share-token functions; the asset's transfers, approvals, and its
-unrestricted mints and burns), arbitrarily interleaved with any other transactions. -/
+/-- `supply_eq_sum` for every call but the four entry points (`refinesFor_now`). -/
 theorem supply_eq_sum_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
@@ -284,9 +216,8 @@ theorem supply_eq_sum_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault 
         ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat :=
   supply_eq_sum hs (refinesFor_now hmin hk) hdep hinv htr hact hK
 
-/-- **I-SOLVENT on bytecode.** In every world reached by a trace, the vault can pay every
-holder's `convertToAssets` at once: `Σₐ ⌊shares[a]·T/S⌋ ≤ T`, where `T` is the vault's asset
-balance and `S` its share supply, all read from storage. -/
+/-- **I-SOLVENT on bytecode.** After any trace, `Σₐ ⌊shares[a]·T/S⌋ ≤ T` (`T` the vault's
+asset balance, `S` its share supply, read from storage). -/
 theorem solvent (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault asset minGas Act K)
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
@@ -298,8 +229,7 @@ theorem solvent (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault as
   rw [Finsupp.sum_fintype _ _ (fun _ => by simp)] at this
   simpa only [abs_sharesOf, abs_totalAssets', abs_totalSupply'] using this
 
-/-- `solvent` with the refinements proved today (every call but the four entry points; in
-particular arbitrary asset mints and burns, also to and from the vault). -/
+/-- `solvent` for every call but the four entry points (`refinesFor_now`). -/
 theorem solvent_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
@@ -367,9 +297,7 @@ theorem price_mono (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto vault
     rw [← ha.totalSupply, abs_totalSupply']
     exact hv
 
-/-- `no_dilution` with the refinements proved today: no share transfer or approval, asset
-transfer, approval, mint (yield, also to the vault) or burn from another account than the vault
-lowers assets-per-share. -/
+/-- `no_dilution` for every call but the four entry points (`refinesFor_now`). -/
 theorem no_dilution_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs₁ cs₂ : List VCall} {c : VCall} (hdep : Deployed w₀ vault asset)
@@ -383,7 +311,7 @@ theorem no_dilution_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Ac
           assetsAt crypto v' vault asset * supplyAt v vault) :=
   no_dilution hs (refinesFor_now hmin hk) hdep hinv htr hact hK hu
 
-/-- `price_mono` with the refinements proved today. -/
+/-- `price_mono` for every call but the four entry points (`refinesFor_now`). -/
 theorem price_mono_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
     {w₀ w : World} {cs : List VCall} (hdep : Deployed w₀ vault asset)
@@ -398,30 +326,15 @@ theorem price_mono_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault Act
 
 /-! ## The donation attack on bytecode -/
 
-/-- The calls admitted for the attack: those proved today and `deposit`. -/
+/-- The calls admitted for the attack: `VCall.Proven` and `deposit`. -/
 def VCall.ProvenOrDeposit (c : VCall) : Prop :=
   c.Proven ∨ ∃ c' a r, c = .deposit c' a r
 
-/-- **The Solmate donation (first-depositor) attack, executed on the deployed bytecode.**
-From a deployed world with an empty vault (`S = T = 0`, read from storage) and well-formed
-ledgers, the trace
-
-1. attacker `vault.deposit(1, attacker)`,
-2. attacker `asset.transfer(vault, D)` (the donation),
-3. victim `vault.deposit(a, r)`,
-
-with any unrelated transactions in between, where the attacker's two transactions are funded
-(the model's success conditions on the initial storage: `h₁`, `h₂`), ends in a world where
-
-* the vault has `S = 1` share, held by the attacker, and `T = D + 1` assets, if `a ≤ D`: the
-  victim's deposit reverted (`ZERO_SHARES`) and `r` holds no share (if `r` is not the
-  attacker);
-* if `D < a ≤ 2D + 1`: either the victim's deposit reverted for another reason (lack of funds
-  or allowance; nothing changed: `S = 1`, `T = D + 1`), or it minted exactly **one** share
-  (`r` holds one share if it is not the attacker), `S = 2`, `T = a + D + 1`, and one share
-  converts to `⌊(a + D + 1)/2⌋` assets: the victim lost `⌊(a − D)/2⌋`.
-
-Takes the `deposit` refinement as a hypothesis (the deposit/mint work package). -/
+/-- **The donation (first-depositor) attack on the bytecode.** From an empty vault, the trace
+attacker `deposit(1)`, `asset.transfer(vault, D)`, victim `deposit(a, r)` (funded: `h₁`, `h₂`)
+ends with: if `a ≤ D`, the attacker holds the only share and `r` none; if `D < a ≤ 2D + 1`,
+the victim's call reverted or `r` got one share worth `⌊(a + D + 1)/2⌋`. Takes the `deposit`
+refinement as a hypothesis. -/
 theorem donation_attack (hmin : 100000 ≤ minGas)
     (hdepR : ∀ c a r, OpRefinesAt crypto vault asset minGas Act (.deposit c a r))
     (hs : SlotsOk crypto vault Act) {att v r : Address} (hatt : att ∈ Act) (hv : v ∈ Act)
@@ -441,7 +354,6 @@ theorem donation_attack (hmin : 100000 ≤ minGas)
       (supplyAt w vault = 2 ∧ assetsAt crypto w vault asset = a.toNat + D.toNat + 1 ∧
         (r ≠ att → sharesAt crypto w vault r = 1) ∧
         (abs crypto w vault asset).convertToAssets 1 = some ((a.toNat + D.toNat + 1) / 2))) := by
-  -- the bytecode follows the model
   have hR : RefinesFor crypto vault asset minGas Act VCall.ProvenOrDeposit := by
     rintro c (hc | ⟨c', a', r', rfl⟩)
     · exact opRefines_proven hmin c hc
@@ -451,7 +363,6 @@ theorem donation_attack (hmin : 100000 ≤ minGas)
     (by simp [VCall.ProvenOrDeposit, VCall.Proven])
   set s₀ := abs crypto w₀ vault asset
   have hself₀ : s₀.self = vault := rfl
-  -- the model run
   have e₁ : step s₀ (VCall.deposit att 1#256 att).op = some s₁ := by
     show Option.map Prod.fst (Solmate.deposit s₀ att (1#256).toNat att) = _
     rw [show (1#256 : Word).toNat = 1 from rfl, h₁]; rfl
@@ -471,7 +382,6 @@ theorem donation_attack (hmin : 100000 ≤ minGas)
     rw [h₂]
     rfl
   rw [hexec] at hag
-  -- the receiver's share balance before the victim's deposit
   have hr₂ : r ≠ att → s₂.shares.balanceOf r = 0 := by
     intro hra
     have h := Defi.ERC20.add_le_total (f := s₂.shares.balanceOf) hra
@@ -514,9 +424,8 @@ theorem donation_attack (hmin : 100000 ≤ minGas)
       · rw [hread r, hb, Token.add_single_apply, hr₂ hra]; simp
       · rw [hag.convertToAssets]; exact hconv
 
-/-- **The attack's outcome, observed through the bytecode.** In the successful-victim case of
-`donation_attack`, a top-level `convertToAssets(1)` call on the final world (any caller, enough
-gas) returns `⌊(a + D + 1)/2⌋` and changes nothing. -/
+/-- In the successful-victim case of `donation_attack`, a top-level `convertToAssets(1)` call
+returns `⌊(a + D + 1)/2⌋` and changes nothing. -/
 theorem donation_attack_view {w : World} {ctx : Context} {tr : TransientStorage}
     {caller : Address} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet} {x : ℕ}
     (hdep : Deployed w vault asset) (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
@@ -537,27 +446,21 @@ end
 section
 
 /-!
-## `vault.withdraw` and `vault.redeem` at the top level: the invariants layer's obligations
+## `withdraw` / `redeem`: the `Pending` obligations
 
-`opRefines_withdraw`, `opRefines_redeem`: the `withdraw` and `redeem` fields of
-`Invariants.Pending` (`OpRefinesAt` for every caller and arguments), from the top-level
-refinement theorems `withdraw_call` / `redeem_call`. The trace-level hash hypothesis `SlotsOk`
-gives the per-call `Out.OutSlots` for actors (`outSlots_of`), except the fixed-slot rows, which are
-the hypothesis `KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]` (no balance row is the
-`totalSupply` slot or the `beforeWithdraw` counter: both are written). `withdraw` / `redeem`
-need `200000 ≤ minGas` (four storage writes and a call into the asset).
+From `withdraw_call` / `redeem_call`. `hk`: no balance slot is the `totalSupply` slot or the
+`beforeWithdraw` counter (both are written); `SlotsOk` gives the rest of `Out.OutSlots`.
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 open Examples.Solmate.ERC4626.Out
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
-/-- The per-call hash hypotheses of `withdraw` / `redeem` for actors. -/
 theorem outSlots_of (hs : SlotsOk crypto vault Act)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]) {c r o : Address}
     (hc : c ∈ Act) (hr : r ∈ Act) (ho : o ∈ Act) : OutSlots crypto vault c o r where
@@ -569,7 +472,6 @@ theorem outSlots_of (hs : SlotsOk crypto vault Act)
   vaultOk := hs.bal vault hs.vault_mem
   receiverOk := hs.bal r hr
 
-/-- Actor pairs are among the share allowances known after `withdraw` / `redeem`. -/
 theorem outAllowances_of (hs : SlotsOk crypto vault Act) {c o : Address} (hc : c ∈ Act)
     (ho : o ∈ Act) {a b : Address} (h : ActorPairs Act a b) : OutAllowances crypto c o a b := by
   obtain ⟨ha, hb⟩ := h
@@ -579,13 +481,11 @@ theorem outAllowances_of (hs : SlotsOk crypto vault Act) {c o : Address} (hc : c
   · exact .inr (.inl h)
   · exact .inr (.inr h)
 
-/-- Actor pairs are among the asset allowances known after the payout. -/
 theorem transferAllowances_of (hs : SlotsOk crypto vault Act) {r : Address} {a b : Address}
     (h : ActorPairs Act a b) : TransferAllowances crypto vault r a b :=
   ⟨(ERC20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm,
     (ERC20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm⟩
 
-/-- `RefinesOn` with the actor pairs inside both predicates gives `AgreeOn`. -/
 theorem agree_of_refinesOn (hs : SlotsOk crypto vault Act) {c r o : Address} (hc : c ∈ Act)
     (ho : o ∈ Act) {w' : World} {s' : State Address}
     (h : RefinesOn (OutAllowances crypto c o) (TransferAllowances crypto vault r) crypto w' vault
@@ -661,39 +561,28 @@ end
 section
 
 /-!
-## `vault.deposit` and `vault.mint` at the top level: the invariants layer's obligations
+## `deposit` / `mint`: the `Pending` obligations
 
-`opRefines_deposit`, `opRefines_mint`: the `deposit` and `mint` fields of
-`Invariants.Pending` (`OpRefinesAt` for every caller and arguments), from the top-level
-refinement theorems `deposit_call` / `mint_call`. The trace-level hash hypothesis `SlotsOk`
-gives the per-call hypotheses for actors (balance slots of caller, receiver and vault, the
-allowance `allowance[caller][vault]` of the asset, the actor allowance pairs avoiding the
-written slots), except the fixed-slot rows, which are the hypothesis
-`KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]` (no balance row is the
-`totalSupply` slot or a hook counter: slots 2 and 7 are written, and the receiver's balance
-write must not touch counter 6). `deposit` / `mint` need `250000 ≤ minGas` (four storage
-writes in the vault, three in the asset, and the `transferFrom` call).
+From `deposit_call` / `mint_call`. `hk`: no balance slot is slot 2 or 7 (written) or counter 6
+(the receiver's balance write must not touch it); `SlotsOk` gives the per-actor slots.
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
-/-- Actor pairs are among the share allowances known after `deposit` / `mint`. -/
 theorem depositAllowances_of (hs : SlotsOk crypto vault Act) {r : Address} {a b : Address}
     (h : ActorPairs Act a b) : DepositAllowances crypto r a b :=
   ⟨⟨(hs.allow a h.1 b h.2).2.2, hs.balP h.1 h.2 r⟩, (hs.allowFixed a h.1 b h.2).2⟩
 
-/-- Actor pairs are among the asset allowances known after the asset's `transferFrom`. -/
 theorem transferFromAllowances_of (hs : SlotsOk crypto vault Act) {c : Address} (hc : c ∈ Act)
     {a b : Address} (h : ActorPairs Act a b) : TransferFromAllowances crypto vault c vault a b :=
   ⟨⟨hs.balP h.1 h.2 c, hs.balP h.1 h.2 vault⟩, hs.allowP h.1 h.2 hc hs.vault_mem⟩
 
-/-- `Out.RefinesOn` with the actor pairs inside both predicates gives `AgreeOn`. -/
 theorem agree_of_entry (hs : SlotsOk crypto vault Act) {c r : Address} (hc : c ∈ Act)
     {w' : World} {s' : State Address}
     (h : Out.RefinesOn (DepositAllowances crypto r) (TransferFromAllowances crypto vault c vault)
@@ -764,9 +653,7 @@ theorem opRefines_mint (hmin : 250000 ≤ minGas)
     show Option.map Prod.fst (Solmate.mint _ _ _ _) = _
     rw [hW]; rfl
 
-/-- **All four pending obligations**, from `opRefines_deposit` / `opRefines_mint` here and
-`opRefines_withdraw` / `opRefines_redeem` (`Examples.Solmate.ERC4626.Invariants.Deployed`), under the one fixed-slot
-hypothesis `[2, 6, 7]`. With `refinesFor_all` every call kind is refined. -/
+/-- All four entry-point obligations, under the fixed-slot hypothesis `[2, 6, 7]`. -/
 theorem pending_of (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) :
     Pending crypto vault asset minGas Act where
@@ -790,38 +677,20 @@ section
 /-!
 ## The headline theorems, with every call kind proved
 
-`Invariants.lean` states each headline property for any refinement hypothesis
-`RefinesFor … K`. `refinesFor_all_of` discharges that hypothesis for **every** modelled call
-(the four ERC-4626 entry points, the vault's share-token functions and views, and the asset's
-transfers, approvals, mints and burns, including donations to the vault). This file
-instantiates it, so the theorems below are about the deployed bytecode with no pending
-refinement obligations.
-
-The remaining hypotheses, all explicit:
-
-* `hmin`: every modelled call in the trace carries at least 250 000 gas (and below 2⁶⁴, in
-  `Trace`); calls carry no ETH; no EIP-7702 authorizations (or a fork before Prague).
-* `hk`, `hs`: Keccak freshness. No address's share-balance slot is one of the fixed slots
-  2, 6, 7, and the balance/allowance slots of the finitely many actors are fresh (`SlotsOk`).
-  Global Keccak injectivity is false (pigeonhole) and is never assumed.
-* `hdep`, `hinv`: the vault and the asset hold the compiled Solmate `MockERC4626` /
-  `MockERC20` runtime code (any immutables), and the initial ledgers are well formed.
-* `htr`: the trace consists of top-level modelled calls by arbitrary callers (success or
-  revert) interleaved with arbitrary steps that leave the vault's and asset's storage and code
-  unchanged. Nested calls into the vault from other contracts are covered at frame level for
-  the entry points and views, not yet by the trace (see `INVARIANTS.md`).
+`refinesFor_all_of` instantiates the generic theorems above. Hypotheses: `hmin` (gas per call),
+`hk`/`hs` (Keccak freshness of the fixed slots and the actors' slots; global injectivity is
+never assumed), `hdep`/`hinv`, `htr`. See `docs/erc4626/README.md` (Hypotheses and exclusions).
 -/
 
 namespace Examples.Solmate.ERC4626.Invariants
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
-/-- **Share and asset supply equal the sum of balances**, on the deployed bytecode, after any
-trace of modelled calls. -/
+/-- **Share and asset supply equal the sum of balances** after any trace of modelled calls. -/
 theorem supply_eq_sum_deployed (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall}
@@ -834,7 +703,7 @@ theorem supply_eq_sum_deployed (hmin : 250000 ≤ minGas)
   supply_eq_sum hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial)
 
 /-- **Solvency**: the vault's asset balance covers every holder's shares converted at the
-current price (rounding down), on the deployed bytecode, after any trace of modelled calls. -/
+current price (rounding down), after any trace of modelled calls. -/
 theorem solvent_deployed (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall}
@@ -872,10 +741,8 @@ theorem price_mono_deployed (hmin : 250000 ≤ minGas)
       (assetsAt crypto w vault asset : ℚ) / supplyAt w vault :=
   price_mono hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial) hu hS
 
-/-- **The first-depositor donation attack, executed on the deployed bytecode**: attacker
-`deposit(1)`, donation of `D` assets, victim `deposit(a)`. If `a ≤ D` the victim's receiver
-gets no shares and the attacker holds the only share; if `D < a ≤ 2D + 1` either the victim's
-call reverted or the receiver got exactly one share worth `⌊(a + D + 1)/2⌋`. -/
+/-- **The donation attack on the deployed bytecode**: `donation_attack` with the `deposit`
+refinement discharged. -/
 theorem donation_attack_deployed (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hs : SlotsOk crypto vault Act) {att v r : Address} (hatt : att ∈ Act) (hv : v ∈ Act)

@@ -7,21 +7,12 @@ import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC4626.Withdraw
 
 /-!
-# The vault's `_mint` and `afterDeposit` as internal functions
+# `deposit` and `mint` of the compiled vault
 
-After pulling the assets (`safeTransferFrom_wp`), `deposit` and `mint` jump to two internal
-functions of the compiled vault (immutables `i`), summarised here once for both:
-
-* `mintShares_wp`: Solmate `ERC20._mint(to, amount)` (entry `0x0fdc`, stack
-  `amount :: to :: r :: rest`): `totalSupply += amount` (checked: on overflow `Panic(0x11)`),
-  `balanceOf[to] += amount` (unchecked), `emit Transfer(0, to, amount)` (the topic is
-  `CODECOPY`d); the world is `mintWorld` (shared with the asset's `mint`, `Examples.Solmate.ERC20.MintBurn`);
-* `afterDeposit_wp`: `MockERC4626.afterDeposit` (entry `0x1033`): the checked
-  `afterDepositHookCalledCounter++` (slot 7); the world is `bumpWorld`.
-
-Both work on memory in the shape `FmpAfterTransfer` (free pointer `0x80` / `0xa0`) and keep it.
-`readBytes_code_asset2014` / `readBytes_code_asset2169` read the `asset` immutable at the
-`PUSH32`s of `deposit` and `mint`.
+Summaries of the internal `_mint` (`mintShares_wp`) and `afterDeposit` (`afterDeposit_wp`), the
+world `depositWorld` both entry points produce and its relation to the model
+(`refinesOn_depositWorld`), and the refinement theorems `deposit_refines` / `mint_refines`
+(any frame) and `deposit_call` / `mint_call` (top level). See `docs/erc4626/details.md` §2.
 -/
 
 section
@@ -29,10 +20,11 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
-/-- The `asset` immutable, as the `PUSH32` at `0x07dd` (in `deposit`) reads it. -/
+-- The `asset` immutable as read by the `PUSH32` at `0x07dd` (in `deposit`).
 theorem readBytes_code_asset2014 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 2014 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -43,7 +35,7 @@ theorem readBytes_code_asset2014 (i : SolmateVault.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
     (by simp)
 
-/-- The `asset` immutable, as the `PUSH32` at `0x0878` (in `mint`) reads it. -/
+-- The `asset` immutable as read by the `PUSH32` at `0x0878` (in `mint`).
 theorem readBytes_code_asset2169 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 2169 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -55,8 +47,9 @@ theorem readBytes_code_asset2169 (i : SolmateVault.Immutables) :
     (by simp)
 
 set_option maxHeartbeats 0 in
-/-- **`_mint(to, amount)` (internal, entry `0x0fdc`)**: without supply overflow it returns to
-`r` with the world `mintWorld` (at most 55000 gas); on overflow it reverts. -/
+/-- **`_mint(to, amount)`** (internal, entry `0x0fdc`, stack `amount :: to :: r :: rest`):
+without supply overflow returns to `r` with the world `mintWorld` (at most 55000 gas); else
+reverts. -/
 theorem mintShares_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {dst : Address} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -104,9 +97,8 @@ def bumpWorld (w : World) (vault : Address) : World :=
   w.sstore vault 7#256 (1#256 + w.sload vault 7#256)
 
 set_option maxHeartbeats 0 in
-/-- **`afterDeposit(assets, shares)` (internal, entry `0x1033`)**: without counter overflow it
-returns to `r` with the world `bumpWorld` (at most 30000 gas); at `type(uint256).max` it
-reverts. -/
+/-- **`afterDeposit(assets, shares)`** (internal, entry `0x1033`): without counter overflow
+returns to `r` with the world `bumpWorld` (at most 30000 gas); else reverts. -/
 theorem afterDeposit_wp {i : SolmateVault.Immutables} (m : Machine) {x y r : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -148,47 +140,17 @@ end
 
 section
 
-/-!
-## `deposit` / `mint`: the world they produce, seen through the abstraction
-
-Both entry points do the same three writes, in this order (Solmate `ERC4626` with
-`MockERC4626`'s hook):
-
-1. the asset's `transferFrom(caller, vault, assets)` with the vault as spender
-   (`Erc20.transferFromWorld` on the asset's storage, `safeTransferFrom_wp`);
-2. `_mint(receiver, shares)` on the vault's storage (`mintWorld`, `mintShares_wp`):
-   `totalSupply += shares` (checked), `balanceOf[receiver] += shares`;
-3. `afterDepositHookCalledCounter++` (slot 7, checked; `bumpWorld`, `afterDeposit_wp`).
-
-`depositWorld` is that world. `refinesOn_depositWorld` relates it to the model: when the
-model's `Token.transferFrom` of the asset ledger, `Token.mint` of the share ledger and `bump`
-of the counter all succeed, the world after the three writes represents the model's new state
-(`Out.RefinesOn`: both ledgers as `Shares.RepOn`, the two counters exactly).
-
-## Hypotheses (all on the hash, all of the "fresh slot" kind)
-
-* `BalanceSlotOk` of the caller and of the vault (the two asset balances written), of the
-  receiver (the share balance written); `AllowanceSlotOk` of `allowance[caller][vault]` in the
-  asset (the allowance written);
-* `KeccakAvoids crypto (AddressKeyed [3]) [2, 6, 7]`: no balance slot is the `totalSupply`
-  slot or a hook-counter slot. Writing slot 2 (or 7) changes the balance of every address whose
-  balance slot is 2 (or 7), and the share view must keep *every* balance; writing the
-  receiver's balance must not change counter 6. One target against `2¹⁶⁰` candidates each:
-  plausible (see `EvmLogic.Solidity.Keccak`).
-* `Token.WF` of both ledgers (`Solmate.Inv`): the unchecked `balanceOf[receiver] += shares`
-  does not wrap.
-* the vault and the asset are different accounts.
--/
+/-! ## The model's `deposit` / `mint` and the world they produce -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## The conversions fit in a word -/
 
-/-- A `mulDivDown` result fits in a word. -/
 theorem mulDivDownN_lt {x y d v : ℕ} (h : mulDivDownN x y d = some v) : v < 2 ^ 256 := by
   unfold mulDivDownN MAXN at h
   split at h
@@ -202,7 +164,6 @@ theorem mulDivDownN_lt {x y d v : ℕ} (h : mulDivDownN x y d = some v) : v < 2 
       have := Nat.div_le_self (x * y) d
       omega
 
-/-- A `mulDivUp` result fits in a word. -/
 theorem mulDivUpN_lt {x y d v : ℕ} (h : mulDivUpN x y d = some v) : v < 2 ^ 256 := by
   unfold mulDivUpN MAXN ceilDivN at h
   split at h
@@ -227,7 +188,6 @@ theorem mulDivUpN_lt {x y d v : ℕ} (h : mulDivUpN x y d = some v) : v < 2 ^ 25
         omega
       · omega
 
-/-- `convertToShares` of a word fits in a word. -/
 theorem convertToSharesN_lt {S T x v : ℕ} (hx : x < 2 ^ 256)
     (h : convertToSharesN S T x = some v) : v < 2 ^ 256 := by
   unfold convertToSharesN at h
@@ -235,7 +195,6 @@ theorem convertToSharesN_lt {S T x v : ℕ} (hx : x < 2 ^ 256)
   · cases h; exact hx
   · exact mulDivDownN_lt h
 
-/-- `previewMint` of a word fits in a word. -/
 theorem previewMintN_lt {S T x v : ℕ} (hx : x < 2 ^ 256)
     (h : previewMintN S T x = some v) : v < 2 ^ 256 := by
   unfold previewMintN at h
@@ -249,32 +208,26 @@ section Steps
 
 variable {s : Solmate.State Address} {c r : Address} {a v : ℕ} {t' sh : Token Address}
 
-/-- `deposit` reverts when `previewDeposit` does. -/
 theorem deposit_none_preview (h : s.previewDeposit a = none) : Solmate.deposit s c a r = none := by
   simp [Solmate.deposit, h]
 
-/-- `deposit` reverts on zero shares (`ZERO_SHARES`). -/
 theorem deposit_none_zero (h : s.previewDeposit a = some 0) : Solmate.deposit s c a r = none := by
   simp [Solmate.deposit, h]
 
-/-- `deposit` reverts when the asset's `transferFrom` does. -/
 theorem deposit_none_transfer (h : s.previewDeposit a = some v)
     (ht : s.asset.transferFrom s.self c s.self a = none) : Solmate.deposit s c a r = none := by
   simp [Solmate.deposit, h, ht]
 
-/-- `deposit` reverts when `_mint` does. -/
 theorem deposit_none_mint (h : s.previewDeposit a = some v) (hv : v ≠ 0)
     (ht : s.asset.transferFrom s.self c s.self a = some t') (hm : s.shares.mint r v = none) :
     Solmate.deposit s c a r = none := by
   simp [Solmate.deposit, h, hv, ht, hm]
 
-/-- `deposit` reverts when the hook counter overflows. -/
 theorem deposit_none_bump (h : s.previewDeposit a = some v)
     (ht : s.asset.transferFrom s.self c s.self a = some t')
     (hb : Solmate.bump s.afterDepositCount = none) : Solmate.deposit s c a r = none := by
   simp [Solmate.deposit, h, ht, hb]
 
-/-- `deposit` succeeds when every step does. -/
 theorem deposit_some {n : ℕ} (h : s.previewDeposit a = some v) (hv : v ≠ 0)
     (ht : s.asset.transferFrom s.self c s.self a = some t') (hm : s.shares.mint r v = some sh)
     (hb : Solmate.bump s.afterDepositCount = some n) :
@@ -282,26 +235,21 @@ theorem deposit_some {n : ℕ} (h : s.previewDeposit a = some v) (hv : v ≠ 0)
       some ({ s with asset := t', shares := sh, afterDepositCount := n }, v) := by
   simp [Solmate.deposit, h, hv, ht, hm, hb]
 
-/-- `mint` reverts when `previewMint` does. -/
 theorem mint_none_preview (h : s.previewMint a = none) : Solmate.mint s c a r = none := by
   simp [Solmate.mint, h]
 
-/-- `mint` reverts when the asset's `transferFrom` does. -/
 theorem mint_none_transfer (h : s.previewMint a = some v)
     (ht : s.asset.transferFrom s.self c s.self v = none) : Solmate.mint s c a r = none := by
   simp [Solmate.mint, h, ht]
 
-/-- `mint` reverts when `_mint` does. -/
 theorem mint_none_mint (h : s.previewMint a = some v) (hm : s.shares.mint r a = none) :
     Solmate.mint s c a r = none := by
   simp [Solmate.mint, h, hm]
 
-/-- `mint` reverts when the hook counter overflows. -/
 theorem mint_none_bump (h : s.previewMint a = some v)
     (hb : Solmate.bump s.afterDepositCount = none) : Solmate.mint s c a r = none := by
   simp [Solmate.mint, h, hb]
 
-/-- `mint` succeeds when every step does. -/
 theorem mint_some {n : ℕ} (h : s.previewMint a = some v)
     (ht : s.asset.transferFrom s.self c s.self v = some t') (hm : s.shares.mint r a = some sh)
     (hb : Solmate.bump s.afterDepositCount = some n) :
@@ -311,19 +259,17 @@ theorem mint_some {n : ℕ} (h : s.previewMint a = some v)
 
 end Steps
 
-/-- `Token.mint` fails exactly on a supply overflow. -/
 theorem token_mint_none_iff {t : Token Address} {dst : Address} {v : ℕ} :
     t.mint dst v = none ↔ 2 ^ 256 ≤ t.totalSupply + v := by
   unfold Token.mint MAX; split_ifs with h <;> simp <;> omega
 
-/-- `bump` fails exactly on a counter overflow. -/
 theorem bump_none_iff {n : ℕ} : Solmate.bump n = none ↔ n + 1 = 2 ^ 256 ∨ 2 ^ 256 < n + 1 := by
   unfold Solmate.bump checkedAdd MAX; split_ifs with h <;> simp <;> omega
 
 /-! ## The world -/
 
-/-- The world after a successful `deposit` / `mint` from `caller` for `receiver`, pulling
-`assets` and minting `shares`. -/
+/-- The world after a successful `deposit` / `mint` from `caller` for `receiver`: the asset's
+`transferFrom(caller, vault, assets)`, then `_mint(receiver, shares)`, then the hook counter. -/
 def depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Address)
     (assets shares : Word) : World :=
   bumpWorld (mintWorld crypto (ERC20.transferFromWorld crypto w asset vault caller vault assets)
@@ -334,12 +280,10 @@ none of the written slots (2, the receiver's balance slot, 7). -/
 def DepositAllowances (crypto : Crypto) (receiver : Address) (o sp : Address) : Prop :=
   MintAllowances crypto receiver o sp ∧ ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 7#256
 
-/-- The fixed-slot hypothesis, restricted. -/
 theorem KeccakAvoids.sub {crypto : Crypto} {S : ByteArray → Prop} {l l' : List Word}
     (h : KeccakAvoids crypto S l) (hl : ∀ x ∈ l', x ∈ l) : KeccakAvoids crypto S l' :=
   fun x hx hm => h x hx (hl _ hm)
 
-/-- No balance slot is one of the fixed slots `2, 6, 7`. -/
 theorem balanceSlot_ne_fixed {crypto : Crypto}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) (a : Address) :
     ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 2#256 ∧
@@ -349,27 +293,22 @@ theorem balanceSlot_ne_fixed {crypto : Crypto}
     mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp),
     mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp)⟩
 
-/-- `transferFrom` on the asset changes no slot of another account. -/
 theorem sload_transferFromWorld_ne {crypto : Crypto} {w : World} {token sp src dst b : Address}
     {v : Word} (hb : b ≠ token) (k : Word) :
     (ERC20.transferFromWorld crypto w token sp src dst v).sload b k = w.sload b k := by
   simp only [ERC20.transferFromWorld]
   rw [Shares.sload_transferWorld (.inl hb), Shares.sload_spendWorld (.inl hb)]
 
-/-- `bumpWorld` writes only slot 7 of the vault. -/
 theorem sload_bumpWorld {w : World} {vault b : Address} {k : Word} (h : b ≠ vault ∨ k ≠ 7#256) :
     (bumpWorld w vault).sload b k = w.sload b k :=
   sload_sstore_frame h
 
-/-- `depositWorld` writes only the asset's `transferFrom` slots and the vault's slots 2, 7 and
-`balanceOf[receiver]`. -/
 theorem sload_depositWorld {crypto : Crypto} {w : World} {vault asset caller receiver b : Address}
     {assets shares k : Word} (hb : b ≠ vault) (hb' : b ≠ asset) :
     (depositWorld crypto w vault asset caller receiver assets shares).sload b k = w.sload b k := by
   simp only [depositWorld]
   rw [sload_bumpWorld (.inl hb), sload_mintWorld (.inl hb), sload_transferFromWorld_ne hb']
 
-/-- `depositWorld` changes no code. -/
 theorem code_depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Address)
     (assets shares : Word) (b : Address) :
     (depositWorld crypto w vault asset caller receiver assets shares).code b = w.code b := by
@@ -377,7 +316,9 @@ theorem code_depositWorld (crypto : Crypto) (w : World) (vault asset caller rece
     EvmLogic.Solidity.ERC20.transferWorld, ERC20.spendWorld]
   split <;> simp
 
-/-- **The world after `deposit` / `mint` represents the model's new state.** -/
+/-- **The world after `deposit` / `mint` represents the model's new state.** `KeccakAvoids` of
+the slots 2, 6, 7 is needed because the share view keeps every balance: no balance slot may be
+a written fixed slot. -/
 theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller receiver : Address}
     (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
@@ -454,17 +395,16 @@ end Examples.Solmate.ERC4626
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 variable {crypto : Crypto} {w : World} {vault asset caller receiver : Address} {v : ℕ}
 
-/-- `_mint` succeeds without supply overflow. -/
 theorem shares_mint_some (h : (w.sload vault 2#256).toNat + v < 2 ^ 256) :
     ∃ sh, (abs crypto w vault asset).shares.mint receiver v = some sh :=
   ⟨_, Token.mint_eq_some.2 ⟨by simp only [abs, tokenView_totalSupply]; unfold MAX; omega, rfl⟩⟩
 
-/-- The hook counter increments without overflow. -/
 theorem bump_some (h : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
     Solmate.bump (abs crypto w vault asset).afterDepositCount =
       some ((abs crypto w vault asset).afterDepositCount + 1) := by
@@ -472,8 +412,6 @@ theorem bump_some (h : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
   have hM : ¬ MAX < (abs crypto w vault asset).afterDepositCount + 1 := by unfold MAX; omega
   simp only [Solmate.bump, checkedAdd, hM, ↓reduceIte]
 
-/-- **Successful `deposit`, model side**: when every step of the bytecode succeeded, the model
-succeeds with the same shares, and `depositWorld` represents its result. -/
 theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hbc : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate caller)
@@ -496,8 +434,6 @@ theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ 
   have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
   exact refinesOn_depositWorld hne hk hbc hbv hbr ha hinv hT (by rw [hvn]; exact hm) hb
 
-/-- **Successful `mint`, model side**: when every step of the bytecode succeeded, the model
-succeeds with the same assets, and `depositWorld` represents its result. -/
 theorem mint_post_some {shares : Word} {t' : Token Address} (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
     (hbc : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate caller)
@@ -525,37 +461,17 @@ end
 
 section
 
-/-!
-## `deposit(assets, receiver)` refines the model, in any frame
-
-`deposit_refines`: the compiled vault (any immutables `i`), run in any frame satisfying
-`ViewPre i` that is non-static and has at least 250000 gas (top level or called by another
-contract), on calldata `deposit(assets, receiver)` (`TwoWordCall`, so also calldata assembled
-by a calling contract), ends as the model's `Solmate.deposit` of `absOf i.asset m` says
-(`EntryPost`): on `some (s', shares)` it returns the ABI word of `shares`, the world is
-`depositWorld` and represents `s'`; on `none` it reverts (and the frame's rollback restores
-the world).
-
-The proof composes, by `WP.bind_mono`, the dispatcher and ABI decoder (symbolic execution),
-`convertToShares_wp_gas` (`previewDeposit`), the `ZERO_SHARES` check, `safeTransferFrom_wp`
-(the `CALL` into the asset), `mintShares_wp`, the `Deposit` event, `afterDeposit_wp` and the
-return encoder; each revert point is matched with the model step that fails
-(`deposit_none_*`), and the success case with `deposit_post_some`.
-
-Hypotheses beyond `ViewPre`: the vault is not the asset; the hash hypotheses of
-`Examples.Solmate.ERC4626.Deposit` (fresh balance slots of caller, vault, receiver; fresh `allowance[caller][vault]`
-of the asset; no balance slot is 2, 6 or 7); `Solmate.Inv` of the model state.
--/
+/-! ## `deposit(assets, receiver)` refines the model, in any frame -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- How a call of `deposit` / `mint` ends, by cases on the model's result `r`: on `some (s', v)`
-it returns the ABI word of `v`, the world is `W v`, and the world represents `s'` (allowances of
-the shares on `P`, of the asset on `Q`); on `none` it reverts. -/
+it returns the ABI word of `v` and the world `W v` represents `s'`; on `none` it reverts. -/
 def EntryPost (m : Machine) (asset : Address) (P Q : Address → Address → Prop)
     (W : ℕ → World) (r : Option (Solmate.State Address × ℕ)) (mf : Machine) (o : Outcome) :
     Prop :=
@@ -565,7 +481,10 @@ def EntryPost (m : Machine) (asset : Address) (P Q : Address → Address → Pro
   | none => ∃ out, o = .revert out
 
 set_option maxHeartbeats 0 in
-/-- **`deposit(assets, receiver)` refines `Solmate.deposit`**, in any frame. -/
+/-- **`deposit(assets, receiver)` refines `Solmate.deposit`**, in any frame (`ViewPre`,
+non-static, 250000 gas). Hypotheses: the vault is not the asset; `BalanceSlotOk` of caller, vault
+and receiver, `AllowanceSlotOk` of the asset's `allowance[caller][vault]`, no balance slot is 2,
+6 or 7 (`KeccakAvoids`); `Solmate.Inv`. -/
 theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {assets : Word} {receiver : Address}
@@ -691,24 +610,18 @@ end
 
 section
 
-/-!
-## `mint(shares, receiver)` refines the model, in any frame
-
-`mint_refines`: as `deposit_refines`, for `mint(shares, receiver)`: `previewMint_wp_gas`
-(rounding up; no zero check), `safeTransferFrom_wp` of the previewed assets, `mintShares_wp` of
-`shares`, the `Deposit` event, `afterDeposit_wp`. On the model's `some (s', assets)` the call
-returns the ABI word of `assets`, the world is `depositWorld` and represents `s'`; on `none`
-it reverts. Same hypotheses as `deposit_refines`.
--/
+/-! ## `mint(shares, receiver)` refines the model, in any frame -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
-/-- **`mint(shares, receiver)` refines `Solmate.mint`**, in any frame. -/
+/-- **`mint(shares, receiver)` refines `Solmate.mint`**, in any frame (hypotheses as
+`deposit_refines`). -/
 theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m)
     (hstatic : m.frame.msg.isStatic = false) (hgas : 250000 ≤ m.frame.gasLeft)
     {shares : Word} {receiver : Address}
@@ -823,29 +736,14 @@ end
 
 section
 
-/-!
-## `deposit` and `mint` as top-level transactions
-
-`deposit_call`, `mint_call`: a top-level call (`processMessageCall`, any `Crypto`, any context
-before Prague or without EIP-7702 authorizations, any transient storage and warm sets, enough
-fuel) of `deposit(assets, receiver)` / `mint(shares, receiver)` on the vault `Deployed` at
-`vault` (any immutables) over the asset at `asset`, with `Abi.encodeCall` calldata, refines the
-model operation on `abs ctx.crypto w vault asset` (`EntryResult`):
-
-* model `some (s', v)`: the call succeeds, returns the ABI word of `v` (shares minted /
-  assets pulled), the world is `depositWorld` (exact), and it represents `s'`
-  (`Out.RefinesOn`);
-* model `none`: the call reverts and the world is unchanged.
-
-They are `deposit_refines` / `mint_refines` (frame form) at the start machine, through
-`entry_call` (as `view_call` and `out_call` do for the views and withdraw/redeem).
--/
+/-! ## `deposit` and `mint` as top-level transactions -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- What a top-level `deposit` / `mint` returns, against the model's result `r`: on
 `some (s', v)` success with the ABI word of `v`, the world `W v`, representing `s'`; on `none`
@@ -862,8 +760,6 @@ variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller
   {data : ByteArray} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
 set_option maxHeartbeats 1000000 in
-/-- A frame summary of a top-level call to the vault, in the form `EntryPost`, gives the
-result of `processMessageCall`. -/
 theorem entry_call {i : SolmateVault.Immutables} {P Q : Address → Address → Prop}
     {W : ℕ → World} {r : Option (Solmate.State Address × ℕ)}
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
@@ -899,7 +795,6 @@ theorem entry_call {i : SolmateVault.Immutables} {P Q : Address → Address → 
       topLevelResult_reverted, ChildResult.success, hsnap]
     decide
 
-/-- `Abi.encodeCall sel [x, y]` is a `TwoWordCall`. -/
 theorem twoWordCall_encodeCall' {sel : Nat} (hsel : sel < 2 ^ 32) (x y : Word) :
     TwoWordCall (Abi.encodeCall sel [x, y]) sel x y :=
   ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],

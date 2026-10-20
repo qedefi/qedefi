@@ -5,35 +5,10 @@ import Examples.Solmate.ERC20.TransferFrom
 /-!
 # `withdraw` / `redeem` as world transformations, and their relation to the model
 
-The bytecode of `withdraw` and `redeem` (Solmate `ERC4626`, `MockERC4626`) is a fixed chain of
-storage effects, each of which may revert the call. This file names them at the level of the
-world (`World`, words), exactly as the compiled code performs them, and proves once that the
-chain refines the model's (`Vault.Solmate.withdraw` / `redeem`):
-
-| step | code | world (this file) | model |
-|---|---|---|---|
-| allowance | `if (msg.sender != owner) { … allowance[owner][msg.sender] = allowed - shares; }` | `spendStep` (`Erc20.spendWorld`) | `spendIfNotOwner` |
-| hook | `beforeWithdrawHookCalledCounter++` (slot 6, checked) | `bumpStep` | `bump` |
-| burn | `balanceOf[owner] -= shares` (checked); `totalSupply -= shares` (unchecked) | `burnStep` | `Token.burn` |
-| payout | `asset.safeTransfer(receiver, assets)`: the asset's `transfer` from the vault | `payStep` (`transferWorld` in the asset) | `Token.transfer` |
-
-`withdrawWorld?` / `redeemWorld?` chain them after the conversion (`previewWithdrawN`, and for
-`redeem` `convertToAssetsN` with the `ZERO_ASSETS` check), returning the final world and the
-returned word, or `none` for a revert. The bytecode theorems (`Withdraw`, `Examples.Solmate.ERC4626.Withdraw`) show that the
-compiled functions compute exactly these; `withdrawWorld?_refines` / `redeemWorld?_refines`
-show that they refine the model.
-
-## Hypotheses on Keccak (`OutSlots`)
-
-Writes are to the allowance entry `allowance[owner][caller]` (only when `caller ≠ owner`),
-slot 6, `balanceOf[owner]` and slot 2 of the vault, and the vault's and the receiver's balance
-slots of the asset. The abstraction reads every balance and the counters, so: no balance row
-of the vault hashes to the written fixed slots 2 or 6 (`KeccakAvoids`, one target per slot
-against the `2¹⁶⁰` rows: plausible); the written balance slot of `owner` is fresh
-(`BalanceSlotOk`) and not slot 7; the written allowance slot is fresh (`AllowanceSlotOk`) and
-not slot 6 or 7; the asset's written balance slots are fresh (`BalanceSlotOk` of the vault and
-the receiver). Allowances are only known pointwise afterwards (`RepOn`), for the entries whose
-slot is none of the written ones (`OutAllowances`, `TransferAllowances`).
+The compiled `withdraw` / `redeem` are a fixed chain of storage effects (allowance spend, hook
+counter, burn, asset payout), each of which may revert. `withdrawWorld?` / `redeemWorld?` name
+the chain at the world level; `*World?_refines` prove it refines `Solmate.withdraw` / `redeem`;
+`bump_wp`, `burn_wp`, `*Spend_wp` are the bytecode summaries of the steps.
 -/
 
 section
@@ -41,11 +16,12 @@ section
 namespace Examples.Solmate.ERC4626.Out
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 hiding transferWorld
 open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
-open Examples.Solmate.ERC4626 Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC4626.Shares Defi.ERC20
-open Defi.ERC4626 Defi.Math Defi.ERC20
+open Examples.Solmate.ERC4626 Examples.Solmate.ERC4626.Shares Defi.ERC20
+open Defi.Math
 
 /-! ## The steps -/
 
@@ -74,8 +50,8 @@ def burnStep (crypto : Crypto) (w : World) (vault src : Address) (amount : Word)
     let w₁ := w.sstore vault k (w.sload vault k - amount)
     some (w₁.sstore vault 2#256 (w₁.sload vault 2#256 - amount))
 
-/-- The asset's `transfer(to, amount)` from the vault: reverts when the vault's balance does
-not cover `amount`. -/
+/-- The asset's `transfer(to, amount)` from the vault; reverts when the vault's balance does not
+cover `amount`. -/
 def payStep (crypto : Crypto) (w : World) (asset vault dst : Address) (amount : Word) :
     Option World :=
   if (w.sload asset (balanceSlot crypto Layout.solmate vault)).toNat < amount.toNat then none
@@ -107,24 +83,20 @@ def redeemWorld? (crypto : Crypto) (w : World) (vault asset caller : Address) (s
 
 /-! ## Hypotheses and the relation after the call -/
 
-/-- The Keccak hypotheses of `withdraw` / `redeem` from `caller` for `owner`, paying `receiver`
-(see the module docstring): pointwise freshness of every written hashed slot, and no balance row
-of the vault at the written fixed slots 2 and 6. -/
+/-- The Keccak hypotheses of `withdraw` / `redeem`: pointwise freshness of every written hashed
+slot, and no balance row of the vault at the written fixed slots 2 and 6 (the abstraction reads
+every balance and both counters). -/
 structure OutSlots (crypto : Crypto) (vault caller owner receiver : Address) : Prop where
   /-- No balance row is slot 2 (`totalSupply`) or slot 6 (the hook counter). -/
   rows : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]
-  /-- The burnt balance slot is fresh. -/
   ownerOk : BalanceSlotOk crypto Layout.solmate owner
-  /-- … and is not the `afterDeposit` counter. -/
+  /-- The burnt balance slot is not the `afterDeposit` counter. -/
   owner7 : balanceSlot crypto Layout.solmate owner ≠ 7#256
-  /-- The spent allowance slot is fresh (only written when `caller ≠ owner`). -/
   allowOk : caller ≠ owner → AllowanceSlotOk crypto Layout.solmate owner caller
-  /-- … and is neither counter. -/
+  /-- The spent allowance slot is neither counter. -/
   allow67 : caller ≠ owner → allowanceSlot crypto Layout.solmate owner caller ≠ 6#256 ∧
     allowanceSlot crypto Layout.solmate owner caller ≠ 7#256
-  /-- The vault's balance slot in the asset (debited) is fresh. -/
   vaultOk : BalanceSlotOk crypto Layout.solmate vault
-  /-- The receiver's balance slot in the asset (credited) is fresh. -/
   receiverOk : BalanceSlotOk crypto Layout.solmate receiver
 
 /-- The share allowances known after `withdraw` / `redeem`: entries whose slot is none of the
@@ -137,59 +109,44 @@ def OutAllowances (crypto : Crypto) (caller owner : Address) (o sp : Address) : 
     allowanceSlot crypto Layout.solmate o sp ≠ 2#256
 
 /-- **The refinement relation after writes**: as `Refines`, with the share allowances known
-for the entries satisfying `P` and the asset allowances for those satisfying `Q`
-(`Shares.RepOn`). `RefinesOn ⊤ ⊤` is `Refines` (`refinesOn_top`). -/
+for the entries satisfying `P` and the asset allowances for those satisfying `Q`. -/
 structure RefinesOn (P Q : Address → Address → Prop) (crypto : Crypto) (w : World)
     (vault asset : Address) (s : Solmate.State Address) : Prop where
-  /-- The vault's address. -/
   self : s.self = vault
-  /-- The share ledger. -/
   shares : RepOn P (view crypto Layout.solmate w vault) s.shares
-  /-- The asset ledger. -/
   asset : RepOn Q (view crypto Layout.solmate w asset) s.asset
-  /-- `afterDepositHookCalledCounter` (slot 7). -/
   afterDeposit : (w.sload vault 7#256).toNat = s.afterDepositCount
-  /-- `beforeWithdrawHookCalledCounter` (slot 6). -/
   beforeWithdraw : (w.sload vault 6#256).toNat = s.beforeWithdrawCount
 
-/-- With every allowance known, `RefinesOn` is `Refines`. -/
 theorem refinesOn_top {crypto : Crypto} {w : World} {vault asset : Address}
     {s : Solmate.State Address} :
     RefinesOn (fun _ _ => True) (fun _ _ => True) crypto w vault asset s ↔
       Refines crypto w vault asset s :=
   ⟨fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩, fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩⟩
 
-/-! ## Storage reads after the writes -/
+/-! ## Each step refines its model operation -/
 
 section Lemmas
 
 variable {crypto : Crypto}
 
-/-- The Solmate `totalSupply` slot. -/
 theorem solmate_totalSupply : Layout.solmate.totalSupply = 2#256 := rfl
 
-/-- `if` with a false condition (a non-deprecated `if_neg`). -/
 theorem ite_neg' {α : Type} {c : Prop} [Decidable c] {a b : α} (h : ¬ c) :
     (if c then a else b) = b := by simp [h]
 
-/-- `if` with a true condition (a non-deprecated `if_pos`). -/
 theorem ite_pos' {α : Type} {c : Prop} [Decidable c] {a b : α} (h : c) :
     (if c then a else b) = a := by simp [h]
 
-/-- `MAXW` is `maxWord`. -/
 theorem MAXW_eq_maxWord : MAXW = maxWord := by decide
 
-/-- A word is `MAXW` iff its value is `MAX`. -/
 theorem eq_MAXW_iff (x : Word) : x = MAXW ↔ x.toNat = MAX := by
   rw [MAXW_eq_maxWord]; exact eq_maxWord_iff x
 
-/-- No balance row hashes to a slot listed in `rows`. -/
 theorem balanceSlot_ne_of_avoids {slots : List Word} (h : KeccakAvoids crypto (AddressKeyed [3#256]) slots)
     (a : Address) {k : Word} (hk : k ∈ slots) : balanceSlot crypto Layout.solmate a ≠ k :=
   mappingSlot_ne_of_avoids h ⟨a, 3#256, by simp, rfl⟩ hk
 
-/-- Writing a fixed slot `k ≠ 2` that no balance row hashes to: the total supply and the balances
-are unchanged, allowances unless their slot is `k`. -/
 theorem repOn_sstore_fixed {w : World} {vault : Address} {k v : Word}
     (hrow : ∀ a, balanceSlot crypto Layout.solmate a ≠ k) (h2 : k ≠ 2#256)
     {P : Address → Address → Prop} {t : Token Address}
@@ -207,13 +164,10 @@ theorem repOn_sstore_fixed {w : World} {vault : Address} {k v : Word}
     rw [World.sload_sstore_ne_key _ _ _ hp.2]
     exact hr.allowance o sp hp.1
 
-/-- Frame of one `SSTORE`. -/
 theorem sload_sstore_of_ne {w : World} {a b : Address} {k k' v : Word} (h : b ≠ a ∨ k' ≠ k) :
     (w.sstore a k v).sload b k' = w.sload b k' :=
   sload_sstore_frame h
 
-
-/-- **The allowance step refines `spendIfNotOwner`.** -/
 theorem spendStep_spec {w : World} {vault owner caller : Address} {amount : Word}
     (ha : caller ≠ owner → AllowanceSlotOk crypto Layout.solmate owner caller)
     {t : Token Address} (hr : Rep (view crypto Layout.solmate w vault) t) :
@@ -266,7 +220,6 @@ theorem spendStep_spec {w : World} {vault owner caller : Address} {amount : Word
           rw [← hal, (eq_maxWord_iff _).1 h]
         · cases ht
 
-/-- **The hook counter step refines `bump`.** -/
 theorem bumpStep_spec {w : World} {vault : Address}
     (hrow : ∀ a, balanceSlot crypto Layout.solmate a ≠ 6#256)
     {P : Address → Address → Prop} {t : Token Address}
@@ -303,7 +256,6 @@ theorem bumpStep_spec {w : World} {vault : Address}
       simp [bumpStep, this]
     · cases hc
 
-/-- **The burn step refines `Token.burn`.** -/
 theorem burnStep_spec {w : World} {vault src : Address} {amount : Word}
     (hown : BalanceSlotOk crypto Layout.solmate src)
     (hrow : ∀ a, balanceSlot crypto Layout.solmate a ≠ 2#256)
@@ -354,7 +306,6 @@ theorem burnStep_spec {w : World} {vault src : Address} {amount : Word}
     · rwa [hb]
     · cases ht
 
-/-- **The payout step refines `Token.transfer`** of the asset, from the vault. -/
 theorem payStep_spec {w : World} {asset vault dst : Address} {amount : Word}
     (hv : BalanceSlotOk crypto Layout.solmate vault)
     (hto : BalanceSlotOk crypto Layout.solmate dst)
@@ -383,7 +334,6 @@ theorem payStep_spec {w : World} {asset vault dst : Address} {amount : Word}
     · rwa [hb]
     · cases hT
 
-/-- `ceilDivN z d ≤ z` for a non-zero divisor. -/
 theorem ceilDivN_le {z d : Nat} (hd : d ≠ 0) : ceilDivN z d ≤ z := by
   unfold ceilDivN
   split
@@ -402,14 +352,12 @@ theorem ceilDivN_le {z d : Nat} (hd : d ≠ 0) : ceilDivN z d ≤ z := by
   · have := Nat.div_le_self z d
     omega
 
-/-- A product that passes Solmate's overflow test fits in a word. -/
 theorem mul_le_of_guard {x y : Nat} (h : ¬ (y ≠ 0 ∧ MAXN / y < x)) : x * y ≤ MAXN := by
   by_cases hy : y = 0
   · subst hy; simp
   · have : x ≤ MAXN / y := by omega
     exact (Nat.le_div_iff_mul_le (Nat.pos_of_ne_zero hy)).1 this
 
-/-- The result of `previewWithdraw` fits in a word. -/
 theorem previewWithdrawN_lt {S T x v : Nat} (hx : x < 2 ^ 256)
     (h : previewWithdrawN S T x = some v) : v < 2 ^ 256 := by
   unfold previewWithdrawN at h
@@ -425,7 +373,6 @@ theorem previewWithdrawN_lt {S T x v : Nat} (hx : x < 2 ^ 256)
       unfold MAXN at h1
       omega
 
-/-- The result of `convertToAssets` fits in a word. -/
 theorem convertToAssetsN_lt {S T x v : Nat} (hx : x < 2 ^ 256)
     (h : convertToAssetsN S T x = some v) : v < 2 ^ 256 := by
   unfold convertToAssetsN at h
@@ -441,11 +388,9 @@ theorem convertToAssetsN_lt {S T x v : Nat} (hx : x < 2 ^ 256)
       unfold MAXN at h1
       omega
 
-/-- `toNat` of `ofNat` of a value that fits. -/
 theorem toNat_ofNat_of_lt {v : Nat} (h : v < 2 ^ 256) : (BitVec.ofNat 256 v).toNat = v := by
   rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
 
-/-- The spent ledger stays well formed. -/
 theorem WF_spendIfNotOwner {t t₁ : Token Address} {caller owner : Address} {v : Nat}
     (hw : t.WF) (h : Solmate.spendIfNotOwner t caller owner v = some t₁) : t₁.WF := by
   unfold Solmate.spendIfNotOwner at h
@@ -462,7 +407,6 @@ section Chains
 variable {crypto : Crypto} {w : World} {vault asset caller receiver owner : Address}
   {s : Solmate.State Address}
 
-/-- The model's total supply and total assets of a represented state are the storage words. -/
 theorem refines_reads (hr : Refines crypto w vault asset s) :
     s.totalSupply = (w.sload vault 2#256).toNat ∧
       s.totalAssets = (w.sload asset (balanceSlot crypto Layout.solmate vault)).toNat := by
@@ -472,14 +416,12 @@ theorem refines_reads (hr : Refines crypto w vault asset s) :
   refine ⟨h1.symm, ?_⟩
   simp only [Solmate.State.totalAssets, hr.self, h2]
 
-/-- `previewWithdraw` of a represented state. -/
 theorem previewWithdraw_of_refines (hr : Refines crypto w vault asset s) (x : Nat) :
     s.previewWithdraw x = previewWithdrawN (w.sload vault 2#256).toNat
       (w.sload asset (balanceSlot crypto Layout.solmate vault)).toNat x := by
   obtain ⟨h1, h2⟩ := refines_reads hr
   simp only [Solmate.State.previewWithdraw, h1, h2, previewWithdrawN, mulDivUpN_eq]
 
-/-- `previewRedeem` of a represented state. -/
 theorem previewRedeem_of_refines (hr : Refines crypto w vault asset s) (x : Nat) :
     s.previewRedeem x = convertToAssetsN (w.sload vault 2#256).toNat
       (w.sload asset (balanceSlot crypto Layout.solmate vault)).toNat x := by
@@ -487,7 +429,6 @@ theorem previewRedeem_of_refines (hr : Refines crypto w vault asset s) (x : Nat)
   simp only [Solmate.State.previewRedeem, Solmate.State.convertToAssets, h1, h2,
     convertToAssetsN, mulDivDownN_eq]
 
-/-- The common tail of `withdraw` and `redeem` after the allowance step: hook, burn, payout. -/
 theorem tail_refines (hr : Refines crypto w vault asset s) (hinv : Solmate.Inv s) (hne : asset ≠ vault)
     (hk : OutSlots crypto vault caller owner receiver) {w₁ : World} {t₁ : Token Address}
     (hr₁ : RepOn (fun o sp => caller = owner ∨ (o = owner ∧ sp = caller) ∨
@@ -573,9 +514,9 @@ theorem tail_refines (hr : Refines crypto w vault asset s) (hinv : Solmate.Inv s
         · rw [hfv, hf₃ _ _ (.inr ⟨(hrow6 owner).symm, by decide⟩)]
           exact hc₂
 
-/-- **`withdraw`: the bytecode's chain refines the model.** From a world refining `s` (with the
-model's invariant), the model's `withdraw` and `withdrawWorld?` succeed together; on success the
-returned words agree and the final world refines the model's final state. -/
+/-- **`withdraw`: the bytecode's chain refines the model.** From a world refining `s` with
+`Solmate.Inv s`, the model's `withdraw` and `withdrawWorld?` succeed together, return the same
+word, and the final world refines the model's final state (`RefinesOn`). -/
 theorem withdrawWorld?_refines (hr : Refines crypto w vault asset s) (hinv : Solmate.Inv s)
     (hne : asset ≠ vault) (hk : OutSlots crypto vault caller owner receiver) (assets : Word) :
     match Solmate.withdraw s caller assets.toNat receiver owner with
@@ -665,33 +606,18 @@ end
 
 section
 
-/-!
-## The internal functions shared by `withdraw` and `redeem`
-
-solc compiles the hook and the burn of Solmate's `ERC4626` once; `withdraw` and `redeem` jump to
-them with a return address:
-
-| internal function | entry | stack | summary | world step |
-|---|---|---|---|---|
-| `beforeWithdraw(assets, shares)` (`MockERC4626`: counter at slot 6, checked `++`) | `0x104b` | `a :: b :: r :: rest` | `bump_wp` | `Out.bumpStep` |
-| `_burn(from, amount)` (checked `balanceOf[from] -= amount`, unchecked `totalSupply -= amount`, `Transfer` log) | `0x105a` | `amount :: from :: r :: rest` | `burn_wp` | `Out.burnStep` |
-
-Both return to `r` with the world of the step, or revert with `Panic(0x11)` (`none`). Memory:
-the hook does not touch it; the panic paths and the burn write scratch space and (the burn's
-log data) one word at the free-memory pointer, so both take solc's memory shapes at their call
-sites (`FmpOk`) and the burn returns `FmpBurnt`.
--/
+/-! ## The internal functions `beforeWithdraw` (`0x104b`) and `_burn` (`0x105a`) -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
-/-- **`beforeWithdraw` (internal, entry `0x104b`, stack `a :: b :: r :: rest`)**:
-`beforeWithdrawHookCalledCounter++` (checked) — returns to `r` with `bumpStep` applied, or
-panics. -/
+/-- **`beforeWithdraw`** (internal, entry `0x104b`, stack `a :: b :: r :: rest`): returns to `r`
+with `bumpStep` applied, or panics. -/
 theorem bump_wp {i : SolmateVault.Immutables} (m : Machine) {a b r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
     (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
@@ -730,9 +656,8 @@ def FmpBurnt (mem : Memory) : Prop :=
   (mem.loadWord 64 = 128#256 ∧ mem.size = 160) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 192)
 
 set_option maxHeartbeats 0 in
-/-- **`_burn(from, amount)` (internal, entry `0x105a`, stack `amount :: from :: r :: rest`)**:
-returns to `r` with `burnStep` applied (and a `Transfer` log), or panics when the balance does
-not cover `amount`. -/
+/-- **`_burn(from, amount)`** (internal, entry `0x105a`, stack `amount :: from :: r :: rest`):
+returns to `r` with `burnStep` applied (and a `Transfer` log), or panics. -/
 theorem burn_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word} {src : Address}
     {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -801,25 +726,15 @@ end
 
 section
 
-/-!
-## The allowance step of `withdraw` and `redeem`
-
-solc inlines `if (msg.sender != owner) { uint256 allowed = allowance[owner][msg.sender];
-if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares; }` into
-each function (the checked subtraction jumps to the shared helper at `0x1385`, whose overflow
-branch panics). `withdrawSpend_wp` (pc `0x0993` → `0x0a00`) and `redeemSpend_wp`
-(pc `0x0a93` → `0x0aff`) summarise the two copies by the world step `Out.spendStep`. Memory: only
-scratch space is written (the two Keccak preimages), so the free-memory pointer and the memory
-size are kept.
--/
+/-! ## The allowance step of `withdraw` and `redeem` (inlined in each function) -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open Examples.Solmate.ERC4626.Out
 
-/-- `CALLER == owner` as the code tests it, for distinct addresses. -/
 theorem eq_ofAddress_of_ne {a b : Address} (h : a ≠ b) :
     Word.eq (Word.ofAddress a) (Word.ofAddress b) = 0#256 :=
   eq_of_ne fun e => h (Word.ofAddress_injective e)
