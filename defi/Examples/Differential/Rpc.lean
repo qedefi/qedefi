@@ -148,6 +148,11 @@ def Rpc.execute (r : Rpc) (chainId : Nat) (sender : Address) (to : Option Addres
   let hash ← match hashJ.getStr? with
     | .ok h => pure h
     | .error _ => fail s!"eth_sendTransaction returned {hashJ.compress}"
+  -- Recent anvil versions answer `eth_sendTransaction` before the automined block is in:
+  -- wait for the receipt before asking for the block and the traces.
+  for _ in [0:1000] do
+    if (← r.call "eth_getTransactionReceipt" (Json.arr #[hash])) != Json.null then break
+    IO.sleep 5
   let rs ← r.batch #[
     ("eth_getTransactionReceipt", Json.arr #[hash]),
     ("eth_getBlockByNumber", Json.arr #["latest", false]),
