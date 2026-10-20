@@ -374,6 +374,32 @@ def closedDecide? (ty : Expr) : MetaM (Option Expr) := do
       (← mkEq (mkApp2 (mkConst ``Decidable.decide) ty inst) (mkConst ``Bool.true))))
   catch _ => return none
 
+/-- `c ≤ gas` / `c < gas` for a closed cost `c`, by `omega` on the gas field itself (whose
+symbolic parts omega treats as atoms, with the context's linear facts). -/
+def gasOmega? (ty gas : Expr) : TacticM (Option Expr) := do
+  let (isLt, c) ← match_expr ty with
+    | LE.le _ _ c _ => pure (false, c)
+    | LT.lt _ _ c _ => pure (true, c)
+    | _ => return none
+  let some cv ← closedNat? c | return none
+  let goal ← if isLt then mkLT (mkNatLit cv) gas else mkLE (mkNatLit cv) gas
+  let g ← mkFreshExprSyntheticOpaqueMVar goal
+  -- only small linear facts over `Nat` (large hypotheses make `omega` slow)
+  let mut drop : Array FVarId := #[]
+  for decl in ← getLCtx do
+    if decl.isImplementationDetail then continue
+    let t ← instantiateMVars decl.type
+    let small := t.approxDepth ≤ 16 && (t.isAppOf ``LE.le || t.isAppOf ``LT.lt)
+    unless small do drop := drop.push decl.fvarId
+  let g' ← g.mvarId!.tryClearMany drop
+  let saved ← getGoals
+  setGoals [g']
+  let ok ← tryTac (withTheReader Core.Context (fun c => { c with maxHeartbeats := 20000000 })
+    (evalTactic (← `(tactic| omega))))
+  setGoals saved
+  unless ok do return none
+  return some (← mkExpectedTypeHint (← instantiateMVars g) ty)
+
 /-- Discharge the hypotheses of an instantiated step lemma. `false` if one fails. -/
 def dischHyps (cfg : Cfg) (m code : Expr) (pc : Nat) (b : UInt8) (stack gas : Expr)
     (xs : Array Expr) : TacticM Bool := do
@@ -448,6 +474,10 @@ def dischHyps (cfg : Cfg) (m code : Expr) (pc : Nat) (b : UInt8) (stack gas : Ex
       x.mvarId!.assign pf
       continue
     | none => trace[EvmLean.wp] "gas: gasFact none for {gas}"
+    -- a closed cost against symbolic gas: `omega` on `c ≤ gas` (no `simp at *`)
+    if let some pf ← gasOmega? ty gas then
+      x.mvarId!.assign pf
+      continue
     -- fall back to the general discharger
     trace[EvmLean.wp] "fast step: fallback discharger for {ty}"
     let g ← mkFreshExprSyntheticOpaqueMVar ty
