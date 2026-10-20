@@ -209,7 +209,9 @@ proxy plus implementation) the token, check its getters against the installed st
 fixed scenario of its quirks, check `balanceOf`/`allowance`/`totalSupply` against reads of the
 documented slots, and run random sequences over its whole ABI (weighted; ether to payable
 functions and fallbacks; ether balances compared for WETH9 and BNB). Details in
-[docs/tokens.md](../docs/tokens.md).
+[docs/tokens.md](../docs/tokens.md). Result of `lake exe difftest --seed 2026 --family all
+--sequences 30 --length 40`: 13,358 transactions (7,924 successful on both sides), **0
+mismatches** over all 11 families (510 s).
 
 A fixed first-depositor scenario runs first (alice deposits 1 wei, donates 10¹⁸, bob
 deposits 2·10¹⁸ − 1, alice redeems): both sides agree; on Solmate alice ends with

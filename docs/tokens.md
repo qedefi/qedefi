@@ -493,3 +493,14 @@ actors (WETH). A fixed scenario per token (mint/approve/transfer/spend; WETH dep
 fallback, transfer, spend, withdraw) is followed by a **storage-layout check**: in evm-lean,
 `balanceOf`, `allowance` and `totalSupply` are called for every actor (pair) and compared with
 reads of the slots derived above.
+
+**Results** (`nice -n 19 lake exe difftest --seed 2026 --family all --sequences 30 --length
+40`): **13,358 transactions** (7,924 successful on both sides) over the 3 vault and 8 token
+families, **0 mismatches**, 510 s; every fixed scenario and layout check agrees. The random
+sequences reached the quirks: USDT `deprecate` succeeded 14 times (followed by forwarded
+calls to code-less or self addresses), `pause` 13, `setParams` 4 (plus the `usdtfee`
+genesis), `destroyBlackFunds` 2; AMPL `rebase` 16, a successful `upgradeTo` by the admin;
+WETH9 189 deposits, 77 fallback deposits, 115 withdrawals; BNB 63 phantom/fallback calls. An
+earlier run (`--seed 2026 --family oz3,tokens --sequences 40 --length 40`, before the
+mainnet weird tokens): 6,445 transactions, 0 mismatches. No evm-lean discrepancy was found.
+
