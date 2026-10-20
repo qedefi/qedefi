@@ -105,6 +105,8 @@ import EvmLeanSpecs.Refinement.MalformedAsset
 import EvmLeanSpecs.Refinement.MalformedCalldata
 import EvmLeanSpecs.Refinement.NestedCoverage
 import EvmLeanSpecs.Refinement.LowGas
+import EvmLeanSpecs.Refinement.LowGasMono
+import EvmLeanSpecs.Refinement.LowGasFrames
 
 /-!
 # EvmLeanSpecs

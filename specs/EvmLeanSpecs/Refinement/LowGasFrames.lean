@@ -1,5 +1,6 @@
 import EvmLeanSpecs.Refinement.LowGasMono
 import EvmLeanSpecs.Refinement.NestedCoverage
+import EvmLeanSpecs.Refinement.NestedInvariants
 
 /-!
 # Low gas: the Solmate frames are gas-monotone
@@ -29,7 +30,9 @@ would be covered with more gas (`Covered` of `topBump G m`) satisfies its frame 
 namespace EvmLeanSpecs.Refinement.LowGas
 
 open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Contracts EvmLean.Program.GasMono
-open EvmLean.Program.Nested (bump)
+open EvmLean.Solidity
+open EvmLean.Program.Nested (bump Reaches Danger)
+open EvmLeanSpecs.Vault EvmLeanSpecs.Refinement.Lift
 open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
 
 /-! ## The frames -/
@@ -154,5 +157,61 @@ theorem frameOk_of_topBump {crypto : Crypto} {vault asset : Address} {Act : List
   rcases high_of_vaultStart hv hdep hG hG' with hS | hS
   · exact key (vaultHigh_mono hA hV) hS
   · exact key (assetHigh_mono hA) hS
+
+/-! ## Covered at some gas -/
+
+/-- **Covered at some gas**: with some gas `G ≥` its own (below `2⁶⁴`), the same frame would be
+covered (`Covered`, which asks for at least `minGas`). Every frame of the vault or the asset is
+covered at some gas unless it fails for a reason other than gas (value with less than 100 gas
+excepted, these are covered by `Covered` itself). -/
+def CoveredAtSomeGas (vault asset : Address) (minGas : Nat) (m : Machine) : Prop :=
+  ∃ G, m.frame.gasLeft ≤ G ∧ G < 2 ^ 64 ∧ Covered vault asset minGas (topBump G m)
+
+/-- **The frame summary of a frame covered at some gas**, for any gas of its own. -/
+theorem frameOk_of_coveredAtSomeGas {crypto : Crypto} {vault asset : Address}
+    {Act : List Address} {K : VCall → Prop} {minGas : Nat} (hA : AssetCallsPrecompile)
+    (hV : VaultCallsAsset vault asset) (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {m : Machine} (hv : VaultStart vault asset m)
+    {ko ks : Nat} (hkind : m.frame.kind = .call ko ks)
+    (hdep : Deployed m.world vault asset) (hinv : Solmate.Inv (abs crypto m.world vault asset))
+    (hcr : m.ctx.crypto = crypto) (hc : CoveredAtSomeGas vault asset minGas m)
+    (hadm : FrameAdmitted crypto vault asset Act K m) : FrameOk crypto vault asset Act K m := by
+  obtain ⟨G, hG, hG64, hcov⟩ := hc
+  refine frameOk_of_topBump hA hV hv hdep hkind hG (Nat.lt_of_lt_of_le hG64 (by decide)) ?_
+  have hgas : (topBump G m).frame.gasLeft < 2 ^ 64 := by
+    simp only [topBump, bump_frame, bumpF]; omega
+  exact frameOk_of_covered hmin hk hs (hv.topBump hG) hdep hinv hcr hgas hcov
+    ⟨fun c hx => hadm.calls c ⟨hx.caller, hx.target, hx.data⟩,
+      fun c hx => hadm.permits c (by cases c <;> exact hx)⟩
+
+/-- A transaction whose vault/asset frames are covered at some gas. -/
+def TxOkAtSomeGas (vault asset : Address) (minGas : Nat) (Act : List Address) (K : VCall → Prop)
+    (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
+  ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m →
+    (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
+    CoveredAtSomeGas vault asset minGas m ∧ FrameAdmitted ctx.crypto vault asset Act K m
+
+/-- **One transaction, frames covered at some gas** (given the call-target hypotheses). -/
+theorem follows_tx_atSomeGas {crypto : Crypto} {vault asset : Address} {Act : List Address}
+    {K : VCall → Prop} {minGas : Nat} (hA : AssetCallsPrecompile)
+    (hV : VaultCallsAsset vault asset) (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ w : World} (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (hw : Follows crypto vault asset Act K w₀ w) {ctx : Context} {tr : TransientStorage}
+    {msg : Message} {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hmsg : EvmLean.Program.Nested.TopOk (Prot vault asset) w msg)
+    (hok : TxOkAtSomeGas vault asset minGas Act K ctx w tr msg)
+    (hr : processMessageCall fuel ctx w tr msg = .ok r) :
+    Follows crypto vault asset Act K w₀ r.world := by
+  refine processMessageCall_follows hs hinv hw hdeleg hmsg (le_refl _) (fun m hm hd hp => ?_) hr
+  have hv := DangerStart.vaultStart hd
+  have hwm : Follows crypto vault asset Act K w₀ m.world := goodOk.keep _ _ hd.snapshot hd.keep
+  have hcr' : m.ctx.crypto = crypto := by rw [hm.ctx]; exact hcr
+  obtain ⟨ko, ks, hf⟩ := hd.fresh
+  have hkind : m.frame.kind = .call ko ks := by rw [hf]; rfl
+  exact frameOk_of_coveredAtSomeGas hA hV hmin hk hs hv hkind hwm.1 (hwm.inv hs hinv) hcr'
+    (hok m hm hv hp).1 (hcr ▸ (hok m hm hv hp).2)
 
 end EvmLeanSpecs.Refinement.LowGas

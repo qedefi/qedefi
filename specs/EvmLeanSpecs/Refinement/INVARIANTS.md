@@ -344,21 +344,30 @@ now covered (`covered_of_funded`), except:
   - Proved (`EvmLeanProofs/Program/NestedExtraGas.lean`, `exec_bump`): **every instruction
     except `GAS`, `CALL*`, `CREATE*` commutes with adding gas** — a successful instruction
     succeeds identically with more gas (one theorem for all opcodes, via a total-WP calculus).
-  - Missing: the frame-level lockstep. In this bytecode every `GAS` is immediately followed by
-    `CALL`/`STATICCALL` (vault offsets 1231, 3437, 3955, 4325; asset 1630; the metadata after
-    vault offset 5215 holds no jump destination, so it is unreachable), so a child gets
-    monotonically more gas and the simulation could continue through calls — but the lockstep
-    argument must know **which code the children run** (the vault calls only the asset, whose
-    address is a stack value at the call sites) and that **a failed child call makes the frame
-    fail** (the post-call code computes `and(…, success)` and reverts, at five call sites; with
-    arbitrary memory and return data, so with symbolic memory-expansion costs). Both are facts
-    about the paths the code takes, which today only the symbolic-execution proofs know: a
-    path-agnostic simulation cannot supply them. The remaining routes are (a) an out-of-gas
-    tolerant variant of `pwp_step` (split on each step's gas condition; the failing branch is an
-    exceptional halt, provable per opcode with the `Wp` calculus) and re-running the frame
-    proofs with it, adding the child-failure branches of `totalAssets`, `safeTransferFrom`,
-    `safeTransfer`; or (b) instrumenting the frame proofs to record the call targets and
-    executed opcodes so that the lockstep simulation applies.
+  - Proved (`EvmLeanProofs/Program/GasMono/`): **the frame-level lockstep**. `monoFrom_of_code`:
+    a frame whose code satisfies `CodeOk` (`GasFeedsCall`, `RegionOk`, `CallsFed`: every
+    `CALL`/`CREATE`-family byte follows a `GAS`, and `FailureReverts` at every call return point)
+    and whose children are precompile calls or gas-monotone frames (`CallsTo S'`,
+    `MonoFrom S'`) is gas-monotone (`MonoFrom`): with less gas it fails, or ends with the same
+    outcome, world, transient storage, substate and output (`Post`). The run followed is the
+    high-gas frame's real end (`Exit`, `exit_of_halts_top`: at the top level every `Halts`
+    witness agrees with it); the call macro-step is `execCall_*_mono` (EIP-150 forwarding is
+    monotone, `mcg_mono`), precompiles are gas-monotone (`preMono_standard`).
+    `halts_world_of_mono`: a summary `Halts (topBump G m) (success → P world)` transfers to `m`.
+  - Instantiated (`LowGasMono.lean`, `LowGasFrames.lean`): `vault_codeOk`, `asset_codeOk` (all
+    code conditions, arbitrary immutables); `frameOk_of_topBump`: `FrameOk` of the same frame with
+    gas `G ≥` its own gives `FrameOk` of the frame; `follows_tx_atSomeGas`: one transaction whose
+    vault/asset frames are covered *at some gas* (`CoveredAtSomeGas`: `Covered` of the frame with
+    more gas) keeps `Follows`.
+  - Missing: the call-target hypotheses `AssetCallsPrecompile` (the asset's only call, in
+    `permit`, goes to the `ECRECOVER` precompile) and `VaultCallsAsset vault asset` (the vault's
+    calls go to the asset's code or a precompile). They are path facts (the target is a stack
+    value, at 3955/4325 a parameter of the internal `SafeTransferLib` functions). An
+    explicit-state abstract interpretation of the two codes (constants for jump targets, the
+    asset immutable and the `1` of `ecrecover`, everything else unknown, exact stack depth)
+    terminates (≈6600 abstract states for the vault, ≈3000 for the asset, no unresolved jump)
+    and resolves every call target, so a kernel-checked certificate of it, plus the fact that
+    no step changes the code of an account that holds code, would discharge them.
 * **`DOMAIN_SEPARATOR()` and `permit` outside `DomainOk`**: on a chain other than the token's
   deployment chain, with a name of 32 bytes or more (the out-of-place encoding loop of
   `abi_encode_t_string_storage` is not verified); `permit` with `0x01` EIP-7702-delegated.
