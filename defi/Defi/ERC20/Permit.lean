@@ -23,7 +23,7 @@ operation. Whether a permit is valid is **not** decided here: it depends on the 
 timestamp, chain id), on the token's domain separator and on the signature scheme. The
 operation takes it as a predicate `valid` of the owner's current nonce; the refinement layer
 instantiates it with the exact check the bytecode performs, for an arbitrary `Crypto`
-(`EvmLeanSpecs.Refinement.Permit.PermitValid`). The nonce increment is unchecked in the
+(`Examples.Solmate.ERC20.Permit.PermitValid`). The nonce increment is unchecked in the
 source (`nonces[owner]++` inside `unchecked`), so it wraps modulo `2²⁵⁶` here as well; it is
 `+ 1` for every nonce below `MAX` (`permit_nonce_of_lt`).
 
@@ -32,7 +32,8 @@ The other operations of the token leave the nonces unchanged (`liftOp`).
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.ERC20
+open Defi.Math
 
 open Finsupp
 
@@ -44,6 +45,7 @@ structure PermitToken (A : Type) where
   nonces : A →₀ ℕ
 
 namespace PermitToken
+open Defi.Math
 
 variable {A : Type} [DecidableEq A]
 
@@ -98,4 +100,4 @@ theorem permit_nonces_ne {s s' : PermitToken A} {owner spender : A} {value : ℕ
 
 end PermitToken
 
-end EvmLeanSpecs.Vault
+end Defi.ERC20

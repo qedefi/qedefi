@@ -15,7 +15,7 @@ functions of the compiled vault (immutables `i`), summarised here once for both:
 * `mintShares_wp`: Solmate `ERC20._mint(to, amount)` (entry `0x0fdc`, stack
   `amount :: to :: r :: rest`): `totalSupply += amount` (checked: on overflow `Panic(0x11)`),
   `balanceOf[to] += amount` (unchecked), `emit Transfer(0, to, amount)` (the topic is
-  `CODECOPY`d); the world is `mintWorld` (shared with the asset's `mint`, `AssetMint`);
+  `CODECOPY`d); the world is `mintWorld` (shared with the asset's `mint`, `Examples.Solmate.ERC20.MintBurn`);
 * `afterDeposit_wp`: `MockERC4626.afterDeposit` (entry `0x1033`): the checked
   `afterDepositHookCalledCounter++` (slot 7); the world is `bumpWorld`.
 
@@ -26,10 +26,11 @@ Both work on memory in the shape `FmpAfterTransfer` (free pointer `0x80` / `0xa0
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- The `asset` immutable, as the `PUSH32` at `0x07dd` (in `deposit`) reads it. -/
 theorem readBytes_code_asset2014 (i : SolmateVault.Immutables) :
@@ -141,7 +142,7 @@ theorem afterDeposit_wp {i : SolmateVault.Immutables} (m : Machine) {x y r : Wor
     · pwp_steps [hsize]
       exact ⟨he, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -173,16 +174,17 @@ of the counter all succeed, the world after the three writes represents the mode
   slot or a hook-counter slot. Writing slot 2 (or 7) changes the balance of every address whose
   balance slot is 2 (or 7), and the share view must keep *every* balance; writing the
   receiver's balance must not change counter 6. One target against `2¹⁶⁰` candidates each:
-  plausible (see `EvmLeanProofs.Solidity.Keccak`).
+  plausible (see `EvmLogic.Solidity.Keccak`).
 * `Token.WF` of both ledgers (`Solmate.Inv`): the unchecked `balanceOf[receiver] += shares`
   does not wrap.
 * the vault and the asset are different accounts.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## The conversions fit in a word -/
 
@@ -324,13 +326,13 @@ theorem bump_none_iff {n : ℕ} : Solmate.bump n = none ↔ n + 1 = 2 ^ 256 ∨ 
 `assets` and minting `shares`. -/
 def depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Address)
     (assets shares : Word) : World :=
-  bumpWorld (mintWorld crypto (Erc20.transferFromWorld crypto w asset vault caller vault assets)
+  bumpWorld (mintWorld crypto (ERC20.transferFromWorld crypto w asset vault caller vault assets)
     vault receiver shares) vault
 
 /-- The share allowances known after `deposit` / `mint` for `receiver`: those whose slot is
 none of the written slots (2, the receiver's balance slot, 7). -/
 def DepositAllowances (crypto : Crypto) (receiver : Address) (o sp : Address) : Prop :=
-  MintAllowances crypto receiver o sp ∧ Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ 7#256
+  MintAllowances crypto receiver o sp ∧ ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 7#256
 
 /-- The fixed-slot hypothesis, restricted. -/
 theorem KeccakAvoids.sub {crypto : Crypto} {S : ByteArray → Prop} {l l' : List Word}
@@ -340,9 +342,9 @@ theorem KeccakAvoids.sub {crypto : Crypto} {S : ByteArray → Prop} {l l' : List
 /-- No balance slot is one of the fixed slots `2, 6, 7`. -/
 theorem balanceSlot_ne_fixed {crypto : Crypto}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) (a : Address) :
-    Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 2#256 ∧
-      Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 6#256 ∧
-      Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 7#256 :=
+    ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 2#256 ∧
+      ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 6#256 ∧
+      ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 7#256 :=
   ⟨mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp),
     mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp),
     mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp)⟩
@@ -350,8 +352,8 @@ theorem balanceSlot_ne_fixed {crypto : Crypto}
 /-- `transferFrom` on the asset changes no slot of another account. -/
 theorem sload_transferFromWorld_ne {crypto : Crypto} {w : World} {token sp src dst b : Address}
     {v : Word} (hb : b ≠ token) (k : Word) :
-    (Erc20.transferFromWorld crypto w token sp src dst v).sload b k = w.sload b k := by
-  simp only [Erc20.transferFromWorld]
+    (ERC20.transferFromWorld crypto w token sp src dst v).sload b k = w.sload b k := by
+  simp only [ERC20.transferFromWorld]
   rw [Shares.sload_transferWorld (.inl hb), Shares.sload_spendWorld (.inl hb)]
 
 /-- `bumpWorld` writes only slot 7 of the vault. -/
@@ -371,18 +373,18 @@ theorem sload_depositWorld {crypto : Crypto} {w : World} {vault asset caller rec
 theorem code_depositWorld (crypto : Crypto) (w : World) (vault asset caller receiver : Address)
     (assets shares : Word) (b : Address) :
     (depositWorld crypto w vault asset caller receiver assets shares).code b = w.code b := by
-  simp [depositWorld, bumpWorld, mintWorld, Erc20.transferFromWorld, Erc20.transferWorld,
-    EvmLean.Solidity.Erc20.transferWorld, Erc20.spendWorld]
+  simp [depositWorld, bumpWorld, mintWorld, ERC20.transferFromWorld, ERC20.transferWorld,
+    EvmLogic.Solidity.ERC20.transferWorld, ERC20.spendWorld]
   split <;> simp
 
 /-- **The world after `deposit` / `mint` represents the model's new state.** -/
 theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller receiver : Address}
     (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs crypto w vault asset)) {assets shares : Word}
     {t' sh : Token Address} {c : ℕ}
     (ht : (abs crypto w vault asset).asset.transferFrom vault caller vault assets.toNat = some t')
@@ -392,16 +394,16 @@ theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller
       crypto (depositWorld crypto w vault asset caller receiver assets shares) vault asset
       { abs crypto w vault asset with asset := t', shares := sh, afterDepositCount := c } := by
   obtain ⟨h2, h6, h7⟩ := balanceSlot_ne_fixed hk receiver
-  set w₁ := Erc20.transferFromWorld crypto w asset vault caller vault assets
+  set w₁ := ERC20.transferFromWorld crypto w asset vault caller vault assets
   set w₂ := mintWorld crypto w₁ vault receiver shares
   have hv₁ : ∀ k, w₁.sload vault k = w.sload vault k := sload_transferFromWorld_ne hne
   refine ⟨rfl, ?_, ?_, ?_, ?_⟩
   · -- shares: the mint on the vault's view, then the counter write
-    have hr₁ : Rep (Erc20.view crypto Erc20.Layout.solmate w₁ vault)
+    have hr₁ : Rep (ERC20.view crypto ERC20.Layout.solmate w₁ vault)
         (abs crypto w vault asset).shares := by
-      have : Erc20.view crypto Erc20.Layout.solmate w₁ vault =
-          Erc20.view crypto Erc20.Layout.solmate w vault := by
-        simp only [Erc20.view, hv₁]
+      have : ERC20.view crypto ERC20.Layout.solmate w₁ vault =
+          ERC20.view crypto ERC20.Layout.solmate w vault := by
+        simp only [ERC20.view, hv₁]
       rw [this]; exact rep_toToken _
     have hrep := repOn_mintWorld (amount := shares) (KeccakAvoids.sub hk (by simp)) hbr hr₁ hinv.2 hm
     refine ⟨?_, fun a => ?_, fun o sp hp => ?_⟩
@@ -412,19 +414,19 @@ theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller
     · show ((bumpWorld w₂ vault).sload vault _).toNat = _
       rw [sload_bumpWorld (.inr hp.2)]; exact hrep.allowance o sp hp.1
   · -- asset: the `transferFrom` writes; the vault's writes are elsewhere
-    have hr := rep_toToken (Erc20.view crypto Erc20.Layout.solmate w asset)
+    have hr := rep_toToken (ERC20.view crypto ERC20.Layout.solmate w asset)
     obtain ⟨s', hms⟩ := Option.isSome_iff_exists.1
       ((transferFrom_isSome_iff hr vault caller vault assets).2 (by simp [abs, tokenView] at ht ⊢; simp [ht]))
-    obtain ⟨e1, e2, e3, -⟩ := Erc20.view_transferFromWorld hbc hbv ha hms
+    obtain ⟨e1, e2, e3, -⟩ := ERC20.view_transferFromWorld hbc hbv ha hms
     have hrep := rep_transferFrom hr hinv.1 hms ht
-    have hview : Erc20.view crypto Erc20.Layout.solmate
+    have hview : ERC20.view crypto ERC20.Layout.solmate
         (depositWorld crypto w vault asset caller receiver assets shares) asset =
-        Erc20.view crypto Erc20.Layout.solmate w₁ asset := by
+        ERC20.view crypto ERC20.Layout.solmate w₁ asset := by
       have hs : ∀ k, (depositWorld crypto w vault asset caller receiver assets shares).sload
           asset k = w₁.sload asset k := fun k => by
         simp only [depositWorld]
         rw [sload_bumpWorld (.inl hne.symm), sload_mintWorld (.inl hne.symm)]
-      simp only [Erc20.view, hs]
+      simp only [ERC20.view, hs]
     rw [hview]
     exact RepOn.of_eq e1 e2 (fun o sp hp => e3 o sp hp.1.1 hp.1.2 hp.2) hrep
   · -- the counter
@@ -447,12 +449,13 @@ theorem refinesOn_depositWorld {crypto : Crypto} {w : World} {vault asset caller
       hv₁]
     rfl
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 variable {crypto : Crypto} {w : World} {vault asset caller receiver : Address} {v : ℕ}
 
@@ -473,10 +476,10 @@ theorem bump_some (h : (w.sload vault 7#256).toNat + 1 < 2 ^ 256) :
 succeeds with the same shares, and `depositWorld` represents its result. -/
 theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs crypto w vault asset))
     (hpv : (abs crypto w vault asset).previewDeposit assets.toNat = some v) (hv0 : v ≠ 0)
     (hvlt : v < 2 ^ 256)
@@ -497,10 +500,10 @@ theorem deposit_post_some {assets : Word} {t' : Token Address} (hne : vault ≠ 
 succeeds with the same assets, and `depositWorld` represents its result. -/
 theorem mint_post_some {shares : Word} {t' : Token Address} (hne : vault ≠ asset)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs crypto w vault asset))
     (hpv : (abs crypto w vault asset).previewMint shares.toNat = some v) (hvlt : v < 2 ^ 256)
     (hT : (abs crypto w vault asset).asset.transferFrom vault caller vault v = some t')
@@ -516,7 +519,7 @@ theorem mint_post_some {shares : Word} {t' : Token Address} (hne : vault ≠ ass
   have hvn : (BitVec.ofNat 256 v).toNat = v := by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hvlt]
   exact refinesOn_depositWorld hne hk hbc hbv hbr ha hinv (by rw [hvn]; exact hT) hm hb
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -540,14 +543,15 @@ return encoder; each revert point is matched with the model step that fails
 (`deposit_none_*`), and the success case with `deposit_post_some`.
 
 Hypotheses beyond `ViewPre`: the vault is not the asset; the hash hypotheses of
-`DepositModel` (fresh balance slots of caller, vault, receiver; fresh `allowance[caller][vault]`
+`Examples.Solmate.ERC4626.Deposit` (fresh balance slots of caller, vault, receiver; fresh `allowance[caller][vault]`
 of the asset; no balance slot is 2, 6 or 7); `Solmate.Inv` of the model state.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- How a call of `deposit` / `mint` ends, by cases on the model's result `r`: on `some (s', v)`
 it returns the ABI word of `v`, the world is `W v`, and the world represents `s'` (allowances of
@@ -568,10 +572,10 @@ theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
     (hd : TwoWordCall m.frame.msg.data 0x6e553f65 assets (Word.ofAddress receiver))
     (hne : m.frame.msg.currentTarget ≠ i.asset)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)
-    (hbv : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.currentTarget)
-    (hbr : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller
+    (hbc : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)
+    (hbv : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.currentTarget)
+    (hbr : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller
       m.frame.msg.currentTarget)
     (hinv : Solmate.Inv (absOf i.asset m)) :
     Halts m (EntryPost m i.asset (DepositAllowances m.ctx.crypto receiver)
@@ -632,7 +636,7 @@ theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
     rintro m2 - ⟨t', hT, hrepA, mem2, g2, rd2, sub2, rfl, hmem2, hg2⟩
     simp only [Machine.resumeWith, BitVec.reduceToNat] at hg2 ⊢
     pwp_run_to 0xfdc
-    have hS : (Erc20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
+    have hS : (ERC20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
         m_msg.currentTarget assets).sload m_msg.currentTarget 2#256 =
         m_world.sload m_msg.currentTarget 2#256 := sload_transferFromWorld_ne hne _
     have hvn : (BitVec.ofNat 256 v).toNat = v := by
@@ -651,7 +655,7 @@ theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
     rw [hS, hvn] at hov
     rcases hmem3 with ⟨hfmp3, hsz3⟩ | ⟨hfmp3, hsz3⟩ <;>
     · pwp_run_to 0x1033 [hfmp3, hsz3]
-      have h7w : (mintWorld m_ctx.crypto (Erc20.transferFromWorld m_ctx.crypto m_world i.asset
+      have h7w : (mintWorld m_ctx.crypto (ERC20.transferFromWorld m_ctx.crypto m_world i.asset
           m_msg.currentTarget m_msg.caller m_msg.currentTarget assets) m_msg.currentTarget receiver
           (BitVec.ofNat 256 v)).sload m_msg.currentTarget 7#256 =
           m_world.sload m_msg.currentTarget 7#256 := by
@@ -681,7 +685,7 @@ theorem deposit_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre
       subst hr
       exact ⟨rfl, rfl, hR⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -697,10 +701,11 @@ returns the ABI word of `assets`, the world is `depositWorld` and represents `s'
 it reverts. Same hypotheses as `deposit_refines`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
 /-- **`mint(shares, receiver)` refines `Solmate.mint`**, in any frame. -/
@@ -710,10 +715,10 @@ theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i 
     (hd : TwoWordCall m.frame.msg.data 0x94bf804d shares (Word.ofAddress receiver))
     (hne : m.frame.msg.currentTarget ≠ i.asset)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)
-    (hbv : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.currentTarget)
-    (hbr : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller
+    (hbc : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)
+    (hbv : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.currentTarget)
+    (hbr : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller
       m.frame.msg.currentTarget)
     (hinv : Solmate.Inv (absOf i.asset m)) :
     Halts m (EntryPost m i.asset (DepositAllowances m.ctx.crypto receiver)
@@ -764,7 +769,7 @@ theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i 
   simp only [Machine.resumeWith, BitVec.reduceToNat] at hg2 ⊢
   rw [hvn] at hT
   pwp_run_to 0xfdc
-  have hS : (Erc20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
+  have hS : (ERC20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
       m_msg.currentTarget (BitVec.ofNat 256 v)).sload m_msg.currentTarget 2#256 =
       m_world.sload m_msg.currentTarget 2#256 := sload_transferFromWorld_ne hne _
   refine WP.bind_mono (mintShares_wp _ rfl hj hstatic rfl rfl (by simp) (by pjumpdest_disch)
@@ -781,7 +786,7 @@ theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i 
   rw [hS] at hov
   rcases hmem3 with ⟨hfmp3, hsz3⟩ | ⟨hfmp3, hsz3⟩ <;>
   · pwp_run_to 0x1033 [hfmp3, hsz3]
-    have h7w : (mintWorld m_ctx.crypto (Erc20.transferFromWorld m_ctx.crypto m_world i.asset
+    have h7w : (mintWorld m_ctx.crypto (ERC20.transferFromWorld m_ctx.crypto m_world i.asset
         m_msg.currentTarget m_msg.caller m_msg.currentTarget (BitVec.ofNat 256 v)) m_msg.currentTarget
         receiver shares).sload m_msg.currentTarget 7#256 =
         m_world.sload m_msg.currentTarget 7#256 := by
@@ -812,7 +817,7 @@ theorem mint_refines {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i 
     exact ⟨rfl, rfl, hR⟩
 
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -836,10 +841,11 @@ They are `deposit_refines` / `mint_refines` (frame form) at the start machine, t
 `entry_call` (as `view_call` and `out_call` do for the views and withdraw/redeem).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- What a top-level `deposit` / `mint` returns, against the model's result `r`: on
 `some (s', v)` success with the ABI word of `v`, the world `W v`, representing `s'`; on `none`
@@ -906,10 +912,10 @@ theorem deposit_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 250000 ≤ gas)
     (hgas' : gas < 2 ^ 64) {receiver : Address}
     (hk : KeccakAvoids ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk ctx.crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs ctx.crypto w vault asset)) (assets : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (w.code vault) vault caller
@@ -934,10 +940,10 @@ theorem mint_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 250000 ≤ gas)
     (hgas' : gas < 2 ^ 64) {receiver : Address}
     (hk : KeccakAvoids ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk ctx.crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs ctx.crypto w vault asset)) (shares : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (w.code vault) vault caller
@@ -956,6 +962,6 @@ theorem mint_call (hdep : Deployed w vault asset)
     rfl hgas (twoWordCall_encodeCall' (by decide) shares _) hne.symm hk hbc hbv hbr ha hinv
   exact entry_call hdeleg (hdep.vaultNotPrecompile _) hm
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

@@ -25,17 +25,18 @@ and returns nothing. For the deployed asset (any immutables), in any non-static 
 Writing the `totalSupply` slot 2 changes the balance of every address whose balance slot is 2,
 so the model-level theorem needs that **no balance slot is slot 2**:
 `KeccakAvoids crypto (AddressKeyed [3]) [2]` (one target against `2¹⁶⁰` candidates; plausible,
-see `EvmLeanProofs.Solidity.Keccak`). Without it the refinement is false (a `Crypto` with such a
+see `EvmLogic.Solidity.Keccak`). Without it the refinement is false (a `Crypto` with such a
 collision makes the ledger view double-count the minted amount). Plus `BalanceSlotOk` of the
 recipient and `Token.WF` (the unchecked addition does not wrap).
 -/
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## Word lemmas: the checked addition -/
 
@@ -61,13 +62,13 @@ theorem gt_add_self_of_le {x y : Word} (h : 2 ^ 256 ≤ x.toNat + y.toNat) :
 /-- The world after a successful `mint(dst, amount)`: `totalSupply += amount`, then
 `balanceOf[dst] += amount` (reading the updated storage), in the order the code does it. -/
 def mintWorld (crypto : Crypto) (w : World) (token dst : Address) (amount : Word) : World :=
-  let st := Erc20.balanceSlot crypto Erc20.Layout.solmate dst
+  let st := ERC20.balanceSlot crypto ERC20.Layout.solmate dst
   let w₁ := w.sstore token 2#256 (amount + w.sload token 2#256)
   w₁.sstore token st (amount + w₁.sload token st)
 
 /-- `mint` writes only the `totalSupply` slot and the balance slot of the recipient. -/
 theorem sload_mintWorld {crypto : Crypto} {w : World} {token dst b : Address} {amount k : Word}
-    (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ Erc20.balanceSlot crypto Erc20.Layout.solmate dst)) :
+    (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate dst)) :
     (mintWorld crypto w token dst amount).sload b k = w.sload b k := by
   simp only [mintWorld]
   rw [sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.2),
@@ -150,29 +151,29 @@ theorem mint_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
 hypothesis). -/
 theorem balanceSlot_ne_two {crypto : Crypto}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256]) (a : Address) :
-    Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 2#256 :=
+    ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 2#256 :=
   mappingSlot_ne_of_avoids hk ⟨a, 3#256, by simp, rfl⟩ (by simp)
 
 /-- The allowance predicate of a `mint`'s result: entries whose slot is neither written slot. -/
 def MintAllowances (crypto : Crypto) (dst : Address) (o sp : Address) : Prop :=
-  Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ 2#256 ∧
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠
-      Erc20.balanceSlot crypto Erc20.Layout.solmate dst
+  ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 2#256 ∧
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.balanceSlot crypto ERC20.Layout.solmate dst
 
 /-- **`mintWorld` represents `Token.mint`**: on a well-formed ledger, when the model's `mint`
 succeeds, the storage view after the two writes represents its result (allowances on
 `MintAllowances`). -/
 theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amount : Word}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
-    (hd : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate dst)
-    {t t' : Token Address} (hr : Rep (Erc20.view crypto Erc20.Layout.solmate w token) t)
+    (hd : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate dst)
+    {t t' : Token Address} (hr : Rep (ERC20.view crypto ERC20.Layout.solmate w token) t)
     (hw : t.WF) (ht : t.mint dst amount.toNat = some t') :
     RepOn (MintAllowances crypto dst)
-      (Erc20.view crypto Erc20.Layout.solmate (mintWorld crypto w token dst amount) token) t' := by
+      (ERC20.view crypto ERC20.Layout.solmate (mintWorld crypto w token dst amount) token) t' := by
   obtain ⟨hov, rfl⟩ := Token.mint_eq_some.1 ht
   have hd2 := balanceSlot_ne_two hk dst
   have hts : (w.sload token 2#256).toNat = t.totalSupply := hr.totalSupply
-  have hbal : (w.sload token (Erc20.balanceSlot crypto Erc20.Layout.solmate dst)).toNat =
+  have hbal : (w.sload token (ERC20.balanceSlot crypto ERC20.Layout.solmate dst)).toNat =
       t.balanceOf dst := hr.balanceOf dst
   have hle := Token.balanceOf_le_totalSupply hw dst
   have hM : MAX < 2 ^ 256 := by unfold MAX; omega
@@ -185,7 +186,7 @@ theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amo
     omega
   · -- the balances
     show ((mintWorld crypto w token dst amount).sload token
-      (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat = _
+      (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat = _
     dsimp only
     rw [Token.add_single_apply]
     by_cases ha : dst = a
@@ -196,11 +197,11 @@ theorem repOn_mintWorld {crypto : Crypto} {w : World} {token dst : Address} {amo
       omega
     · simp only [ha, ↓reduceIte]
       rw [sload_mintWorld (.inr ⟨balanceSlot_ne_two hk a,
-        Erc20.balanceSlot_ne hd (Ne.symm ha)⟩)]
+        ERC20.balanceSlot_ne hd (Ne.symm ha)⟩)]
       exact hr.balanceOf a
   · -- the allowances off the written slots
     show ((mintWorld crypto w token dst amount).sload token
-      (Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp)).toNat = _
+      (ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp)).toNat = _
     rw [sload_mintWorld (.inr hp)]
     exact hr.allowance o sp trivial
 
@@ -212,12 +213,12 @@ theorem assetMint_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0x40c10f19 (Word.ofAddress dst) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256])
-    (hdst : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate dst)
+    (hdst : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate dst)
     {t : Token Address} (hr : Rep (assetView m) t) (hw : t.WF) :
     match t.mint dst amount.toNat with
     | some t' => Halts m (fun mf o => MintOk dst amount m mf o ∧
         RepOn (MintAllowances m.ctx.crypto dst)
-          (Erc20.view m.ctx.crypto Erc20.Layout.solmate mf.world m.frame.msg.currentTarget) t')
+          (ERC20.view m.ctx.crypto ERC20.Layout.solmate mf.world m.frame.msg.currentTarget) t')
     | none => Halts m (Reverts 10000 m) := by
   have hts : (m.world.sload m.frame.msg.currentTarget 2#256).toNat = t.totalSupply :=
     hr.totalSupply
@@ -237,7 +238,7 @@ theorem assetMint_refines {ia : SolmateAsset.Immutables} (m : Machine)
       · cases hT
     exact mint_halts_revert m hf hval hd hsz (by omega) (by rw [hts]; unfold MAX at hov; omega)
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -267,23 +268,24 @@ Hypotheses as for `mint` (`AssetMint.lean`): no balance slot is the `totalSupply
 (the unchecked subtraction from the supply does not wrap).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-! ## The world -/
 
 /-- The world after a successful `burn(src, amount)`: `balanceOf[src] -= amount`, then
 `totalSupply -= amount` (reading the updated storage), in the order the code does it. -/
 def burnWorld (crypto : Crypto) (w : World) (token src : Address) (amount : Word) : World :=
-  let ss := Erc20.balanceSlot crypto Erc20.Layout.solmate src
+  let ss := ERC20.balanceSlot crypto ERC20.Layout.solmate src
   let w₁ := w.sstore token ss (w.sload token ss - amount)
   w₁.sstore token 2#256 (w₁.sload token 2#256 - amount)
 
 /-- `burn` writes only the balance slot of `src` and the `totalSupply` slot. -/
 theorem sload_burnWorld {crypto : Crypto} {w : World} {token src b : Address} {amount k : Word}
-    (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ Erc20.balanceSlot crypto Erc20.Layout.solmate src)) :
+    (h : b ≠ token ∨ (k ≠ 2#256 ∧ k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate src)) :
     (burnWorld crypto w token src amount).sload b k = w.sload b k := by
   simp only [burnWorld]
   rw [sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.1),
@@ -314,7 +316,7 @@ theorem burn_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0x9dc29fac (Word.ofAddress src) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat) :
     Halts m (BurnOk src amount m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
@@ -345,7 +347,7 @@ theorem burn_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0x9dc29fac (Word.ofAddress src) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 10000 ≤ m.frame.gasLeft)
     (hbal : (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat < amount.toNat) :
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat < amount.toNat) :
     Halts m (Reverts 10000 m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
@@ -376,15 +378,15 @@ succeeds, the storage view after the two writes represents its result (allowance
 `BurnAllowances`). -/
 theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amount : Word}
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256])
-    (hs : Erc20.BalanceSlotOk crypto Erc20.Layout.solmate src)
-    {t t' : Token Address} (hr : Rep (Erc20.view crypto Erc20.Layout.solmate w token) t)
+    (hs : ERC20.BalanceSlotOk crypto ERC20.Layout.solmate src)
+    {t t' : Token Address} (hr : Rep (ERC20.view crypto ERC20.Layout.solmate w token) t)
     (hw : t.WF) (ht : t.burn src amount.toNat = some t') :
     RepOn (BurnAllowances crypto src)
-      (Erc20.view crypto Erc20.Layout.solmate (burnWorld crypto w token src amount) token) t' := by
+      (ERC20.view crypto ERC20.Layout.solmate (burnWorld crypto w token src amount) token) t' := by
   obtain ⟨hv, rfl⟩ := Token.burn_eq_some.1 ht
   have hs2 := balanceSlot_ne_two hk src
   have hts : (w.sload token 2#256).toNat = t.totalSupply := hr.totalSupply
-  have hbal : (w.sload token (Erc20.balanceSlot crypto Erc20.Layout.solmate src)).toNat =
+  have hbal : (w.sload token (ERC20.balanceSlot crypto ERC20.Layout.solmate src)).toNat =
       t.balanceOf src := hr.balanceOf src
   have hle := Token.balanceOf_le_totalSupply hw src
   refine ⟨?_, fun a => ?_, fun o sp hp => ?_⟩
@@ -395,7 +397,7 @@ theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amo
       BitVec.toNat_sub_of_le (BitVec.le_def.2 (by rw [hts]; omega)), hts]
   · -- the balances
     show ((burnWorld crypto w token src amount).sload token
-      (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat = _
+      (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat = _
     dsimp only
     rw [Token.sub_single_apply]
     by_cases ha : src = a
@@ -405,11 +407,11 @@ theorem repOn_burnWorld {crypto : Crypto} {w : World} {token src : Address} {amo
         BitVec.toNat_sub_of_le (BitVec.le_def.2 (by rw [hbal]; exact hv)), hbal]
     · simp only [ha, ↓reduceIte]
       rw [sload_burnWorld (.inr ⟨balanceSlot_ne_two hk a,
-        Erc20.balanceSlot_ne hs (Ne.symm ha)⟩)]
+        ERC20.balanceSlot_ne hs (Ne.symm ha)⟩)]
       exact hr.balanceOf a
   · -- the allowances off the written slots
     show ((burnWorld crypto w token src amount).sload token
-      (Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp)).toNat = _
+      (ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp)).toNat = _
     rw [sload_burnWorld (.inr hp)]
     exact hr.allowance o sp trivial
 
@@ -421,15 +423,15 @@ theorem assetBurn_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0x9dc29fac (Word.ofAddress src) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256])
-    (hs : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate src)
+    (hs : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate src)
     {t : Token Address} (hr : Rep (assetView m) t) (hw : t.WF) :
     match t.burn src amount.toNat with
     | some t' => Halts m (fun mf o => BurnOk src amount m mf o ∧
         RepOn (BurnAllowances m.ctx.crypto src)
-          (Erc20.view m.ctx.crypto Erc20.Layout.solmate mf.world m.frame.msg.currentTarget) t')
+          (ERC20.view m.ctx.crypto ERC20.Layout.solmate mf.world m.frame.msg.currentTarget) t')
     | none => Halts m (Reverts 10000 m) := by
   have hbal : (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat = t.balanceOf src :=
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat = t.balanceOf src :=
     hr.balanceOf src
   split
   · rename_i t' hT
@@ -447,6 +449,6 @@ theorem assetBurn_refines {ia : SolmateAsset.Immutables} (m : Machine)
       · cases hT
     exact burn_halts_revert m hf hval hd hsz (by omega) (by rw [hbal]; exact hlt)
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end

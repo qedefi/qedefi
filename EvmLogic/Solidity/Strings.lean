@@ -36,9 +36,10 @@ copy loop on the words symbolic execution produces (`Str.and_one_of_even`, `Str.
 
 section
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Bytes
+open EvmLean.Bytes
 
 /-! ## Bytes of words -/
 
@@ -82,6 +83,7 @@ theorem extract_ofWord_div256 (S : Word) {n : Nat} (h : n ≤ 31) :
   · rfl
 
 namespace Str
+open EvmLean
 
 /-! ## Decoding the slot -/
 
@@ -164,6 +166,7 @@ def stringAt (crypto : Crypto) (w : World) (a : Address) (p : Word) : Option Byt
   Str.decode crypto (w.sload a) p
 
 namespace Abi
+open EvmLean
 
 /-- The ABI encoding of one `string`/`bytes` return value: offset `0x20`, the length, and the
 data zero-padded to a multiple of 32 bytes. -/
@@ -187,7 +190,7 @@ theorem encodeString_of_size_zero {s : ByteArray} (h : s.size = 0) :
 
 end Abi
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 end
 
@@ -210,7 +213,8 @@ symbolic execution produces (`n#256` literals, `Word.*` operations), to be passe
   `div_256_mul_256`).
 -/
 
-namespace EvmLean.Solidity.Str
+namespace EvmLogic.Solidity.Str
+open EvmLean
 
 /-- `S & 1` is the parity of `S`. -/
 theorem toNat_and_one (S : Word) : (S &&& 1#256).toNat = S.toNat % 2 := by
@@ -338,7 +342,7 @@ theorem toNat_add_of_lt {a b : Word} (h : a.toNat + b.toNat < 2 ^ 256) :
     (a + b).toNat = a.toNat + b.toNat := by
   rw [BitVec.toNat_add, Nat.mod_eq_of_lt h]
 
-end EvmLean.Solidity.Str
+end EvmLogic.Solidity.Str
 
 end
 
@@ -347,7 +351,7 @@ section
 /-!
 ## Storage encoding of strings decodes back
 
-The two storage forms of a `string` (`EvmLeanProofs.Solidity.Strings`) decode to the stored
+The two storage forms of a `string` (`EvmLogic.Solidity.Strings`) decode to the stored
 string:
 
 * `Str.decode_shortWord`: a string of at most 31 bytes stored as `Str.shortWord s` (the form
@@ -363,6 +367,7 @@ The byte-level facts behind them: `Bytes.toNat_div_mod` (byte `j` of a big-endia
 -/
 
 namespace EvmLean.Bytes
+open EvmLogic
 
 /-- A one-byte array has the byte's value. -/
 theorem toNat_single (c : UInt8) : toNat ⟨#[c]⟩ = c.toNat := by
@@ -432,9 +437,10 @@ theorem ofWord_toWord {b : ByteArray} (h : b.size = 32) : ofWord (toWord b) = b 
 
 end EvmLean.Bytes
 
-namespace EvmLean.Solidity.Str
+namespace EvmLogic.Solidity.Str
+open EvmLean
 
-open Bytes
+open EvmLean.Bytes
 
 /-- The value of `shortWord s`: the bytes of `s` and the padding, shifted by one byte, plus
 `2 · length`. -/
@@ -508,6 +514,6 @@ theorem decode_of_storesLong {crypto : Crypto} {sload : Word → Word} {p : Word
   rw [getD_extract, ite_eq_left (by omega), getD_readPadded, ite_eq_left (by omega), Nat.zero_add,
     Nat.zero_add]
 
-end EvmLean.Solidity.Str
+end EvmLogic.Solidity.Str
 
 end

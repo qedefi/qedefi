@@ -25,9 +25,10 @@ boundary. With `GasFeedsCall` it implies that only `CALL` and `STATICCALL` run, 
 call returns to a point of `callReturnPoints`.
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-! ## Boundaries -/
 
@@ -348,4 +349,4 @@ theorem callsFed_call {code : ByteArray} {n q : Nat} (hfeed : GasFeedsCall code 
   exact ⟨q - 1, hm, by
     simp only [show q - 1 < n by omega, hg, and_self, ↓reduceIte, Option.some.injEq]; omega⟩
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

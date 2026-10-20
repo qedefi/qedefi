@@ -8,7 +8,7 @@ import EvmLogic.GasMono.Lockstep
 /-!
 # Low gas: the code-specific premises of the gas-lockstep theorem
 
-The generic gas-lockstep theorem (`EvmLeanProofs.Program.GasMono`) applies to a frame running
+The generic gas-lockstep theorem (`EvmLogic.GasMono`) applies to a frame running
 code in which
 
 * every `GAS` feeds the gas argument of the immediately following `CALL`/`STATICCALL`
@@ -34,9 +34,9 @@ machine state.
 
 section
 
-namespace EvmLeanSpecs.Refinement.LowGas
+namespace Examples.Solmate.ERC4626.LowGas
 
-open EvmLean EvmLean.Program.GasMono EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.GasMono EvmLogic.Solidity Examples.Solmate.Contracts
 
 /-! ## The vault -/
 
@@ -150,7 +150,7 @@ theorem asset_failureReverts (ia : SolmateAsset.Immutables) :
   subst hp
   exact asset_failureReverts_1632 ia
 
-end EvmLeanSpecs.Refinement.LowGas
+end Examples.Solmate.ERC4626.LowGas
 
 end
 
@@ -165,9 +165,9 @@ evaluations of the one-pass check `callsFedB` over the instruction scan (`insns`
 same for every choice of immutables (`insns_vault`, `insns_asset`).
 -/
 
-namespace EvmLeanSpecs.Refinement.LowGas
+namespace Examples.Solmate.ERC4626.LowGas
 
-open EvmLean EvmLean.Program.GasMono EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.GasMono EvmLogic.Solidity Examples.Solmate.Contracts
 
 /-- In the vault, every call byte below 5216 follows a `GAS`. -/
 theorem vault_callsFed (i : SolmateVault.Immutables) :
@@ -191,6 +191,6 @@ theorem asset_codeOk (ia : SolmateAsset.Immutables) :
     CodeOk (SolmateAsset.runtimeCodeWith ia) 2838 :=
   ⟨asset_gasFeedsCall ia, asset_regionOk ia, asset_callsFed ia, asset_failureReverts ia⟩
 
-end EvmLeanSpecs.Refinement.LowGas
+end Examples.Solmate.ERC4626.LowGas
 
 end

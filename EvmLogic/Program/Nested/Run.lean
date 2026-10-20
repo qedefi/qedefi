@@ -36,9 +36,10 @@ operations a frame committed.
   without EIP-7702 authorizations.
 -/
 
-namespace EvmLean.Program.Nested
+namespace EvmLogic.Program.Nested
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 variable {P : Address → Prop} {Good : World → Prop}
 
@@ -587,4 +588,4 @@ theorem processMessageCall_good (S : GoodOk P Good) {G fuel : Nat} {ctx : Contex
           hrun
       · exact run_good_top hp (hsum m₀ ⟨m₀, 0, hst, rfl⟩ hm (by rw [hp]; simp)) hrun
 
-end EvmLean.Program.Nested
+end EvmLogic.Program.Nested

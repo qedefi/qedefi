@@ -46,9 +46,10 @@ are kept as explicit hypotheses of each theorem (never axioms), so `#print axiom
 the standard ones.
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Bytes
+open EvmLean.Bytes
 
 /-! ## Hypotheses -/
 
@@ -147,4 +148,4 @@ theorem NoCollision.mappingSlot_ne {crypto : Crypto} {xs : List ByteArray} {slot
     mappingSlot crypto k' b' ≠ mappingSlot crypto k b :=
   mappingSlot_ne_of_fresh (h.inj.fresh h₁) h₂ hne
 
-end EvmLean.Solidity
+end EvmLogic.Solidity

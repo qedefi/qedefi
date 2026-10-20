@@ -18,7 +18,7 @@ machine whose code, pc and stack shape are known (concrete bytecode, symbolic va
 
 1. it rewrites with `run_succ_of_running ?h` (or `run_succ_of_done ?h` for a halting
    instruction), leaving the side goal `?h : step m = .running ?m'`;
-2. it solves `?h` by trying the step lemmas of `EvmLeanProofs.Step*` one after another
+2. it solves `?h` by trying the step lemmas of `EvmLogic.Step*` one after another
    (`evm_step_core`), discharging each lemma's hypotheses with `evm_disch`:
    * `rfl` for the opcode byte (`code[pc]? = some b`), the stack shape
      (`stack = ?x :: ?y :: ?rest`, which *assigns* the operands), immediates and
@@ -38,9 +38,10 @@ New step lemmas can be added to the search with
 `macro_rules | `(tactic| evm_step_core) => `(tactic| apply my_step_lemma; all_goals evm_disch)`.
 -/
 
-namespace EvmLean.Tactic
+namespace EvmLogic.Tactic
+open EvmLean
 
-open Lean Elab Tactic Meta Simp
+open Lean Elab Tactic EvmLogic.Tactic Meta Simp
 open EvmLean.Interpreter
 
 /-! ## Evaluating bytes of literal bytecode -/
@@ -249,4 +250,4 @@ macro_rules
   | `(tactic| evm_steps) => `(tactic| repeat evm_step)
   | `(tactic| evm_steps [$extra,*]) => `(tactic| repeat evm_step [$extra,*])
 
-end EvmLean.Tactic
+end EvmLogic.Tactic

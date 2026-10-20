@@ -11,13 +11,13 @@ allowance step covers it) it returns ABI `true` with the world `Erc20.transferFr
 allowance step `Erc20.spendWorld`, then the `transfer` writes; the definitions are shared with
 the share-token refinement); otherwise one of the two checked subtractions panics. The proof
 splits on the three paths of the code (infinite allowance, finite allowance, and the revert
-points). `AssetSpec` relates them to `Token.transferFrom`.
+points). `Examples.Solmate.ERC20.Spec` relates them to `Token.transferFrom`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
 
 /-- Calldata of a function taking three static words `x`, `y`, `z`, with selector `sel`. -/
 structure ThreeWordCall (data : ByteArray) (sel : Nat) (x y z : Word) : Prop where
@@ -34,18 +34,18 @@ structure ThreeWordCall (data : ByteArray) (sel : Nat) (x y z : Word) : Prop whe
 
 /-- The allowance slot of `allowance[owner][spender]` as symbolic execution computes it. -/
 theorem allowanceSlot_solmate (crypto : Crypto) (owner spender : Address) :
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender =
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender =
       crypto.keccak256 (Bytes.ofWord (Word.ofAddress spender) ++
         Bytes.ofWord (crypto.keccak256 (Bytes.ofWord (Word.ofAddress owner) ++ Bytes.ofWord 4#256))) :=
   rfl
 
 /-- `type(uint256).max` as the symbolic executor prints it. -/
-theorem maxWord_eq_MAXW : Erc20.maxWord = MAXW := by decide
+theorem maxWord_eq_MAXW : ERC20.maxWord = MAXW := by decide
 
 /-- What a successful `transferFrom(src, dst, amount)` ends with (see `TransferOk`). -/
 def TransferFromOk (src dst : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord 1) ∧
-  mf.world = Erc20.transferFromWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
+  mf.world = ERC20.transferFromWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
     src dst amount ∧
   mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
   m.frame.gasLeft ≤ mf.frame.gasLeft + 80000
@@ -62,13 +62,13 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
       amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
     (hspend : m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller) =
-        Erc20.maxWord ∨
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller) =
+        ERC20.maxWord ∨
       amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)).toNat)
-    (hbal : amount.toNat ≤ ((Erc20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller)).toNat)
+    (hbal : amount.toNat ≤ ((ERC20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
       m.frame.msg.caller amount).sload m.frame.msg.currentTarget
-        (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+        (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat) :
     Halts m (TransferFromOk src dst amount m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1, harg2⟩ := hd
@@ -76,7 +76,7 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
   have hsel' := Dispatch.selector_eq hsel
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 96))
       = 1 := iszero_slt_calldatasize hsize (by omega)
-  simp only [Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hbal hspend
+  simp only [ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hbal hspend
   have hagree := assetJumpDestsAgree ia
   fresh_intro
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2,
@@ -91,8 +91,8 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     pwp_codecopy
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     refine ⟨rfl, ?_, rfl, rfl, ?_⟩
-    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
-        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+    · simp only [outputMachine, ERC20.transferFromWorld, ERC20.transferWorld, transferWorld,
+        ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
         allowanceSlot_solmate, hmax, ↓reduceIte]
     · dsimp only [outputMachine]
       evm_gas
@@ -106,8 +106,8 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     pwp_codecopy
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     refine ⟨rfl, ?_, rfl, rfl, ?_⟩
-    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
-        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+    · simp only [outputMachine, ERC20.transferFromWorld, ERC20.transferWorld, transferWorld,
+        ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
         allowanceSlot_solmate, hmax, ↓reduceIte]
     · dsimp only [outputMachine]
       evm_gas
@@ -124,13 +124,13 @@ theorem transferFrom_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
       amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
     (hfail : ¬ ((m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller) =
-        Erc20.maxWord ∨
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller) =
+        ERC20.maxWord ∨
       amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)).toNat) ∧
-      amount.toNat ≤ ((Erc20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller)).toNat) ∧
+      amount.toNat ≤ ((ERC20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
         m.frame.msg.caller amount).sload m.frame.msg.currentTarget
-          (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat)) :
+          (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat)) :
     Halts m (Reverts 80000 m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1, harg2⟩ := hd
@@ -138,7 +138,7 @@ theorem transferFrom_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
   have hsel' := Dispatch.selector_eq hsel
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 96))
       = 1 := iszero_slt_calldatasize hsize (by omega)
-  simp only [Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hfail
+  simp only [ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hfail
   have hagree := assetJumpDestsAgree ia
   fresh_intro
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2,
@@ -175,4 +175,4 @@ theorem transferFrom_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
       dsimp only [outputMachine]
       evm_gas
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20

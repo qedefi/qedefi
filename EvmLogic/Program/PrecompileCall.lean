@@ -25,9 +25,10 @@ ctx.fork` for an arbitrary `Crypto`):
 
 section
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
@@ -167,7 +168,7 @@ theorem ecrecover_success (crypto : Crypto) (input : ByteArray) {gas : Nat} (h :
     · exact ⟨rfl, rfl⟩
     · split <;> exact ⟨rfl, rfl⟩
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -189,9 +190,10 @@ solc calls `ecrecover(hash, v, r, s)` by `STATICCALL`ing address `0x01` with the
 Nothing here is a cryptographic claim: `crypto.ecrecover` is an arbitrary function.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Bytes
+open EvmLean.Bytes
 
 /-- The signer `ECRECOVER` recovers from `(hash, v, r, s)` (see `Precompile.ecrecover`), or
 `none` for an invalid signature. -/
@@ -307,7 +309,7 @@ theorem ecrecover_words (crypto : Crypto) (hash v r s : Word) {gas : Nat} (h : 3
 
 /-! ## The call -/
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- The calldata of a child message is the input window of the caller's memory. -/
 theorem childMsg_data (m : Machine) (caller to codeAddress : Address) (value : Word) (gas : Nat)
@@ -393,6 +395,6 @@ theorem WP.staticcall_ecrecover {Q : Machine → Prop} {H : Machine → Outcome 
   rw [hr]
   exact k
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

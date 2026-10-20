@@ -11,7 +11,7 @@ whole padding block). The SHA3-256 checks run the same sponge with FIPS 202's do
 `0x06`, which pins down the permutation independently of the Keccak padding.
 -/
 
-open EvmLean EvmLeanTest.HashUtil
+open EvmLean EvmTest.HashUtil
 
 #guard Keccak.hash256 .empty =
   0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470#256

@@ -36,11 +36,12 @@ Because the committed call is an existing `VCall`, the top-level traces of `Inva
 (`NestedInvariants.lean`), which subsume direct top-level calls (`txOk_direct`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants EvmLeanSpecs.Refinement.Permit
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626 Examples.Solmate.ERC20.Permit Examples.Solmate.ERC4626.Permit
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
@@ -85,7 +86,7 @@ structure NonceSlotOk (crypto : Crypto) (Act : List Address) (a : Address) : Pro
   hook7 : nonceSlot crypto a ≠ 7#256
   /-- No actor pair's allowance slot. -/
   allow : ∀ o ∈ Act, ∀ sp ∈ Act,
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ nonceSlot crypto a
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ nonceSlot crypto a
 
 /-- The permit hash hypotheses of the written slots, from the trace's `SlotsOk` and the owner's
 `NonceSlotOk`. -/
@@ -204,4 +205,4 @@ theorem frameOk_permit {minGas : Nat} {m : Machine} (hmin : 100000 ≤ minGas)
     exact agree_permitWorld_asset hs hne ho hsp hn
   | _ => exact hx.elim
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested

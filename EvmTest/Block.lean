@@ -3,12 +3,12 @@ import EvmTest.TxSupport
 /-!
 Unit tests for `EvmLean.Block`: header decoding/encoding, base fee and excess blob gas
 formulas, gas-limit bounds, header validation order, blooms and receipt encoding. Hashing
-is stubbed; checks that need real Keccak live in `EvmLeanTest/TxIntegration.lean`.
+is stubbed; checks that need real Keccak live in `EvmTest/TxIntegration.lean`.
 -/
 
-open EvmLean EvmLean.Block EvmLeanTest
+open EvmLean EvmLean.Block EvmTest
 
-namespace EvmLeanTest.BlockTest
+namespace EvmTest.BlockTest
 
 /-! ## Decoding the fixture's genesis and block 1 -/
 
@@ -198,4 +198,4 @@ def depositLog (data : ByteArray) (topic : Word := depositEventSignatureHash) : 
 #guard (blockEnv 1 block1.header ((List.range 300).map (BitVec.ofNat 256 ·))).blockHashes.length = 256
 #guard (blockEnv 1 block1.header []).baseFee = 788
 
-end EvmLeanTest.BlockTest
+end EvmTest.BlockTest

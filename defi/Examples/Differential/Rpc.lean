@@ -18,7 +18,7 @@ What is observed per transaction:
   write on either side is never missed.
 -/
 
-namespace Differential
+namespace Examples.Differential
 
 open Lean EvmLean Conformance
 
@@ -214,4 +214,4 @@ def spawnAnvil (port : Nat) (chainId : Nat) :
   child.kill
   fail "anvil did not start (is Foundry in PATH?)"
 
-end Differential
+end Examples.Differential

@@ -17,12 +17,13 @@ entry for `transferFrom`).
   theorems (`vaultCall i …`, a ledger `t` with `Rep`);
 * `transfer_events_call`, `approve_events_call`, `transferFrom_events_call`: for the
   `Deployed` vault, against `events (abs ctx.crypto w vault asset) op`, the form of the other
-  call kinds (`EventsAsset`, `EventsEntry`).
+  call kinds (`Examples.Solmate.ERC20.Events`, `EventsEntry`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.ERC20
 
-open EvmLean Interpreter Solidity Contracts Erc20 EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.ERC20 Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller : Address} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
@@ -204,4 +205,4 @@ theorem transferFrom_events_call (hdep : Deployed w vault asset)
   exact ⟨500, fun fuel hle => transferFrom_events (i := i) hdeleg (hdep.vaultNotPrecompile _)
     hgas ha (rep_toToken _) fuel hle asset⟩
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares

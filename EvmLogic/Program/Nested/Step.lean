@@ -15,9 +15,10 @@ Lifts the per-instruction frame condition (`exec_frame`) to `step`:
   standard ones do, `precompilesOk_standard`).
 -/
 
-namespace EvmLean.Program.Nested
+namespace EvmLogic.Program.Nested
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Precompiles -/
 
@@ -232,4 +233,4 @@ theorem stepN_gas {m : Machine} (hpre : PrecompilesOk m.precompiles) :
       have hc := step_consts h
       exact Nat.le_trans (ih (by rw [hc.2]; exact hpre)) h1
 
-end EvmLean.Program.Nested
+end EvmLogic.Program.Nested

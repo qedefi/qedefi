@@ -22,7 +22,7 @@ Solidity documentation):
 
 Slots are computed with `Crypto.keccak256` of the context, so everything here holds for
 every `Crypto`; that distinct variables get distinct slots is a hypothesis
-(`EvmLeanProofs.Solidity.Keccak`).
+(`EvmLogic.Solidity.Keccak`).
 
 ## Read/write lemmas
 
@@ -34,9 +34,10 @@ every `Crypto`; that distinct variables get distinct slots is a hypothesis
   word, without `bv_decide`.
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Bytes
+open EvmLean.Bytes
 
 /-! ## Mappings and arrays -/
 
@@ -70,6 +71,7 @@ structure Field where
   size : Nat
 
 namespace Field
+open EvmLean
 
 /-- A field is well formed if it fits in its slot. -/
 def Valid (f : Field) : Prop := 0 < f.size ∧ f.offset + f.size ≤ 32
@@ -182,11 +184,12 @@ theorem get_of_full (f : Field) (h0 : f.offset = 0) (h32 : f.size = 32) (v : Wor
 
 end Field
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 /-! ## Storage layouts in compiler output -/
 
-namespace EvmLean.Contracts
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- A Solidity storage type, as described by solc's `storageLayout.types` table. -/
 inductive StorageType where
@@ -216,4 +219,4 @@ structure StorageVar where
 def slotOf? (layout : List StorageVar) (label : String) : Option Nat :=
   (layout.find? (·.label == label)).map (·.slot)
 
-end EvmLean.Contracts
+end EvmLogic.Solidity

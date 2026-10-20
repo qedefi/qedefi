@@ -13,7 +13,8 @@ import EvmLean.Interpreter
 * World/message builders and runners.
 -/
 
-namespace EvmLean.Test
+namespace EvmTest.InterpreterUtil
+open EvmLean
 
 open EvmLean.Interpreter
 
@@ -195,4 +196,4 @@ where
 def stackAfter (code : ByteArray) (n : Nat) : Option (List Word) :=
   (stepN (callMsg contract code) (mkWorld code) n).map (·.frame.stack)
 
-end EvmLean.Test
+end EvmTest.InterpreterUtil

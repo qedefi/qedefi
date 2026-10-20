@@ -9,7 +9,7 @@ inputs (bytes `0, 1, …, n-1`) at the 55/56/64-byte padding boundaries, checked
 Python's `hashlib.new("ripemd160")`.
 -/
 
-open EvmLean EvmLeanTest.HashUtil
+open EvmLean EvmTest.HashUtil
 
 #guard Ripemd160.hash .empty = hex "9c1185a5c5e9fc54612808977ee8f548b2258d31"
 #guard Ripemd160.hash (ascii "a") = hex "0bdc9d2d256b3ee9daae347be6f4dc835a467ffe"

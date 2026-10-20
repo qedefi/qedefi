@@ -2,7 +2,7 @@ import EvmLean.Crypto.Real
 import EvmLogic.Program.PrecompileCall
 
 /-!
-# Tests for `ECRECOVER` on four words (`EvmLeanProofs.Program.PrecompileCallEcrecover`)
+# Tests for `ECRECOVER` on four words (`EvmLogic.Program.PrecompileCall`)
 
 With the executable cryptography (`Crypto.real`): `ecrecoverAddress?` recovers the signer of
 the classic test vector (`0x7156…8c8a`), rejects bad `v`, `r`, `s`, and agrees with the
@@ -10,9 +10,9 @@ precompile (`Precompile.ecrecover`) on the encoded four-word input, as `ecrecove
 states for every `Crypto`.
 -/
 
-namespace EvmLeanTest.PrecompileCall
+namespace EvmTest.PrecompileCall
 
-open EvmLean EvmLean.Program
+open EvmLean EvmLogic EvmLogic.Program
 
 /-- The digest of the test vector. -/
 def hash : Word := 0x456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3#256
@@ -40,4 +40,4 @@ def input (v : Word) : ByteArray :=
 #guard (Precompile.ecrecover Crypto.real (input v) 5000).gasLeft == 2000
 #guard (Precompile.run Crypto.real .cancun 1 (input v) 3000).output == Bytes.ofWord (Word.ofAddress signer)
 
-end EvmLeanTest.PrecompileCall
+end EvmTest.PrecompileCall

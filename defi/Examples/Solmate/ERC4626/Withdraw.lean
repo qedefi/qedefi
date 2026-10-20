@@ -13,17 +13,18 @@ prescribes (`OutPost`): on `some (w', v)` it returns the ABI word `v` (the share
 world `w'`; on `none` it reverts.
 
 The proof runs the dispatcher and the ABI decoder symbolically (`pwp_run_to`), then composes
-the summaries: `previewWithdraw_wp` (`VaultConvert`), `withdrawSpend_wp`, `bump_wp`, `burn_wp`
-(`WithdrawCode`), the `Withdraw` event (symbolically), `safeTransfer_wp` (`AssetCallOut`, the
+the summaries: `previewWithdraw_wp` (`Examples.Solmate.ERC4626.Convert`), `withdrawSpend_wp`, `bump_wp`, `burn_wp`
+(`Examples.Solmate.ERC4626.WithdrawInternal`), the `Withdraw` event (symbolically), `safeTransfer_wp` (`Examples.Solmate.ERC4626.SafeTransfer`, the
 `CALL` into the asset), and the return encoder.
 -/
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 /-- The start of a call frame of the vault deployed with immutables `i` that can run `withdraw`
 or `redeem`: fresh frame of the vault's code, no value, non-static (the functions write
@@ -70,7 +71,7 @@ theorem code_of_spendStep {crypto : Crypto} {w w' : World} {vault owner caller :
     split at h
     · cases h
     · cases h
-      unfold Erc20.spendWorld
+      unfold ERC20.spendWorld
       dsimp only
       split <;> simp
 
@@ -200,7 +201,7 @@ theorem withdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i
       hsize, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.max_def,
       Nat.reduceLeDiff, ↓reduceIte] at hm5b
     have hW : withdrawWorld? m_ctx.crypto m_world m_msg.currentTarget i.asset m_msg.caller assets
-        receiver owner = some (EvmLean.Solidity.Erc20.transferWorld m_ctx.crypto w₃ i.asset
+        receiver owner = some (EvmLogic.Solidity.ERC20.transferWorld m_ctx.crypto w₃ i.asset
           m_msg.currentTarget receiver assets, BitVec.ofNat 256 v) := by
       simp only [withdrawWorld?, hv, Option.bind_some, hw₁, hw₂, hw₃, payStep,
         Nat.not_lt.2 hbal, ↓reduceIte, Option.map_some]
@@ -209,7 +210,7 @@ theorem withdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i
     pwp_steps [hm5a, hm5b]
     exact ⟨rfl, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -226,10 +227,11 @@ the allowance write), the `ZERO_ASSETS` check, and the same hook, burn, event an
 `safeTransfer` as `withdraw`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
 /-- **`redeem(uint256,address,address)`** of the vault, in any frame: ends as `redeemWorld?`
@@ -345,7 +347,7 @@ theorem redeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i m
         hsize, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.max_def,
         Nat.reduceLeDiff, ↓reduceIte] at hm6b
       have hR : redeemWorld? m_ctx.crypto m_world m_msg.currentTarget i.asset m_msg.caller shares
-          receiver owner = some (EvmLean.Solidity.Erc20.transferWorld m_ctx.crypto w₃
+          receiver owner = some (EvmLogic.Solidity.ERC20.transferWorld m_ctx.crypto w₃
             i.asset m_msg.currentTarget receiver (BitVec.ofNat 256 v), BitVec.ofNat 256 v) := by
         simp only [redeemWorld?, hw₁, Option.bind_some, hv, hv0, ↓reduceIte, hw₂, hw₃, payStep,
           Nat.not_lt.2 hbal, Option.map_some]
@@ -354,7 +356,7 @@ theorem redeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : OutPre i m
       pwp_steps [hm6a, hm6b]
       exact ⟨rfl, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -383,11 +385,12 @@ The proofs combine the bytecode summaries `withdraw_halts` / `redeem_halts` (the
 `Out.redeemWorld?_refines`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
-open Vault
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
+open Defi.ERC4626 Defi.Math Defi.ERC20
 
 /-- What `withdraw` / `redeem` end with, against the model's result `r` from caller `caller`
 paying `receiver` for `owner`: success with the ABI word and a world refining the model's state,
@@ -406,7 +409,7 @@ theorem code_of_payStep {crypto : Crypto} {w w' : World} {asset vault dst : Addr
   unfold payStep at h
   split at h
   · cases h
-  · cases h; simp [EvmLean.Solidity.Erc20.transferWorld]
+  · cases h; simp [EvmLogic.Solidity.ERC20.transferWorld]
 
 /-- `withdrawWorld?` keeps every account's code. -/
 theorem code_of_withdrawWorld? {crypto : Crypto} {w w' : World}
@@ -608,6 +611,6 @@ theorem redeem_call (hdep : Deployed w vault asset)
     (threeWordCall_encodeCall' (by decide) shares _ _) hk hinv
   exact out_call hdeleg (hdep.vaultNotPrecompile _) hm
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

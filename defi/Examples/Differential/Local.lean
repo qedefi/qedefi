@@ -11,7 +11,7 @@ precompiles, origin, target and coinbase), the interpreter runs it, and the rece
 ether moves. Contract creations (`to = none`) run the creation code as a creation message.
 -/
 
-namespace Differential
+namespace Examples.Differential
 
 open EvmLean
 
@@ -58,4 +58,4 @@ def execTx (crypto : Crypto) (env : BlockEnv) (world : World) (sender : Address)
 /-- The non-zero storage slots of `a` (storage never holds zeros). -/
 def storageSlots (w : World) (a : Address) : List Word := (w.account a).storage.keys
 
-end Differential
+end Examples.Differential

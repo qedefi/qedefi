@@ -8,7 +8,7 @@ Hex decoding and deterministic inputs shared by the `Keccak`, `Sha256`, `Ripemd1
 decodes to garbage and makes the corresponding `#guard` fail.
 -/
 
-namespace EvmLeanTest.HashUtil
+namespace EvmTest.HashUtil
 
 /-- Value of one hex digit (garbage for non-hex characters). -/
 def hexDigit (c : Char) : UInt8 :=
@@ -33,4 +33,4 @@ def ascii (s : String) : ByteArray := s.toUTF8
 /-- `n` copies of the byte `b`. -/
 def rep (n : Nat) (b : UInt8) : ByteArray := ⟨Array.replicate n b⟩
 
-end EvmLeanTest.HashUtil
+end EvmTest.HashUtil

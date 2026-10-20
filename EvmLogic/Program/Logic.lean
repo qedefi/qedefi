@@ -28,9 +28,10 @@ Ghost variables (values of the initial machine that the postcondition refers to)
 universally quantified variables of the lemma stating the `WP`.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## How a frame ends -/
 
@@ -116,6 +117,7 @@ structure SameFrame (m m' : Machine) : Prop where
   snapshot : m'.frame.snapshot = m.frame.snapshot
 
 namespace SameFrame
+open EvmLean
 
 variable {m₁ m₂ m₃ : Machine}
 
@@ -154,6 +156,7 @@ def Halts (m : Machine) (H : Machine → Outcome → Prop) : Prop :=
   ∃ n mf o, stepN n m = finishFrame mf o ∧ SameFrame m mf ∧ H mf o
 
 namespace Steps
+open EvmLean
 
 variable {m₁ m₂ m₃ : Machine}
 
@@ -178,6 +181,7 @@ theorem run_eq (h : Steps m₁ m₂) : ∃ n, ∀ k, run (n + k) m₁ = run k m�
 end Steps
 
 namespace Halts
+open EvmLean
 
 variable {m m' : Machine} {H H' : Machine → Outcome → Prop}
 
@@ -228,6 +232,7 @@ def Triple (P : Machine → Prop) (Q : Machine → Prop) (H : Machine → Outcom
   ∀ m, P m → WP m Q H
 
 namespace WP
+open EvmLean
 
 variable {m m' : Machine} {Q Q' : Machine → Prop} {H H' : Machine → Outcome → Prop}
 
@@ -318,6 +323,7 @@ theorem loop_nat (I : Nat → Machine → Prop) {k : Nat} (hI : I k m)
 end WP
 
 namespace Triple
+open EvmLean
 
 variable {P P' Q Q' R : Machine → Prop} {H H' : Machine → Outcome → Prop}
 
@@ -348,4 +354,4 @@ theorem loop (μ : Machine → Nat) (I : Machine → Prop)
 
 end Triple
 
-end EvmLean.Program
+end EvmLogic.Program

@@ -5,7 +5,7 @@ import EvmLogic.Program.Nested.Gas
 # Gas monotonicity: frames with more gas
 
 The lockstep simulation relates a low-gas machine `m` to the high-gas machine
-`bump d x ps m` (`NestedExtraGas`): the executing frame has `d` more gas, its message records
+`bump d x ps m` (`EvmLogic.Program.Nested.Gas`): the executing frame has `d` more gas, its message records
 gas `x`, and the suspended parents `ps` are arbitrary; **every other field is equal**. This file
 proves that the relation survives the transitions around a call:
 
@@ -21,9 +21,10 @@ proves that the relation survives the transitions around a call:
 * `exec_gas_bump`: `GAS` from a bumped machine pushes the bumped gas (the only difference).
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The frame with `d` more gas and message gas `x`. -/
 def bumpF (d x : Nat) (f : Frame) : Frame :=
@@ -208,4 +209,4 @@ theorem exec_gas_bump {m m' : Machine} {a : Action} (h : (exec .gas).run m = .ok
     exact he
   · exact h4.elim
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

@@ -22,9 +22,10 @@ Assumptions as in the frame theorems, plus the top-level ones of `processMessage
 
 section
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The result of a top-level `permit` call of the token at `token` from world `w`. -/
 def PermitResult (crypto : Crypto) (ds : Word) (timestamp : Nat) (w : World) (token : Address)
@@ -256,7 +257,7 @@ theorem vault_nonces_call {i : SolmateVault.Immutables} {ctx : Context} {w : Wor
     (Abi.calldataload_encodeCall_0 _ _ _) hg
   exact view_call_of_halts hdeleg (Shares.delegatedAddress?_code i) hpre hh (fun _ _ h => ⟨h.1, h.2.1⟩)
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end
 
@@ -265,7 +266,7 @@ section
 /-!
 ## `permit` refines the model
 
-The bytecode theorems (`PermitAsset`, `PermitVault`, `PermitCall`) against the extended ledger
+The bytecode theorems (`Examples.Solmate.ERC20.Permit`, `Examples.Solmate.ERC4626.Permit`, `Examples.Solmate.ERC4626.PermitSpec`) against the extended ledger
 `Vault.PermitToken` (`../Vault/Permit.lean`):
 
 * `noncesView`, `permitView`: the nonces and the extended ledger of the Solmate token at `token`,
@@ -291,10 +292,11 @@ The bytecode theorems (`PermitAsset`, `PermitVault`, `PermitCall`) against the e
   what trace integration consumes.
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20
 
 /-! ## The abstraction -/
 
@@ -343,7 +345,7 @@ theorem validAt_view {crypto : Crypto} {ds : Word} {timestamp : Nat} {w : World}
 /-- The hash hypotheses for the slots a `permit(owner, spender, …)` writes. -/
 structure PermitSlotsOk (crypto : Crypto) (owner spender : Address) : Prop where
   /-- `allowance[owner][spender]` is fresh (`Erc20.AllowanceSlotOk`). -/
-  allow : Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate owner spender
+  allow : ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate owner spender
   /-- `nonces[owner]` is the hash of no other address-keyed row of `balanceOf`, `allowance`,
   `nonces` (one target against `3 · 2¹⁶⁰` candidates). -/
   nonceFresh : KeccakFresh crypto (AddressKeyed [3#256, 4#256, 5#256])
@@ -351,14 +353,14 @@ structure PermitSlotsOk (crypto : Crypto) (owner spender : Address) : Prop where
   /-- `nonces[owner]` is not the `totalSupply` slot. -/
   nonceTotal : nonceSlot crypto owner ≠ 2#256
   /-- The two written slots differ. -/
-  sep : Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender ≠ nonceSlot crypto owner
+  sep : ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender ≠ nonceSlot crypto owner
 
 /-- The storage of `token` in `w` represents the extended ledger `l`: the ledger in the sense
 of `Shares.RepOn P`, the nonces of the owners in `Pn`. -/
 structure PermitRepOn (P : Address → Address → Prop) (Pn : Address → Prop) (crypto : Crypto)
     (w : World) (token : Address) (l : PermitToken Address) : Prop where
   /-- The ledger. -/
-  ledger : Shares.RepOn P (Erc20.view crypto Erc20.Layout.solmate w token) l.token
+  ledger : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w token) l.token
   /-- The nonces. -/
   nonce : ∀ a, Pn a → (w.sload token (nonceSlot crypto a)).toNat = l.nonces a
 
@@ -366,14 +368,14 @@ structure PermitRepOn (P : Address → Address → Prop) (Pn : Address → Prop)
 entry whose slot is neither written slot. -/
 def PermitAllowances (crypto : Crypto) (owner spender : Address) (o sp : Address) : Prop :=
   ((o = owner ∧ sp = spender) ∨
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠
-      Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender) ∧
-  Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ nonceSlot crypto owner
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender) ∧
+  ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ nonceSlot crypto owner
 
 /-- The nonces known after `permit(owner, spender, …)`: the owner's, and every nonce whose slot
 is not the written allowance slot. -/
 def PermitNonces (crypto : Crypto) (owner spender : Address) (a : Address) : Prop :=
-  a = owner ∨ nonceSlot crypto a ≠ Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender
+  a = owner ∨ nonceSlot crypto a ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender
 
 /-- The view represents itself. -/
 theorem permitRep_view (crypto : Crypto) (w : World) (token : Address) :
@@ -392,14 +394,14 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
   have hns : ∀ (a : Address) (p : Word), p ∈ [3#256, 4#256, 5#256] → (a ≠ owner ∨ p ≠ 5#256) →
       mappingSlot crypto (Word.ofAddress a) p ≠ nonceSlot crypto owner :=
     fun a p hp hne => mappingSlot_ne_of_fresh_addr hfresh hp hne
-  have hbal : ∀ a, Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ nonceSlot crypto owner :=
+  have hbal : ∀ a, ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ nonceSlot crypto owner :=
     fun a => hns a 3#256 (by simp) (.inr (by decide))
-  have hbal' := Erc20.balanceSlot_ne_allowanceSlot hs.allow
-  have hat : Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender ≠ 2#256 :=
+  have hbal' := ERC20.balanceSlot_ne_allowanceSlot hs.allow
+  have hat : ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender ≠ 2#256 :=
     hs.allow.2.2
   -- reading the final world
   have hread : ∀ k, (permitWorld crypto w token owner spender value).sload token k =
-      if k = Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender then value
+      if k = ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender then value
       else if k = nonceSlot crypto owner then w.sload token (nonceSlot crypto owner) + 1#256
       else w.sload token k := by
     intro k
@@ -413,13 +415,13 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
   · -- balances
     intro a
     show ((permitWorld crypto w token owner spender value).sload token
-      (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat = _
+      (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat = _
     rw [hread, ht]
-    simp [hbal' a, hbal a, Token.approve, Token.setAllowance, tokenView, toToken, Erc20.view, permitView]
+    simp [hbal' a, hbal a, Token.approve, Token.setAllowance, tokenView, toToken, ERC20.view, permitView]
   · -- allowances
     intro o sp ⟨h1, h2⟩
     show ((permitWorld crypto w token owner spender value).sload token
-      (Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp)).toNat = _
+      (ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp)).toNat = _
     rw [hread, ht]
     rcases h1 with ⟨rfl, rfl⟩ | h1
     · simp [Token.approve, Token.setAllowance]
@@ -428,9 +430,9 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
       by_cases ho : o = owner
       · subst ho
         have hsp : sp ≠ spender := fun e => hne ⟨rfl, e⟩
-        simp [Token.approve, Token.setAllowance, hsp, tokenView, toToken, Erc20.view,
+        simp [Token.approve, Token.setAllowance, hsp, tokenView, toToken, ERC20.view,
           permitView]
-      · simp [Token.approve, Token.setAllowance, ho, tokenView, toToken, Erc20.view,
+      · simp [Token.approve, Token.setAllowance, ho, tokenView, toToken, ERC20.view,
           permitView]
   · -- nonces
     intro a ha
@@ -439,7 +441,7 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
     · subst hao
       simp only [Ne.symm hs.sep, ↓reduceIte, BitVec.toNat_add]
       simp [permitView, U256]
-    · have ha' : nonceSlot crypto a ≠ Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender :=
+    · have ha' : nonceSlot crypto a ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender :=
         ha.resolve_left hao
       have hna : nonceSlot crypto a ≠ nonceSlot crypto owner := hns a 5#256 (by simp) (.inl hao)
       simp only [ha', hna, ↓reduceIte]
@@ -449,7 +451,7 @@ theorem rep_permitWorld {crypto : Crypto} {w : World} {token owner spender : Add
 theorem sload_permitWorld {crypto : Crypto} {w : World} {token owner spender b : Address}
     {value k : Word}
     (h : b ≠ token ∨ (k ≠ nonceSlot crypto owner ∧
-      k ≠ Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender)) :
+      k ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender)) :
     (permitWorld crypto w token owner spender value).sload b k = w.sload b k := by
   simp only [permitWorld, World.sload_sstore]
   rcases h with h | ⟨h1, h2⟩
@@ -561,7 +563,7 @@ def PermitCallRefines (crypto : Crypto) (ds : Word) (timestamp : Nat) (token : A
   | some l' => PermitRepOn (PermitAllowances crypto owner spender)
       (PermitNonces crypto owner spender) crypto w' token l' ∧
     (∀ b k, b ≠ token ∨ (k ≠ nonceSlot crypto owner ∧
-      k ≠ Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender) →
+      k ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender) →
       w'.sload b k = w.sload b k) ∧
     (∀ a, w'.code a = w.code a)
   | none => w' = w
@@ -698,7 +700,7 @@ theorem vault_permit_opRefines {i : SolmateVault.Immutables} {ctx : Context} {w 
   cases h1
   exact ⟨h3, h2⟩
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end
 
@@ -716,9 +718,10 @@ corollaries, in the `EventsPost` form of `Events.lean`:
   and `#[]` on failure (`permit_logs`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 open Classical in
 /-- The logs `permit` emits from the start machine `m`: `Approval(owner, spender, value)` by
@@ -792,6 +795,6 @@ theorem permit_logs {crypto : Crypto} {ds : Word} {timestamp : Nat} {w : World}
   · exact (h.1 ‹_›).2.2.2
   · exact (h.2 ‹_›).2.2.2
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end

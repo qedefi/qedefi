@@ -7,12 +7,12 @@ import Examples.Deployment
 
 A *family* is an asset token and an ERC-4626 vault over it, with everything the tester needs
 to deploy them, encode calls and locate their ERC-20 storage. Both families come from the
-generated constants in `EvmLeanProofs/Contracts/`.
+generated constants in `defi/Examples/Solmate/Contracts/`.
 -/
 
-namespace Differential
+namespace Examples.Differential
 
-open EvmLean EvmLean.Contracts
+open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
 
 /-- An asset/vault pair. -/
 structure Family where
@@ -107,4 +107,4 @@ def allowanceIn (w : World) (token : Address) (slot : Nat) (owner spender : Addr
   w.sload token (mappingSlot (Word.ofAddress spender)
     (mappingSlot (Word.ofAddress owner) (BitVec.ofNat 256 slot)))
 
-end Differential
+end Examples.Differential

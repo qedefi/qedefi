@@ -28,8 +28,9 @@ They are tagged `@[sol_norm]`, together with the core read-over-write lemmas.
 section
 
 namespace EvmLean.Memory
+open EvmLogic
 
-open Bytes
+open EvmLean.Bytes
 
 attribute [sol_norm] read_expand
 
@@ -55,7 +56,8 @@ attribute [sol_norm] read_storeWord read_storeWord_of_disjoint Bytes.toWord_ofWo
 
 end EvmLean.Memory
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean EvmLogic.Tactic
 
 /-- The memory after solc's prologue `PUSH1 0x80 PUSH1 0x40 MSTORE` (free-memory pointer
 `0x80` at `0x40`), in the form symbolic execution produces it. -/
@@ -71,7 +73,7 @@ theorem loadWord_initMemory : initMemory.loadWord 64 = 0x80 :=
 theorem size_initMemory : initMemory.size = 96 := by
   simp [initMemory, Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 end
 
@@ -87,8 +89,9 @@ callee's view of its calldata is computed by the usual read-over-write memory le
 -/
 
 namespace EvmLean.Memory
+open EvmLogic
 
-open Bytes Interpreter
+open EvmLean.Bytes EvmLean.Interpreter
 
 /-- A read within a read is a read: `readBytes (mem.read off len) i n = mem.read (off + i) n`
 when the inner window lies inside the outer one. -/
@@ -118,8 +121,9 @@ They are not `simp` lemmas by default: they are passed to the symbolic executor 
 -/
 
 namespace EvmLean.Memory
+open EvmLogic
 
-open Bytes
+open EvmLean.Bytes
 
 /-- A read of `32 + n` bytes is a word read followed by the rest. -/
 theorem read_word_add (m : Memory) (off n : Nat) :
@@ -159,6 +163,7 @@ theorem read_66 (m : Memory) (off : Nat) :
 end EvmLean.Memory
 
 namespace EvmLean.Memory
+open EvmLogic
 
 /-- The first two bytes of a stored word (the `"\x19\x01"` prefix of an EIP-712 digest,
 stored as `shl(240, 0x1901)`). -/
@@ -178,6 +183,7 @@ attribute [permit_norm] Nat.reduceEqDiff Nat.reduceLeDiff Nat.reduceAdd Nat.redu
   Nat.reduceSub reduceIte
 
 namespace EvmLean.Memory
+open EvmLogic
 
 /-- An access inside a word-aligned memory does not expand it (also for a symbolic length). -/
 theorem expand_eq_self_of_le {m : Memory} {off len : Nat} (h : off + len ≤ m.size) (h32 : m.size % 32 = 0) :
@@ -193,6 +199,7 @@ theorem expand_eq_self_of_le {m : Memory} {off len : Nat} (h : off + len ≤ m.s
 end EvmLean.Memory
 
 namespace EvmLean.Gas
+open EvmLogic
 
 /-- An access inside a word-aligned memory costs no expansion gas (also for a symbolic
 length). -/

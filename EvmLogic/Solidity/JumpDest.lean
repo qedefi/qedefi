@@ -16,9 +16,10 @@ that every position it returns is valid, so a jump destination is discharged by
 the 1.6 kB ERC-20).
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- The valid `JUMPDEST` positions of `bytes` (a suffix of the code starting at position
 `pos`), scanning at most `fuel` instructions. Mirrors `jumpDestLoop` over a list. -/
@@ -104,4 +105,4 @@ theorem isValidJumpDest_of_mem {code : ByteArray} {d : Nat}
   rw [jumpDestLoop_of_mem code (code.size + 1) 0 _ (by simp) d (by simpa using h)]
   rfl
 
-end EvmLean.Solidity
+end EvmLogic.Solidity

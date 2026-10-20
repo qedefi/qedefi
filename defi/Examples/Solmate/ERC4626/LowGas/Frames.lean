@@ -5,7 +5,7 @@ import Examples.Solmate.ERC4626.Nested.Invariants
 /-!
 # Low gas: the Solmate frames are gas-monotone
 
-The gas-lockstep theorem (`EvmLeanProofs/Program/GasMono/Lockstep.lean`, `monoFrom_of_code`)
+The gas-lockstep theorem (`EvmLogic/GasMono/Lockstep.lean`, `monoFrom_of_code`)
 instantiated for the compiled Solmate asset and vault (`CodeOk`: `LowGasMono.lean`):
 
 * `assetHigh_mono`: frames of the asset's code (any immutables, standard precompiles) are
@@ -29,13 +29,14 @@ with gas `G` (at the top level, `topBump G m`) satisfies `FrameOk`, so does `m`,
 would be covered with more gas (`Covered` of `topBump G m`) satisfies its frame summary.
 -/
 
-namespace EvmLeanSpecs.Refinement.LowGas
+namespace Examples.Solmate.ERC4626.LowGas
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Contracts EvmLean.Program.GasMono
-open EvmLean.Solidity
-open EvmLean.Program.Nested (bump Reaches Danger)
-open EvmLeanSpecs.Vault EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts EvmLogic.GasMono
+open EvmLogic.Solidity EvmLogic.Tactic
+open EvmLogic.Program.Nested (bump Reaches Danger)
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants Defi.ERC4626
 
 /-! ## The frames -/
 
@@ -132,7 +133,7 @@ theorem topBump_frame {m : Machine} {msg : Message} {k : FrameKind}
   rw [hf] at hG; simp only [Frame.init] at hG; omega
 
 /-- `VaultStart` survives the top-level bump. -/
-theorem _root_.EvmLeanSpecs.Refinement.Nested.VaultStart.topBump {vault asset : Address} {m : Machine} (hv : VaultStart vault asset m)
+theorem _root_.Examples.Solmate.ERC4626.Nested.VaultStart.topBump {vault asset : Address} {m : Machine} (hv : VaultStart vault asset m)
     {G : Nat} (hG : m.frame.gasLeft ≤ G) : VaultStart vault asset (topBump G m) := by
   obtain ⟨msg, k, s, hf, hc⟩ := hv.fresh
   exact ⟨⟨{ msg with gas := G }, k, s, topBump_frame hf hG, hc⟩, hv.static, hv.prot, hv.pre,
@@ -170,7 +171,7 @@ theorem frameOk_of_topBump {crypto : Crypto} {vault asset : Address} {Act : List
       FrameOk crypto vault asset Act K m := fun hmono hS =>
     halts_world_of_mono (P := fun w => Deployed w vault asset ∧ ∃ cs : List VCall,
       (∀ c ∈ cs, Admitted Act K c) ∧ AgreeOn (ActorPairs Act) (abs crypto w vault asset)
-        (EvmLeanSpecs.Vault.Solmate.exec (abs crypto m.world vault asset) (cs.map VCall.op))) hmono hk hS h
+        (Defi.ERC4626.Solmate.exec (abs crypto m.world vault asset) (cs.map VCall.op))) hmono hk hS h
   rcases high_of_vaultStart hv hdep hnd hG hG' with hS | hS
   · exact key (vaultHigh_mono hA hV) hS
   · exact key (assetHigh_mono hA) hS
@@ -219,7 +220,7 @@ theorem follows_tx_atSomeGas {crypto : Crypto} {vault asset : Address} {Act : Li
     (hw : Follows crypto vault asset Act K w₀ w) {ctx : Context} {tr : TransientStorage}
     {msg : Message} {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
-    (hmsg : EvmLean.Program.Nested.TopOk (Prot vault asset) w msg)
+    (hmsg : EvmLogic.Program.Nested.TopOk (Prot vault asset) w msg)
     (hok : TxOkAtSomeGas vault asset minGas Act K ctx w tr msg)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     Follows crypto vault asset Act K w₀ r.world := by
@@ -233,4 +234,4 @@ theorem follows_tx_atSomeGas {crypto : Crypto} {vault asset : Address} {Act : Li
   exact frameOk_of_coveredAtSomeGas hA hV hmin hk hs hv hkind hwm.1 (hwm.inv hs hinv) hcr' hnd
     hcov (hcr ▸ hadm)
 
-end EvmLeanSpecs.Refinement.LowGas
+end Examples.Solmate.ERC4626.LowGas

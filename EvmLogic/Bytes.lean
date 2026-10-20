@@ -365,7 +365,7 @@ end EvmLean.Bytes
 
 namespace EvmLean.Memory
 
-open Bytes
+open EvmLean.Bytes
 
 /-- Memory size after `expand`: the old size, or the covering whole words if larger. -/
 theorem size_expand (m : Memory) (off len : Nat) :
@@ -471,7 +471,7 @@ end EvmLean.Memory
 
 namespace EvmLean.Interpreter
 
-open Bytes
+open EvmLean.Bytes
 
 /-- `readBytes` is `Bytes.readPadded`: its out-of-range guard returns the same zeros. -/
 theorem readBytes_eq_readPadded (b : ByteArray) (off len : Nat) :

@@ -16,9 +16,9 @@ the owner, exercising allowances), share `transfer`/`approve`/`transferFrom`, So
 generic calls of any selector with random arguments, and malformed calldata.
 -/
 
-namespace Differential
+namespace Examples.Differential
 
-open EvmLean EvmLean.Contracts
+open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
 
 /-- Generator state: a SplitMix64 counter. -/
 abbrev Gen := StateM UInt64
@@ -258,4 +258,4 @@ def genCall (f : Family) (w : World) (recent : Array Word) : Gen Call := do
     let to ← pick #[f.vault, f.asset]
     junkCall f sender to (if to = f.vault then v else a)
 
-end Differential
+end Examples.Differential

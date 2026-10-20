@@ -28,10 +28,11 @@ concatenated in order, are the encoding of the model's event stream
   `L = encode vault asset (Solmate.stream (abs crypto w₀ vault asset) (cs.map VCall.op))`.
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -273,4 +274,4 @@ theorem trace_logs (hmin : 250000 ≤ minGas)
   logTrace_stream hs (refinesFor_all_of hmin hk) (fun c => opEvents_all hmin hk c) htr hact hdep
     hinv rfl (AgreeOn.refl _)
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants

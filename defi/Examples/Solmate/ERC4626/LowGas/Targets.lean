@@ -6,7 +6,7 @@ import EvmLogic.Tactic.KernelRfl
 # Low gas: the call targets of the Solmate vault and asset
 
 Discharges the two call-target hypotheses of the gas-monotonicity argument
-(`LowGasFrames.lean`) with the certified abstract interpreter (`EvmLeanProofs/Program/AbsInt`):
+(`LowGasFrames.lean`) with the certified abstract interpreter (`EvmLogic/AbsInt`):
 
 * **Certificates** (`vault_cert`, `asset_cert`): the abstract interpretation of each code from
   pc `0` with an empty stack terminates with no unresolved jump, no reachable `CREATE`, and
@@ -24,14 +24,14 @@ Discharges the two call-target hypotheses of the gas-monotonicity argument
   code, and a failed child restores a snapshot taken during the frame).
 -/
 
-namespace EvmLeanSpecs.Refinement.LowGas
+namespace Examples.Solmate.ERC4626.LowGas
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Contracts EvmLean.Program.GasMono
-open EvmLean.Program.AbsInt
-open EvmLean.Program.Nested (bump Reaches Danger InstrFrame exec_frame pushCall
-  precompilesOk_standard)
-open EvmLeanSpecs.Vault EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts EvmLogic.GasMono
+open EvmLogic.AbsInt
+open EvmLogic.Program.Nested (bump Reaches Danger InstrFrame exec_frame pushCall precompilesOk_standard)
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants Defi.ERC4626
 
 /-! ## Certificates -/
 
@@ -393,4 +393,4 @@ theorem vault_callsTo {vault asset : Address} {i : SolmateVault.Immutables} {mh 
 theorem vaultCallsAsset (vault asset : Address) : VaultCallsAsset vault asset :=
   fun _ _ _ _ _ hV hex => vault_callsTo hV hex
 
-end EvmLeanSpecs.Refinement.LowGas
+end Examples.Solmate.ERC4626.LowGas

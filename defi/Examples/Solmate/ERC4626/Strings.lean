@@ -24,9 +24,10 @@ ABI encoder at `0x1148`, which copies the bytes into the return buffer with `MCO
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-- What a `string` getter ends with: the world unchanged, and the ABI encoding of the string
 `s` when the slot decodes to `some s`, a revert when it is inconsistent. -/
@@ -130,11 +131,12 @@ theorem vaultEncodeShort_wp {i : SolmateVault.Immutables} (m : Machine) {L : Nat
   pwp_steps [hM2s, hM2f, Str.and_notMask31 (show L < 2 ^ 255 by omega), hround, hM2r]
   exact ⟨rfl, trivial⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
 /-- **The vault's string getter, short (even) slot word**, from the entry of
@@ -203,7 +205,7 @@ theorem vaultStringShort_wp {i : SolmateVault.Immutables} (m : Machine) {S slot 
       Str.lt_32_of_ge (Nat.le_of_not_lt hshort) (by omega)]
     exact ⟨rfl, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -227,9 +229,10 @@ static part, the expansion terms telescoping (`Gas.extendMemory_one`, `memoryCos
   with all `n = ⌈L / 32⌉` words copied.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-- The state of the copy loop of the vault's string getter after `k` words, at pc `pc`:
 `dst = 0xa0 + 32 k`, `ptr = h + k` (`h` the first data slot), `end = 0xa0 + L` on the stack;
@@ -383,11 +386,12 @@ theorem vaultCopyLoop_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
   · exact .inl ⟨n - (k + 1), by omega, k + 1, rfl, hk1, h'⟩
   · exact .inr (hk1 ▸ h')
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-- A prefix of a read is a shorter read. -/
 theorem Memory.read_prefix (M : Memory) {off a b : Nat} (h : a ≤ b) :
@@ -597,11 +601,12 @@ theorem vaultLongTail_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
   pwp_return_in [hM4s, hhead, hsz, hM4r]
   exact ⟨trivial, trivial⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
 /-- **The vault's string getter, long (odd) slot word**, from the entry of
@@ -681,7 +686,7 @@ theorem vaultStringLong_wp {i : SolmateVault.Immutables} (m : Machine) {S slot :
       Str.lt_32_of_lt (Nat.lt_of_not_le hlong)]
     exact ⟨rfl, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -706,9 +711,10 @@ covered, for every `Crypto`: the long-string data slots are whatever `arrayDataS
 no hypothesis on Keccak is needed to *read*.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-- The start of a call frame of a string getter: fresh frame of `code`, no value, enough gas
 for the string at `slot` of the executing account (`Str.getterGas`, below `2⁶⁴`), calldata
@@ -795,11 +801,12 @@ theorem vaultSymbol_refines {i : SolmateVault.Immutables} (m : Machine)
   generalize sloadCost _ = sl at *
   exact getterGas_le hg _ (by omega)
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-! ## Top-level transactions -/
 
@@ -880,6 +887,6 @@ theorem vaultSymbol_call (hdep : Deployed w vault asset)
     (vaultSymbol_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
       (noArgCall_encodeCall (by decide)))
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

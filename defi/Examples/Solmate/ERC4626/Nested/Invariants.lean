@@ -69,12 +69,13 @@ also required per frame; with it the nonce write is invisible to the abstraction
   price theorems hold with permits included.
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
   {minGas : Nat}
@@ -348,9 +349,9 @@ theorem supply_eq_sum_nested (hmin : 250000 ≤ minGas)
     (hinv : Solmate.Inv (abs crypto w₀ vault asset))
     (htr : TxTrace crypto vault asset minGas Act K w₀ w) :
     (w.sload vault 2#256).toNat =
-        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        ∑ a : Address, (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
-        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
+        ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
   obtain ⟨-, hi, -⟩ := lift_nested hmin hk hs hdep hinv htr
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
@@ -408,9 +409,9 @@ theorem supply_eq_sum_any_tx (hmin : 250000 ≤ minGas)
     (hok : TxOk vault asset minGas Act K ctx w₀ tr msg)
     (hr : processMessageCall fuel ctx w₀ tr msg = .ok r) :
     (r.world.sload vault 2#256).toNat = ∑ a : Address,
-        (r.world.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        (r.world.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (r.world.sload asset 2#256).toNat = ∑ a : Address,
-        (r.world.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
+        (r.world.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
   obtain ⟨-, hi, -⟩ := lift_any_tx hmin hk hs hdep hinv hcr hdeleg hmsg hgas hok hr
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
@@ -476,4 +477,4 @@ theorem price_mono_any_tx (hmin : 250000 ≤ minGas)
           (assetsAt crypto r.world vault asset : ℚ) / supplyAt r.world vault) :=
   price_mono_nested hmin hk hs hdep hinv (txTrace_single hcr hdeleg hmsg hgas hok hr)
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested

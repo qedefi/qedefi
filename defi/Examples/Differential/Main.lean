@@ -19,10 +19,10 @@ For each family (Solmate `MockERC20`/`MockERC4626`, OpenZeppelin `ERC20Mock`/`Oz
    `runtimeCodeFor` of the new addresses: immutables patched by position) and then from the
    canonical deployer (the code must equal the committed `runtimeCode`). Outcomes and
    storage are compared as below.
-2. **Random sequences.** `--sequences` sequences of `--length` calls (`Differential.Gen`) from
+2. **Random sequences.** `--sequences` sequences of `--length` calls (`Examples.Differential.Gen`) from
    four actors, each starting from the deployed state (anvil `evm_snapshot`/`evm_revert`).
    After every call the tester compares success, return/revert data, logs, receipt
-   `gasUsed`, and storage: every slot either side wrote or holds (see `Differential.Rpc`).
+   `gasUsed`, and storage: every slot either side wrote or holds (see `Examples.Differential.Rpc`).
    Before them, a fixed first-depositor inflation-attack scenario is run and compared.
 3. **Shrinking.** On a mismatch the sequence is cut after the failing call and calls are
    removed greedily while the mismatch persists; the minimal sequence is printed with
@@ -36,9 +36,9 @@ Anvil (Foundry) must be in `PATH` unless `--rpc` points at a running Cancun anvi
 id 1, `--auto-impersonate` and a zero base fee.
 -/
 
-namespace Differential
+namespace Examples.Differential
 
-open EvmLean EvmLean.Contracts Lean Conformance
+open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts Lean Conformance
 
 /-- Gas limit of every transaction. -/
 def gasLimit : Nat := 10_000_000
@@ -368,9 +368,9 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
     testFamily cfg rpc stats i fam
     i := i + 1
 
-end Differential
+end Examples.Differential
 
-open Differential in
+open Examples.Differential in
 /-- Entry point of `lake exe difftest`. -/
 def main (args : List String) : IO UInt32 := do
   let cfg ← match parseArgs {} args with
@@ -385,7 +385,7 @@ def main (args : List String) : IO UInt32 := do
   | none =>
     let now ← IO.monoMsNow
     let port := if cfg.port = 0 then 30000 + now % 20000 else cfg.port
-    let child ← spawnAnvil port EvmLean.Contracts.chainId
+    let child ← spawnAnvil port Examples.Deployment.chainId
     try runAll cfg { url := s!"http://127.0.0.1:{port}" } stats
     catch e => child.kill; IO.eprintln s!"error: {e}"; return 2
     child.kill

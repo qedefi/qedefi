@@ -6,7 +6,7 @@ import EvmLogic.Tactic.SolStep
 /-!
 # `psol_step`: symbolic execution of code with symbolic immutables
 
-`sol_step` (`EvmLeanProofs.Solidity.Tactic`) needs the executed code to be a byte literal.
+`sol_step` (`EvmLogic.Tactic.SolStep`) needs the executed code to be a byte literal.
 The runtime code of a deployment with *arbitrary* immutables is `patchWords base ps`
 (`runtimeCodeWith i` for a symbolic `i`), which is not. `psol_step` is `sol_step` for such
 code; outside the patched windows it is exactly as fast:
@@ -33,10 +33,11 @@ shared, with the discharger `sol_disch` replaced by `psol_disch` (which falls ba
 
 section
 
-namespace EvmLean.Solidity.Patched
+namespace EvmLogic.Tactic.Patched
+open EvmLean EvmLogic.Solidity
 
-open Lean Elab Tactic Meta Simp
-open EvmLean.Interpreter EvmLean.Contracts
+open Lean Elab Tactic EvmLogic.Tactic Meta Simp
+open EvmLean.Interpreter EvmLogic.Solidity
 
 /-! ## Recognising patched code -/
 
@@ -45,7 +46,7 @@ def patched? (e : Expr) : MetaM (Option (Expr × Expr)) := withTransparency .def
   let mut e ← instantiateMVars e
   for _ in [0:16] do
     e := e.consumeMData
-    if let some (base, ps) := e.app2? ``Contracts.patchWords then
+    if let some (base, ps) := e.app2? ``Solidity.patchWords then
       return some (base, ps)
     match ← unfoldDefinition? e with
     | some e' => e := e'
@@ -185,7 +186,7 @@ def swapDisch (t : TSyntax `tactic) : TacticM (TSyntax `tactic) := do
 base code if the code is patched. -/
 def currentByte : TacticM Nat := withMainContext do
   let t ← instantiateMVars (← getMainTarget)
-  let some m := Exec.findRunMachine? t | throwError "psol_step: no `run _ m` in the goal"
+  let some m := SolStep.findRunMachine? t | throwError "psol_step: no `run _ m` in the goal"
   let fr ← mkAppM ``Machine.frame #[m]
   let pc ← whnfD (← mkAppM ``Frame.pc #[fr])
   let some pc ← (evalNat pc).run | throwError "psol_step: pc is not a numeral: {pc}"
@@ -193,7 +194,7 @@ def currentByte : TacticM Nat := withMainContext do
   let code ← match ← patched? code with
     | some (base, _) => pure base
     | none => pure code
-  let some bytes ← Exec.codeBytes? code
+  let some bytes ← SolStep.codeBytes? code
     | throwError "psol_step: the code is not a (patched) byte-array literal"
   let some b := bytes[pc]? | throwError "psol_step: pc {pc} past the end of the code"
   return b
@@ -205,9 +206,9 @@ elab_rules : tactic
   | `(tactic| psol_step) => do evalTactic (← `(tactic| psol_step []))
   | `(tactic| psol_step [$extra,*]) => do
     let b ← currentByte
-    let halts ← (← Exec.haltTactics b).mapM swapDisch
+    let halts ← (← SolStep.haltTactics b).mapM swapDisch
     if halts.isEmpty then
-      let tacs ← (← Exec.stepTactics b).mapM swapDisch
+      let tacs ← (← SolStep.stepTactics b).mapM swapDisch
       if tacs.isEmpty then throwError "psol_step: no step lemma for opcode {b}"
       evalTactic (← `(tactic| rw [EvmLean.Interpreter.run_succ_of_running ?h]))
       let gs ← getGoals
@@ -215,7 +216,7 @@ elab_rules : tactic
         | throwError "psol_step: no side goal"
       let rest := gs.filter (· != hg)
       setGoals [hg]
-      Exec.firstOf tacs s!"psol_step: no step lemma applies to opcode {b}"
+      SolStep.firstOf tacs s!"psol_step: no step lemma applies to opcode {b}"
       setGoals rest
     else
       evalTactic (← `(tactic| rw [EvmLean.Interpreter.run_succ_of_done ?h]))
@@ -224,10 +225,10 @@ elab_rules : tactic
         | throwError "psol_step: no side goal"
       let rest := gs.filter (· != hg)
       setGoals [hg]
-      Exec.firstOf halts s!"psol_step: no halting lemma applies to opcode {b}"
+      SolStep.firstOf halts s!"psol_step: no halting lemma applies to opcode {b}"
       setGoals rest
-    evalTactic (← `(tactic| try evm_norm [EvmLean.Solidity.Patched.reducePatchedRead,
-      EvmLean.Solidity.Exec.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow, Nat.reduceLT,
+    evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.Patched.reducePatchedRead,
+      EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow, Nat.reduceLT,
       $extra,*]))
 
 /-- Repeat `psol_step` while it succeeds. -/
@@ -254,7 +255,7 @@ macro "psol_dispatch" : tactic => `(tactic| (
   subst hR
   simp only [initMemory, BitVec.ofNat_eq_ofNat, Nat.sub_sub, Nat.reduceAdd]))
 
-end EvmLean.Solidity.Patched
+end EvmLogic.Tactic.Patched
 
 end
 
@@ -263,11 +264,11 @@ section
 /-!
 ## `pwp_step`: the frame-local symbolic executor on code with symbolic immutables
 
-`wp_step` (`EvmLeanProofs.Program.Tactic`) reads code bytes, pushed immediates and jump
+`wp_step` (`EvmLogic.Tactic.WpStep`) reads code bytes, pushed immediates and jump
 destinations from a literal code constant. The runtime code of a contract deployed with
 *arbitrary* immutables is `Contracts.patchWords base ps` with symbolic patched words (e.g.
 `SolmateVault.runtimeCodeWith i`), which is not a literal. `pwp_step` is `wp_step` for such
-code, using the patched-code lemmas of `EvmLeanProofs.Solidity.SharesExtraPatch` (as
+code, using the patched-code lemmas of `EvmLogic.Solidity.Immutables` (as
 `psol_step` does for `run` goals):
 
 * the opcode byte at `pc` is read from the literal `base`; the fact `code[pc]? = some b` is
@@ -288,10 +289,11 @@ code, using the patched-code lemmas of `EvmLeanProofs.Solidity.SharesExtraPatch`
 `pjumpdest_disch` jump destinations, both for literal and patched code.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Lean Elab Tactic Meta
-open Interpreter Contracts
+open Lean Elab Tactic EvmLogic.Tactic Meta
+open EvmLean.Interpreter EvmLogic.Solidity
 
 /-- A jump destination of patched code with the canonical scan. -/
 theorem isValidJumpDest_of_jumpTable_agree {jd : Array Bool} {code base : ByteArray} {d : Nat}
@@ -302,14 +304,14 @@ theorem isValidJumpDest_of_jumpTable_agree {jd : Array Bool} {code base : ByteAr
 
 /-- `(base, ps)` if `code` unfolds to `patchWords base ps`, with the patch offsets. -/
 def patchedCode? (code : Expr) : MetaM (Option (Expr × Expr × List Nat)) := do
-  let some (base, ps) ← Solidity.Patched.patched? code | return none
-  let some offs ← Solidity.Patched.patchOffsets? ps | return none
+  let some (base, ps) ← Tactic.Patched.patched? code | return none
+  let some offs ← Tactic.Patched.patchOffsets? ps | return none
   return some (base, ps, offs)
 
 /-- A kernel-checked proof of `∀ o ∈ offs, P o` for a decidable closed `P`, built by
 `mkBody o`. -/
 def offsDisjProof (offs : List Nat) (mkBody : Expr → MetaM Expr) : MetaM Expr := do
-  let offsE := Solidity.Patched.natListLit offs
+  let offsE := Tactic.Patched.natListLit offs
   mkDecideProof (← withLocalDeclD `o (mkConst ``Nat) fun o => do
     let mem ← mkAppM ``Membership.mem #[offsE, o]
     mkForallFVars #[o] (← mkArrow mem (← mkBody o)))
@@ -336,8 +338,8 @@ def pcodeFact (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (pc : Na
       mkAppM ``Or #[← mkAppM ``LT.lt #[mkNatLit pc, o],
         ← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[o, mkNatLit 32], mkNatLit pc]]
     let heq := mkAppN (mkConst ``getElem?_patchWords_of_offsets)
-      #[base, ps, mkNatLit pc, Solidity.Patched.natListLit offs,
-        ← Solidity.Patched.offsetsProof ps offs, hdisj]
+      #[base, ps, mkNatLit pc, Tactic.Patched.natListLit offs,
+        ← Tactic.Patched.offsetsProof ps offs, hdisj]
     mkEqTrans heq (← codeFact base pc b)
 
 /-- The fact `Bytes.toWord (readBytes code (pc + 1) n) = v` for a `PUSHn` whose immediate
@@ -353,8 +355,8 @@ def ppushFact? (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (bytes 
       mkAppM ``Or #[← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[mkNatLit off, mkNatLit n], o],
         ← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[o, mkNatLit 32], mkNatLit off]]
     let heq := mkAppN (mkConst ``readBytes_patchWords_of_offsets)
-      #[base, ps, mkNatLit off, mkNatLit n, Solidity.Patched.natListLit offs,
-        ← Solidity.Patched.offsetsProof ps offs, hdisj]
+      #[base, ps, mkNatLit off, mkNatLit n, Tactic.Patched.natListLit offs,
+        ← Tactic.Patched.offsetsProof ps offs, hdisj]
     let heq' ← mkCongrArg (mkConst ``Bytes.toWord) heq
     return some (← mkEqTrans heq' (← pushFact base bytes pc n))
 
@@ -545,7 +547,7 @@ elab_rules : tactic
           if pcs.contains pc then return
       unless ← pwpStep extra do return
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -554,16 +556,17 @@ section
 /-!
 ## `CODECOPY` in the frame-local logic
 
-`wp_step` (`EvmLeanProofs.Program.Tactic`) has no lemma for `CODECOPY`, which solc uses to
+`wp_step` (`EvmLogic.Tactic.WpStep`) has no lemma for `CODECOPY`, which solc uses to
 load 32-byte constants (event topics, revert strings) from the end of the code.
 `pwp_codecopy` performs one `CODECOPY` of a literal range of literal or patched code
-(`EvmLeanProofs.Solidity.ExtraPatchedWP`; the range must avoid the patches): it applies
+(`EvmLogic.Tactic.Patched`; the range must avoid the patches): it applies
 `step_codecopy`, then evaluates the copied bytes with `reducePatchedRead` and `reduceCodeImm`
 (kernel-checked evaluations, as `psol_step` does) and turns the copied word into an `MSTORE`
 (`Memory.write_ofWord`), so that later reads of it reduce.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
 open EvmLean.Interpreter
 
@@ -574,12 +577,12 @@ macro "pwp_codecopy" : tactic => `(tactic| (
   case h =>
     apply EvmLean.Interpreter.step_codecopy (by pcode_fact) rfl (by decide) (by evm_gas)
   case hs => same_frame
-  simp only [EvmLean.Solidity.Patched.reducePatchedRead, EvmLean.Solidity.Exec.reduceCodeImm, Memory.write_ofWord, BitVec.reduceToNat,
+  simp only [EvmLogic.Tactic.Patched.reducePatchedRead, EvmLogic.Tactic.SolStep.reduceCodeImm, Memory.write_ofWord, BitVec.reduceToNat,
     Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.reduceSub, memoryCost, Gas.extendMemory,
     List.foldl, Gas.ceil32, Gas.memoryCost, Gas.words, Gas.memoryPerWord, Memory.size_storeWord,
     Memory.size_expand, Memory.size_empty, Memory.wordsAfter, Memory.words, Nat.reduceLeDiff,
     Nat.reduceEqDiff, Nat.max_def, ↓reduceIte]))
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

@@ -35,9 +35,10 @@ section
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault.Solmate
+namespace Defi.ERC4626.Solmate
+open Defi.Math Defi.ERC20
 
-open Token
+open Defi.ERC20.Token
 
 /-- Storage of a deployed Solmate `MockERC4626` together with its `MockERC20` asset. -/
 structure State (A : Type) where
@@ -55,6 +56,7 @@ structure State (A : Type) where
 variable {A : Type} [DecidableEq A]
 
 namespace State
+open Defi.Math Defi.ERC20
 
 variable (s : State A)
 
@@ -199,7 +201,7 @@ def exec (s : State A) : List (Op A) → State A
 /-- The model's global invariant: both ledgers are well formed. -/
 def Inv (s : State A) : Prop := s.asset.WF ∧ s.shares.WF
 
-end EvmLeanSpecs.Vault.Solmate
+end Defi.ERC4626.Solmate
 end
 
 end
@@ -216,9 +218,10 @@ attack) is proved from these.
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault.Solmate
+namespace Defi.ERC4626.Solmate
+open Defi.Math Defi.ERC20
 
-open Token Finsupp
+open Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
@@ -494,7 +497,7 @@ theorem self_step {s s' : State A} {op : Op A} (h : step s op = some s') : s'.se
     obtain ⟨t, -, rfl⟩ := Option.map_eq_some_iff.1 h; rfl
   | approve | assetApprove => cases h; rfl
 
-end EvmLeanSpecs.Vault.Solmate
+end Defi.ERC4626.Solmate
 end
 
 end

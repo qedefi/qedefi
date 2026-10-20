@@ -21,10 +21,11 @@ by falling into the next `JUMPDEST`).
   checked with the linear-time `jdCheck` (`isValidJumpDest_of_jdCheck`, `jumpdest_disch`).
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Lean Elab Tactic Meta
-open Interpreter
+open Lean Elab Tactic EvmLogic.Tactic Meta
+open EvmLean.Interpreter
 
 /-! ## Cutting code into blocks -/
 
@@ -134,4 +135,4 @@ macro "machine_eq" : tactic => `(tactic| (
 equalities `machine_eq` proves. -/
 macro "wp_finish " h:term : tactic => `(tactic| (refine WP.ret_of_eq ?_ $h; machine_eq))
 
-end EvmLean.Program
+end EvmLogic.Program

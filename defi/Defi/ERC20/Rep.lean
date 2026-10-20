@@ -4,15 +4,15 @@ import EvmLogic.Solidity.ERC20
 /-!
 # Word-level ERC-20 states and `Token` ledgers
 
-The bytecode theorems (`SharesTransfer`, …) are stated on the word-level storage view
+The bytecode theorems (`Examples.Solmate.ERC4626.SharesCode`, …) are stated on the word-level storage view
 `Erc20.view` and its models `Erc20.Model.transfer` / `approve` / `spend` / `transferFrom`
-(`EvmLeanProofs.Solidity.Erc20`, `SharesExtraErc20`). The abstract vault (`EvmLeanSpecs.Vault`)
+(`EvmLogic.Solidity.ERC20`, `EvmLogic.Solidity.ERC20`). The abstract vault (`Defi`)
 keeps its share ledger as a `Token Address` (`ℕ` balances, `Finsupp`). This file relates the
 two:
 
 * `RepOn P s t`: the ledger `t` is the word-level state `s` (`toNat` of every field), for the
   allowance entries satisfying `P` (frames over nested mappings are only available pointwise,
-  see `EvmLeanProofs.Solidity.Keccak`); `Rep` is the case `P = ⊤`.
+  see `EvmLogic.Solidity.Keccak`); `Rep` is the case `P = ⊤`.
 * `rep_transfer`, `rep_approve`, `rep_spend`, `rep_transferFrom`: the word-level operation and
   the `Token` operation succeed together, and their results are again related. Word arithmetic
   is wrapping, `Token` arithmetic is in `ℕ`; they agree on well-formed ledgers (`Token.WF`:
@@ -21,13 +21,13 @@ two:
 Nothing here is specific to the vault: it applies to any Solmate `ERC20` (e.g. the asset).
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Defi.ERC20
 
-open EvmLean EvmLean.Solidity EvmLeanSpecs.Vault
+open EvmLean EvmLogic EvmLogic.Solidity Defi.Math Defi.ERC20
 
 /-- The ℕ-valued ledger `t` is the word-valued ERC-20 state `s`, for the allowance entries
 satisfying `P`. -/
-structure RepOn (P : Address → Address → Prop) (s : Erc20.State) (t : Token Address) : Prop where
+structure RepOn (P : Address → Address → Prop) (s : ERC20.State) (t : Token Address) : Prop where
   /-- `totalSupply` agrees. -/
   totalSupply : s.totalSupply.toNat = t.totalSupply
   /-- Every balance agrees. -/
@@ -36,15 +36,15 @@ structure RepOn (P : Address → Address → Prop) (s : Erc20.State) (t : Token 
   allowance : ∀ o sp, P o sp → (s.allowance o sp).toNat = t.allowance o sp
 
 /-- `t` is the word-valued state `s`, everywhere. -/
-abbrev Rep (s : Erc20.State) (t : Token Address) : Prop := RepOn (fun _ _ => True) s t
+abbrev Rep (s : ERC20.State) (t : Token Address) : Prop := RepOn (fun _ _ => True) s t
 
 /-- Weakening the allowance predicate. -/
-theorem RepOn.mono {P Q : Address → Address → Prop} {s : Erc20.State} {t : Token Address}
+theorem RepOn.mono {P Q : Address → Address → Prop} {s : ERC20.State} {t : Token Address}
     (h : RepOn P s t) (hPQ : ∀ o sp, Q o sp → P o sp) : RepOn Q s t :=
   ⟨h.totalSupply, h.balanceOf, fun o sp hq => h.allowance o sp (hPQ o sp hq)⟩
 
 /-- A view that agrees with `s'` (allowances on `P`) represents what `s'` represents. -/
-theorem RepOn.of_eq {P : Address → Address → Prop} {v s' : Erc20.State} {t' : Token Address}
+theorem RepOn.of_eq {P : Address → Address → Prop} {v s' : ERC20.State} {t' : Token Address}
     (h1 : v.totalSupply = s'.totalSupply) (h2 : v.balanceOf = s'.balanceOf)
     (h3 : ∀ o sp, P o sp → v.allowance o sp = s'.allowance o sp) (hr : Rep s' t') :
     RepOn P v t' :=
@@ -62,11 +62,11 @@ theorem add_le_total {f : Address →₀ ℕ} {a b : Address} (h : a ≠ b) : f 
   omega
 
 /-- `type(uint256).max` as a word. -/
-theorem toNat_maxWord : Erc20.maxWord.toNat = MAX := by
-  simp [Erc20.maxWord, MAX]
+theorem toNat_maxWord : ERC20.maxWord.toNat = MAX := by
+  simp [ERC20.maxWord, MAX]
 
 /-- A word is `type(uint256).max` iff its value is `MAX`. -/
-theorem eq_maxWord_iff (x : Word) : x = Erc20.maxWord ↔ x.toNat = MAX := by
+theorem eq_maxWord_iff (x : Word) : x = ERC20.maxWord ↔ x.toNat = MAX := by
   constructor
   · rintro rfl; exact toNat_maxWord
   · intro h; apply BitVec.eq_of_toNat_eq; rw [h, toNat_maxWord]
@@ -74,10 +74,10 @@ theorem eq_maxWord_iff (x : Word) : x = Erc20.maxWord ↔ x.toNat = MAX := by
 /-! ## `transfer` -/
 
 /-- `Model.transfer` and `Token.transfer` succeed together. -/
-theorem transfer_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep s t)
+theorem transfer_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (c d : Address) (amount : Word) :
-    (Erc20.Model.transfer s c d amount).isSome ↔ (t.transfer c d amount.toNat).isSome := by
-  unfold Erc20.Model.transfer Token.transfer
+    (ERC20.Model.transfer s c d amount).isSome ↔ (t.transfer c d amount.toNat).isSome := by
+  unfold ERC20.Model.transfer Token.transfer
   rw [hr.balanceOf c]
   by_cases h : amount.toNat ≤ t.balanceOf c
   · simp [h, Nat.not_lt.2 h]
@@ -85,13 +85,13 @@ theorem transfer_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep s t)
 
 /-- **`transfer` refinement of the models**: on a well-formed ledger, the results of
 `Model.transfer` and `Token.transfer` are related (the word additions do not wrap). -/
-theorem rep_transfer {s s' : Erc20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
-    {c d : Address} {amount : Word} (hm : Erc20.Model.transfer s c d amount = some s')
+theorem rep_transfer {s s' : ERC20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
+    {c d : Address} {amount : Word} (hm : ERC20.Model.transfer s c d amount = some s')
     (ht : t.transfer c d amount.toNat = some t') : Rep s' t' := by
   obtain ⟨hv, rfl⟩ := Token.transfer_eq_some.1 ht
-  have hal := Erc20.Model.transfer_allowance hm
-  have hts := Erc20.Model.transfer_totalSupply hm
-  unfold Erc20.Model.transfer at hm
+  have hal := ERC20.Model.transfer_allowance hm
+  have hts := ERC20.Model.transfer_totalSupply hm
+  unfold ERC20.Model.transfer at hm
   simp only [show amount.toNat ≤ (s.balanceOf c).toNat by rw [hr.balanceOf c]; exact hv,
     ↓reduceIte] at hm
   cases hm
@@ -99,7 +99,7 @@ theorem rep_transfer {s s' : Erc20.State} {t t' : Token Address} (hr : Rep s t) 
   intro b
   have hsub : (s.balanceOf c - amount).toNat = t.balanceOf c - amount.toNat := by
     rw [BitVec.toNat_sub_of_le (BitVec.le_def.2 (by rw [hr.balanceOf c]; exact hv)), hr.balanceOf c]
-  simp only [Erc20.State.setBalance]
+  simp only [ERC20.State.setBalance]
   rw [Token.add_single_apply, Token.sub_single_apply]
   by_cases hbd : b = d
   · subst hbd
@@ -122,20 +122,20 @@ theorem rep_transfer {s s' : Erc20.State} {t t' : Token Address} (hr : Rep s t) 
 /-! ## `approve` -/
 
 /-- **`approve` refinement of the models.** -/
-theorem rep_approve {s : Erc20.State} {t : Token Address} (hr : Rep s t) (o sp : Address)
-    (amount : Word) : Rep (Erc20.Model.approve s o sp amount) (t.approve o sp amount.toNat) := by
+theorem rep_approve {s : ERC20.State} {t : Token Address} (hr : Rep s t) (o sp : Address)
+    (amount : Word) : Rep (ERC20.Model.approve s o sp amount) (t.approve o sp amount.toNat) := by
   refine ⟨hr.totalSupply, hr.balanceOf, fun o' sp' _ => ?_⟩
-  simp only [Erc20.Model.approve, Erc20.State.setAllowance, Token.approve, Token.setAllowance,
+  simp only [ERC20.Model.approve, ERC20.State.setAllowance, Token.approve, Token.setAllowance,
     Function.update_apply]
   by_cases h1 : o' = o <;> by_cases h2 : sp' = sp <;> simp [h1, h2, hr.allowance _ _ trivial]
 
 /-! ## `spend` and `transferFrom` -/
 
 /-- `Model.spend` and `Token.spend` succeed together. -/
-theorem spend_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep s t)
+theorem spend_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (o sp : Address) (amount : Word) :
-    (Erc20.Model.spend s o sp amount).isSome ↔ (t.spend o sp amount.toNat).isSome := by
-  unfold Erc20.Model.spend Token.spend
+    (ERC20.Model.spend s o sp amount).isSome ↔ (t.spend o sp amount.toNat).isSome := by
+  unfold ERC20.Model.spend Token.spend
   simp only [eq_maxWord_iff, hr.allowance o sp trivial]
   by_cases hm : t.allowance o sp = MAX
   · simp [hm]
@@ -144,13 +144,13 @@ theorem spend_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep s t)
     · simp [hm, h, Nat.lt_of_not_le h]
 
 /-- **The allowance step, models.** -/
-theorem rep_spend {s s₁ : Erc20.State} {t t₁ : Token Address} (hr : Rep s t)
-    {o sp : Address} {amount : Word} (hm : Erc20.Model.spend s o sp amount = some s₁)
+theorem rep_spend {s s₁ : ERC20.State} {t t₁ : Token Address} (hr : Rep s t)
+    {o sp : Address} {amount : Word} (hm : ERC20.Model.spend s o sp amount = some s₁)
     (ht : t.spend o sp amount.toNat = some t₁) : Rep s₁ t₁ := by
-  unfold Erc20.Model.spend at hm
+  unfold ERC20.Model.spend at hm
   unfold Token.spend at ht
   have ha := hr.allowance o sp trivial
-  by_cases hmax : s.allowance o sp = Erc20.maxWord
+  by_cases hmax : s.allowance o sp = ERC20.maxWord
   · have hmax' : t.allowance o sp = MAX := by rw [← ha, (eq_maxWord_iff _).1 hmax]
     simp only [hmax, ↓reduceIte, Option.some.injEq] at hm
     simp only [hmax', ↓reduceIte, Option.some.injEq] at ht
@@ -164,7 +164,7 @@ theorem rep_spend {s s₁ : Erc20.State} {t t₁ : Token Address} (hr : Rep s t)
       simp only [show ¬ t.allowance o sp < amount.toNat by rw [← ha]; omega, ↓reduceIte] at ht
       cases ht
       refine ⟨hr.totalSupply, hr.balanceOf, fun o' sp' _ => ?_⟩
-      simp only [Erc20.State.setAllowance, Token.setAllowance, Function.update_apply]
+      simp only [ERC20.State.setAllowance, Token.setAllowance, Function.update_apply]
       by_cases h1 : o' = o <;> by_cases h2 : sp' = sp
       · subst h1 h2
         simp only [and_self, ↓reduceIte, Function.update_self]
@@ -177,12 +177,12 @@ theorem rep_spend {s s₁ : Erc20.State} {t t₁ : Token Address} (hr : Rep s t)
 
 /-- **`transferFrom` refinement of the models**: `Model.transferFrom` and
 `Token.transferFrom` succeed together, with related results. -/
-theorem transferFrom_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep s t)
+theorem transferFrom_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (sp src dst : Address) (amount : Word) :
-    (Erc20.Model.transferFrom s sp src dst amount).isSome ↔
+    (ERC20.Model.transferFrom s sp src dst amount).isSome ↔
       (t.transferFrom sp src dst amount.toNat).isSome := by
-  unfold Erc20.Model.transferFrom Token.transferFrom
-  cases h1 : Erc20.Model.spend s src sp amount with
+  unfold ERC20.Model.transferFrom Token.transferFrom
+  cases h1 : ERC20.Model.spend s src sp amount with
   | none =>
     have h2 : t.spend src sp amount.toNat = none := by
       have := spend_isSome_iff hr src sp amount
@@ -197,14 +197,14 @@ theorem transferFrom_isSome_iff {s : Erc20.State} {t : Token Address} (hr : Rep 
     exact transfer_isSome_iff (rep_spend hr h1 h2) src dst amount
 
 /-- **`transferFrom` refinement of the models**: related results. -/
-theorem rep_transferFrom {s s' : Erc20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
+theorem rep_transferFrom {s s' : ERC20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
     {sp src dst : Address} {amount : Word}
-    (hm : Erc20.Model.transferFrom s sp src dst amount = some s')
+    (hm : ERC20.Model.transferFrom s sp src dst amount = some s')
     (ht : t.transferFrom sp src dst amount.toNat = some t') : Rep s' t' := by
-  unfold Erc20.Model.transferFrom at hm
+  unfold ERC20.Model.transferFrom at hm
   unfold Token.transferFrom at ht
   obtain ⟨s₁, h1, h2⟩ := Option.bind_eq_some_iff.1 hm
   obtain ⟨t₁, h3, h4⟩ := Option.bind_eq_some_iff.1 ht
   exact rep_transfer (rep_spend hr h1 h3) (Token.WF_spend hw h3) h2 h4
 
-end EvmLeanSpecs.Refinement.Shares
+end Defi.ERC20

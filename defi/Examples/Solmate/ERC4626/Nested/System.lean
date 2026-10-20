@@ -4,7 +4,7 @@ import EvmLogic.Program.Nested.Run
 /-!
 # Nested calls: the vault system as an instance of the machine-level simulation
 
-`EvmLeanProofs.Program.NestedExtraRun` proves, for any set `P` of protected accounts and any
+`EvmLogic.Program.Nested.Run` proves, for any set `P` of protected accounts and any
 property `Good` of worlds that only depends on their storage and code, that a top-level
 message call — running **arbitrary code** at every other account, calling the protected
 accounts any number of times at any depth, reverting or running out of gas around those calls
@@ -29,12 +29,13 @@ Model laws used: `AgreeOn` is an equivalence preserving `Solmate.Inv`; `Solmate.
 the only ones the operations read).
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
   {w₀ : World}
@@ -206,7 +207,7 @@ theorem processMessageCall_follows (hs : SlotsOk crypto vault Act)
       (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) → FrameOk crypto vault asset Act K m)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     Follows crypto vault asset Act K w₀ r.world :=
-  EvmLean.Program.Nested.processMessageCall_good goodOk hw hdeleg hmsg hG
+  EvmLogic.Program.Nested.processMessageCall_good goodOk hw hdeleg hmsg hG
     (fun m hm hd hp => follows_of_frameOk hs hinv hd (hsum m hm hd hp)) hr
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested

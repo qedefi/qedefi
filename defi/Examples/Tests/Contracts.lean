@@ -5,16 +5,16 @@ import Examples.Deployment
 /-!
 # Tests for the compiled-contract constants
 
-Cross-checks of the generated tables in `EvmLeanProofs/Contracts/` against the pure-Lean
+Cross-checks of the generated tables in `defi/Examples/Solmate/Contracts/` against the pure-Lean
 Keccak-256 (selectors and event topics are hashes of their signatures), of the immutables
 patching (`runtimeCodeFor` recomputes the canonical immutables, including Solmate's EIP-712
 domain separator) and of the storage layouts the proofs rely on. Execution of the code
 itself is tested against anvil by `lake exe difftest`.
 -/
 
-namespace EvmLeanTest.Contracts
+namespace Examples.Tests.Contracts
 
-open EvmLean EvmLean.Contracts
+open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts
 
 /-- The 4-byte selector of a function signature. -/
 def selectorOf (sig : String) : UInt32 :=
@@ -79,4 +79,4 @@ def eventsOk (t : List (String × Word)) : Bool :=
   ["INITIAL_CHAIN_ID", "INITIAL_DOMAIN_SEPARATOR", "asset", "decimals"]
 #guard OzAsset.immutableRefs.isEmpty
 
-end EvmLeanTest.Contracts
+end Examples.Tests.Contracts

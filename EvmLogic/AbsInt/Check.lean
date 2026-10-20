@@ -25,9 +25,10 @@ The soundness of the abstract step against the concrete semantics is `asucc_next
 action), `asucc_child` (the continuation after a call or creation) and `callOk_target`.
 -/
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## The abstract step -/
 
@@ -303,6 +304,7 @@ inductive Tree where
   | node (l : Tree) (q : Nat) (e : Eff) (imm : AVal) (ss : List AStack) (r : Tree)
 
 namespace Tree
+open EvmLean EvmLogic.Program
 
 /-- The entry at `q`. -/
 def find (q : Nat) : Tree → Option (Eff × AVal × List AStack)
@@ -636,4 +638,4 @@ theorem certify_sound {ρ : Nat → Address} {allowed : AVal → Bool} {code : B
   obtain ⟨hc, hm⟩ := explore_sound allowed fuel _ _ t h hI
   exact ⟨hc, explore_all fuel _ _ t h hA, hm 0 init (.inr List.mem_cons_self)⟩
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt

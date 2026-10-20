@@ -17,9 +17,10 @@ Nothing here depends on the instruction semantics: everything follows from the d
 `run` and `stepN`, for every fork, every `Crypto` and every precompile implementation.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- The machine after `n` steps, or the final result if the top-level frame finished within
 `n` steps. -/
@@ -129,4 +130,4 @@ theorem run_eq_of_le {n : Nat} (h : run n m = .ok r) :
     ∀ fuel, n ≤ fuel → run fuel m = .ok r :=
   fun _ hle => run_mono h hle
 
-end EvmLean.Program
+end EvmLogic.Program

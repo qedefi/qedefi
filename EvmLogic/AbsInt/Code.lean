@@ -15,9 +15,10 @@ in worlds with the code of its starting world.
 
 section
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested GasMono
+open EvmLean.Interpreter EvmLogic.Program.Nested EvmLogic.GasMono
 
 /-- Two worlds with the same code at every address. -/
 def SameCode (w w' : World) : Prop := ∀ a, w'.code a = w.code a
@@ -137,7 +138,7 @@ theorem resumeAfter_world {p : Frame} {ps : List Frame} {mf : Machine} {o : Outc
   | revert out => right; simp [resumeAfter, frameResult, resume]
   | halt e => right; simp [resumeAfter, frameResult, resume]
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt
 
 end
 
@@ -160,9 +161,10 @@ Instance (`noDesignator`): an account holds no EIP-7702 designator (designators 
 account, and they are applied before the call.
 -/
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- A property of worlds depending only on their code, kept by checked code deposits. -/
 structure CodeProp (P : World → Prop) : Prop where
@@ -430,6 +432,6 @@ theorem noDesignator (fork : Fork) (a : Address) : CodeProp (NoDesignator fork a
         · rfl
       · rw [code_setCode_ne hba]; exact h
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt
 
 end

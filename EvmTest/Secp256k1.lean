@@ -11,9 +11,10 @@ signatures over keccak-256 digests made with that key and an independent referen
 implementation.
 -/
 
-open EvmLean EvmLean.PrecompileTest
+open EvmLean EvmTest.Precompile
 
-namespace EvmLean.Secp256k1Test
+namespace EvmTest.Secp256k1
+open EvmLean
 
 /-- The uncompressed public key of the test account `0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b`. -/
 def testPub : ByteArray :=
@@ -91,4 +92,4 @@ def testPub : ByteArray :=
 #guard Secp256k1.recover
   (hex "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c") 0 5 1 == none
 
-end EvmLean.Secp256k1Test
+end EvmTest.Secp256k1

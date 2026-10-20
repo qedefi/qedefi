@@ -20,9 +20,9 @@ import EvmLean.Crypto.Keccak
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Defi.ERC4626
 
-open EvmLean EvmLean.Interpreter EvmLean.Solidity
+open EvmLean EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
 
 /-! ## Topics and logs -/
 
@@ -83,7 +83,7 @@ macro "event_log " d:term : tactic => `(tactic| (
   event_data
   try rfl))
 
-end EvmLeanSpecs.Refinement
+end Defi.ERC4626
 
 end
 
@@ -97,9 +97,9 @@ refunds and successful child calls keep or concatenate logs (`warmKey_logs`, `me
 …) — using the extra facts `h` (typically the callee's or an internal function's logs).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Defi.ERC4626
 
-open EvmLean EvmLean.Interpreter EvmLean.Solidity
+open EvmLean EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
 
 /-- Normalise the logs of a substate built by symbolic execution, with extra rewrite facts. -/
 macro "logs_simp" " [" hs:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
@@ -107,6 +107,6 @@ macro "logs_simp" " [" hs:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tacti
     ofMessage_logs, frameInit_logs, resumeWith_logs, Array.append_empty, Array.empty_append,
     Array.append_push, $hs,*]))
 
-end EvmLeanSpecs.Refinement
+end Defi.ERC4626
 
 end

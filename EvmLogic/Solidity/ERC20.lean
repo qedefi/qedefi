@@ -13,7 +13,7 @@ needs hypotheses is the *effect of writes*: `view_sstore_balanceSlot` says that 
 the balance slot of `a` updates the abstract `balanceOf` pointwise at `a` and keeps
 `totalSupply`, provided `BalanceSlotOk` (the slot of `a` is fresh among all address-keyed
 entries of `balanceOf` and of the outer `allowance` mapping, and is not the `totalSupply`
-slot; plausible, see `EvmLeanProofs.Solidity.Keccak`). Its effect on `allowance` is stated
+slot; plausible, see `EvmLogic.Solidity.Keccak`). Its effect on `allowance` is stated
 pointwise and without hypothesis: an entry changes only if its slot *is* the written slot.
 
 `Erc20.Model` is the abstract semantics of Solmate's functions (here `transfer`), the
@@ -22,7 +22,8 @@ specification the compiled code is proved against in `Examples/Erc20Transfer`.
 
 section
 
-namespace EvmLean.Solidity.Erc20
+namespace EvmLogic.Solidity.ERC20
+open EvmLean
 
 /-! ## Layout -/
 
@@ -124,6 +125,7 @@ theorem view_sstore_ne {crypto : Crypto} {L : Layout} {w : World} {token b : Add
 /-! ## The abstract semantics -/
 
 namespace Model
+open EvmLean
 
 /-- Solmate's `transfer(to, amount)` from `caller`: revert (`none`) if the balance is
 insufficient (checked subtraction), otherwise subtract from the caller, then add to the
@@ -245,7 +247,7 @@ theorem view_transferWorld {crypto : Crypto} (hc : BalanceSlotOk crypto Layout.s
 
 end
 
-end EvmLean.Solidity.Erc20
+end EvmLogic.Solidity.ERC20
 
 end
 
@@ -254,7 +256,7 @@ section
 /-!
 ## Solmate `ERC20`: `approve` and `transferFrom` on the storage abstraction
 
-`EvmLeanProofs.Solidity.Erc20` models Solmate's `transfer` on the word-level ERC-20 view
+`EvmLogic.Solidity.ERC20` models Solmate's `transfer` on the word-level ERC-20 view
 (`Erc20.State`, `Erc20.view`). This file adds the other two state-changing functions, for
 every contract inheriting Solmate's `ERC20` (the vault's share token, the asset):
 
@@ -280,13 +282,14 @@ function transferFrom(address from, address to, uint256 amount) public returns (
   `view_sstore_allowanceSlot` is the effect of writing it.
 * `view_approveWorld`, `view_spendWorld`, `view_transferFromWorld`: the worlds seen through
   the abstraction are the models' states (allowances pointwise, for entries whose slot is
-  not a written slot, as for `transfer`; see `EvmLeanProofs.Solidity.Keccak` on why
+  not a written slot, as for `transfer`; see `EvmLogic.Solidity.Keccak` on why
   nested-mapping frames cannot be stated for all pairs).
 -/
 
-namespace EvmLean.Solidity.Erc20
+namespace EvmLogic.Solidity.ERC20
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- `type(uint256).max`, the "infinite" allowance (`PUSH0 NOT` in the bytecode). -/
 def maxWord : Word := ~~~0#256
@@ -350,6 +353,7 @@ theorem view_sstore_allowanceSlot {crypto : Crypto} {L : Layout} {w : World} {to
 /-! ## The abstract semantics -/
 
 namespace Model
+open EvmLean
 
 /-- Solmate's `approve(spender, amount)` from `owner`. -/
 def approve (s : State) (owner spender : Address) (amount : Word) : State :=
@@ -507,6 +511,6 @@ theorem view_transferFromWorld {spender src dst : Address} {amount : Word} {s' :
   intro o sp h1 h2 h3
   rw [f3 o sp h1 h2, hal, e3 o sp h3]
 
-end EvmLean.Solidity.Erc20
+end EvmLogic.Solidity.ERC20
 
 end

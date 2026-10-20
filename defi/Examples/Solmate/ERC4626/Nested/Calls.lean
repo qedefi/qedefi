@@ -20,12 +20,13 @@ actors (the call admitted, `Admitted`), the fixed-slot hypothesis `hk` (no balan
 slot 2, 6 or 7), at least 250000 gas.
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
@@ -356,11 +357,11 @@ theorem frameOk_transfer {minGas : Nat} {m : Machine} (hmin : 100000 ≤ minGas)
 
 /-- `transferFrom` writes only the allowance and the two balance slots. -/
 theorem sload_transferFromWorld_slot {w : World} {token sp src dst : Address} {v k : Word}
-    (h1 : k ≠ Erc20.balanceSlot crypto Erc20.Layout.solmate src)
-    (h2 : k ≠ Erc20.balanceSlot crypto Erc20.Layout.solmate dst)
-    (h3 : k ≠ Erc20.allowanceSlot crypto Erc20.Layout.solmate src sp) :
-    (Erc20.transferFromWorld crypto w token sp src dst v).sload token k = w.sload token k := by
-  simp only [Erc20.transferFromWorld]
+    (h1 : k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate src)
+    (h2 : k ≠ ERC20.balanceSlot crypto ERC20.Layout.solmate dst)
+    (h3 : k ≠ ERC20.allowanceSlot crypto ERC20.Layout.solmate src sp) :
+    (ERC20.transferFromWorld crypto w token sp src dst v).sload token k = w.sload token k := by
+  simp only [ERC20.transferFromWorld]
   rw [Shares.sload_transferWorld (.inr ⟨h1, h2⟩), Shares.sload_spendWorld (.inr h3)]
 
 set_option maxHeartbeats 1000000 in
@@ -656,4 +657,4 @@ theorem frameOk_of_executes {minGas : Nat} {m : Machine} (hmin : 250000 ≤ minG
   | assetMint => exact frameOk_assetMint (by omega) hk2 h hx hadm
   | assetBurn => exact frameOk_assetBurn (by omega) hk2 h hx hadm
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested

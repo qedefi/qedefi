@@ -9,9 +9,10 @@ the word 42 in any context, world and message, by `psol_msteps` (a `run` goal) a
 `pwp_msteps` (a frame-local `WP` goal).
 -/
 
-namespace EvmLean.Examples.Strings
+namespace Examples.Basic.Mcopy
+open EvmLean EvmLogic
 
-open EvmLean.Interpreter EvmLean.Program
+open EvmLean.Interpreter EvmLogic EvmLogic.Program
 
 /-- Store 42, copy it with `MCOPY`, return the copy. -/
 def copy42 : ByteArray :=
@@ -53,4 +54,4 @@ theorem copy42_wp (m : Machine) (hc : m.frame.code = copy42) (hpc : m.frame.pc =
   simp only [Memory.mcopy, Memory.read_expand, Memory.read_storeWord]
   rfl
 
-end EvmLean.Examples.Strings
+end Examples.Basic.Mcopy

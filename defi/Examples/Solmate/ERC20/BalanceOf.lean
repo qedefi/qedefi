@@ -23,9 +23,9 @@ the summary applies both to `Abi.encodeCall` calldata and to calldata a caller a
 memory.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The selector of `balanceOf(address)`. -/
 def balanceOfSelector : Nat := 0x70a08231
@@ -35,7 +35,7 @@ def balanceOfSelector : Nat := 0x70a08231
 accounts and logs are unchanged, and it uses at most 3000 gas. -/
 def BalanceOfPost (a : Address) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord (m.world.sload m.frame.msg.currentTarget
-    (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate a))) ∧
+    (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a))) ∧
   mf.world = m.world ∧ mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
   mf.frame.sub.logs = m.frame.sub.logs ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + 3000
 
@@ -69,7 +69,7 @@ theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
 /-- The balance slot of `a` in a Solmate `ERC20`, as symbolic execution computes it
 (`keccak256(a ‖ 3)`). -/
 theorem balanceSlot_solmate (crypto : Crypto) (a : Address) :
-    Erc20.balanceSlot crypto Erc20.Layout.solmate a =
+    ERC20.balanceSlot crypto ERC20.Layout.solmate a =
       crypto.keccak256 (Bytes.ofWord (Word.ofAddress a) ++ Bytes.ofWord 3#256) := rfl
 
 set_option maxHeartbeats 0 in
@@ -95,4 +95,4 @@ theorem balanceOf_halts {ia : SolmateAsset.Immutables} (m : Machine)
   dsimp only [outputMachine]
   evm_gas
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20

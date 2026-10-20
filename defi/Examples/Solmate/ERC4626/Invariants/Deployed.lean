@@ -61,10 +61,11 @@ instantiate `refinesFor_now` (every call but the four entry points).
 
 section
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
   {K : VCall → Prop}
@@ -231,11 +232,11 @@ noncomputable def supplyAt (w : World) (vault : Address) : ℕ := (w.sload vault
 
 /-- The vault's total assets, read from storage: its balance slot in the asset. -/
 noncomputable def assetsAt (crypto : Crypto) (w : World) (vault asset : Address) : ℕ :=
-  (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate vault)).toNat
+  (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate vault)).toNat
 
 /-- The share balance of `a`, read from storage. -/
 noncomputable def sharesAt (crypto : Crypto) (w : World) (vault a : Address) : ℕ :=
-  (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat
+  (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat
 
 theorem abs_totalSupply' (w : World) :
     (abs crypto w vault asset).totalSupply = supplyAt w vault := rfl
@@ -252,7 +253,7 @@ theorem abs_sharesOf (w : World) (a : Address) :
 addresses. -/
 theorem supply_eq_sum_of_wf {w : World} {token : Address} (h : (tokenView crypto w token).WF) :
     (w.sload token 2#256).toNat =
-      ∑ a : Address, (w.sload token (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
+      ∑ a : Address, (w.sload token (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
   rw [← tokenView_totalSupply, ← h.1, total, Finsupp.sum_fintype _ _ (fun _ => rfl)]
   simp only [tokenView_balanceOf]
 
@@ -263,9 +264,9 @@ theorem supply_eq_sum (hs : SlotsOk crypto vault Act) (hR : RefinesFor crypto va
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
     (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, K c) :
     (w.sload vault 2#256).toNat =
-        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        ∑ a : Address, (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
-        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
+        ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
   obtain ⟨-, hi, -⟩ := lift hs hR hdep hinv htr hact hK
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
@@ -278,9 +279,9 @@ theorem supply_eq_sum_now (hmin : 100000 ≤ minGas) (hs : SlotsOk crypto vault 
     (hinv : Solmate.Inv (abs crypto w₀ vault asset)) (htr : Trace crypto vault asset minGas w₀ cs w)
     (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) (hK : ∀ c ∈ cs, c.NotEntry) :
     (w.sload vault 2#256).toNat =
-        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        ∑ a : Address, (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
-        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat :=
+        ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat :=
   supply_eq_sum hs (refinesFor_now hmin hk) hdep hinv htr hact hK
 
 /-- **I-SOLVENT on bytecode.** In every world reached by a trace, the vault can pay every
@@ -473,7 +474,7 @@ theorem donation_attack (hmin : 100000 ≤ minGas)
   -- the receiver's share balance before the victim's deposit
   have hr₂ : r ≠ att → s₂.shares.balanceOf r = 0 := by
     intro hra
-    have h := Shares.add_le_total (f := s₂.shares.balanceOf) hra
+    have h := Defi.ERC20.add_le_total (f := s₂.shares.balanceOf) hra
     rw [hi₂.2.1, hb₂] at h
     change _ + 1 ≤ s₂.totalSupply at h
     omega
@@ -529,7 +530,7 @@ theorem donation_attack_view {w : World} {ctx : Context} {tr : TransientStorage}
   rw [show (1#256 : Word).toNat = 1 from rfl, hconv] at h
   exact h
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -547,11 +548,12 @@ the hypothesis `KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]` (no b
 need `200000 ≤ minGas` (four storage writes and a call into the asset).
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Out
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -572,7 +574,7 @@ theorem outAllowances_of (hs : SlotsOk crypto vault Act) {c o : Address} (hc : c
     (ho : o ∈ Act) {a b : Address} (h : ActorPairs Act a b) : OutAllowances crypto c o a b := by
   obtain ⟨ha, hb⟩ := h
   refine ⟨?_, (hs.allowFixed a ha b hb).1,
-    (Erc20.balanceSlot_ne_allowanceSlot (hs.allow a ha b hb) o).symm, (hs.allow a ha b hb).2.2⟩
+    (ERC20.balanceSlot_ne_allowanceSlot (hs.allow a ha b hb) o).symm, (hs.allow a ha b hb).2.2⟩
   rcases hs.allowP ha hb ho hc with h | h
   · exact .inr (.inl h)
   · exact .inr (.inr h)
@@ -580,8 +582,8 @@ theorem outAllowances_of (hs : SlotsOk crypto vault Act) {c o : Address} (hc : c
 /-- Actor pairs are among the asset allowances known after the payout. -/
 theorem transferAllowances_of (hs : SlotsOk crypto vault Act) {r : Address} {a b : Address}
     (h : ActorPairs Act a b) : TransferAllowances crypto vault r a b :=
-  ⟨(Erc20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm,
-    (Erc20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm⟩
+  ⟨(ERC20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm,
+    (ERC20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm⟩
 
 /-- `RefinesOn` with the actor pairs inside both predicates gives `AgreeOn`. -/
 theorem agree_of_refinesOn (hs : SlotsOk crypto vault Act) {c r o : Address} (hc : c ∈ Act)
@@ -652,7 +654,7 @@ theorem opRefines_redeem (hmin : 200000 ≤ minGas)
     show Option.map Prod.fst (Solmate.redeem _ _ _ _ _) = _
     rw [hW]; rfl
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -673,10 +675,11 @@ write must not touch counter 6). `deposit` / `mint` need `250000 ≤ minGas` (fo
 writes in the vault, three in the asset, and the `transferFrom` call).
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -762,7 +765,7 @@ theorem opRefines_mint (hmin : 250000 ≤ minGas)
     rw [hW]; rfl
 
 /-- **All four pending obligations**, from `opRefines_deposit` / `opRefines_mint` here and
-`opRefines_withdraw` / `opRefines_redeem` (`InvariantsWithdrawRedeem`), under the one fixed-slot
+`opRefines_withdraw` / `opRefines_redeem` (`Examples.Solmate.ERC4626.Invariants.Deployed`), under the one fixed-slot
 hypothesis `[2, 6, 7]`. With `refinesFor_all` every call kind is refined. -/
 theorem pending_of (hmin : 250000 ≤ minGas)
     (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) :
@@ -778,7 +781,7 @@ theorem refinesFor_all_of (hmin : 250000 ≤ minGas)
     RefinesFor crypto vault asset minGas Act (fun _ => True) :=
   refinesFor_all (by omega) (KeccakAvoids.sub hk (by simp)) (pending_of hmin hk)
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -809,10 +812,11 @@ The remaining hypotheses, all explicit:
   the entry points and views, not yet by the trace (see `INVARIANTS.md`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -824,9 +828,9 @@ theorem supply_eq_sum_deployed (hmin : 250000 ≤ minGas)
     (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
     (htr : Trace crypto vault asset minGas w₀ cs w) (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) :
     (w.sload vault 2#256).toNat =
-        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        ∑ a : Address, (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
-        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat :=
+        ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat :=
   supply_eq_sum hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial)
 
 /-- **Solvency**: the vault's asset balance covers every holder's shares converted at the
@@ -894,6 +898,6 @@ theorem donation_attack_deployed (hmin : 250000 ≤ minGas)
   donation_attack (by omega) (fun c a r => opRefines_deposit hmin hk c a r) hs hatt hv hr hattv
     hvv hdep hinv hS hT h₁ h₂ htr
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end

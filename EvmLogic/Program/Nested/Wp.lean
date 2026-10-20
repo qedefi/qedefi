@@ -10,12 +10,13 @@ semantics discards the machine of a failing instruction). The simp lemmas `wp_bi
 (one that must hold for *every* stack, memory, gas and world) reduces to a formula over the
 machine's fields that `split` and `simp` close.
 
-Used by `NestedExtraFrame` to prove, once for every opcode, what an instruction can change.
+Used by `EvmLogic.Program.Nested.Frame` to prove, once for every opcode, what an instruction can change.
 -/
 
-namespace EvmLean.Program.Nested
+namespace EvmLogic.Program.Nested
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- Weakest precondition: if `x` succeeds from `m` with value `a` and machine `m'`, then
 `Q a m'`. -/
@@ -149,4 +150,4 @@ theorem wp_popN_of (n : Nat) {Q : List Word → Machine → Prop} {m : Machine}
     intro x xs _
     exact ih (fun ys rest => h (x :: ys) rest)
 
-end EvmLean.Program.Nested
+end EvmLogic.Program.Nested

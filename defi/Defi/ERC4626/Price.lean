@@ -20,9 +20,10 @@ of the vault's own account, and then to whole sequences:
   empty, the price `T/S` (over `ℚ`) never decreases.
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Defi.ERC4626
+open Defi.Trace
 
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate Token Finsupp
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
@@ -145,4 +146,4 @@ theorem price_exec_mono {s : State A} (hi : Inv s) {ops : List (Op A)}
       fun k hk => ?_)
     simpa using hS (k + 1) (by simp; omega)
 
-end EvmLeanSpecs.Refinement.Invariants
+end Defi.ERC4626

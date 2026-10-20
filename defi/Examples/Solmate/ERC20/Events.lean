@@ -23,10 +23,11 @@ masked calldata words; the data is the amount, stored at the free pointer.
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
 
 set_option maxHeartbeats 0 in
 /-- **`transfer(dst, amount)` of the asset, success, with its log**: as `transfer_halts_ok`,
@@ -37,7 +38,7 @@ theorem transfer_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress dst) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat) :
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)).toNat) :
     Halts m (fun mf o => TransferOk dst amount m mf o ∧
       mf.frame.sub.logs = m.frame.sub.logs.push
         (transferLog m.frame.msg.currentTarget m.frame.msg.caller dst amount)) := by
@@ -86,13 +87,13 @@ theorem approve_halts_events {ia : SolmateAsset.Immutables} (m : Machine)
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
   refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
-  · simp only [outputMachine, Erc20.approveWorld, allowanceSlot_solmate]
+  · simp only [outputMachine, ERC20.approveWorld, allowanceSlot_solmate]
   · dsimp only [outputMachine]
     evm_gas
   · dsimp only [outputMachine]
     event_log [amount]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -107,10 +108,11 @@ section
 emitted by the asset. Solmate emits **no** `Approval` when it spends the allowance.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
 
 set_option maxHeartbeats 0 in
 /-- **`transferFrom(src, dst, amount)` of the asset, success, with its log**: as
@@ -124,13 +126,13 @@ theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine
       amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
     (hspend : m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller) =
-        Erc20.maxWord ∨
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller) =
+        ERC20.maxWord ∨
       amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)).toNat)
-    (hbal : amount.toNat ≤ ((Erc20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
+        (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller)).toNat)
+    (hbal : amount.toNat ≤ ((ERC20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
       m.frame.msg.caller amount).sload m.frame.msg.currentTarget
-        (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+        (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat) :
     Halts m (fun mf o => TransferFromOk src dst amount m mf o ∧
       mf.frame.sub.logs = m.frame.sub.logs.push
         (transferLog m.frame.msg.currentTarget src dst amount)) := by
@@ -140,7 +142,7 @@ theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine
   have hsel' := Dispatch.selector_eq hsel
   have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 96))
       = 1 := iszero_slt_calldatasize hsize (by omega)
-  simp only [Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hbal hspend
+  simp only [ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hbal hspend
   have hagree := assetJumpDestsAgree ia
   fresh_intro
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2,
@@ -155,8 +157,8 @@ theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine
     pwp_codecopy
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
-    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
-        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+    · simp only [outputMachine, ERC20.transferFromWorld, ERC20.transferWorld, transferWorld,
+        ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
         allowanceSlot_solmate, hmax, ↓reduceIte]
     · dsimp only [outputMachine]
       evm_gas
@@ -172,15 +174,15 @@ theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine
     pwp_codecopy
     pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
     refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
-    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
-        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+    · simp only [outputMachine, ERC20.transferFromWorld, ERC20.transferWorld, transferWorld,
+        ERC20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
         allowanceSlot_solmate, hmax, ↓reduceIte]
     · dsimp only [outputMachine]
       evm_gas
     · dsimp only [outputMachine]
       event_log [amount]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -194,9 +196,10 @@ also determine the frame's logs: `MockERC20.mint(dst, amount)` emits `Transfer(0
 and `burn(src, amount)` emits `Transfer(src, 0, amount)` (Solmate's `_mint` / `_burn`).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- **`mint(dst, amount)` of the asset, success, with its log**: as `mint_halts_ok`, and the
@@ -241,7 +244,7 @@ theorem burn_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0x9dc29fac (Word.ofAddress src) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat) :
     Halts m (fun mf o => BurnOk src amount m mf o ∧
       mf.frame.sub.logs = m.frame.sub.logs.push
         (transferLog m.frame.msg.currentTarget src 0 amount)) := by
@@ -266,7 +269,7 @@ theorem burn_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
   · evm_gas
   · event_log [amount]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -292,10 +295,11 @@ For the deployed asset (Solmate `MockERC20`, any immutables), the logs of `trans
   op)` for the model operation `op` (also when it reverts: then both are empty).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Shares
 
 /-! ## Frame form -/
 
@@ -310,7 +314,7 @@ theorem assetTransfer_events {ia : SolmateAsset.Immutables} (m : Machine)
     Halts m (EventsPost m (encode vault m.frame.msg.currentTarget
       (Events.transfer .asset t m.frame.msg.caller dst amount.toNat))) := by
   have hb := hr.balanceOf m.frame.msg.caller
-  simp only [Erc20.view] at hb
+  simp only [ERC20.view] at hb
   cases hT : t.transfer m.frame.msg.caller dst amount.toNat with
   | some t' =>
     have hbal := (Token.transfer_eq_some.1 hT).1
@@ -322,7 +326,7 @@ theorem assetTransfer_events {ia : SolmateAsset.Immutables} (m : Machine)
     exact eventsPost_success (by rw [hl]; exact push_eq_encode (toLog_transfer ..))
   | none =>
     have hbal : (m.world.sload m.frame.msg.currentTarget
-        (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat <
+        (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)).toNat <
           amount.toNat := by
       rw [hb]
       unfold Token.transfer at hT
@@ -342,7 +346,7 @@ theorem assetTransferFrom_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : ThreeWordCall m.frame.msg.data 0x23b872dd (Word.ofAddress src) (Word.ofAddress dst)
       amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller)
     {t : Token Address} (hr : Rep (assetView m) t) (vault : Address) :
     Halts m (EventsPost m (encode vault m.frame.msg.currentTarget
       (Events.transferFrom .asset t m.frame.msg.caller src dst amount.toNat))) := by
@@ -352,9 +356,9 @@ theorem assetTransferFrom_events {ia : SolmateAsset.Immutables} (m : Machine)
     obtain ⟨s₁, hm₁⟩ := Option.isSome_iff_exists.1
       ((spend_isSome_iff hr src m.frame.msg.caller amount).2 (by simp [hsp]))
     have hal := allowance_cond_of_spend hr hsp
-    have hbal : amount.toNat ≤ ((Erc20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget
+    have hbal : amount.toNat ≤ ((ERC20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget
         src m.frame.msg.caller amount).sload m.frame.msg.currentTarget
-          (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat := by
+          (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat := by
       rw [balance_spendWorld ha hm₁, hr.balanceOf src, ← (Token.spend_eq_some hsp).1]
       exact (Token.transfer_eq_some.1 htr).1
     refine (transferFrom_halts_ok_events m hf hval hstatic hd hsz hg hal hbal).mono
@@ -375,7 +379,7 @@ theorem assetTransferFrom_events {ia : SolmateAsset.Immutables} (m : Machine)
           split at hsp
           · rcases hal with h | h
             · exact hmax (by rw [← ha']; exact (eq_maxWord_iff _).1 h)
-            · simp only [Erc20.view] at ha'; omega
+            · simp only [ERC20.view] at ha'; omega
           · cases hsp
       | some t₁ =>
         have htr : t₁.transfer src dst amount.toNat = none := by
@@ -446,7 +450,7 @@ theorem assetBurn_events {ia : SolmateAsset.Immutables} (m : Machine)
     Halts m (EventsPost m (encode vault m.frame.msg.currentTarget
       (Events.burn .asset t src amount.toNat))) := by
   have hbal : (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat = t.balanceOf src :=
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate src)).toNat = t.balanceOf src :=
     hr.balanceOf src
   cases hT : t.burn src amount.toNat with
   | some t' =>
@@ -512,7 +516,7 @@ theorem assetTransfer_events_call (hdep : Deployed w vault asset)
 model's events, encoded. -/
 theorem assetTransferFrom_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 90000 ≤ gas)
-    {src : Address} (ha : Erc20.AllowanceSlotOk ctx.crypto Erc20.Layout.solmate src caller)
+    {src : Address} (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate src caller)
     (dst : Address) (amount : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (w.code asset) asset caller
@@ -567,6 +571,6 @@ theorem assetBurn_events_call (hdep : Deployed w vault asset)
     (Invariants.twoWordCall_encodeCall (by decide) _ _)
     (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end

@@ -10,7 +10,7 @@ message whose length fits in the same block, 56 forces an extra block, 64 is exa
 block. Expected values for the `seq` inputs are from Python's `hashlib.sha256`.
 -/
 
-open EvmLean EvmLeanTest.HashUtil
+open EvmLean EvmTest.HashUtil
 
 #guard Sha256.hash .empty =
   hex "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

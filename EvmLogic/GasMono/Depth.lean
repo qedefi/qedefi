@@ -15,9 +15,10 @@ or ends exactly as the frame one level up; and a frame summary of the top-level 
 level up transfers (`halts_world_of_depth`).
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The machine whose executing frame has message depth `d`. -/
 def setDepth (d : Nat) (m : Machine) : Machine :=
@@ -244,4 +245,4 @@ theorem halts_world_of_depth {code : ByteArray} {n : Nat} (hc : CodeOk code n) {
     rw [hmf]
     exact this
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

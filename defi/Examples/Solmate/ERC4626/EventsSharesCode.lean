@@ -12,9 +12,10 @@ vault. The reverting runs need no companion: a failed top-level call has no logs
 (`run_logs_of_fail`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
+open Defi.ERC4626
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst spender : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -159,4 +160,4 @@ theorem transferFrom_ok_events (hgas : 100000 ≤ gas)
       · rfl
       event_log [amount]
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares

@@ -15,10 +15,11 @@ determines the frame's logs — the same proof, composing the log-tracking summa
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
 /-- **`deposit` emits the model's events**, in any frame: as `deposit_refines`, and the frame
@@ -31,10 +32,10 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
     (hd : TwoWordCall m.frame.msg.data 0x6e553f65 assets (Word.ofAddress receiver))
     (hne : m.frame.msg.currentTarget ≠ i.asset)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)
-    (hbv : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.currentTarget)
-    (hbr : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller
+    (hbc : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)
+    (hbv : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.currentTarget)
+    (hbr : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller
       m.frame.msg.currentTarget)
     (hinv : Solmate.Inv (absOf i.asset m)) :
     Halts m (fun mf o => EntryPost m i.asset (DepositAllowances m.ctx.crypto receiver)
@@ -98,7 +99,7 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
     rintro m2 - ⟨t', hT, hrepA, mem2, g2, rd2, sub2, rfl, hmem2, hg2, hl2⟩
     simp only [Machine.resumeWith, BitVec.reduceToNat] at hg2 ⊢
     pwp_run_to 0xfdc
-    have hS : (Erc20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
+    have hS : (ERC20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
         m_msg.currentTarget assets).sload m_msg.currentTarget 2#256 =
         m_world.sload m_msg.currentTarget 2#256 := sload_transferFromWorld_ne hne _
     have hvn : (BitVec.ofNat 256 v).toNat = v := by
@@ -117,7 +118,7 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
     rw [hS, hvn] at hov
     rcases hmem3 with ⟨hfmp3, hsz3⟩ | ⟨hfmp3, hsz3⟩ <;>
     · pwp_run_to 0x1033 [hfmp3, hsz3]
-      have h7w : (mintWorld m_ctx.crypto (Erc20.transferFromWorld m_ctx.crypto m_world i.asset
+      have h7w : (mintWorld m_ctx.crypto (ERC20.transferFromWorld m_ctx.crypto m_world i.asset
           m_msg.currentTarget m_msg.caller m_msg.currentTarget assets) m_msg.currentTarget receiver
           (BitVec.ofNat 256 v)).sload m_msg.currentTarget 7#256 =
           m_world.sload m_msg.currentTarget 7#256 := by
@@ -153,7 +154,7 @@ theorem deposit_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre 
       simp only [ofAddress_and_addressMask]
       event_log [assets, BitVec.ofNat 256 v]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -168,10 +169,11 @@ determines the frame's logs — the same proof, composing the log-tracking summa
 `Deposit` event.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 set_option maxHeartbeats 0 in
 /-- **`mint` emits the model's events**, in any frame: as `mint_refines`, and the frame
@@ -184,10 +186,10 @@ theorem mint_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m
     (hd : TwoWordCall m.frame.msg.data 0x94bf804d shares (Word.ofAddress receiver))
     (hne : m.frame.msg.currentTarget ≠ i.asset)
     (hk : KeccakAvoids m.ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)
-    (hbv : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.currentTarget)
-    (hbr : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller
+    (hbc : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)
+    (hbv : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.currentTarget)
+    (hbr : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller
       m.frame.msg.currentTarget)
     (hinv : Solmate.Inv (absOf i.asset m)) :
     Halts m (fun mf o => EntryPost m i.asset (DepositAllowances m.ctx.crypto receiver)
@@ -241,7 +243,7 @@ theorem mint_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m
   simp only [Machine.resumeWith, BitVec.reduceToNat] at hg2 ⊢
   rw [hvn] at hT
   pwp_run_to 0xfdc
-  have hS : (Erc20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
+  have hS : (ERC20.transferFromWorld m_ctx.crypto m_world i.asset m_msg.currentTarget m_msg.caller
       m_msg.currentTarget (BitVec.ofNat 256 v)).sload m_msg.currentTarget 2#256 =
       m_world.sload m_msg.currentTarget 2#256 := sload_transferFromWorld_ne hne _
   refine WP.bind_mono (mintShares_wp_logs _ rfl hj hstatic rfl rfl (by simp) (by pjumpdest_disch)
@@ -258,7 +260,7 @@ theorem mint_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m
   rw [hS] at hov
   rcases hmem3 with ⟨hfmp3, hsz3⟩ | ⟨hfmp3, hsz3⟩ <;>
   · pwp_run_to 0x1033 [hfmp3, hsz3]
-    have h7w : (mintWorld m_ctx.crypto (Erc20.transferFromWorld m_ctx.crypto m_world i.asset
+    have h7w : (mintWorld m_ctx.crypto (ERC20.transferFromWorld m_ctx.crypto m_world i.asset
         m_msg.currentTarget m_msg.caller m_msg.currentTarget (BitVec.ofNat 256 v)) m_msg.currentTarget
         receiver shares).sload m_msg.currentTarget 7#256 =
         m_world.sload m_msg.currentTarget 7#256 := by
@@ -294,7 +296,7 @@ theorem mint_events {i : SolmateVault.Immutables} (m : Machine) (h : ViewPre i m
     simp only [ofAddress_and_addressMask]
     event_log [BitVec.ofNat 256 v, shares]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -304,14 +306,15 @@ section
 ## Logs of `withdraw`, at the bytecode level
 
 `withdraw_halts_events`: the companion of `withdraw_halts` (`Withdraw.lean`) that also determines the frame's
-logs (`OutPostLogs`), composing the log-tracking summaries of `EventsWithdrawInternal` and
+logs (`OutPostLogs`), composing the log-tracking summaries of `Examples.Solmate.ERC4626.EventsInternal` and
 `EventsConvert` and the inline `Withdraw` event.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
 /-- **`withdraw(uint256,address,address)`** of the vault, in any frame: ends as
@@ -408,7 +411,7 @@ theorem withdraw_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : O
       hsize, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.max_def,
       Nat.reduceLeDiff, ↓reduceIte] at hm5b
     have hW : withdrawWorld? m_ctx.crypto m_world m_msg.currentTarget i.asset m_msg.caller assets
-        receiver owner = some (EvmLean.Solidity.Erc20.transferWorld m_ctx.crypto w₃ i.asset
+        receiver owner = some (EvmLogic.Solidity.ERC20.transferWorld m_ctx.crypto w₃ i.asset
           m_msg.currentTarget receiver assets, BitVec.ofNat 256 v) := by
       simp only [withdrawWorld?, hv, Option.bind_some, hw₁, hw₂, hw₃, payStep,
         Nat.not_lt.2 hbal, ↓reduceIte, Option.map_some]
@@ -420,7 +423,7 @@ theorem withdraw_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : O
     logs_simp [hl1, hl2, hl3, hl4, hl5]
     event_log [assets, BitVec.ofNat 256 v]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -430,14 +433,15 @@ section
 ## Logs of `redeem`, at the bytecode level
 
 `redeem_halts_events`: the companion of `redeem_halts` (`Redeem.lean`) that also determines the frame's
-logs (`OutPostLogs`), composing the log-tracking summaries of `EventsWithdrawInternal` and
+logs (`OutPostLogs`), composing the log-tracking summaries of `Examples.Solmate.ERC4626.EventsInternal` and
 `EventsConvert` and the inline `Withdraw` event.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
 /-- **`redeem(uint256,address,address)` with its logs**, in any frame: as `redeem_halts`, and on
@@ -558,7 +562,7 @@ theorem redeem_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : Out
         hsize, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.max_def,
         Nat.reduceLeDiff, ↓reduceIte] at hm6b
       have hR : redeemWorld? m_ctx.crypto m_world m_msg.currentTarget i.asset m_msg.caller shares
-          receiver owner = some (EvmLean.Solidity.Erc20.transferWorld m_ctx.crypto w₃
+          receiver owner = some (EvmLogic.Solidity.ERC20.transferWorld m_ctx.crypto w₃
             i.asset m_msg.currentTarget receiver (BitVec.ofNat 256 v), BitVec.ofNat 256 v) := by
         simp only [redeemWorld?, hw₁, Option.bind_some, hv, hv0, ↓reduceIte, hw₂, hw₃, payStep,
           Nat.not_lt.2 hbal, Option.map_some]
@@ -570,7 +574,7 @@ theorem redeem_halts_events {i : SolmateVault.Immutables} (m : Machine) (h : Out
       logs_simp [hl2, hl3, hl4, hl5, hl6]
       event_log [BitVec.ofNat 256 v, shares]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -581,7 +585,7 @@ section
 
 For the compiled vault (any immutables, any asset address):
 
-* **Frame form.** `deposit_events`, `mint_events` (`EventsDeposit`, `EventsMint`) and
+* **Frame form.** `deposit_events`, `mint_events` (`Examples.Solmate.ERC4626.EventsEntry`, `Examples.Solmate.ERC4626.EventsEntry`) and
   `withdraw_events`, `redeem_events` (here, from the bytecode-level `withdraw_halts_events` /
   `redeem_halts_events` and the model-level `Out.withdrawWorld?_refines` /
   `Out.redeemWorld?_refines`): in any frame (top level or called by another contract), with the
@@ -598,10 +602,11 @@ For the compiled vault (any immutables, any asset address):
   result whose `logs` are `encode vault asset (events (abs ctx.crypto w vault asset) op)`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Out
 
 /-- **`withdraw(assets, receiver, owner)` emits the model's events**, in any frame: as
 `withdraw_refines`, and the frame ends as `EventsPost` with the encoded `Events.withdraw`. -/
@@ -676,10 +681,10 @@ theorem deposit_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 250000 ≤ gas)
     (hgas' : gas < 2 ^ 64) {receiver : Address}
     (hk : KeccakAvoids ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk ctx.crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs ctx.crypto w vault asset)) (assets : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (w.code vault) vault caller
@@ -702,10 +707,10 @@ theorem mint_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 250000 ≤ gas)
     (hgas' : gas < 2 ^ 64) {receiver : Address}
     (hk : KeccakAvoids ctx.crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
-    (hbc : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate caller)
-    (hbv : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate vault)
-    (hbr : Erc20.BalanceSlotOk ctx.crypto Erc20.Layout.solmate receiver)
-    (ha : Erc20.AllowanceSlotOk ctx.crypto Erc20.Layout.solmate caller vault)
+    (hbc : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate caller)
+    (hbv : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate vault)
+    (hbr : ERC20.BalanceSlotOk ctx.crypto ERC20.Layout.solmate receiver)
+    (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate caller vault)
     (hinv : Solmate.Inv (abs ctx.crypto w vault asset)) (shares : Word) :
     ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
         (callMsg (w.code vault) vault caller
@@ -766,6 +771,6 @@ theorem redeem_events_call (hdep : Deployed w vault asset)
   exact events_call hdeleg (Shares.delegatedAddress?_code i) (hdep.vaultNotPrecompile _)
     (hm.mono fun _ _ _ h => h.2)
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

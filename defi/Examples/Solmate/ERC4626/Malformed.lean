@@ -11,9 +11,10 @@ function takes (`vault_<f>_short`), or a dirty `address` argument after clean on
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `allowance` of the vault with fewer than 2 argument words reverts. -/
@@ -406,7 +407,7 @@ theorem vault_mint_dirty1 {i : SolmateVault.Immutables} (m : Machine)
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, hd', Solidity.eq_self]
   exact ⟨_, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -420,9 +421,10 @@ takes (`vault_<f>_short`), or a dirty `address` argument after clean ones
 (`vault_<f>_dirty<j>`) reverts in the ABI decoder. See `MalformedCalldata.lean`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `nonces` of the vault with fewer than 1 argument word reverts. -/
@@ -808,7 +810,7 @@ theorem vault_withdraw_dirty2 {i : SolmateVault.Immutables} (m : Machine)
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, hd', hc1', Solidity.eq_self]
   exact ⟨_, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -838,9 +840,10 @@ malformed one (this file), or a well-formed call (`Executes`, `ViewData`, `Permi
 `permit`'s `uint8 v` above 255 fails `Permit.PermitValid`).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## Dispatch over the function shapes -/
 
@@ -1021,6 +1024,6 @@ theorem asset_malformed_reverts {ia : SolmateAsset.Immutables} (m : Machine)
       · exact asset_transferFrom_dirty0 m hf hval hsel hs hsize' hd hg
       · exact asset_transferFrom_dirty1 m hf hval hsel hs hsize' (hc 0 (by simp) (by decide)) hd hg
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

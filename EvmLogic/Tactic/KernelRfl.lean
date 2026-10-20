@@ -22,12 +22,12 @@ kernel's recursion limit).
 Use them when the free variables are *not inspected* by the computation, e.g. a run of
 bytecode that never hashes, stated for an arbitrary `Crypto`. When the computation branches
 on a free variable the kernel gets stuck and reports a type mismatch; use the step lemmas
-(`EvmLeanProofs.Step*`) instead.
+(`EvmLogic.Step*`) instead.
 -/
 
-namespace EvmLean.Tactic
+namespace EvmLogic.Tactic
 
-open Lean Elab Tactic Meta
+open Lean Elab Tactic EvmLogic.Tactic Meta
 
 /-- Close `lhs = rhs` by kernel reduction only, abstracting the local context. -/
 syntax (name := kernelRfl) "kernel_rfl" : tactic
@@ -73,4 +73,4 @@ def evalKernelDecide : Tactic := fun _ => withMainContext do
   g.assign (mkAppN (mkConst name (levels.map Level.param)) fvars)
   replaceMainGoal []
 
-end EvmLean.Tactic
+end EvmLogic.Tactic

@@ -27,12 +27,13 @@ An operation that reverts (`Solmate.step s op = none`) emits nothing (`events_eq
 `Emitter.asset` for the asset); `Deposit` / `Withdraw` are always the vault's. The zero address
 is `0 : A` (`[Zero A]`). `stream s ops` is the event stream of a sequence of calls (reverted
 ones contribute nothing, as `Solmate.exec`). The encoding as EVM logs is in
-`EvmLeanSpecs.Refinement.Events`.
+`Examples.Solmate.ERC4626.Events`.
 -/
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault.Solmate
+namespace Defi.ERC4626.Solmate
+open Defi.Math Defi.ERC20
 
 /-- Which contract emits an ERC-20 event. -/
 inductive Emitter where
@@ -56,6 +57,7 @@ inductive Event (A : Type) where
 variable {A : Type} [DecidableEq A] [Zero A]
 
 namespace Events
+open Defi.Math Defi.ERC20
 
 /-- `Transfer(src, dst, v)` of emitter `e` if the Solmate `transfer` succeeds, else nothing. -/
 def transfer (e : Emitter) (t : Token A) (src dst : A) (v : ℕ) : List (Event A) :=
@@ -143,4 +145,4 @@ theorem stream_append (s : State A) (ops₁ ops₂ : List (Op A)) :
   | nil => rfl
   | cons op ops ih => simp [stream, exec, ih]
 
-end EvmLeanSpecs.Vault.Solmate
+end Defi.ERC4626.Solmate

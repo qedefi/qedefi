@@ -5,7 +5,7 @@ import Examples.Solmate.Contracts.SolmateVault
 import Examples.Solmate.Contracts.SolmateAsset
 
 /-!
-# Tests for `string` storage and ABI encoding (`EvmLeanProofs.Solidity.Strings`)
+# Tests for `string` storage and ABI encoding (`EvmLogic.Solidity.Strings`)
 
 * `Str.shortWord` of the canonical deployment strings is the slot word the constructors of
   the canonical deployment store (the constructor arguments in
@@ -17,9 +17,10 @@ import Examples.Solmate.Contracts.SolmateAsset
   panic on inconsistent slots; the gas they use stays within `Str.getterGas`.
 -/
 
-namespace EvmLeanTest.Strings
+namespace Examples.Tests.Strings
+open EvmTest
 
-open EvmLean EvmLean.Solidity EvmLean.Interpreter EvmLean.Test EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Solidity EvmLean.Interpreter EvmTest EvmTest.InterpreterUtil Examples.Solmate.Contracts
 
 -- The canonical deployment strings, in their short storage form.
 #guard Str.shortWord "Solmate Vault".toUTF8 ==
@@ -111,4 +112,4 @@ def namesLong : Storage :=
 #guard (getter SolmateVault.runtimeCode 0x95d89b41 namesShort).map (·.output) ==
   some (Abi.encodeString "svSAST".toUTF8)
 
-end EvmLeanTest.Strings
+end Examples.Tests.Strings

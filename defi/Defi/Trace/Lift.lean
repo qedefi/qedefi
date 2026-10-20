@@ -42,7 +42,7 @@ equality, and `Agree := Eq` recovers the textbook statement (`lift_eq`).
   two-state properties (e.g. price monotonicity of one call) can be read off a trace.
 -/
 
-namespace EvmLeanSpecs.Refinement.Lift
+namespace Defi.Trace.Lift
 
 /-! ## Model executions -/
 
@@ -317,4 +317,4 @@ theorem Refinement.lift_step (h : σ.Refinement) {w₀ w : W} {ops₁ ops₂ : L
 
 end System
 
-end EvmLeanSpecs.Refinement.Lift
+end Defi.Trace.Lift

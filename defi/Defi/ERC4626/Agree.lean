@@ -9,7 +9,7 @@ The refinement theorems describe the concrete storage through the Solidity layou
 allowance entry is only known when its slot is not one of the written slots
 (`Shares.RepOn`). A plausible hypothesis on Keccak cannot rule out a collision between a
 written balance slot and the slot of *some* allowance entry among all `2³²⁰` pairs (see
-`EvmLeanProofs/Solidity/Keccak.lean`), so the concrete world can only be related to the model
+`EvmLogic/Solidity/Keccak.lean`), so the concrete world can only be related to the model
 up to the allowances of pairs outside a set `G` of pairs whose slots are known to be fresh —
 in practice, all pairs of the finitely many actors of a trace.
 
@@ -26,9 +26,10 @@ Every property of a state that does not read allowances outside `G` is the same 
 states (`AgreeOn.totalSupply`, `AgreeOn.totalAssets`, `AgreeOn.price`, `AgreeOn.inv`, …).
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Defi.ERC4626
+open Defi.Trace
 
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate
 
 variable {A : Type} [DecidableEq A]
 
@@ -78,6 +79,7 @@ structure TokAgree (G : A → A → Prop) (t u : Token A) : Prop where
   allowance : ∀ o sp, G o sp → t.allowance o sp = u.allowance o sp
 
 namespace TokAgree
+open Defi.Trace
 
 variable {G : A → A → Prop}
 
@@ -169,6 +171,7 @@ structure AgreeOn (G : A → A → Prop) (s t : State A) : Prop where
   beforeWithdraw : s.beforeWithdrawCount = t.beforeWithdrawCount
 
 namespace AgreeOn
+open Defi.Trace
 
 variable {G : A → A → Prop}
 
@@ -368,4 +371,4 @@ theorem self_exec (s : State A) (ops : List (Op A)) : (Lift.exec step s ops).sel
   | nil => rfl
   | cons op ops ih => exact (ih _).trans (self_stepD s op)
 
-end EvmLeanSpecs.Refinement.Invariants
+end Defi.ERC4626

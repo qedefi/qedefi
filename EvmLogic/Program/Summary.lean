@@ -10,7 +10,7 @@ import EvmLogic.Program.Logic
   at the top level (`initMachine`) and after a `CALL*` pushed a child (`launchCall`), so a
   theorem `Fresh code m → … → Halts m H` about a contract serves as its **summary** in both
   roles: as a top-level transaction (`processMessageCall_of_halts`) and as a callee
-  (`EvmLeanProofs.Program.Call`).
+  (`EvmLogic.Program.Call`).
 * `FunctionSummary code`: an external function of a compiled contract, split as solc compiles
   it: the dispatcher (from the frame start to the function's entry pc, `dispatch`) and the
   body (from the entry pc to the end of the frame, `body`). `FunctionSummary.halts` glues them
@@ -21,9 +21,10 @@ import EvmLogic.Program.Logic
 
 section
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Fresh frames -/
 
@@ -159,6 +160,7 @@ structure FunctionSummary (code : ByteArray) where
     Halts m' (post m)
 
 namespace FunctionSummary
+open EvmLean
 
 variable {code : ByteArray} (s : FunctionSummary code)
 
@@ -186,7 +188,7 @@ theorem processMessageCall {ctx : Context} {w : World} {tr : TransientStorage}
 
 end FunctionSummary
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -210,9 +212,10 @@ halting postcondition says how it may end the frame (e.g. a `revert`).
 * `WP.of_false`: a summary that never halts (`H = False`) can be used under any `H`.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- `m` with pc, stack and gas replaced: where a pure internal function returns to. -/
 def _root_.EvmLean.Interpreter.Machine.resumeAt (m : Machine) (pc : Nat) (stack : List Word)
@@ -240,6 +243,7 @@ theorem _root_.EvmLean.Interpreter.Machine.resumeAt_eq (m : Machine) (pc : Nat)
       m.resumeWith pc stack m.frame.memory gas m.frame.returnData m.frame.sub := rfl
 
 namespace WP
+open EvmLean
 
 variable {m : Machine} {Q Q₁ : Machine → Prop} {H H₁ : Machine → Outcome → Prop}
 
@@ -256,6 +260,6 @@ theorem of_false (h : WP m Q (fun _ _ => False)) : WP m Q H :=
 
 end WP
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

@@ -10,7 +10,7 @@ a form suited to large bytecode:
 
 * `step_pushN`: `PUSH1`–`PUSH32` with the width as a plain `Nat` (no `Fin` arithmetic in
   the result), leaving the pushed value as `Bytes.toWord (readBytes code (pc + 1) n)`; the
-  `reduceCodeImm` simproc of `EvmLeanProofs.Solidity.Tactic` evaluates it for literal code.
+  `reduceCodeImm` simproc of `EvmLogic.Tactic.SolStep` evaluates it for literal code.
 * `step_codecopy`: `CODECOPY` of a non-empty range (solc loads 32-byte event topics and
   other large constants from the end of the code this way).
 -/
@@ -18,8 +18,9 @@ a form suited to large bytecode:
 section
 
 namespace EvmLean.Interpreter
+open EvmLogic
 
-open Bytes
+open EvmLean.Bytes
 
 variable {m : Machine} {x y z : Word} {rest : List Word}
 
@@ -88,8 +89,9 @@ every `Crypto`.
 -/
 
 namespace EvmLean.Interpreter
+open EvmLogic
 
-open Bytes
+open EvmLean.Bytes
 
 variable {m : Machine} {x y z : Word} {rest : List Word}
 

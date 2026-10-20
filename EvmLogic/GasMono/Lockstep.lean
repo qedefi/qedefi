@@ -21,9 +21,10 @@ import EvmLogic.GasMono.Pc
 
 section
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- Not a successful outcome. -/
 def Failed (o : Outcome) : Prop := ∀ out, o ≠ .success out
@@ -162,7 +163,7 @@ theorem pcOk_zero {code : ByteArray} {n : Nat} (h : RegionOk code n) : PcOk code
   simp only [show 0 < code.size by omega, ↓reduceIte]
   exact List.mem_cons_self
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end
 
@@ -197,9 +198,10 @@ The code facts guarantee that the pc is always a boundary of the region (`PcOk`)
 the only cases (`CallsFed`: no other `CALL`/`CREATE` family member runs).
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- **The code-level conditions** of the lockstep, for the region `[0, n)`. -/
 structure CodeOk (code : ByteArray) (n : Nat) : Prop where
@@ -595,7 +597,7 @@ theorem monoFrom_of_code {code : ByteArray} {n : Nat} (hc : CodeOk code n)
     ⟨hbo, hfc.symm.trans hcode, hfjd.symm.trans hjd, hfpc ▸ hpc, hgas, hpo, hpm⟩ hex
     (hcalls mh N mfh oh hSm hex)
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end
 
@@ -604,7 +606,7 @@ section
 /-!
 ## Gas monotonicity: frame summaries for any gas
 
-The form the nested-call simulation consumes (`FrameOk` in `specs/…/NestedSystem.lean` is
+The form the nested-call simulation consumes (`FrameOk` in `defi/…/NestedSystem.lean` is
 `Halts m (fun mf o => ∀ out, o = .success out → P mf.world)` for a property `P` of the world):
 
 **`halts_world_of_mono`**: let `S` be gas-monotone (`MonoFrom S`) and `ml` a frame of a message
@@ -620,9 +622,10 @@ a nested `Halts` witness may describe a later point at which the parent happens 
 resumption.
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The frame of `m` with gas `G` (frame and message), at the top level. -/
 def topBump (G : Nat) (m : Machine) : Machine := bump (G - m.frame.gasLeft) G [] m
@@ -683,6 +686,6 @@ theorem halts_world_of_mono {S : Machine → Prop} (hmono : MonoFrom S) {ml : Ma
     rw [hw, hmf] at this
     exact this
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end

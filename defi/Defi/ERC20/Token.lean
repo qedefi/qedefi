@@ -26,7 +26,8 @@ functions pass values `≤ MAX`.
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.ERC20
+open Defi.Math
 
 open Finsupp
 
@@ -43,6 +44,7 @@ structure Token (A : Type) where
   allowance : A → A → ℕ
 
 namespace Token
+open Defi.Math
 
 variable {A : Type} [DecidableEq A]
 
@@ -413,4 +415,4 @@ end Oz
 
 end Token
 
-end EvmLeanSpecs.Vault
+end Defi.ERC20

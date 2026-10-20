@@ -13,12 +13,12 @@ import Examples.Solmate.Contracts.SolmateAsset
   `bool paused` and `address owner`, the layout solc gives these three declarations.
 -/
 
-namespace EvmLeanTest.Solidity
+namespace Examples.Tests.Solidity
 
-open EvmLean EvmLean.Solidity EvmLean.Interpreter
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Solidity EvmLean.Interpreter
 
 -- Every method identifier of the Solmate asset artifact is the selector of its signature.
-#guard EvmLean.Contracts.SolmateAsset.selectors.all fun (sig, sel) =>
+#guard Examples.Solmate.Contracts.SolmateAsset.selectors.all fun (sig, sel) =>
   Abi.selector Crypto.real sig == sel.toNat
 
 #guard Abi.selector Crypto.real "transfer(address,uint256)" == 0xa9059cbb
@@ -56,4 +56,4 @@ def packed : Word := 0xabcd * 2 ^ 16 + 1 * 2 ^ 8 + 18
 #guard owner.get (paused.set packed 0) == 0xabcd
 #guard decimals.set (decimals.set packed 6) 18 == packed
 
-end EvmLeanTest.Solidity
+end Examples.Tests.Solidity

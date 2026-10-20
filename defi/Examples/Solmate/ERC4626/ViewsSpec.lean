@@ -22,10 +22,11 @@ also serve as callee summaries for `WP.call` / `WP.staticcall`.
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20
 
 /-! ## Callee role: any frame -/
 
@@ -390,7 +391,7 @@ theorem asset_call (hdep : Deployed w vault asset)
     (noArgCall_encodeCall (by decide))
   exact view_call hdeleg (hdep.vaultNotPrecompile _) h
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -412,9 +413,10 @@ Each returns the ABI word of the value read from storage (`decimals`: the immuta
 `uint8`) and leaves the world unchanged (`SharesViewPost`).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## The vault's hook counters -/
 
@@ -485,7 +487,7 @@ theorem assetAllowance_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : TwoWordCall m.frame.msg.data 0xdd62ed3e (Word.ofAddress owner) (Word.ofAddress spender))
     (hsize' : m.frame.msg.data.size < 2 ^ 64) (hg : 3000 ≤ m.frame.gasLeft) :
     Halts m (SharesViewPost (m.world.sload m.frame.msg.currentTarget
-      (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate owner spender)) m) := by
+      (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate owner spender)) m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
   have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
@@ -515,6 +517,6 @@ theorem assetDecimals_halts {ia : SolmateAsset.Immutables} (m : Machine)
     readBytes_assetCode_decimals]
   exact ⟨rfl, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

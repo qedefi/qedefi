@@ -11,9 +11,10 @@ for it; `processMessageCall_callMsg` reduces `processMessageCall` to `run` from 
 delegation designator; the target is not a precompile).
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- A top-level, zero-value message call of the contract at `token` (running `code`) from
 `caller` with calldata `data`, `gas` gas and the given warm sets. -/
@@ -65,4 +66,4 @@ theorem processMessageCall_callMsg {code : ByteArray} {ctx : Context} {w : World
   exact processMessageCall_eq_run (msg := callMsg code token caller data gas warmAddrs warmKeys)
     hdeleg hcode hi fuel
 
-end EvmLean.Solidity
+end EvmLogic.Solidity

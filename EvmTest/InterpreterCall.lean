@@ -7,9 +7,10 @@ Multi-frame programs: `contract` (A) calls or creates; `other` (B) and `third` (
 callees. All hashes are FAKE (`fakeKeccak`).
 -/
 
-open EvmLean EvmLean.Interpreter EvmLean.Test
+open EvmLean EvmLean.Interpreter EvmTest EvmTest.InterpreterUtil
 
-namespace EvmLean.Test.InterpreterCall
+namespace EvmTest.InterpreterCall
+open EvmLean EvmTest.InterpreterUtil
 
 /-- `CALL(gas, to, value, inOff, inSize, outOff, outSize)`. -/
 def callAsm (gas : Nat) (to : Address) (value inOff inSize outOff outSize : Nat) : List Asm :=
@@ -335,9 +336,10 @@ def sdInit : ByteArray := asm [.push other.toNat, .op .selfdestruct]
 #guard (runCode (asm (createAsm sdInit 100 ++ [.push 0, .push 0, .op .revert]))).map
   (·.accountsToDelete.isEmpty) = some true
 
-end EvmLean.Test.InterpreterCall
+end EvmTest.InterpreterCall
 
-namespace EvmLean.Test.InterpreterCall
+namespace EvmTest.InterpreterCall
+open EvmLean EvmTest.InterpreterUtil
 
 /-! ## Explicit call stack -/
 
@@ -382,4 +384,4 @@ def recurse : List Asm :=
 #guard ((runCode (asm recurse) (gas := 3000000)).map
   (fun r => decide (r.world.sload contract 0 > 10))).getD false
 
-end EvmLean.Test.InterpreterCall
+end EvmTest.InterpreterCall

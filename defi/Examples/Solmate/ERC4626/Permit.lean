@@ -8,14 +8,15 @@ The share token of the compiled vault (`SolmateVault.runtimeCodeWith i`, any imm
 the same Solmate `ERC20` code as the asset at other offsets (internal `DOMAIN_SEPARATOR()` at
 `0x0724`, `computeDomainSeparator()` at `0x0ea0`): `vault_ds_wp`,
 `vault_domainSeparator_halts`, `vault_nonces_halts` are `asset_ds_wp`, … for the vault (same
-proof scripts, see `PermitAssetDS`).
+proof scripts, see `Examples.Solmate.ERC20.Permit`).
 -/
 
 section
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The `INITIAL_CHAIN_ID` immutable of the vault, as the `PUSH32` at `0x0726` reads it. -/
 theorem readBytes_vault_chainId (i : SolmateVault.Immutables) :
@@ -183,7 +184,7 @@ theorem vault_nonces_halts {i : SolmateVault.Immutables} (m : Machine)
   evm_gas
 
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end
 
@@ -195,9 +196,10 @@ section
 `vault_permit_tail` is `asset_permit_tail` for the vault's code (`STATICCALL` at `0x0d6e`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- **The end of the vault's `permit`**, from the `ECRECOVER` call (pc `0x0d6e`), for the free
@@ -297,7 +299,7 @@ theorem vault_permit_tail {i : SolmateVault.Immutables} (m : Machine) {M : Memor
             ?_⟩
           dsimp only [outputMachine]; evm_gas
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end
 
@@ -309,9 +311,10 @@ section
 `vault_permit_body` is `asset_permit_body` for the vault's code (pc `0x0c75`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- **The body of the vault's `permit`** (pc `0x0c75` to the end), for both memory layouts that
@@ -404,7 +407,7 @@ theorem vault_permit_body {i : SolmateVault.Immutables} (m : Machine) {M : Memor
     dsimp only at h3 ⊢
     omega
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end
 
@@ -418,9 +421,10 @@ section
 assumptions.
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC4626.Permit
+open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- **`permit` of the vault, in any frame** (see the module docstring). -/
@@ -499,6 +503,6 @@ theorem vault_permit_halts {i : SolmateVault.Immutables} (m : Machine)
     dsimp only at h3 ⊢
     omega
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC4626.Permit
 
 end

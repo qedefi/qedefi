@@ -6,7 +6,7 @@ import EvmLogic.Step.Basic
 `PUSH0`–`PUSH32`, `DUP1`–`DUP16`, `SWAP1`–`SWAP16`, `POP`.
 
 `PUSHn` pushes `Bytes.toWord (readBytes code (pc + 1) n)` (immediate bytes past the end of
-the code read as zero); `EvmLeanProofs.StepPush` evaluates it for `PUSH1` and `PUSH2`.
+the code read as zero); `EvmLogic.Step.Push` evaluates it for `PUSH1` and `PUSH2`.
 `DUPn` and `SWAPn` are stated with the accessed stack element given by a `getElem?`
 hypothesis, so they apply to stacks of any shape.
 -/

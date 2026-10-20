@@ -8,7 +8,7 @@ Shared helpers for the transaction / block / trie tests: hex literals and a stan
 
 open EvmLean
 
-namespace EvmLeanTest
+namespace EvmTest
 
 /-- Hex literal (empty on malformed input, which would make the test fail visibly). -/
 def hx (s : String) : ByteArray := (Conformance.parseHexBytes s).toOption.getD .empty
@@ -52,9 +52,9 @@ def rlpRoundtrips (b : ByteArray) : Bool :=
   | .ok r => r.encode == b
   | .error _ => false
 
-end EvmLeanTest
+end EvmTest
 
-namespace EvmLeanTest
+namespace EvmTest
 
 /-- Genesis RLP of `ValidBlocks/bcEIP4844-blobtransactions/blockWithAllTransactionTypes`. -/
 def genesisRlpHex : String :=
@@ -71,7 +71,7 @@ def genesisBlock : Block := (Block.decode (hx genesisRlpHex)).toOption.getD defa
 /-- Block 1 of the fixture. -/
 def block1 : Block := (Block.decode (hx block1RlpHex)).toOption.getD default
 
-end EvmLeanTest
+end EvmTest
 
 -- Decidable equality of `Except`, so that tests can compare results directly.
 deriving instance DecidableEq for Except

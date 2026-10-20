@@ -21,7 +21,7 @@ non-static frame with solc's memory discipline (`FmpOk`), against the model's
 `Token.transferFrom` of the asset ledger (`tokenView`, spender = the vault):
 
 * the `CALL` (no value) is handled by the callee-summary rule `WP.call0`
-  (`EvmLeanProofs.Program.InExtraCall`) with the asset's model-level summary
+  (`EvmLogic.Program.Call`) with the asset's model-level summary
   `assetTransferFrom_halts` (from `assetTransferFrom_refines`) on the child frame: the
   calldata the vault assembled in memory is a `ThreeWordCall`;
 * **success** (the model returns `some t'`): the asset returns the ABI word `1` (32 bytes), so
@@ -40,10 +40,11 @@ Hypotheses: `BalanceSlotOk` of `src` and `dst`, `AllowanceSlotOk` of `allowance[
 63/64).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Vault Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- Memory after `safeTransferFrom`: the free pointer unchanged (`0x80` or `0xa0`), the call's
 input window `[fmp, fmp + 100)` allocated. -/
@@ -57,15 +58,15 @@ theorem assetTransferFrom_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hd : ThreeWordCall m.frame.msg.data 0x23b872dd (Word.ofAddress src) (Word.ofAddress dst)
       amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
-    (hs : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate src)
-    (hdst : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate dst)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)
+    (hs : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate src)
+    (hdst : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate dst)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.caller)
     {t : Token Address} (hr : Rep (assetView m) t) (hw : t.WF) :
     Halts m (fun mf o =>
       (∃ t', t.transferFrom m.frame.msg.caller src dst amount.toNat = some t' ∧
         TransferFromOk src dst amount m mf o ∧
         RepOn (TransferFromAllowances m.ctx.crypto m.frame.msg.caller src dst)
-          (Erc20.view m.ctx.crypto Erc20.Layout.solmate mf.world m.frame.msg.currentTarget) t') ∨
+          (ERC20.view m.ctx.crypto ERC20.Layout.solmate mf.world m.frame.msg.currentTarget) t') ∨
       (t.transferFrom m.frame.msg.caller src dst amount.toNat = none ∧ Reverts 80000 m mf o)) := by
   have h := assetTransferFrom_refines m hf hval hstatic hd hsz hg hs hdst ha hr hw
   revert h
@@ -97,18 +98,18 @@ theorem safeTransferFrom_wp {i : SolmateVault.Immutables} (m : Machine) {amount 
     (hlen : rest.length ≤ 1000) (hr : isValidJumpDest m.frame.jumpDests r.toNat = true)
     (hmem : FmpOk m.frame.memory)
     (hg : 100000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64)
-    (hbs : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate src)
-    (hbd : Erc20.BalanceSlotOk m.ctx.crypto Erc20.Layout.solmate dst)
-    (ha : Erc20.AllowanceSlotOk m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.currentTarget)
+    (hbs : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate src)
+    (hbd : ERC20.BalanceSlotOk m.ctx.crypto ERC20.Layout.solmate dst)
+    (ha : ERC20.AllowanceSlotOk m.ctx.crypto ERC20.Layout.solmate src m.frame.msg.currentTarget)
     (hwf : (tokenView m.ctx.crypto m.world i.asset).WF) :
     WP m (fun m' => ∃ t', (tokenView m.ctx.crypto m.world i.asset).transferFrom
           m.frame.msg.currentTarget src dst amount.toNat = some t' ∧
         RepOn (TransferFromAllowances m.ctx.crypto m.frame.msg.currentTarget src dst)
-          (Erc20.view m.ctx.crypto Erc20.Layout.solmate (Erc20.transferFromWorld m.ctx.crypto
+          (ERC20.view m.ctx.crypto ERC20.Layout.solmate (ERC20.transferFromWorld m.ctx.crypto
             m.world i.asset m.frame.msg.currentTarget src dst amount) i.asset) t' ∧
         ∃ mem g rd sub,
           m' = { m.resumeWith r.toNat rest mem g rd sub with
-            world := Erc20.transferFromWorld m.ctx.crypto m.world i.asset
+            world := ERC20.transferFromWorld m.ctx.crypto m.world i.asset
               m.frame.msg.currentTarget src dst amount } ∧
           FmpAfterTransfer mem ∧ m.frame.gasLeft ≤ g + 90000)
       (fun _ o => (tokenView m.ctx.crypto m.world i.asset).transferFrom
@@ -224,4 +225,4 @@ theorem safeTransferFrom_wp {i : SolmateVault.Immutables} (m : Machine) {amount 
         pwp_steps [hM64, hMs, word_and_zero, iszero_zero]
         exact ⟨hT, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626

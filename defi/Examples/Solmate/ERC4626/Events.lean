@@ -6,11 +6,11 @@ import EvmLogic.Solidity.Word
 /-!
 # Events as EVM logs
 
-The encoding of the model's events (`EvmLeanSpecs.Vault.Events`) as the logs the compiled
+The encoding of the model's events (`Defi.ERC4626.Events`) as the logs the compiled
 Solmate contracts emit, and the glue from frame summaries about logs to top-level results.
 
 * The logs themselves (`transferLog`, `approvalLog`, `depositLog`, `withdrawLog`, with the
-  signature-hash topics) are in `EventsLog`.
+  signature-hash topics) are in `Defi.ERC4626.Logs`.
 * `Event.toLog vault asset`: an event of the model as a log, the emitter resolved to `vault`
   or `asset`; `encode vault asset evs` the logs of a list of events, in order.
 * `EventsPost m L`: how a frame ends with respect to logs, when the model says it emits the
@@ -21,20 +21,21 @@ Solmate contracts emit, and the glue from frame summaries about logs to top-leve
   for a nested call, the caller's logs after the callee are its own followed by `L`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate
 
 /-! ## The model's events as logs -/
 
 /-- The address of an emitter. -/
-def _root_.EvmLeanSpecs.Vault.Solmate.Emitter.addr (vault asset : Address) : Emitter → Address
+def _root_.Defi.ERC4626.Solmate.Emitter.addr (vault asset : Address) : Emitter → Address
   | .vault => vault
   | .asset => asset
 
 /-- An event of the model as the log the deployed contracts emit (amounts as ABI words). -/
-def _root_.EvmLeanSpecs.Vault.Solmate.Event.toLog (vault asset : Address) : Event Address → Log
+def _root_.Defi.ERC4626.Solmate.Event.toLog (vault asset : Address) : Event Address → Log
   | .transfer e src dst v => transferLog (e.addr vault asset) src dst (BitVec.ofNat 256 v)
   | .approval e o sp v => approvalLog (e.addr vault asset) o sp (BitVec.ofNat 256 v)
   | .deposit c o a s => depositLog vault c o (BitVec.ofNat 256 a) (BitVec.ofNat 256 s)
@@ -176,4 +177,4 @@ theorem logs_of_processMessageCall {fuel : Nat} {ctx : Context} {w : World} {tr 
   · rw [processMessageCall_logs_of_fail h hr, hf hr]
   · exact hs hr
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626

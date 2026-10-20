@@ -14,7 +14,7 @@ their expected values come from an independent Python transcription of RFC 7693 
 script reproduces EIP-152 vectors 4–7).
 -/
 
-open EvmLean EvmLeanTest.HashUtil
+open EvmLean EvmTest.HashUtil
 
 /-- Little-endian 64-bit word at byte offset `o`. -/
 def le64At (b : ByteArray) (o : Nat) : UInt64 :=

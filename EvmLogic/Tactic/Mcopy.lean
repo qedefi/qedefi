@@ -26,8 +26,9 @@ for gas side conditions whose ranges have symbolic lengths.
 section
 
 namespace EvmLean.Memory
+open EvmLogic
 
-open Bytes
+open EvmLean.Bytes
 
 /-- Bytes after `MCOPY`: inside `[dst, dst + len)` the source bytes (read before the write),
 elsewhere unchanged. -/
@@ -74,6 +75,7 @@ theorem size_mcopy (mem : Memory) (dst src len : Nat) (h : len ≠ 0) :
 end EvmLean.Memory
 
 namespace EvmLean.Gas
+open EvmLogic
 
 /-- `memoryCost` is monotone. -/
 theorem memoryCost_mono {a b : Nat} (h : a ≤ b) : memoryCost a ≤ memoryCost b := by
@@ -127,6 +129,7 @@ theorem extendMemory_two {s a b len : Nat} (hlen : len ≠ 0) (hs : s % 32 = 0) 
 end EvmLean.Gas
 
 namespace EvmLean.Interpreter
+open EvmLogic
 
 /-- The expansion cost of an `MLOAD`/`MSTORE`-style access of `n ≠ 0` bytes at `x`, when the
 memory size `s` is a multiple of 32 and the size after the access is known to be `t`. -/
@@ -161,6 +164,7 @@ theorem outputCost_of_le {m : Machine} {x y : Word} (h32 : m.frame.memory.size %
 end EvmLean.Interpreter
 
 namespace EvmLean.Memory
+open EvmLogic
 
 /-- Expanding memory (of a size that is a multiple of 32) over a range it covers changes
 nothing. -/
@@ -172,9 +176,10 @@ theorem expand_eq_self {mem : Memory} {off len : Nat} (h32 : mem.size % 32 = 0)
 
 end EvmLean.Memory
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Lean Elab Tactic Meta
+open Lean Elab Tactic EvmLogic.Tactic Meta
 open EvmLean.Interpreter
 
 /-- `wp_generalize_mem M h`: in a goal `WP m Q H` whose machine is a structure literal,
@@ -343,9 +348,10 @@ macro_rules
       rw [EvmLean.Memory.expand_eq_self (by mem_in_disch [$hs,*]) (by mem_in_disch [$hs,*])]
       simp only [readBytes_bytes, $hs,*]))
 
-end EvmLean.Program
+end EvmLogic.Program
 
-namespace EvmLean.Solidity.Patched
+namespace EvmLogic.Tactic.Patched
+open EvmLean EvmLogic.Solidity
 
 /-- Execute a non-empty `MCOPY` in a `run` goal (literal or patched code), as `psol_step`
 does for the other instructions. -/
@@ -362,8 +368,8 @@ macro_rules
         case hstk => exact rfl
         case hz => mcopy_len_disch
         case hgas => mcopy_gas_disch
-      try evm_norm [EvmLean.Interpreter.mcopyCost, EvmLean.Solidity.Patched.reducePatchedRead,
-        EvmLean.Solidity.Exec.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow,
+      try evm_norm [EvmLean.Interpreter.mcopyCost, EvmLogic.Tactic.Patched.reducePatchedRead,
+        EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow,
         Nat.reduceLT, $extra,*]
       mcopy_size_facts))
 
@@ -381,8 +387,8 @@ macro_rules
         case hstk => exact rfl
         case hz => mcopy_len_disch
         case hgas => psol_disch
-      try evm_norm [EvmLean.Solidity.Patched.reducePatchedRead,
-        EvmLean.Solidity.Exec.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow,
+      try evm_norm [EvmLogic.Tactic.Patched.reducePatchedRead,
+        EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm, Nat.reduceMod, Nat.reducePow,
         Nat.reduceLT, $extra,*]))
 
 /-- `psol_steps` that also executes `MCOPY`. -/
@@ -394,6 +400,6 @@ macro_rules
     `(tactic| repeat (first | psol_step [$extra,*] | psol_mcopy [$extra,*] |
       psol_mcopy_zero [$extra,*]))
 
-end EvmLean.Solidity.Patched
+end EvmLogic.Tactic.Patched
 
 end

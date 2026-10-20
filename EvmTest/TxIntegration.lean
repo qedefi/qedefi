@@ -10,9 +10,9 @@ Vectors: `TrieTests/trieanyorder.json` and `trieanyorder_secureTrie.json` from
 the BlockchainTests fixture `bcEIP4844-blobtransactions/blockWithAllTransactionTypes`.
 -/
 
-open EvmLean EvmLeanTest
+open EvmLean EvmTest
 
-namespace EvmLeanTest.TxIntegration
+namespace EvmTest.TxIntegration
 
 /-- The real Keccak-256. -/
 def keccak : ByteArray → Word := Crypto.real.keccak256
@@ -129,4 +129,4 @@ def imported : Except Block.BlockError (Block.ChainHead × Array Receipt) :=
       decide (head.world = post) && receipts.size = 4
   | .error _ => false
 
-end EvmLeanTest.TxIntegration
+end EvmTest.TxIntegration

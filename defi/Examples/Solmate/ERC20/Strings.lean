@@ -6,7 +6,7 @@ import EvmLogic.Solidity.Strings
 # `name()` / `symbol()` of the compiled asset: short strings
 
 The asset (`SolmateAsset.runtimeCodeWith ia`, Solmate `MockERC20`, any immutables) compiles
-the `string public` getters exactly as the vault does (`StringsVault`), at other offsets:
+the `string public` getters exactly as the vault does (`Examples.Solmate.ERC4626.Strings`), at other offsets:
 `extract_byte_array_length` at `0x0a07` (called from the getter with return address
 `0x025f`), the getter returning to `0x00f1`, the ABI encoder at `0x0897` (its `MCOPY` at
 `0x08ae`). The lemmas mirror the vault's: `assetEncodeShort_wp`, `assetStringShort_wp`.
@@ -14,9 +14,10 @@ the `string public` getters exactly as the vault does (`StringsVault`), at other
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
 /-- **The asset's string encoder from its `MCOPY`, for a short string** (1–31 bytes at
@@ -92,11 +93,12 @@ theorem assetEncodeShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {L : Na
   pwp_steps [hM2s, hM2f, Str.and_notMask31 (show L < 2 ^ 255 by omega), hround, hM2r]
   exact ⟨rfl, trivial⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 set_option maxHeartbeats 0 in
 /-- **The asset's string getter, short (even) slot word**, from the entry of
@@ -165,7 +167,7 @@ theorem assetStringShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot
       Str.lt_32_of_ge (Nat.le_of_not_lt hshort) (by omega)]
     exact ⟨rfl, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -175,13 +177,14 @@ section
 ## `name()` / `symbol()` of the compiled asset: long strings
 
 The asset's copy loop (`0x02b9`–`0x02cc`, exit `0x02cd`) and encoder are the vault's
-(`StringsVaultLong`) at other offsets; the lemmas mirror the vault's: `AssetCopy`,
+(`Examples.Solmate.ERC4626.Strings`) at other offsets; the lemmas mirror the vault's: `AssetCopy`,
 `assetCopyBody_wp`, `assetCopyLoop_wp`, `assetLongTail_wp`, `assetStringLong_wp`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 /-- The state of the copy loop of the asset's string getter after `k` words, at pc `pc`:
 `dst = 0xa0 + 32 k`, `ptr = h + k` (`h` the first data slot), `end = 0xa0 + L` on the stack;
@@ -605,7 +608,7 @@ theorem assetStringLong_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot 
       Str.lt_32_of_lt (Nat.lt_of_not_le hlong)]
     exact ⟨rfl, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -614,16 +617,17 @@ section
 /-!
 ## `name()` / `symbol()` of the compiled asset refine the storage strings
 
-The asset's counterparts of `StringsVaultSpec` (`SolmateAsset.runtimeCodeWith ia`, any
+The asset's counterparts of `Examples.Solmate.ERC4626.Strings` (`SolmateAsset.runtimeCodeWith ia`, any
 immutables): `assetName_refines`, `assetSymbol_refines` (any frame) and `assetName_call`,
 `assetSymbol_call` (top level, the asset of a `Deployed` vault): the call returns
 `Abi.encodeString s` for `stringAt crypto world asset slot = some s` (slot 0: `name`, slot 1:
 `symbol`), reverts for `none`, and leaves the world unchanged.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
@@ -718,7 +722,7 @@ theorem assetSymbol_call (hdep : Deployed w vault asset)
     (assetSymbol_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
       (noArgCall_encodeCall (by decide)))
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end
 
@@ -737,9 +741,10 @@ is involved at all (the theorems hold for every `Crypto`).
 `stringAt_shortWord` is the general step: a slot holding `Str.shortWord s` reads as `s`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
@@ -825,6 +830,6 @@ theorem assetSymbol_canonical (hdep : Deployed w vault asset)
   rw [stringAt_shortWord hs hslot] at hres
   exact ⟨res, hrun, hw, stringResult_some hres⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end

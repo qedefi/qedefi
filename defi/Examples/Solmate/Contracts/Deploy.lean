@@ -20,7 +20,8 @@ constructor computes as follows:
 the creation code in evm-lean and in anvil.
 -/
 
-namespace EvmLean.Contracts
+namespace Examples.Solmate.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity
 
 /-- Solmate's `ERC20.computeDomainSeparator()`: the EIP-712 domain separator of a token named
 `name` (version `"1"`) deployed at `self` on chain `chainId`, for the given Keccak-256. -/
@@ -35,6 +36,7 @@ def solmateDomainSeparator (keccak256 : ByteArray → Word) (name : String) (cha
     Bytes.ofWord (Word.ofAddress self)
 
 namespace SolmateAsset
+open EvmLean EvmLogic EvmLogic.Solidity
 
 /-- The token name of the canonical deployment (constructor argument). -/
 def name : String := "Solmate Asset"
@@ -55,6 +57,7 @@ def runtimeCodeFor (keccak256 : ByteArray → Word) (chainId : Nat) (self : Addr
 end SolmateAsset
 
 namespace SolmateVault
+open EvmLean EvmLogic EvmLogic.Solidity
 
 /-- The vault name of the canonical deployment (constructor argument). -/
 def name : String := "Solmate Vault"
@@ -76,4 +79,4 @@ def runtimeCodeFor (keccak256 : ByteArray → Word) (chainId : Nat) (asset self 
 
 end SolmateVault
 
-end EvmLean.Contracts
+end Examples.Solmate.Contracts

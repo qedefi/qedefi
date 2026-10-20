@@ -21,9 +21,10 @@ function sum(uint256 n) external pure returns (uint256 s) {
   parents; `sum_processMessageCall`: the top-level statement.
 -/
 
-namespace EvmLean.Program.Examples.Sum
+namespace Examples.Basic.Sum
+open EvmLean EvmLogic EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- Runtime code of `Sum` (solc output, including the metadata trailer). -/
 def code : ByteArray := ⟨#[

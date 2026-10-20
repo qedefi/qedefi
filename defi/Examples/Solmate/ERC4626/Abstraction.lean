@@ -24,12 +24,12 @@ fixes the actor type used by the refinement proofs: EVM addresses.
 
 section
 
-namespace EvmLeanSpecs
+namespace Examples.Solmate.ERC4626
 
 /-- The Solmate vault model over EVM addresses, as used by the refinement proofs. -/
-abbrev SolmateVaultState := Vault.Solmate.State EvmLean.Address
+abbrev SolmateVaultState := Defi.ERC4626.Solmate.State EvmLean.Address
 
-end EvmLeanSpecs
+end Examples.Solmate.ERC4626
 
 end
 
@@ -56,19 +56,20 @@ section
   represent `s.shares` and `s.asset` in the sense of `Shares.Rep`) is equivalent to
   `s = abs crypto w vault asset` (`refines_iff`); after writes, where allowances are only
   known pointwise, the weaker `Shares.RepOn P` is what the asset summaries give
-  (`AssetSpec`).
+  (`Examples.Solmate.ERC20.Spec`).
 
 Collision hypotheses are needed only for *writes*: a write to one slot must not change what
 `abs` reads at another key. Such statements are pointwise (`KeccakFresh` of the written
 slot against all address-keyed rows), never global injectivity, which is false for every
-`Crypto`; see `EvmLeanProofs/Solidity/Keccak.lean` and `README.md`.
+`Crypto`; see `EvmLogic/Solidity/Keccak.lean` and `README.md`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
-open Vault
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
+open Defi.ERC4626 Defi.Math Defi.ERC20
 
 /-! ## Deployment -/
 
@@ -103,17 +104,17 @@ theorem deployed_canonical {w : World}
 
 /-- The `ℕ`-valued ledger of a word-valued ERC-20 state (`toNat` of every field; balances as a
 finitely supported map, `Address` being finite). -/
-noncomputable def toToken (s : Erc20.State) : Token Address where
+noncomputable def toToken (s : ERC20.State) : Token Address where
   balanceOf := Finsupp.equivFunOnFinite.symm fun a => (s.balanceOf a).toNat
   totalSupply := s.totalSupply.toNat
   allowance o sp := (s.allowance o sp).toNat
 
 /-- A word-valued state represents its `toToken`. -/
-theorem rep_toToken (s : Erc20.State) : Shares.Rep s (toToken s) :=
+theorem rep_toToken (s : ERC20.State) : Defi.ERC20.Rep s (toToken s) :=
   ⟨rfl, fun a => by simp [toToken], fun _ _ _ => rfl⟩
 
 /-- The ledger a word-valued state represents is `toToken` of it. -/
-theorem toToken_eq_of_rep {s : Erc20.State} {t : Token Address} (h : Shares.Rep s t) :
+theorem toToken_eq_of_rep {s : ERC20.State} {t : Token Address} (h : Defi.ERC20.Rep s t) :
     toToken s = t := by
   obtain ⟨b, ts, al⟩ := t
   obtain ⟨h1, h2, h3⟩ := h
@@ -124,7 +125,7 @@ theorem toToken_eq_of_rep {s : Erc20.State} {t : Token Address} (h : Shares.Rep 
 
 /-- The ERC-20 ledger of the Solmate token at `token`, read from storage. -/
 noncomputable def tokenView (crypto : Crypto) (w : World) (token : Address) : Token Address :=
-  toToken (Erc20.view crypto Erc20.Layout.solmate w token)
+  toToken (ERC20.view crypto ERC20.Layout.solmate w token)
 
 /-- **The abstraction function**: the Solmate vault model state of the vault at `vault` over
 the asset at `asset`, read from the world. -/
@@ -143,9 +144,9 @@ structure Refines (crypto : Crypto) (w : World) (vault asset : Address)
   /-- The vault's address. -/
   self : s.self = vault
   /-- The share ledger. -/
-  shares : Shares.Rep (Erc20.view crypto Erc20.Layout.solmate w vault) s.shares
+  shares : Defi.ERC20.Rep (ERC20.view crypto ERC20.Layout.solmate w vault) s.shares
   /-- The asset ledger. -/
-  asset : Shares.Rep (Erc20.view crypto Erc20.Layout.solmate w asset) s.asset
+  asset : Defi.ERC20.Rep (ERC20.view crypto ERC20.Layout.solmate w asset) s.asset
   /-- `afterDepositHookCalledCounter` (slot 7). -/
   afterDeposit : (w.sload vault 7).toNat = s.afterDepositCount
   /-- `beforeWithdrawHookCalledCounter` (slot 6). -/
@@ -164,15 +165,15 @@ theorem refines_iff {crypto : Crypto} {w : World} {vault asset : Address}
 
 @[simp] theorem tokenView_balanceOf (crypto : Crypto) (w : World) (token a : Address) :
     (tokenView crypto w token).balanceOf a =
-      (w.sload token (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
-  simp [tokenView, toToken, Erc20.view]
+      (w.sload token (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
+  simp [tokenView, toToken, ERC20.view]
 
 @[simp] theorem tokenView_totalSupply (crypto : Crypto) (w : World) (token : Address) :
     (tokenView crypto w token).totalSupply = (w.sload token 2#256).toNat := rfl
 
 @[simp] theorem tokenView_allowance (crypto : Crypto) (w : World) (token o s : Address) :
     (tokenView crypto w token).allowance o s =
-      (w.sload token (Erc20.allowanceSlot crypto Erc20.Layout.solmate o s)).toNat := rfl
+      (w.sload token (ERC20.allowanceSlot crypto ERC20.Layout.solmate o s)).toNat := rfl
 
 /-- `totalSupply` of the model is slot 2 of the vault. -/
 theorem abs_totalSupply (crypto : Crypto) (w : World) (vault asset : Address) :
@@ -181,16 +182,16 @@ theorem abs_totalSupply (crypto : Crypto) (w : World) (vault asset : Address) :
 /-- `totalAssets()` of the model is the vault's balance slot in the asset. -/
 theorem abs_totalAssets (crypto : Crypto) (w : World) (vault asset : Address) :
     (abs crypto w vault asset).totalAssets =
-      (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate vault)).toNat := by
+      (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate vault)).toNat := by
   simp [abs, Solmate.State.totalAssets]
 
 /-! ## The arithmetic mirrors are the specification's -/
 
 /-- The bytecode-side mirror of `mulDivDown` is the specification's. -/
-theorem mulDivDownN_eq : mulDivDownN = Vault.mulDivDown := rfl
+theorem mulDivDownN_eq : mulDivDownN = Defi.Math.mulDivDown := rfl
 
 /-- The bytecode-side mirror of `mulDivUp` is the specification's. -/
-theorem mulDivUpN_eq : mulDivUpN = Vault.mulDivUp := rfl
+theorem mulDivUpN_eq : mulDivUpN = Defi.Math.mulDivUp := rfl
 
 /-- The model state seen by a frame running the vault over `asset`: its world, crypto and
 address. -/
@@ -223,6 +224,6 @@ theorem absOf_sharesOf (asset : Address) (m : Machine) (a : Address) :
     (absOf asset m).shares.balanceOf a = (sharesOf m a).toNat := by
   simp [absOf, abs, sharesOf]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

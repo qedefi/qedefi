@@ -61,10 +61,11 @@ whose bytecode refinement is on `main` today). `refinement` builds its
 
 section
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 /-! ## Calls -/
 
@@ -96,6 +97,7 @@ inductive VCall where
   | assetBurn (caller src : Address) (amount : Word)
 
 namespace VCall
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
 /-- The caller. -/
 def caller : VCall → Address
@@ -206,19 +208,19 @@ structure SlotsOk (crypto : Crypto) (vault : Address) (Act : List Address) : Pro
   /-- The vault is an actor (its asset balance is written by the vault's functions). -/
   vault_mem : vault ∈ Act
   /-- Every actor's balance slot is fresh (`Erc20.BalanceSlotOk`). -/
-  bal : ∀ a ∈ Act, Erc20.BalanceSlotOk crypto Erc20.Layout.solmate a
+  bal : ∀ a ∈ Act, ERC20.BalanceSlotOk crypto ERC20.Layout.solmate a
   /-- Every actor pair's allowance slot is fresh (`Erc20.AllowanceSlotOk`). -/
-  allow : ∀ o ∈ Act, ∀ sp ∈ Act, Erc20.AllowanceSlotOk crypto Erc20.Layout.solmate o sp
+  allow : ∀ o ∈ Act, ∀ sp ∈ Act, ERC20.AllowanceSlotOk crypto ERC20.Layout.solmate o sp
   /-- Distinct actor pairs have distinct allowance slots. -/
   allowInj : ∀ o ∈ Act, ∀ sp ∈ Act, ∀ o' ∈ Act, ∀ sp' ∈ Act,
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp =
-      Erc20.allowanceSlot crypto Erc20.Layout.solmate o' sp' → o = o' ∧ sp = sp'
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp =
+      ERC20.allowanceSlot crypto ERC20.Layout.solmate o' sp' → o = o' ∧ sp = sp'
   /-- No actor's balance slot is a hook-counter slot. -/
-  balFixed : ∀ a ∈ Act, Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 6#256 ∧
-    Erc20.balanceSlot crypto Erc20.Layout.solmate a ≠ 7#256
+  balFixed : ∀ a ∈ Act, ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 6#256 ∧
+    ERC20.balanceSlot crypto ERC20.Layout.solmate a ≠ 7#256
   /-- No actor pair's allowance slot is a hook-counter slot. -/
-  allowFixed : ∀ o ∈ Act, ∀ sp ∈ Act, Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ 6#256 ∧
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠ 7#256
+  allowFixed : ∀ o ∈ Act, ∀ sp ∈ Act, ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 6#256 ∧
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠ 7#256
 
 /-! ## The system -/
 
@@ -258,7 +260,7 @@ def OpRefinesAt (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : 
 /-! ## Deployment and abstraction frames -/
 
 /-- `Deployed` depends only on the code of the two accounts. -/
-theorem _root_.EvmLeanSpecs.Refinement.Deployed.of_code {w w' : World} {vault asset : Address} (h : Deployed w vault asset)
+theorem _root_.Examples.Solmate.ERC4626.Deployed.of_code {w w' : World} {vault asset : Address} (h : Deployed w vault asset)
     (hv : w'.code vault = w.code vault) (ha : w'.code asset = w.code asset) :
     Deployed w' vault asset where
   vaultCode := by rw [hv]; exact h.vaultCode
@@ -272,7 +274,7 @@ theorem size_assetCode (ia : SolmateAsset.Immutables) :
   (size_patchWords _ _).trans SolmateAsset.size_runtimeCode
 
 /-- The vault and the asset are different accounts (their codes have different sizes). -/
-theorem _root_.EvmLeanSpecs.Refinement.Deployed.vault_ne_asset {w : World} {vault asset : Address}
+theorem _root_.Examples.Solmate.ERC4626.Deployed.vault_ne_asset {w : World} {vault asset : Address}
     (h : Deployed w vault asset) : vault ≠ asset := by
   rintro rfl
   obtain ⟨i, -, hi⟩ := h.vaultCode
@@ -286,7 +288,7 @@ theorem _root_.EvmLeanSpecs.Refinement.Deployed.vault_ne_asset {w : World} {vaul
 /-- A token's ledger depends only on its storage. -/
 theorem tokenView_congr {crypto : Crypto} {w w' : World} {token : Address}
     (h : ∀ k, w'.sload token k = w.sload token k) : tokenView crypto w' token = tokenView crypto w token := by
-  simp only [tokenView, Erc20.view, h]
+  simp only [tokenView, ERC20.view, h]
 
 /-- The abstraction depends only on the storage of the vault and the asset. -/
 theorem abs_congr {crypto : Crypto} {w w' : World} {vault asset : Address}
@@ -298,7 +300,7 @@ theorem abs_congr {crypto : Crypto} {w w' : World} {vault asset : Address}
 on `G`. -/
 theorem tokAgree_of_repOn {crypto : Crypto} {w : World} {token : Address}
     {P G : Address → Address → Prop} {t : Token Address}
-    (h : Shares.RepOn P (Erc20.view crypto Erc20.Layout.solmate w token) t)
+    (h : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w token) t)
     (hG : ∀ o sp, G o sp → P o sp) : TokAgree G (tokenView crypto w token) t where
   balanceOf := by
     ext a; rw [tokenView_balanceOf]; exact h.balanceOf a
@@ -309,7 +311,7 @@ theorem tokAgree_of_repOn {crypto : Crypto} {w : World} {token : Address}
 every slot of the asset and the hook-counter slots are unchanged. -/
 theorem agree_of_shares {crypto : Crypto} {w w' : World} {vault asset : Address}
     {Act : List Address} {P : Address → Address → Prop} {t' : Token Address}
-    (hrep : Shares.RepOn P (Erc20.view crypto Erc20.Layout.solmate w' vault) t')
+    (hrep : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w' vault) t')
     (hP : ∀ o sp, ActorPairs Act o sp → P o sp)
     (ha : ∀ k, w'.sload asset k = w.sload asset k)
     (h6 : w'.sload vault 6#256 = w.sload vault 6#256)
@@ -326,7 +328,7 @@ theorem agree_of_shares {crypto : Crypto} {w w' : World} {vault asset : Address}
 every slot of the vault is unchanged. -/
 theorem agree_of_asset {crypto : Crypto} {w w' : World} {vault asset : Address}
     {Act : List Address} {P : Address → Address → Prop} {t' : Token Address}
-    (hrep : Shares.RepOn P (Erc20.view crypto Erc20.Layout.solmate w' asset) t')
+    (hrep : Defi.ERC20.RepOn P (ERC20.view crypto ERC20.Layout.solmate w' asset) t')
     (hP : ∀ o sp, ActorPairs Act o sp → P o sp)
     (hv : ∀ k, w'.sload vault k = w.sload vault k) :
     AgreeOn (ActorPairs Act) (abs crypto w' vault asset)
@@ -345,8 +347,8 @@ them), and the counter slots hold the model's counters. This is `Refines` weaken
 theorem agree_of_reps {crypto : Crypto} {w' : World} {vault asset : Address}
     {Act : List Address} {P₁ P₂ : Address → Address → Prop} {s' : State Address}
     (hself : s'.self = vault)
-    (hsh : Shares.RepOn P₁ (Erc20.view crypto Erc20.Layout.solmate w' vault) s'.shares)
-    (has : Shares.RepOn P₂ (Erc20.view crypto Erc20.Layout.solmate w' asset) s'.asset)
+    (hsh : Defi.ERC20.RepOn P₁ (ERC20.view crypto ERC20.Layout.solmate w' vault) s'.shares)
+    (has : Defi.ERC20.RepOn P₂ (ERC20.view crypto ERC20.Layout.solmate w' asset) s'.asset)
     (hP₁ : ∀ o sp, ActorPairs Act o sp → P₁ o sp) (hP₂ : ∀ o sp, ActorPairs Act o sp → P₂ o sp)
     (h7 : (w'.sload vault 7#256).toNat = s'.afterDepositCount)
     (h6 : (w'.sload vault 6#256).toNat = s'.beforeWithdrawCount) :
@@ -396,7 +398,7 @@ theorem refinement {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act
   env w w' hp he :=
     ⟨hp.of_code he.2.2.1 he.2.2.2, abs_congr he.1 he.2.1⟩
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -423,35 +425,36 @@ slots are untouched; the codes are unchanged (`SSTORE` only). Reverts keep the w
 All five need only `100000 ≤ minGas`.
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 /-! ## World lemmas -/
 
 theorem code_transferWorld (crypto : Crypto) (w : World) (token src dst : Address) (v : Word)
     (b : Address) :
-    (EvmLean.Solidity.Erc20.transferWorld crypto w token src dst v).code b = w.code b := by
-  simp [EvmLean.Solidity.Erc20.transferWorld]
+    (EvmLogic.Solidity.ERC20.transferWorld crypto w token src dst v).code b = w.code b := by
+  simp [EvmLogic.Solidity.ERC20.transferWorld]
 
 theorem code_spendWorld (crypto : Crypto) (w : World) (token o sp : Address) (v : Word)
-    (b : Address) : (Erc20.spendWorld crypto w token o sp v).code b = w.code b := by
-  unfold Erc20.spendWorld; dsimp only; split <;> simp
+    (b : Address) : (ERC20.spendWorld crypto w token o sp v).code b = w.code b := by
+  unfold ERC20.spendWorld; dsimp only; split <;> simp
 
 theorem code_transferFromWorld (crypto : Crypto) (w : World) (token sp src dst : Address)
     (v : Word) (b : Address) :
-    (Erc20.transferFromWorld crypto w token sp src dst v).code b = w.code b := by
-  simp only [Erc20.transferFromWorld, code_transferWorld, code_spendWorld]
+    (ERC20.transferFromWorld crypto w token sp src dst v).code b = w.code b := by
+  simp only [ERC20.transferFromWorld, code_transferWorld, code_spendWorld]
 
 theorem code_approveWorld (crypto : Crypto) (w : World) (token o sp : Address) (v : Word)
-    (b : Address) : (Erc20.approveWorld crypto w token o sp v).code b = w.code b := by
-  simp [Erc20.approveWorld]
+    (b : Address) : (ERC20.approveWorld crypto w token o sp v).code b = w.code b := by
+  simp [ERC20.approveWorld]
 
 theorem sload_transferFromWorld_other {crypto : Crypto} {w : World} {token sp src dst b : Address}
     {v : Word} (hb : b ≠ token) (k : Word) :
-    (Erc20.transferFromWorld crypto w token sp src dst v).sload b k = w.sload b k := by
-  simp only [Erc20.transferFromWorld]
+    (ERC20.transferFromWorld crypto w token sp src dst v).sload b k = w.sload b k := by
+  simp only [ERC20.transferFromWorld]
   rw [Shares.sload_transferWorld (.inl hb), Shares.sload_spendWorld (.inl hb)]
 
 /-! ## Top-level glue -/
@@ -542,8 +545,8 @@ theorem opRefines_transfer (hmin : 100000 ≤ minGas) (caller dst : Address) (am
       rw [show (abs ctx.crypto w vault asset).shares.transfer caller dst amount.toNat = some t'
         from ht]; rfl
     exact agree_of_shares hrep
-      (fun o sp ⟨ho, hsp⟩ => ⟨Erc20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) _ |>.symm,
-        Erc20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) _ |>.symm⟩)
+      (fun o sp ⟨ho, hsp⟩ => ⟨ERC20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) _ |>.symm,
+        ERC20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) _ |>.symm⟩)
       (fun k => hframe asset k (.inl hne.symm))
       (hframe vault 6#256 (.inr ⟨(hs.balFixed caller hc).1.symm, (hs.balFixed dst hd).1.symm⟩))
       (hframe vault 7#256 (.inr ⟨(hs.balFixed caller hc).2.symm, (hs.balFixed dst hd).2.symm⟩))
@@ -558,8 +561,8 @@ theorem opRefines_transfer (hmin : 100000 ≤ minGas) (caller dst : Address) (am
 theorem SlotsOk.allowP {crypto : Crypto} {vault : Address} {Act : List Address}
     (hs : SlotsOk crypto vault Act) {o sp a b : Address} (ho : o ∈ Act) (hsp : sp ∈ Act)
     (ha : a ∈ Act) (hb : b ∈ Act) :
-    (o = a ∧ sp = b) ∨ Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠
-      Erc20.allowanceSlot crypto Erc20.Layout.solmate a b := by
+    (o = a ∧ sp = b) ∨ ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.allowanceSlot crypto ERC20.Layout.solmate a b := by
   by_cases h : o = a ∧ sp = b
   · exact .inl h
   · exact .inr fun e => h (hs.allowInj o ho sp hsp a ha b hb e)
@@ -567,9 +570,9 @@ theorem SlotsOk.allowP {crypto : Crypto} {vault : Address} {Act : List Address}
 /-- Actor pairs avoid every actor's balance slot. -/
 theorem SlotsOk.balP {crypto : Crypto} {vault : Address} {Act : List Address}
     (hs : SlotsOk crypto vault Act) {o sp : Address} (ho : o ∈ Act) (hsp : sp ∈ Act) (a : Address) :
-    Erc20.allowanceSlot crypto Erc20.Layout.solmate o sp ≠
-      Erc20.balanceSlot crypto Erc20.Layout.solmate a :=
-  (Erc20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) a).symm
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.balanceSlot crypto ERC20.Layout.solmate a :=
+  (ERC20.balanceSlot_ne_allowanceSlot (hs.allow o ho sp hsp) a).symm
 
 set_option maxHeartbeats 1000000 in
 /-- **`vault.transferFrom`** refines `Op.transferFrom`. -/
@@ -670,7 +673,7 @@ theorem opRefines_assetTransfer (hmin : 100000 ≤ minGas) (caller dst : Address
       (hdep.assetNotPrecompile _) hm
     obtain ⟨mf, o, r', ⟨⟨ho, hwld, -⟩, hrep⟩, hrun, hsucc, -⟩ := hn' (max n n') (le_max_right _ _)
     obtain rfl := terminates_unique hn (le_max_left _ _) hrun
-    have hw : r'.world = Erc20.transferWorld ctx.crypto w asset caller dst amount :=
+    have hw : r'.world = ERC20.transferWorld ctx.crypto w asset caller dst amount :=
       (hsucc _ ho).trans hwld
     rw [← hsucc _ ho] at hrep
     refine ⟨hdep.of_code (by rw [hw]; exact code_transferWorld ..)
@@ -721,7 +724,7 @@ theorem opRefines_assetTransferFrom (hmin : 100000 ≤ minGas) (caller src dst :
       (hdep.assetNotPrecompile _) hm
     obtain ⟨mf, o, r', ⟨⟨ho, hwld, -⟩, hrep⟩, hrun, hsucc, -⟩ := hn' (max n n') (le_max_right _ _)
     obtain rfl := terminates_unique hn (le_max_left _ _) hrun
-    have hw : r'.world = Erc20.transferFromWorld ctx.crypto w asset caller src dst amount :=
+    have hw : r'.world = ERC20.transferFromWorld ctx.crypto w asset caller src dst amount :=
       (hsucc _ ho).trans hwld
     rw [← hsucc _ ho] at hrep
     refine ⟨hdep.of_code (by rw [hw]; exact code_transferFromWorld ..)
@@ -761,7 +764,7 @@ theorem opRefines_proven (hmin : 100000 ≤ minGas) (c : VCall) (hc : c.Proven) 
   | assetMint => exact hc.elim
   | assetBurn => exact hc.elim
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -777,10 +780,11 @@ frame-level `assetApprove_refines` lifted by `call_of_halts`, as for the asset's
 `Token.approve` on every actor pair (`SlotsOk`), the vault's storage is untouched.
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -809,7 +813,7 @@ theorem opRefines_assetApprove (hmin : 100000 ≤ minGas) (caller spender : Addr
     (hdep.assetNotPrecompile _) hm
   obtain ⟨mf, o, r', ⟨⟨ho, hwld, -⟩, hrep⟩, hrun, hsucc, -⟩ := hn' (max n n') (le_max_right _ _)
   obtain rfl := terminates_unique hn (le_max_left _ _) hrun
-  have hw : r'.world = Erc20.approveWorld ctx.crypto w asset caller spender amount :=
+  have hw : r'.world = ERC20.approveWorld ctx.crypto w asset caller spender amount :=
     (hsucc _ ho).trans hwld
   rw [← hsucc _ ho] at hrep
   refine ⟨hdep.of_code (by rw [hw]; exact code_approveWorld ..)
@@ -819,7 +823,7 @@ theorem opRefines_assetApprove (hmin : 100000 ≤ minGas) (caller spender : Addr
   exact agree_of_asset hrep (fun o sp ⟨ho, hsp'⟩ => hs.allowP ho hsp' hc hsp)
     (fun k => by rw [hw]; exact World.sload_sstore_ne_addr _ _ _ _ hne)
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -838,10 +842,11 @@ Besides `SlotsOk` it needs the hash hypothesis `KeccakAvoids crypto (AddressKeye
 (no balance slot is the `totalSupply` slot; see `AssetMint.lean` for why it is necessary).
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -897,7 +902,7 @@ theorem opRefines_assetMint (hmin : 100000 ≤ minGas)
     show Option.map _ ((abs ctx.crypto w vault asset).asset.mint _ _) = _
     rw [show (abs ctx.crypto w vault asset).asset.mint dst amount.toNat = none from ht]; rfl
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end
 
@@ -912,10 +917,11 @@ call of the asset's unrestricted `burn(src, amount)` (any caller, any arguments;
 `call_of_halts`. Same hypotheses as `opRefines_assetMint`.
 -/
 
-namespace EvmLeanSpecs.Refinement.Invariants
+namespace Examples.Solmate.ERC4626.Invariants
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
 
 variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
 
@@ -966,6 +972,6 @@ theorem opRefines_assetBurn (hmin : 100000 ≤ minGas)
     show Option.map _ ((abs ctx.crypto w vault asset).asset.burn _ _) = _
     rw [show (abs ctx.crypto w vault asset).asset.burn src amount.toNat = none from ht]; rfl
 
-end EvmLeanSpecs.Refinement.Invariants
+end Examples.Solmate.ERC4626.Invariants
 
 end

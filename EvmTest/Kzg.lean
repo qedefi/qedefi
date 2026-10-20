@@ -15,7 +15,7 @@ import EvmLean.Crypto.Kzg
 
 open EvmLean EvmLean.Bls12381
 
-namespace EvmLeanTest.Kzg
+namespace EvmTest.Kzg
 
 /-- `n` as `len` big-endian bytes; test vectors are written as hex `Nat` literals. -/
 def hex (len n : Nat) : ByteArray := Bytes.ofNatBE len n
@@ -253,4 +253,4 @@ def y43 : ByteArray := hex 32 0x60f840641ec0d0c0d2b77b2d5a393b329442721fad05ab78
 #guard Kzg.verifyProof commit43 zOne
   (hex 32 0x60f840641ec0d0c0d2b77b2d5a393b329442721fad05ab78c7b98f2aa3c20eca) proof43 = some false
 
-end EvmLeanTest.Kzg
+end EvmTest.Kzg

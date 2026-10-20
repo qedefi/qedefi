@@ -94,9 +94,10 @@ theorem toNat_lt (b : ByteArray) : Bytes.toNat b < 256 ^ b.size := by
 
 end EvmLean.Bytes
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
-open Bytes Interpreter
+open EvmLean.Bytes EvmLean.Interpreter
 
 /-! ## Slicing -/
 
@@ -148,6 +149,7 @@ theorem readBytes_append_of_le (x y : ByteArray) (off len : Nat) (h : off + len 
   simp only [readBytes_eq_readPadded, readPadded_append_of_le x y off len h]
 
 namespace Abi
+open EvmLean
 
 /-! ## Encoding -/
 
@@ -269,14 +271,15 @@ for all calldata, including calldata shorter than four bytes (zero-padded). -/
 
 end Abi
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 /-! ## Selector tables in compiler output -/
 
-namespace EvmLean.Contracts
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- Look up a selector by signature, e.g. `selector? selectors "deposit(uint256,address)"`. -/
 def selector? (table : List (String × UInt32)) (sig : String) : Option UInt32 :=
   table.lookup sig
 
-end EvmLean.Contracts
+end EvmLogic.Solidity

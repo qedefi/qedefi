@@ -18,9 +18,10 @@ simp lemmas mirroring `Wp`'s; `exec_bump_wp` is `Wp (exec op) (fun a m' => Twp (
 proved for all opcodes by one simp call per case.
 -/
 
-namespace EvmLean.Program.Nested
+namespace EvmLogic.Program.Nested
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- Total weakest precondition. -/
 def Twp {α : Type} (x : M α) (Q : α → Machine → Prop) (m : Machine) : Prop :=
@@ -186,4 +187,4 @@ theorem exec_bump (op : Opcode) (hop : ¬ ReadsGas op) {m m' : Machine} {a : Act
     exact he
   · exact hw.elim
 
-end EvmLean.Program.Nested
+end EvmLogic.Program.Nested

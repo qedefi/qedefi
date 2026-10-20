@@ -5,9 +5,9 @@ Unit tests for `EvmLean.Tx` (intrinsic gas, validation, `check_transaction`, blo
 the RLP decoder / transaction codec. None of these need real hashing.
 -/
 
-open EvmLean EvmLean.Tx EvmLeanTest
+open EvmLean EvmLean.Tx EvmTest
 
-namespace EvmLeanTest.TxTest
+namespace EvmTest.TxTest
 
 /-! ## RLP decoding: `ethereum/tests` `RLPTests/invalidRLPTest.json` and round trips -/
 
@@ -267,4 +267,4 @@ def chkAt (fork : Fork) (w : World) (tx : Transaction) : Except InvalidTx Checke
 #guard destroyTouchedEmpty ((∅ : World).insert 0xbeef {}) ((∅ : AddressSet).insert 0xbeef) = ∅
 #guard (destroyTouchedEmpty (worldWith 1) ((∅ : AddressSet).insert alice)).contains alice
 
-end EvmLeanTest.TxTest
+end EvmTest.TxTest

@@ -7,7 +7,7 @@ One lemma per opcode, each an instance of `step_of_binOp`, `step_of_unOp` or
 `step_of_ternOp`. The top of the stack is the first operand (`x`), as in the reference:
 `SUB` computes `x - y`, `LT` computes `x < y`, `SHL` shifts `y` by `x`.
 
-All lemmas hold for every fork and every `Crypto`; see `EvmLeanProofs.StepBasic` for the
+All lemmas hold for every fork and every `Crypto`; see `EvmLogic.Step.Basic` for the
 shape of the hypotheses.
 -/
 

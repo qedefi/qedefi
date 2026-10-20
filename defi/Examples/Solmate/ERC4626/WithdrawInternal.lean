@@ -19,7 +19,7 @@ chain refines the model's (`Vault.Solmate.withdraw` / `redeem`):
 
 `withdrawWorld?` / `redeemWorld?` chain them after the conversion (`previewWithdrawN`, and for
 `redeem` `convertToAssetsN` with the `ZERO_ASSETS` check), returning the final world and the
-returned word, or `none` for a revert. The bytecode theorems (`Withdraw`, `Redeem`) show that the
+returned word, or `none` for a revert. The bytecode theorems (`Withdraw`, `Examples.Solmate.ERC4626.Withdraw`) show that the
 compiled functions compute exactly these; `withdrawWorld?_refines` / `redeemWorld?_refines`
 show that they refine the model.
 
@@ -38,13 +38,14 @@ slot is none of the written ones (`OutAllowances`, `TransferAllowances`).
 
 section
 
-namespace EvmLeanSpecs.Refinement.Out
+namespace Examples.Solmate.ERC4626.Out
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open Erc20 hiding transferWorld
-open EvmLean.Solidity.Erc20 (transferWorld view_transferWorld)
-open EvmLeanSpecs.Refinement EvmLeanSpecs.Refinement.Shares
-open EvmLeanSpecs.Vault
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 hiding transferWorld
+open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
+open Examples.Solmate.ERC4626 Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC4626.Shares Defi.ERC20
+open Defi.ERC4626 Defi.Math Defi.ERC20
 
 /-! ## The steps -/
 
@@ -658,7 +659,7 @@ theorem redeemWorld?_refines (hr : Refines crypto w vault asset s) (hinv : Solma
 
 end Chains
 
-end EvmLeanSpecs.Refinement.Out
+end Examples.Solmate.ERC4626.Out
 
 end
 
@@ -681,10 +682,11 @@ log data) one word at the free-memory pointer, so both take solc's memory shapes
 sites (`FmpOk`) and the burn returns `FmpBurnt`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 set_option maxHeartbeats 0 in
 /-- **`beforeWithdraw` (internal, entry `0x104b`, stack `a :: b :: r :: rest`)**:
@@ -793,7 +795,7 @@ theorem burn_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word} {s
       pwp_steps [hsize, hfmp]
       exact ⟨by simp only [hbal, ↓reduceIte], _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -811,10 +813,11 @@ scratch space is written (the two Keccak preimages), so the free-memory pointer 
 size are kept.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Refinement.Out
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Examples.Solmate.ERC4626.Out
 
 /-- `CALLER == owner` as the code tests it, for distinct addresses. -/
 theorem eq_ofAddress_of_ne {a b : Address} (h : a ≠ b) :
@@ -855,12 +858,12 @@ theorem withdrawSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v x : Word
     have hne2 := eq_ofAddress_of_ne (Ne.symm hco)
     have hsp : spendStep m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v =
         let a := m_world.sload m_msg.currentTarget
-          (Erc20.allowanceSlot m_ctx.crypto Erc20.Layout.solmate owner m_msg.caller)
-        if a ≠ Erc20.maxWord ∧ a.toNat < v.toNat then none
-        else some (Erc20.spendWorld m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v) := by
+          (ERC20.allowanceSlot m_ctx.crypto ERC20.Layout.solmate owner m_msg.caller)
+        if a ≠ ERC20.maxWord ∧ a.toNat < v.toNat then none
+        else some (ERC20.spendWorld m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v) := by
       simp only [spendStep, hco, ↓reduceIte]
     rw [hsp]
-    simp only [Erc20.spendWorld, allowanceSlot_solmate, maxWord_eq_MAXW]
+    simp only [ERC20.spendWorld, allowanceSlot_solmate, maxWord_eq_MAXW]
     rcases hmem with ⟨hfmp, hsize⟩ | ⟨hfmp, hsize⟩
     all_goals
       pwp_steps [hsize, ofAddress_and_addressMask, addressMask_and_ofAddress, hne1, hne2,
@@ -933,12 +936,12 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
     have hne2 := eq_ofAddress_of_ne (Ne.symm hco)
     have hsp : spendStep m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v =
         let a := m_world.sload m_msg.currentTarget
-          (Erc20.allowanceSlot m_ctx.crypto Erc20.Layout.solmate owner m_msg.caller)
-        if a ≠ Erc20.maxWord ∧ a.toNat < v.toNat then none
-        else some (Erc20.spendWorld m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v) := by
+          (ERC20.allowanceSlot m_ctx.crypto ERC20.Layout.solmate owner m_msg.caller)
+        if a ≠ ERC20.maxWord ∧ a.toNat < v.toNat then none
+        else some (ERC20.spendWorld m_ctx.crypto m_world m_msg.currentTarget owner m_msg.caller v) := by
       simp only [spendStep, hco, ↓reduceIte]
     rw [hsp]
-    simp only [Erc20.spendWorld, allowanceSlot_solmate, maxWord_eq_MAXW]
+    simp only [ERC20.spendWorld, allowanceSlot_solmate, maxWord_eq_MAXW]
     rcases hmem with ⟨hfmp, hsize⟩ | ⟨hfmp, hsize⟩
     all_goals
       pwp_steps [hsize, ofAddress_and_addressMask, addressMask_and_ofAddress, hne1, hne2,
@@ -977,6 +980,6 @@ theorem redeemSpend_wp {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
           pwp_steps [hsize]
           exact ⟨by simp [hmax, hle], _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

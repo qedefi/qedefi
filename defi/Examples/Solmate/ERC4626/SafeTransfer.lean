@@ -21,8 +21,8 @@ require(success, "TRANSFER_FAILED");
 
 `safeTransfer_wp` summarises it for `token` the vault's asset immutable. The asset's code
 enters only through its callee summaries `transfer_halts_ok` / `transfer_halts_revert`
-(`AssetTransfer`), plugged into the callee-summary rule for a value-free `CALL`
-(`WP.callNoValue`, `EvmLeanProofs.Program.OutExtraCall`):
+(`Examples.Solmate.ERC20.Transfer`), plugged into the callee-summary rule for a value-free `CALL`
+(`WP.callNoValue`, `EvmLogic.Program.Call`):
 
 * when the vault's asset balance covers `amount`, the asset returns ABI `true` (exactly one
   word `1`), so the return-data check passes without reaching `EXTCODESIZE`; the function
@@ -40,10 +40,11 @@ differ), solc's memory discipline at the call site (`FmpCall`: the free pointer 
 `70000 ≤ gas < 2⁶⁴` (the asset's `transfer` needs up to 55000 gas of the forwarded 63/64).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
 
 /-- The `asset` immutable, as the `PUSH32` at `0x0a6b` (in `withdraw`) reads it. -/
 theorem readBytes_code_asset2668 (i : SolmateVault.Immutables) :
@@ -119,7 +120,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
   rcases hmem with ⟨hfmp, hsize⟩ | ⟨hfmp, hsize⟩
   · pwp_run_to 0x10e6 [hfmp, hsize, ofAddress_and_addressMask, addressMask_and_ofAddress]
     by_cases hbal : amount.toNat ≤ (m_world.sload i.asset
-        (Erc20.balanceSlot m_ctx.crypto Erc20.Layout.solmate m_msg.currentTarget)).toNat
+        (ERC20.balanceSlot m_ctx.crypto ERC20.Layout.solmate m_msg.currentTarget)).toNat
     · refine WP.callNoValue (by pcode_fact) rfl ?_ ?_ hdepth ?_
         (transfer_halts_ok (ia := ia) (to := to) (amount := amount) _ ?_ rfl ?_ ⟨?_, ?_, ?_, ?_⟩ ?_ ?_ ?_) ?_
       · exact .inr (by dsimp only; rw [hto, hcode]; exact hdel)
@@ -283,7 +284,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
         exact ⟨hbal, _, rfl⟩
   · pwp_run_to 0x10e6 [hfmp, hsize, ofAddress_and_addressMask, addressMask_and_ofAddress]
     by_cases hbal : amount.toNat ≤ (m_world.sload i.asset
-        (Erc20.balanceSlot m_ctx.crypto Erc20.Layout.solmate m_msg.currentTarget)).toNat
+        (ERC20.balanceSlot m_ctx.crypto ERC20.Layout.solmate m_msg.currentTarget)).toNat
     · refine WP.callNoValue (by pcode_fact) rfl ?_ ?_ hdepth ?_
         (transfer_halts_ok (ia := ia) (to := to) (amount := amount) _ ?_ rfl ?_ ⟨?_, ?_, ?_, ?_⟩ ?_ ?_ ?_) ?_
       · exact .inr (by dsimp only; rw [hto, hcode]; exact hdel)
@@ -446,4 +447,4 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
         pwp_steps [hm1, hm2', and_zero_word]
         exact ⟨hbal, _, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626

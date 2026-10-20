@@ -21,9 +21,10 @@ contract A {
   `resumeAfter_success` and runs to `RETURN`. `f_processMessageCall`: the top-level statement.
 -/
 
-namespace EvmLean.Program.Examples.TwoContracts
+namespace Examples.Basic.TwoContracts
+open EvmLean EvmLogic EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- Runtime code of `B` (solc 0.8.28, `--optimize --optimize-runs 200 --evm-version cancun`). -/
 def codeB : ByteArray := ⟨#[
@@ -215,4 +216,4 @@ theorem f_processMessageCall {ctx : Context} {w : World} {tr : TransientStorage}
     (out := Bytes.ofWord (w.sload addrB 0)) hk
   exact ⟨_, hrun, h1, h2, h3.trans hw⟩
 
-end EvmLean.Program.Examples.TwoContracts
+end Examples.Basic.TwoContracts

@@ -32,9 +32,10 @@ pointer moves from `0x80` to `0xa0` and memory grows to six words (`FmpAfterCall
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- A frame executing the vault deployed with immutables `i`: its code and jump table, the
 asset's code (any immutables) at `i.asset`, `i.asset` not a precompile, and room for one more
@@ -85,7 +86,7 @@ def supplyOf (m : Machine) : Word := m.world.sload m.frame.msg.currentTarget (2#
 /-- The balance word of the executing account in the asset at `asset`: what `totalAssets()`
 returns. -/
 def assetsOf (asset : Address) (m : Machine) : Word :=
-  m.world.sload asset (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate
+  m.world.sload asset (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate
     m.frame.msg.currentTarget)
 
 /-- solc's memory at the start of a function body: free pointer `0x80`, three words. -/
@@ -187,7 +188,7 @@ theorem totalAssets_wp {i : SolmateVault.Immutables} (m : Machine) {r : Word} {r
     · omega
 
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -218,9 +219,10 @@ evaluated at the vault's storage (`supplyOf`, `assetsOf i.asset`): on `some v` t
 `v`; on `none` (a `mulDiv` revert) the frame ends with `revert(0, 0)`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- `convertToShares(x)`: `supply == 0 ? x : x.mulDivDown(supply, totalAssets())`. -/
 def convertToSharesN (S T x : Nat) : Option Nat := if S = 0 then some x else mulDivDownN x S T
@@ -462,6 +464,6 @@ theorem previewWithdraw_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
     exact WP.ret ⟨v, mem, _, rd, sub, by simp only [previewWithdrawN, hS', ↓reduceIte, hv], rfl,
       .inr ⟨hfmp1, hsize1⟩, by omega⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

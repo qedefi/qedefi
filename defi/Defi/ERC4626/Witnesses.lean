@@ -13,7 +13,8 @@ with the claimed results, so none of those statements is vacuous.
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault.Witnesses
+namespace Defi.ERC4626.Witnesses
+open Defi.Math Defi.ERC20
 
 open Finsupp
 
@@ -97,4 +98,4 @@ theorem oz_zero_shares_witness :
     Token.ozSpend, Token.ozTransfer, Token.ozUpdate, Token.ozMint,
     Finsupp.add_apply, MAX]
 
-end EvmLeanSpecs.Vault.Witnesses
+end Defi.ERC4626.Witnesses

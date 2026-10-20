@@ -20,10 +20,11 @@ checks each fact by evaluation when the theorem is added (linear in the code siz
 that a `pushFact` supplies it.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
 open Lean Meta
-open Interpreter
+open EvmLean.Interpreter
 
 /-- `PUSHn` (`0 ≤ n ≤ 32`) with the pushed value given by a hypothesis. -/
 theorem step_push_val {m : Machine} {v : Word} (n : Nat) (hn : n < 33)
@@ -179,4 +180,4 @@ elab "jumpdest_disch" : tactic => Elab.Tactic.withMainContext do
   | some h => g.assign (mkApp5 (mkConst ``isValidJumpDest_of_jumpTable) jd code d h pf)
   Elab.Tactic.replaceMainGoal []
 
-end EvmLean.Program
+end EvmLogic.Program

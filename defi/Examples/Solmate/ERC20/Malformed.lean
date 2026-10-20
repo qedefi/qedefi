@@ -8,9 +8,10 @@ The asset functions of `assetArgShapes`: fewer argument words than the function 
 reverts in the ABI decoder. See `MalformedCalldata.lean`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `allowance` of the asset with fewer than 2 argument words reverts. -/
@@ -416,4 +417,4 @@ theorem asset_transferFrom_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
   pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, hd', hc0', Solidity.eq_self]
   exact ⟨_, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20

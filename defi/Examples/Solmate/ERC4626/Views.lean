@@ -9,8 +9,8 @@ fresh frame satisfying `ViewPre i` (top level or called by another contract), en
 `ViewPost`: the world unchanged, and the ABI word of the `Nat`-level specification
 (`convertToSharesN` … at `supplyOf m`, `assetsOf i.asset m`) or `revert(0, 0)` when it is
 `none`. Each proof runs the dispatcher and ABI decoder symbolically (`pwp_run_to`), then
-composes the summaries of the internal conversion (`VaultConvert`) and of the return encoder
-(`returnWord_wp`) with `WP.bind_mono`. `VaultViewsSpec` restates them against the model.
+composes the summaries of the internal conversion (`Examples.Solmate.ERC4626.Convert`) and of the return encoder
+(`returnWord_wp`) with `WP.bind_mono`. `Examples.Solmate.ERC4626.ViewsSpec` restates them against the model.
 
 `WordCall data sel x` describes calldata through what the decoder reads (selector, length,
 argument word), so the theorems apply both to `Abi.encodeCall sel [x]` and to calldata that a
@@ -19,9 +19,10 @@ calling contract assembled in memory.
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- What a view call ends with: the world is unchanged, and the call returns the ABI word of
 `v` when the specification gives `some v`, or reverts with empty data when it gives `none`. -/
@@ -263,7 +264,7 @@ theorem previewRedeem_halts {i : SolmateVault.Immutables} (m : Machine) (h : Vie
   rintro mf o - ⟨ho, hw⟩
   exact ⟨hw, by rw [hv]; exact ho⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -272,21 +273,22 @@ section
 /-!
 ## The vault's remaining views, at the bytecode level: `totalAssets`, `asset`, `max*`
 
-As in `VaultViews`: `totalAssets()` (the `totalAssets` internal function with its `STATICCALL`
+As in `Examples.Solmate.ERC4626.Views`: `totalAssets()` (the `totalAssets` internal function with its `STATICCALL`
 to the asset, `totalAssets_wp`), `asset()` (the `asset` immutable, read from the patched code
 by `readBytes_code_asset688`), `maxDeposit` / `maxMint` (`type(uint256).max`), `maxRedeem`
 (the owner's share balance, `sharesOf`) and `maxWithdraw` (`convertToAssets` of it), for the
 vault deployed with any immutables, in any frame satisfying `ViewPre`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The vault-share balance word of `a` (`balanceOf[a]`, slot `keccak(a ‖ 3)` of the executing
 account). -/
 def sharesOf (m : Machine) (a : Address) : Word :=
-  m.world.sload m.frame.msg.currentTarget (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate a)
+  m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
 
 /-- Calldata of a function without arguments, with selector `sel`. -/
 structure NoArgCall (data : ByteArray) (sel : Nat) : Prop where
@@ -422,6 +424,6 @@ theorem maxWithdraw_halts {i : SolmateVault.Immutables} (m : Machine) (h : ViewP
   rintro mf o - ⟨ho, hw⟩
   exact ⟨hw, by rw [hv]; exact ho⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

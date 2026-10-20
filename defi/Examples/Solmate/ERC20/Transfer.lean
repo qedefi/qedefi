@@ -39,9 +39,10 @@ amount, gas ≥ 100 000 and warm sets:
 
 section
 
-namespace EvmLean.Solidity.Examples.SolmateAssetTransfer
+namespace Examples.Solmate.ERC20
+open EvmLean EvmLogic EvmLogic.Solidity EvmLogic.Tactic EvmLogic.Solidity.ERC20
 
-open Interpreter Dispatch Bytes Erc20 Contracts
+open EvmLean.Interpreter EvmLogic.Solidity.Dispatch EvmLean.Bytes EvmLogic.Solidity.ERC20 EvmLogic.Solidity Examples.Solmate.Contracts
 
 /-- The selector of `transfer(address,uint256)`. -/
 def transferSelector : Nat := 0xa9059cbb
@@ -147,7 +148,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   · simp
   · simp
 
-end EvmLean.Solidity.Examples.SolmateAssetTransfer
+end Examples.Solmate.ERC20
 
 end
 
@@ -161,9 +162,10 @@ storage abstraction: a top-level call of `transfer(to, amount)` on the deployed 
 behaves as `Erc20.Model.transfer` on `Erc20.view` of the world.
 -/
 
-namespace EvmLean.Solidity.Examples.SolmateAssetTransfer
+namespace Examples.Solmate.ERC20
+open EvmLean EvmLogic EvmLogic.Solidity EvmLogic.Tactic EvmLogic.Solidity.ERC20
 
-open Interpreter Erc20 Contracts
+open EvmLean.Interpreter EvmLogic.Solidity.ERC20 EvmLogic.Solidity Examples.Solmate.Contracts
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {token caller to : Address}
   {amount : Word} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
@@ -222,7 +224,7 @@ theorem transfer_spec (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [
       · omega
     exact transfer_revert hgas hbal k
 
-end EvmLean.Solidity.Examples.SolmateAssetTransfer
+end Examples.Solmate.ERC20
 
 end
 
@@ -237,13 +239,13 @@ case: the code writes storage and emits a log), either returns ABI `true` with t
 `transferWorld` (the two balance writes, in the code's order; shared with the solidity
 package's top-level `transfer_spec`), or, when the caller's balance does not cover `amount`,
 reverts with `Panic(0x11)`. Both bound the gas used, so that a caller can continue after the
-call (`WP.call`). `AssetSpec` relates them to `Token.transfer`.
+call (`WP.call`). `Examples.Solmate.ERC20.Spec` relates them to `Token.transfer`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLean.Solidity.Erc20 (transferWorld)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLogic.Solidity.ERC20 (transferWorld)
 
 /-- Calldata of a function taking two static words `x`, `y`, with selector `sel`. -/
 structure TwoWordCall (data : ByteArray) (sel : Nat) (x y : Word) : Prop where
@@ -279,7 +281,7 @@ theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
     (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat) :
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)).toNat) :
     Halts m (TransferOk to amount m) := by
   apply WP.halts_of_false
   obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
@@ -309,7 +311,7 @@ theorem transfer_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
     (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 10000 ≤ m.frame.gasLeft)
     (hbal : (m.world.sload m.frame.msg.currentTarget
-      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat <
+      (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate m.frame.msg.caller)).toNat <
         amount.toNat) :
     Halts m (Reverts 10000 m) := by
   apply WP.halts_of_false
@@ -329,6 +331,6 @@ theorem transfer_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
   dsimp only [outputMachine]
   evm_gas
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC20
 
 end

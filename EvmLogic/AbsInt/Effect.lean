@@ -7,7 +7,7 @@ import EvmLogic.GasMono.Interface
 The certified abstract interpreter (`AbsInt/*.lean`) tracks, per reachable program point, the
 exact stack depth and, for some stack slots, the value (a constant or a symbolic immutable).
 Its soundness rests on one theorem about the concrete semantics, proved here once for all
-opcodes with the weakest-precondition calculus of `NestedExtraWp`:
+opcodes with the weakest-precondition calculus of `EvmLogic.Program.Nested.Wp`:
 
 * `effOf op`: the shape of `op` (`Eff`): generic (`gen pops pushes`: pops `pops` words,
   pushes `pushes` unknown words, continues at `pc + 1`), halting (never continues), or one of
@@ -21,9 +21,10 @@ opcodes with the weakest-precondition calculus of `NestedExtraWp`:
   `decode .osaka b` or `invalid`, which always halts).
 -/
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The shape of an instruction. -/
 inductive Eff where
@@ -250,4 +251,4 @@ theorem exec_target (op : Opcode) (m : Machine) :
   case staticcall => exact execCall_target .staticcall m
   all_goals exact (exec_eff _ m).mono fun a m' h req ha => absurd (ha ▸ h) (by simp [EffPost, CallPost, effOf])
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt

@@ -18,14 +18,15 @@ import EvmLogic.Program.Call
   and which code runs; if it requests a creation (`Action.create`), the new account holds no
   code (`CreateOk`).
 
-This is the frame condition the nested-call simulation (`NestedExtraRun`) needs: code that is
+This is the frame condition the nested-call simulation (`EvmLogic.Program.Nested.Run`) needs: code that is
 not running at a protected account (or runs statically) cannot touch its storage, whatever it
 does.
 -/
 
-namespace EvmLean.Program.Nested
+namespace EvmLogic.Program.Nested
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Accounts that stay unchanged -/
 
@@ -340,4 +341,4 @@ theorem exec_frame (op : Opcode) (m : Machine) : Wp (exec op) (ExecPost m) m := 
     intro _ _ _ _ _ _
     exact wp_popN_of _ (fun _ _ => by simp)
 
-end EvmLean.Program.Nested
+end EvmLogic.Program.Nested

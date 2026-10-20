@@ -23,7 +23,7 @@ section
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.Math
 
 /-- `2^256`: one more than the largest `uint256`. -/
 def U256 : ℕ := 2 ^ 256
@@ -163,7 +163,7 @@ theorem ozMulDiv_eq_some {x y d z : ℕ} {up : Bool} :
   cases up <;> simp only [Bool.false_eq_true, false_and, ↓reduceIte, add_zero, true_and,
     ceilDiv_eq] <;> split_ifs <;> simp_all <;> omega
 
-end EvmLeanSpecs.Vault
+end Defi.Math
 end
 
 end
@@ -182,7 +182,7 @@ and OpenZeppelin (apply it to `T + 1` and `S + 10^δ`).
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.Math
 
 /-- In, then out, measured in assets (`deposit→redeem`, `mint→redeem`): if the entry gave
 at most fair shares (`n·T ≤ a·S`) and the exit gave at most fair assets at the new price
@@ -222,7 +222,7 @@ theorem rt_out_in_assets {T₁ S₁ a n a' : ℕ} (hpos : 0 < S₁) (h1 : a * (n
   have : (a' + 1) * S₁ ≤ a * S₁ := Nat.mul_le_mul_right _ hc
   nlinarith
 
-end EvmLeanSpecs.Vault
+end Defi.Math
 end
 
 end

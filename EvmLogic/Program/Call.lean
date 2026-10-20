@@ -29,9 +29,10 @@ target without EIP-7702 delegation or a fork before Prague):
 
 section
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Warm sets -/
 
@@ -436,7 +437,7 @@ theorem WP.staticcall {Q : Machine → Prop} {H Hc : Machine → Outcome → Pro
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
     (fun mf o hs hc => k mf o hc hs)
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -445,7 +446,7 @@ section
 /-!
 ## The callee-summary rule for a value-free `CALL`
 
-`WP.callNoValue` is `WP.staticcall` (`EvmLeanProofs.Program.Call`) for `CALL` with value `0`,
+`WP.callNoValue` is `WP.staticcall` (`EvmLogic.Program.Call`) for `CALL` with value `0`,
 the shape of every ERC-20 call a contract makes (`token.call(abi.encodeCall(transfer, …))`,
 Solmate's `SafeTransferLib`): no value moves (`transferValue` is the identity), no
 value-transfer or account-creation cost is charged, and the child frame is non-static iff the
@@ -453,9 +454,10 @@ caller's is. The child message is `childMsg … 0 … true false …` and the ca
 `resumeAfter (callerFrame …)` after every end of the child that its summary allows.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
@@ -561,7 +563,7 @@ theorem returnMemory_zero_word_eq {mem M : Memory} {out : ByteArray}
     M.loadWord 64 = mem.loadWord 64 ∧ M.size = mem.size :=
   hM ▸ returnMemory_zero_word mem out h
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -570,13 +572,13 @@ section
 /-!
 ## `CALL` without value: the callee-summary rule
 
-`WP.call0` is `WP.staticcall` (`EvmLeanProofs.Program.Call`) for a `CALL` that sends no value,
+`WP.call0` is `WP.staticcall` (`EvmLogic.Program.Call`) for a `CALL` that sends no value,
 as Solmate's `SafeTransferLib.safeTransferFrom` / `safeTransfer` do (`call(gas(), token, 0, …)`):
 with value `0` there is no value transfer (`transferValue` is the identity), no
 account-creation or value-transfer charge, no balance or static-context requirement, and the
 child message is non-static exactly when the caller's is.
 
-* `transferValue_zero` (and `createCost_zero`, `transferCost_zero` of `OutExtraCall`): the
+* `transferValue_zero` (and `createCost_zero`, `transferCost_zero` of `EvmLogic.Program.Call`): the
   value-dependent parts of `step_call` at value `0`.
 * `step_call0`: `step_call` at value `0`.
 * `WP.call0`: if the child frame, started fresh on the child message, `Halts` with `Hc`
@@ -584,9 +586,10 @@ child message is non-static exactly when the caller's is.
   caller continues from `resumeAfter` of every outcome `Hc` allows.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- With value `0` the world is unchanged when the child starts. -/
 theorem transferValue_zero (w : World) (msg : Message) (h : msg.value = 0) :
@@ -688,6 +691,6 @@ theorem returnMemory_zero_facts {mem M : Memory} {out : ByteArray}
       ∀ off, 32 ≤ off → M.loadWord off = (mem.expand 0 32).loadWord off :=
   h ▸ ⟨size_returnMemory_zero mem out, fun _ h => loadWord_returnMemory_zero mem out h⟩
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

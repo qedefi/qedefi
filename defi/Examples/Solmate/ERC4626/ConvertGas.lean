@@ -14,9 +14,10 @@ the gas left at the end is at most the gas at the start (`*_gas`).
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `balanceOf_halts` with an upper bound on the gas left at the end. -/
@@ -254,7 +255,7 @@ theorem previewWithdraw_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r 
     exact WP.ret ⟨v, mem, _, rd, sub, by simp only [previewWithdrawN, hS', ↓reduceIte, hv], rfl,
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -269,15 +270,16 @@ call the asset (`balanceOf`). The amount of gas forwarded by `gas()` is the word
 `gasLeft − 2`, so the second call's summary needs `gasLeft < 2²⁵⁶` (here `< 2⁶⁴`) *after*
 the conversion: the gas left must not have grown. The summaries `balanceOf_halts`,
 `totalAssets_wp`, `convertToShares_wp`, `previewMint_wp` only bound the gas used from above;
-the `_gas` versions (`balanceOf_halts_gas`, `totalAssets_wp_gas` of `AssetCallOutGas`, and
+the `_gas` versions (`balanceOf_halts_gas`, `totalAssets_wp_gas` of `Examples.Solmate.ERC4626.ConvertGas`, and
 `convertToShares_wp_gas`, `previewMint_wp_gas` here) are the same proofs with the extra
 conclusion that the gas left at the end is at most the gas at the start (the callee returns at
 most what it was forwarded).
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `convertToShares_wp`, with the gas left at the end bounded by the gas at the start. -/
@@ -391,6 +393,6 @@ theorem previewMint_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
     exact WP.ret ⟨v, mem, _, rd, sub, by simp only [previewMintN, hS', ↓reduceIte, hv], rfl,
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

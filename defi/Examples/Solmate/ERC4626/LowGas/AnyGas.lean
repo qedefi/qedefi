@@ -25,31 +25,32 @@ low-gas frame commits exactly what the high-gas frame commits.
   `lift_any_tx_anyGas`, `lift_nested_anyGas`, `invariant_any_tx_anyGas`,
   `invariant_nested_anyGas`, `supply_eq_sum_any_tx_anyGas`, `supply_eq_sum_nested_anyGas`,
   `solvent_any_tx_anyGas`, `solvent_nested_anyGas`, `price_mono_any_tx_anyGas`,
-  `price_mono_nested_anyGas`, over `TxTraceAnyGas`. The old statements (`NestedInvariants`)
+  `price_mono_nested_anyGas`, over `TxTraceAnyGas`. The old statements (`Examples.Solmate.ERC4626.Nested.Invariants`)
   keep their names and proofs; they are special cases (`txTraceAnyGas_of_txTrace`).
 -/
 
-namespace EvmLeanSpecs.Refinement.LowGas
+namespace Examples.Solmate.ERC4626.LowGas
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Contracts EvmLean.Program.GasMono
-open EvmLean.Solidity
-open EvmLean.Program.Nested (bump Reaches Danger DangerStart TopOk)
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts EvmLogic.GasMono
+open EvmLogic.Solidity EvmLogic.Tactic
+open EvmLogic.Program.Nested (bump Reaches Danger DangerStart TopOk)
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants Defi.ERC4626
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
 /-! ## The depth limit -/
 
 /-- `VaultStart` survives changing the depth. -/
-theorem _root_.EvmLeanSpecs.Refinement.Nested.VaultStart.setDepth {m : Machine}
+theorem _root_.Examples.Solmate.ERC4626.Nested.VaultStart.setDepth {m : Machine}
     (hv : VaultStart vault asset m) (d : Nat) : VaultStart vault asset (setDepth d m) := by
   obtain ⟨msg, k, s, hf, hc⟩ := hv.fresh
   refine ⟨⟨{ msg with depth := d }, k, s, ?_, hc⟩, hv.static, hv.prot, hv.pre, hv.caller⟩
   simp only [GasMono.setDepth, hf, Frame.init]
 
 /-- The admitted calls of a frame only depend on its caller, account and calldata. -/
-theorem _root_.EvmLeanSpecs.Refinement.Nested.FrameAdmitted.congr {m m' : Machine}
+theorem _root_.Examples.Solmate.ERC4626.Nested.FrameAdmitted.congr {m m' : Machine}
     (h : FrameAdmitted crypto vault asset Act K m) (hc : m'.frame.msg.caller = m.frame.msg.caller)
     (ht : m'.frame.msg.currentTarget = m.frame.msg.currentTarget)
     (hd : m'.frame.msg.data = m.frame.msg.data) : FrameAdmitted crypto vault asset Act K m' := by
@@ -390,9 +391,9 @@ theorem supply_eq_sum_nested_anyGas
     (hinv : Solmate.Inv (abs crypto w₀ vault asset))
     (htr : TxTraceAnyGas crypto vault asset Act K w₀ w) :
     (w.sload vault 2#256).toNat =
-        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        ∑ a : Address, (w.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (w.sload asset 2#256).toNat =
-        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat := by
+        ∑ a : Address, (w.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat := by
   obtain ⟨-, hi, -⟩ := lift_nested_anyGas hk hs hdep hinv htr
   exact ⟨supply_eq_sum_of_wf hi.2, supply_eq_sum_of_wf hi.1⟩
 
@@ -456,9 +457,9 @@ theorem supply_eq_sum_any_tx_anyGas
     (hok : TxOkAnyGas vault asset Act K ctx w₀ tr msg)
     (hr : processMessageCall fuel ctx w₀ tr msg = .ok r) :
     (r.world.sload vault 2#256).toNat = ∑ a : Address,
-        (r.world.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+        (r.world.sload vault (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat ∧
       (r.world.sload asset 2#256).toNat = ∑ a : Address,
-        (r.world.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat :=
+        (r.world.sload asset (ERC20.balanceSlot crypto ERC20.Layout.solmate a)).toNat :=
   supply_eq_sum_nested_anyGas hk hs hdep hinv (txTraceAnyGas_single hcr hdeleg hmsg hgas hok hr)
 
 /-- **Solvency after one arbitrary transaction, at any gas.** -/
@@ -509,4 +510,4 @@ theorem price_mono_any_tx_anyGas
           (assetsAt crypto r.world vault asset : ℚ) / supplyAt r.world vault) :=
   price_mono_nested_anyGas hk hs hdep hinv (txTraceAnyGas_single hcr hdeleg hmsg hgas hok hr)
 
-end EvmLeanSpecs.Refinement.LowGas
+end Examples.Solmate.ERC4626.LowGas

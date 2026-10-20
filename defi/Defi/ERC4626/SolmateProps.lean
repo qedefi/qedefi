@@ -23,9 +23,10 @@ Theorems about the model in `Solmate.lean`, one per entry of
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault.Solmate
+namespace Defi.ERC4626.Solmate
+open Defi.Math Defi.ERC20
 
-open Token Finsupp
+open Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
@@ -493,4 +494,4 @@ theorem maxRedeem_reverts {s : State A} {c r o : A} (hi : Inv s) (hS : s.totalSu
   rw [State.previewRedeem, convertToAssets_eq_some]
   exact Or.inr ⟨hS, hmax, (Nat.div_eq_of_lt hlt).symm⟩
 
-end EvmLeanSpecs.Vault.Solmate
+end Defi.ERC4626.Solmate

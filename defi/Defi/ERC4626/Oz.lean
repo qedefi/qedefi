@@ -26,9 +26,10 @@ reentrancy are out of scope and the vault never calls itself. `A` needs a `0`
 
 @[expose] public noncomputable section
 
-namespace EvmLeanSpecs.Vault.Oz
+namespace Defi.ERC4626.Oz
+open Defi.Math Defi.ERC20
 
-open Token
+open Defi.ERC20.Token
 
 /-- Storage of a deployed OpenZeppelin ERC-4626 vault together with its asset. -/
 structure State (A : Type) where
@@ -42,6 +43,7 @@ structure State (A : Type) where
 variable {A : Type} [DecidableEq A] [Zero A]
 
 namespace State
+open Defi.Math Defi.ERC20
 
 variable (δ : ℕ) (s : State A)
 
@@ -187,4 +189,4 @@ def exec (δ : ℕ) (s : State A) : List (Op A) → State A
 /-- The model's global invariant: both ledgers are well formed. -/
 def Inv (s : State A) : Prop := s.asset.WF ∧ s.shares.WF
 
-end EvmLeanSpecs.Vault.Oz
+end Defi.ERC4626.Oz

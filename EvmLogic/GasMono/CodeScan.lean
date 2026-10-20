@@ -22,7 +22,8 @@ kernel checks for symbolic immutables (the scan skips the patched bytes).
 
 section
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
 /-- The decoded scan: `(q, opcode byte at q, byte at q + 1 if the opcode has no immediate,
 else 0)` for each instruction boundary `q`, from position `p` of a suffix `bytes` of the code,
@@ -132,7 +133,7 @@ theorem callReturnPoints_eq (code : ByteArray) (n : Nat) :
   rw [insns_eq, List.filterMap_map]
   rfl
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end
 
@@ -148,7 +149,8 @@ predecessor; `callsFed_of_scan` turns a successful check into `CallsFed`, so tha
 `decide +kernel` establishes it for a concrete code.
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
 /-- `IsCallByte` as a Boolean. -/
 def isCallByteB (b : UInt8) : Bool :=
@@ -202,6 +204,6 @@ theorem callsFed_of_scan {code : ByteArray} {n : Nat}
     · rw [show q - 1 = q' by omega]; exact hq'
     · rw [show q - 1 = q' by omega]; exact h5
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end

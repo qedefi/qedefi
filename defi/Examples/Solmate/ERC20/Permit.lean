@@ -44,9 +44,10 @@ The specification side of the `permit` refinement: every value the compiled Solm
 
 section
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
 
 /-! ## Constants of the bytecode -/
 
@@ -140,7 +141,7 @@ arithmetic), then `allowance[owner][spender] = value`. -/
 def permitWorld (crypto : Crypto) (w : World) (token owner spender : Address) (value : Word) :
     World :=
   (w.sstore token (nonceSlot crypto owner) (w.sload token (nonceSlot crypto owner) + 1#256)).sstore
-    token (Erc20.allowanceSlot crypto Erc20.Layout.solmate owner spender) value
+    token (ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender) value
 
 /-- Calldata of `permit(owner, spender, value, deadline, v, r, s)`, described by what the ABI
 decoder reads (so `Abi.encodeCall 0xd505accf [...]` and calldata assembled by a calling
@@ -170,7 +171,7 @@ structure PermitCall (data : ByteArray) (owner spender : Address) (value deadlin
 def permitData (owner spender : Address) (value deadline v r s : Word) : ByteArray :=
   Abi.encodeCall 0xd505accf [Word.ofAddress owner, Word.ofAddress spender, value, deadline, v, r, s]
 
-/-- ABI-encoded `permit` calldata is a `PermitCall`. -/
+/-- ABI-encoded `permit` calldata is a `Examples.Solmate.ERC4626.PermitSpec`. -/
 theorem permitCall_encodeCall (owner spender : Address) (value deadline v r s : Word) :
     PermitCall (permitData owner spender value deadline v r s) owner spender value deadline v r s :=
   ⟨by rw [permitData, Abi.selectorOf_encodeCall],
@@ -202,7 +203,7 @@ theorem signed_of_sigOk {crypto : Crypto} {Signed : Address → Word → Prop}
     Signed owner (digest crypto ds (structHash crypto owner spender value nonce deadline)) :=
   hu _ _ _ _ _ h.2
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
 end
 
@@ -225,9 +226,10 @@ free-memory pointer, hashes it, and hashes the `abi.encode` of the EIP-712 domai
 * `asset_domainSeparator_halts`: the external `DOMAIN_SEPARATOR()` in any fresh frame.
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The `INITIAL_CHAIN_ID` immutable, as the `PUSH32` at `0x0426` reads it. -/
 theorem readBytes_asset_chainId (ia : SolmateAsset.Immutables) :
@@ -341,11 +343,12 @@ theorem asset_ds_wp {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {res
     · simp only [Memory.loadWord_expand, Memory.loadWord_storeWord]
     · simp only [permit_norm, hMs]
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- **`DOMAIN_SEPARATOR()` of the asset**, in any fresh frame: returns
@@ -384,11 +387,12 @@ theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
     refine ⟨trivial, by dsimp only [outputMachine], ?_⟩
     dsimp only [outputMachine]; evm_gas
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- `nonceSlot` as symbolic execution computes it (`keccak256(owner ‖ 5)`). -/
 theorem nonceSlot_eq (crypto : Crypto) (a : Address) :
@@ -422,7 +426,7 @@ theorem asset_nonces_halts {ia : SolmateAsset.Immutables} (m : Machine)
   dsimp only [outputMachine]
   evm_gas
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
 end
 
@@ -445,9 +449,10 @@ The free pointer `F` at the start of the `permit` body is `0x80` or, after
   `INVALID_SIGNER`.
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The signature part of `SigOk`, for a given digest. -/
 def RecoversTo (crypto : Crypto) (dg v r s : Word) (owner : Address) : Prop :=
@@ -461,7 +466,7 @@ def TailPost (owner spender : Address) (value dg v r s : Word) (m mf : Machine) 
   (RecoversTo m.ctx.crypto dg v r s owner →
     o = .success .empty ∧
     mf.world = m.world.sstore m.frame.msg.currentTarget
-      (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate owner spender) value ∧
+      (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate owner spender) value ∧
     mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
     mf.frame.sub.logs = m.frame.sub.logs.push
       (approvalLog m.frame.msg.currentTarget owner spender value)) ∧
@@ -582,7 +587,7 @@ theorem asset_permit_tail {ia : SolmateAsset.Immutables} (m : Machine) {M : Memo
             ?_⟩
           dsimp only [outputMachine]; evm_gas
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
 end
 
@@ -599,9 +604,10 @@ separator on the stack) to the end of the frame. The code increments `nonces[own
 as `DOMAIN_SEPARATOR()` left it (`DsMem`: free pointer `0x80` or `0x140`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- What the body of `permit` does, from a machine `m` back from `DOMAIN_SEPARATOR()` with
 separator `ds`, at the owner's nonce `nonce` read from `m.world`: if the signature recovers
@@ -719,7 +725,7 @@ theorem asset_permit_body {ia : SolmateAsset.Immutables} (m : Machine) {M : Memo
     dsimp only at h3 ⊢
     omega
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
 end
 
@@ -746,9 +752,10 @@ delegated (before Prague, or no EIP-7702 designator there), room for one more ca
 `100000 ≤ gas < 2⁶⁴`, and `DomainCase` (the deployment chain, or a short `name`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Permit
+namespace Examples.Solmate.ERC20.Permit
+open Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- What `permit` ends with, relative to the start machine `m`, for the domain separator `ds`:
 success with `permitWorld` exactly when `PermitValid` holds at the owner's current nonce, a
@@ -859,6 +866,6 @@ theorem asset_permit_halts {ia : SolmateAsset.Immutables} (m : Machine)
     dsimp only at h3 ⊢
     omega
 
-end EvmLeanSpecs.Refinement.Permit
+end Examples.Solmate.ERC20.Permit
 
 end

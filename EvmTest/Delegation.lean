@@ -7,9 +7,9 @@ fixture `prague/eip7702_set_code_tx/test_set_code_to_sstore.json`, whose signer 
 records), and the state changes of `setDelegation`.
 -/
 
-open EvmLean EvmLean.Interpreter EvmLeanTest
+open EvmLean EvmLean.Interpreter EvmTest
 
-namespace EvmLeanTest.DelegationTest
+namespace EvmTest.DelegationTest
 
 /-! ## Designators -/
 
@@ -84,4 +84,4 @@ def fakeAuthority : Address := 64
 #guard (setDelegation anySigner 1 [auth, { auth with nonce := 1, address := 9 }] ∅ ∅).1.account
   fakeAuthority = { nonce := 2, code := delegationCode 9 }
 
-end EvmLeanTest.DelegationTest
+end EvmTest.DelegationTest

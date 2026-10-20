@@ -17,13 +17,15 @@ eight a16z round trips hold in every state (including an empty or drained vault)
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault.Oz
+namespace Defi.ERC4626.Oz
+open Defi.Math Defi.ERC20
 
-open Token Finsupp
+open Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A] [Zero A] {δ : ℕ}
 
 namespace State
+open Defi.Math Defi.ERC20
 
 /-- Virtual supply `Ŝ = totalSupply + 10^δ`. -/
 def vS (δ : ℕ) (s : State A) : ℕ := s.totalSupply + 10 ^ δ
@@ -465,4 +467,4 @@ theorem deposit_zero_shares {s s' : State A} {c r : A} {a n : ℕ}
   have : 1 * s.vT ≤ n * s.vT := Nat.mul_le_mul_right _ (Nat.one_le_iff_ne_zero.2 hn)
   omega
 
-end EvmLeanSpecs.Vault.Oz
+end Defi.ERC4626.Oz

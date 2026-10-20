@@ -11,7 +11,7 @@ hashes), proved in two independent ways:
 * `kernel_rfl`: the kernel evaluates the whole run with `crypto` free. This works because
   nothing inspects `crypto`; it takes well under a second.
 * `evm_steps`: symbolic execution with the per-opcode step lemmas, which also works when
-  the inputs are symbolic (see `EvmLeanProofs.Examples.Token`).
+  the inputs are symbolic (see `Examples.Basic.Token`).
 
 Why `rfl` and `decide` do not work here: `decide +kernel` rejects goals with free variables
 (such as `crypto`), and `rfl`/`decide` check definitional equality in the elaborator
@@ -19,9 +19,10 @@ Why `rfl` and `decide` do not work here: `decide +kernel` rejects goals with fre
 (> 150 s). The kernel itself has no difficulty with a free `crypto`.
 -/
 
-namespace EvmLean.Examples
+namespace Examples.Basic
+open EvmLean EvmLogic
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- `PUSH1 3 PUSH1 2 ADD PUSH0 SSTORE STOP`: store `2 + 3` in slot 0. -/
 def addStore : ByteArray := ⟨#[0x60, 0x03, 0x60, 0x02, 0x01, 0x5f, 0x55, 0x00]⟩
@@ -113,4 +114,4 @@ theorem ret42_output (ctx : Context) (g : Nat) (hg : 100 ≤ g) (msg : Message) 
   simp only [topLevelResult_output, Memory.read_storeWord, Bytes.toWord_ofWord]
   rfl
 
-end EvmLean.Examples
+end Examples.Basic

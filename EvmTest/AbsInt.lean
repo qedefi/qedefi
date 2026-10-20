@@ -9,9 +9,9 @@ abstract state repeats), and the scan reads `PUSHn` immediates and the listed sy
 `PUSH32`s.
 -/
 
-namespace EvmLeanTest.AbsInt
+namespace EvmTest.AbsInt
 
-open EvmLean EvmLean.Program.AbsInt
+open EvmLean EvmLogic EvmLogic.AbsInt
 
 /-- A code from its bytes. -/
 def code (l : List UInt8) : ByteArray := ⟨l.toArray⟩
@@ -62,4 +62,4 @@ def callSym : ByteArray := code ([0x5f, 0x5f, 0x5f, 0x5f, 0x5f, 0x7f] ++ List.re
 /-- The kernel accepts a certificate. -/
 example : (certify only1 callOne [] [] 100).isSome = true := by decide +kernel
 
-end EvmLeanTest.AbsInt
+end EvmTest.AbsInt

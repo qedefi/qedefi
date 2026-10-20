@@ -34,7 +34,8 @@ other deployment parameters is `runtimeCodeWith` (the canonical code patched by 
 
 section
 
-namespace EvmLean.Contracts
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- An immutable variable and the byte offsets of its 32-byte placeholders in the runtime code. -/
 structure ImmutableRef where
@@ -64,7 +65,7 @@ theorem eq_of_data_toList_eq {a b : ByteArray} (h : a.data.toList = b.data.toLis
   rcases b with ⟨⟨b⟩⟩
   simp_all
 
-end EvmLean.Contracts
+end EvmLogic.Solidity
 
 end
 
@@ -92,11 +93,12 @@ only ever needs
 
 The side conditions are stated over the list of patch *offsets* (`ps.map Prod.fst = offs`),
 which reduces to a literal list for symbolic words, so the disjointness checks are closed
-`decide` goals. `EvmLeanProofs.Solidity.SharesExtraTactic` uses these lemmas to run
+`decide` goals. `EvmLogic.Tactic.Patched` uses these lemmas to run
 `sol_step` on patched code.
 -/
 
-namespace EvmLean.Contracts
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-! ## `writeList` -/
 
@@ -291,6 +293,6 @@ theorem isValidJumpDest_of_agree {code base : ByteArray} {d : Nat} (h : JumpDest
     Interpreter.isValidJumpDest (Interpreter.validJumpDests code) d = true :=
   Solidity.isValidJumpDest_of_mem (by rw [h.1, h.2]; exact hd)
 
-end EvmLean.Contracts
+end EvmLogic.Solidity
 
 end

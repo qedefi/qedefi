@@ -23,9 +23,10 @@ import EvmLogic.Bytes
   (`SymOk`).
 -/
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Abstract values -/
 
@@ -40,6 +41,7 @@ inductive AVal where
   deriving DecidableEq, Repr
 
 namespace AVal
+open EvmLean EvmLogic.Program
 
 /-- Concretisation: `w` is described by `a` under the valuation `ρ` of the immutables. -/
 def Holds (ρ : Nat → Address) : AVal → Word → Prop
@@ -336,4 +338,4 @@ theorem ascan_ok {ρ : Nat → Address} {code : ByteArray} {syms : List (Nat × 
   intro x hx
   exact ascanFrom_ok hs code.size 0 x (by simpa [ascan] using hx)
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt

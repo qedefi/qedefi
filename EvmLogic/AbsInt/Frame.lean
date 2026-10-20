@@ -17,9 +17,10 @@ import EvmLogic.GasMono.Lockstep
   `absint_no_create`: it requests no creation.
 -/
 
-namespace EvmLean.Program.AbsInt
+namespace EvmLogic.AbsInt
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested GasMono
+open EvmLean.Interpreter EvmLogic.Program.Nested EvmLogic.GasMono
 
 /-! ## Steps of a frame -/
 
@@ -328,4 +329,4 @@ theorem absint_no_create (hc : Cert ρ allowed code init t) {mh mf : Machine} {N
   fun k hk m _ _ _ hm hs hb he =>
     inCert_no_create hc (hs.code.trans hcode) (absint_frame hc hex hcode h0 k hk m hm hs) hb he
 
-end EvmLean.Program.AbsInt
+end EvmLogic.AbsInt

@@ -58,9 +58,10 @@ then `evm_steps` executes the straight-line code with the step lemmas; at the `J
 proof splits on `balS < amount` and rewrites the condition to `1` or `0`.
 -/
 
-namespace EvmLean.Examples.Token
+namespace Examples.Basic.Token
+open EvmLean EvmLogic
 
-open Interpreter Bytes
+open EvmLean.Interpreter EvmLean.Bytes
 
 /-- The token contract's code (see the module docstring). -/
 def code : ByteArray := ⟨#[
@@ -345,4 +346,4 @@ theorem transfer_spec_cancun (hfork : ctx.fork = .cancun) (htoken : 0x0a < token
   transfer_spec (.inl (by rw [hfork]; decide)) (hfork ▸ isPrecompile_cancun_of_lt htoken) hgas
     hne fuel hfuel
 
-end EvmLean.Examples.Token
+end Examples.Basic.Token

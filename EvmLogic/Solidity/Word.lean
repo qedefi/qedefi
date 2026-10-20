@@ -22,7 +22,8 @@ step lemmas (`BitVec.ofNat_eq_ofNat` turns `OfNat` literals into it).
 
 section
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- `2¹⁶⁰ - 1`, the mask of an address in a word. -/
 def addressMask : Word := BitVec.ofNat 256 (2 ^ 160 - 1)
@@ -88,7 +89,7 @@ theorem gt_sub_self_of_lt {x y : Word} (h : x.toNat < y.toNat) :
     rw [Nat.mod_eq_of_lt (by omega)]; omega
   simp [this]
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 end
 
@@ -113,7 +114,8 @@ they can be passed to `wp_steps` / `sol_steps` as rewrite rules or used as hypot
 `MAXW` is `type(uint256).max` as a literal (`PUSH0 NOT`, after constant folding).
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- `type(uint256).max = 2²⁵⁶ - 1` as the literal symbolic execution produces. -/
 abbrev MAXW : Word :=
@@ -300,7 +302,7 @@ theorem eq_of_ne {x y : Word} (h : x ≠ y) : Word.eq x y = 0#256 := by
 theorem ofNat_toNat_word (x : Word) : BitVec.ofNat 256 x.toNat = x := by
   apply BitVec.eq_of_toNat_eq; simp
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 end
 
@@ -314,13 +316,14 @@ solc compiles a checked `x + 1` (`x++`) as `sum := add(x, 1); if iszero(sum) { p
 in the exact form in which the words appear on the stack:
 
 * (the test of `x + y` is `gt_add_self_of_lt` / `gt_add_self_of_le` of
-  `EvmLeanSpecs.Refinement.AssetMint`);
+  `Examples.Solmate.ERC20.MintBurn`);
 * `add_one_ne_zero_of_lt` / `add_one_eq_zero_of_eq`: the overflow test of `x + 1` passes iff
   `x + 1 < 2²⁵⁶`;
 * `toNat_add_of_lt`: a sum that does not overflow is the `Nat` sum.
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean
 
 /-- A word sum without overflow is the `Nat` sum. -/
 theorem toNat_add_of_lt {x y : Word} (h : x.toNat + y.toNat < 2 ^ 256) :
@@ -340,7 +343,7 @@ theorem add_one_eq_zero_of_eq {x : Word} (h : x.toNat + 1 = 2 ^ 256) : x + 1#256
   rw [BitVec.toNat_add]
   simp [h]
 
-end EvmLean.Solidity
+end EvmLogic.Solidity
 
 end
 
@@ -356,6 +359,7 @@ simplify both.
 -/
 
 namespace EvmLean.Word
+open EvmLogic
 
 /-- `x * iszero(iszero(x)) = x`. -/
 theorem mul_iszero_iszero (x : Word) : x * Word.iszero (Word.iszero x) = x := by

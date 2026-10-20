@@ -23,9 +23,10 @@ Generic facts for proving which logs a compiled contract emits:
   a refinement theorem emits nothing, without re-running its symbolic execution.
 -/
 
-namespace EvmLean.Solidity
+namespace EvmLogic.Solidity
+open EvmLean EvmLogic.Tactic
 
-open Interpreter Program
+open EvmLean.Interpreter EvmLogic EvmLogic.Program
 
 /-- The log of a Solidity event: emitted by `emitter`, with indexed `topics` (signature hash
 first) and static unindexed arguments `data` (one ABI word each). -/
@@ -207,4 +208,4 @@ theorem processMessageCall_logs_of_fail {fuel : Nat} {ctx : Context} {w : World}
       cases h
       exact run_logs_of_fail (r := r') hrun (by simpa [MessageResult.success] using hs)
 
-end EvmLean.Solidity
+end EvmLogic.Solidity

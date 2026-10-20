@@ -15,15 +15,17 @@ public import Defi.ERC4626.Inflation
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.ERC4626
+open Defi.Math Defi.ERC20
 
-open Token Finsupp
+open Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
 /-! ## Access control -/
 
 namespace Solmate
+open Defi.Math Defi.ERC20
 
 theorem spendIfNotOwner_auth {t t' : Token A} {c o : A} {n : ℕ}
     (h : spendIfNotOwner t c o n = some t') (hco : c ≠ o) :
@@ -107,6 +109,7 @@ theorem maxWithdraw_reverts_of_overflow (s : State A) (owner : A) (hS : s.totalS
 end Solmate
 
 namespace Oz
+open Defi.Math Defi.ERC20
 
 variable [Zero A] {δ : ℕ}
 
@@ -206,4 +209,4 @@ theorem crytic_inflation_bound {s s₁ s₂ : State A} {att v r : A} {D a n : �
 
 end Oz
 
-end EvmLeanSpecs.Vault
+end Defi.ERC4626

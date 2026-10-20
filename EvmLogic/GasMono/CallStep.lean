@@ -3,7 +3,7 @@ import EvmLogic.GasMono.Bump
 /-!
 # Gas monotonicity: the `CALL` step
 
-`exec_bump` (`NestedExtraGas`) covers every instruction except the ones reading the gas. This
+`exec_bump` (`EvmLogic.Program.Nested.Gas`) covers every instruction except the ones reading the gas. This
 file covers the `CALL` family from a machine related to a low-gas machine `m` by
 
   `withTop b (bump d x ps m)`: `d` more frame gas, and the requested gas on top of the stack
@@ -20,9 +20,10 @@ one, with
   because the extra forwarded gas `c' - c` is at most `d` (`mcg_mono`).
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- `m''` is `m'` with more frame gas, message gas `x` and parents `ps`. -/
 def BumpOf (x : Nat) (ps : List Frame) (m' m'' : Machine) : Prop :=
@@ -160,4 +161,4 @@ theorem execCall_call_mono (m : Machine) (b : Word) (d x : Nat) (ps : List Frame
     repeat' apply And.intro
     all_goals first | rfl | assumption
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

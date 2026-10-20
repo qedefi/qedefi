@@ -12,7 +12,7 @@ bytecode determines `v` by unification.
 
 namespace EvmLean.Interpreter
 
-open Bytes
+open EvmLean.Bytes
 
 variable {m : Machine}
 

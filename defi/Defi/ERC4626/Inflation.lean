@@ -28,7 +28,8 @@ section
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault.Inflation
+namespace Defi.ERC4626.Inflation
+open Defi.Math Defi.ERC20
 
 variable {T S vT vS D a n b : ℚ}
 
@@ -117,7 +118,7 @@ theorem solmate_profit_eq_loss (hS : 0 < S) (hn : 0 ≤ n) :
   field_simp
   ring
 
-end EvmLeanSpecs.Vault.Inflation
+end Defi.ERC4626.Inflation
 end
 
 end
@@ -159,13 +160,15 @@ redemption's own rounding.
 
 @[expose] public section
 
-namespace EvmLeanSpecs.Vault
+namespace Defi.ERC4626
+open Defi.Math Defi.ERC20
 
-open Token Finsupp
+open Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
 namespace Solmate
+open Defi.Math Defi.ERC20
 
 /-- What `x` shares are worth at the current exchange rate, `x·T/S`. -/
 def State.value (s : State A) (x : ℕ) : ℚ := x * s.price
@@ -300,6 +303,7 @@ theorem solmate_donation_attack_all_shares {s s₁ s₂ : State A} {att v r : A}
 end Solmate
 
 namespace Oz
+open Defi.Math Defi.ERC20
 
 variable [Zero A] {δ : ℕ}
 
@@ -373,7 +377,7 @@ theorem oz_donation_attack {s s₁ s₂ : State A} {att v r : A} {D a n b : ℕ}
 
 end Oz
 
-end EvmLeanSpecs.Vault
+end Defi.ERC4626
 end
 
 end

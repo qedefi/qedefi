@@ -24,16 +24,17 @@ the machine we do not track (`MLOAD`, `RETURNDATASIZE`, …) become universally 
 `REVERT` and `INVALID` close the goal (`Fails.revert`, `Fails.invalid`).
 
 `fails_step` applies the rule for the opcode at `pc` (reading the byte, and `PUSHn` immediates,
-with the kernel-checked facts of `EvmLeanProofs.Solidity.ExtraPatchedWP`, so the code may carry
+with the kernel-checked facts of `EvmLogic.Tactic.Patched`, so the code may carry
 symbolic immutables), and `fails_steps` repeats it. A `FailureReverts` proof is then
 `failureReverts_of_fails` followed by `fails_steps`.
 -/
 
 section
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Not succeeding -/
 
@@ -41,6 +42,7 @@ open Interpreter
 def NoSuccess (m : Machine) : Prop := Halts m fun _ o => ∀ out, o ≠ .success out
 
 namespace NoSuccess
+open EvmLean EvmLogic.Program
 
 variable {m m' : Machine}
 
@@ -94,6 +96,7 @@ theorem failureReverts_of_fails {code : ByteArray} {p : Nat}
     exact h rest m hc hpc hs
 
 namespace Fails
+open EvmLean EvmLogic.Program
 
 variable {code : ByteArray} {pc : Nat} {b : UInt8} {x y z : Word} {rest s : List Word}
 
@@ -463,7 +466,7 @@ theorem invalid (hb : code[pc]? = some 0xfe) : Fails code pc s := by
 
 end Fails
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end
 
@@ -477,7 +480,7 @@ A goal `Fails code pc s` (`GasMono.CodeFails`) with literal `pc`, `code` a liter
 advanced by `fails_step`:
 
 * the opcode byte at `pc` is read at the meta level, and the fact `code[pc]? = some b` is a
-  kernel-checked `pcode_fact` (`EvmLeanProofs.Solidity.ExtraPatchedWP`);
+  kernel-checked `pcode_fact` (`EvmLogic.Tactic.Patched`);
 * the `Fails` rule for that opcode is applied (`hop_*` below identify the instruction shapes
   `unOp`, `binOp`, `pushValue`); `PUSHn` immediates come from `ppushFact?`, `JUMPI` conditions
   are decided by `fails_cond`, values the rules quantify over are introduced;
@@ -487,9 +490,10 @@ advanced by `fails_step`:
 applies.
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-! ## Instruction shapes -/
 
@@ -550,7 +554,7 @@ theorem hop_address : ∀ fk, exec (Opcode.decode fk 0x30) =
 
 /-! ## The tactic -/
 
-open Lean Elab Tactic Meta
+open Lean Elab Tactic EvmLogic.Tactic Meta
 
 /-- The `Fails` rule and shape lemma for an opcode of shape `unOp`/`binOp`/`pushValue`. -/
 def shapeRule (b : Nat) : Option (Name × Name) :=
@@ -649,6 +653,6 @@ elab "fails_steps" : tactic => do
     if (← getGoals).isEmpty then return
     unless ← failsStep do return
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono
 
 end

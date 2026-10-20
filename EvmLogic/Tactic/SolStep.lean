@@ -8,7 +8,7 @@ import EvmLogic.Solidity.Word
 /-!
 # Symbolic execution of compiled contracts: `sol_step`
 
-`evm_step` (`EvmLeanProofs.Tactic`) tries every step lemma in turn and checks the opcode
+`evm_step` (`EvmLogic.Tactic.EvmStep`) tries every step lemma in turn and checks the opcode
 byte with `exact rfl`. That is fine for hand-written programs of a few dozen bytes; on
 solc output (1–25 kB) it breaks down:
 
@@ -18,7 +18,7 @@ solc output (1–25 kB) it breaks down:
 * `exact rfl` on `code[pc]? = some b` unfolds the list in the elaborator, hitting the
   recursion limit (an error `first` cannot recover from) for large `pc`;
 * jump-destination side conditions evaluate `validJumpDests` (minutes in the kernel for
-  1.6 kB, see `EvmLeanProofs.Solidity.JumpDest`);
+  1.6 kB, see `EvmLogic.Solidity.JumpDest`);
 * `PUSH3`–`PUSH32` and `CODECOPY` are not in the lemma search.
 
 `sol_step` reads the opcode byte at `pc` itself (zeta-reducing the literal once per step),
@@ -42,9 +42,10 @@ Everything `sol_step` produces is checked by the kernel: code bytes, jump destin
 immediates are auxiliary theorems proved by kernel evaluation.
 -/
 
-namespace EvmLean.Solidity.Exec
+namespace EvmLogic.Tactic.SolStep
+open EvmLean EvmLogic.Solidity
 
-open Lean Elab Tactic Meta Simp
+open Lean Elab Tactic EvmLogic.Tactic Meta Simp
 open EvmLean.Interpreter
 
 /-! ## Reading literal bytecode -/
@@ -131,7 +132,7 @@ elab "sol_disch" : tactic => withMainContext do
     evalTactic (← `(tactic| (try dsimp only); decide +kernel))
   else if isJumpDest then
     evalTactic (← `(tactic| (try dsimp only)))
-    evalTactic (← `(tactic| apply EvmLean.Solidity.isValidJumpDest_of_mem))
+    evalTactic (← `(tactic| apply EvmLogic.Solidity.isValidJumpDest_of_mem))
     evalTactic (← `(tactic| decide +kernel))
   else
     -- Closed side goals (literal JUMPI conditions, stack bounds) are evaluated by the kernel:
@@ -253,7 +254,7 @@ elab_rules : tactic
       setGoals [hg]
       firstOf halts s!"sol_step: no halting lemma applies to opcode {b}"
       setGoals rest
-    evalTactic (← `(tactic| try evm_norm [EvmLean.Solidity.Exec.reduceCodeImm, sol_norm,
+    evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
       Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*]))
 
 /-- Repeat `sol_step` while it succeeds. -/
@@ -263,7 +264,7 @@ macro_rules
   | `(tactic| sol_steps) => `(tactic| repeat sol_step)
   | `(tactic| sol_steps [$extra,*]) => `(tactic| repeat sol_step [$extra,*])
 
-end EvmLean.Solidity.Exec
+end EvmLogic.Tactic.SolStep
 
 attribute [sol_norm] BitVec.ofNat_eq_ofNat EvmLean.Interpreter.ofNat List.length_cons
   List.length_nil List.set_cons_zero List.set_cons_succ true_or or_true false_or or_false

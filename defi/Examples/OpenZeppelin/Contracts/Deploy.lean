@@ -13,9 +13,11 @@ import Examples.OpenZeppelin.Contracts.OzVault
 (`runtimeCodeWith`); see `Examples.Solmate.Contracts.Deploy` for the Solmate contracts.
 -/
 
-namespace EvmLean.Contracts
+namespace Examples.OpenZeppelin.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity
 
 namespace OzAsset
+open EvmLean EvmLogic EvmLogic.Solidity
 
 /-- `ERC20Mock` has no immutables: its runtime code is the same everywhere. -/
 def runtimeCodeFor : ByteArray := runtimeCode
@@ -23,6 +25,7 @@ def runtimeCodeFor : ByteArray := runtimeCode
 end OzAsset
 
 namespace OzVault
+open EvmLean EvmLogic EvmLogic.Solidity
 
 /-- The immutables of an `OzVault` over `asset` with `decimals` decimals. -/
 def immutablesFor (asset : Address) (decimals : Nat := 18) : Immutables where
@@ -34,4 +37,4 @@ def runtimeCodeFor (asset : Address) : ByteArray := runtimeCodeWith (immutablesF
 
 end OzVault
 
-end EvmLean.Contracts
+end Examples.OpenZeppelin.Contracts

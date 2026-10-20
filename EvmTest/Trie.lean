@@ -3,12 +3,12 @@ import EvmTest.TxSupport
 /-!
 Unit tests for `EvmLean.Trie`: hex-prefix encoding (vectors from the Ethereum wiki /
 Yellow Paper appendix C) and the node structure built by `patricialize`, with a stand-in
-hash. Root hashes against official vectors are in `EvmLeanTest/TxIntegration.lean`.
+hash. Root hashes against official vectors are in `EvmTest/TxIntegration.lean`.
 -/
 
-open EvmLean EvmLean.Trie EvmLeanTest
+open EvmLean EvmLean.Trie EvmTest
 
-namespace EvmLeanTest.TrieTest
+namespace EvmTest.TrieTest
 
 /-! ## Nibbles and hex-prefix encoding -/
 
@@ -75,4 +75,4 @@ def extension : Rlp := patricialize fakeKeccak 4 [([1, 2, 3], hx "0xaa"), ([1, 2
   (Rlp.list [.nat 1, .nat 2, .bytes (Bytes.ofWord (emptyRoot fakeKeccak)),
     .bytes (Bytes.ofWord (fakeKeccak .empty))]).encode
 
-end EvmLeanTest.TrieTest
+end EvmTest.TrieTest

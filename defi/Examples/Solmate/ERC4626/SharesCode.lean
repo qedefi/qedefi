@@ -14,7 +14,7 @@ immutables** `i : SolmateVault.Immutables` (asset address, chain id, domain sepa
 decimals): the code is `SolmateVault.runtimeCodeWith i` (the canonical code patched by
 position; `runtimeCodeFor … asset self` is an instance, and so is the canonical deployment,
 `runtimeCodeWith_deployment`). Symbolic execution runs on it with `psol_steps`
-(`EvmLeanProofs.Solidity.SharesExtraTactic`), using `jumpDestsAgree`.
+(`EvmLogic.Tactic.Patched`), using `jumpDestsAgree`.
 
 * calldata (`transferData`, …) and the top-level call message `vaultCall`;
 * `reaches_*`: the dispatcher reaches each function's ABI decoder (entry pc, number of steps,
@@ -26,9 +26,9 @@ The share token's storage is Solmate's `ERC20` layout (`Erc20.Layout.solmate`: `
 
 section
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch
 
 /-! ## Code -/
 
@@ -185,7 +185,7 @@ theorem encodeCall_facts (sel : Nat) (args : List Word) (hsel : sel < 2 ^ 32)
   rw [Abi.selectorOf_encodeCall, Abi.size_encodeCall]
   exact ⟨Nat.mod_eq_of_lt hsel, by omega, hn⟩
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end
 
@@ -202,9 +202,9 @@ the start of a top-level call:
 * `transfer_revert`: otherwise the checked subtraction panics and the world is unchanged.
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -270,7 +270,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   · simp
   · simp
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end
 
@@ -284,9 +284,9 @@ the call always succeeds, returns ABI `true`, and the world is `Erc20.approveWor
 `SSTORE` to `allowance[caller][spender]`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller spender : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -323,7 +323,7 @@ theorem approve_ok (hgas : 100000 ≤ gas) (k : Nat) :
   · simp only [topLevelResult_world]
     rfl
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end
 
@@ -337,12 +337,12 @@ immutables) called by `caller`: if the allowance `allowance[src][caller]` is
 `type(uint256).max` or at least `amount`, and `balanceOf[src]` (after the allowance update)
 is at least `amount`, the call returns ABI `true` and the world is
 `Erc20.transferFromWorld` (allowance update unless maximal, then the two balance writes).
-The reverting cases are in `SharesTransferFromRevert`.
+The reverting cases are in `Examples.Solmate.ERC4626.SharesCode`.
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -430,7 +430,7 @@ theorem transferFrom_ok (hgas : 100000 ≤ gas)
         ↓reduceIte]
       rfl
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end
 
@@ -447,9 +447,9 @@ section
 Either way the call reverts and the world is unchanged (the allowance write is rolled back).
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -546,7 +546,7 @@ theorem transferFrom_revert_balance (hgas : 100000 ≤ gas)
     · simp only [topLevelResult_reverted]
     · simp only [topLevelResult_world]
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end
 
@@ -561,9 +561,9 @@ caller: each succeeds, returns the ABI encoding of the value read through `Erc20
 (resp. the `decimals` immutable, masked to `uint8`), and leaves the world unchanged.
 -/
 
-namespace EvmLeanSpecs.Refinement.Shares
+namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Interpreter Solidity Contracts Dispatch Erc20 Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller a owner spender : Address} {gas : Nat} {warmAddrs : AddressSet}
@@ -644,6 +644,6 @@ theorem decimals_ok (hgas : 10000 ≤ gas) (k : Nat) :
   · simp only [topLevelResult_output]
   · simp only [topLevelResult_world]
 
-end EvmLeanSpecs.Refinement.Shares
+end Examples.Solmate.ERC4626.Shares
 
 end

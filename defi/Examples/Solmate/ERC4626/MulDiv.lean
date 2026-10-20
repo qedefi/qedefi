@@ -26,9 +26,9 @@ returns to `return` with `v` on the stack and only pc, stack and gas changed
 Callers compose them with `WP.bind_mono`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- `type(uint256).max`. -/
 def MAXN : Nat := 2 ^ 256 - 1
@@ -111,4 +111,4 @@ theorem mulDivUp_wp {i : SolmateVault.Immutables} (m : Machine) {d y x r : Word}
     simp only [Machine.resumeAt]
     rw [mulDivUpWord_eq (by omega) (by omega)]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626

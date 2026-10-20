@@ -13,9 +13,10 @@ m.frame.sub.logs`). The existing summaries quantify the substate existentially (
 the entry points `deposit`, `mint`, `withdraw`, `redeem` need these to know their logs.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
 /-- `totalAssets_wp_gas`, and the frame's logs are unchanged (the `STATICCALL`ed `balanceOf`
@@ -344,4 +345,4 @@ theorem previewWithdraw_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) 
     exact WP.ret ⟨v, mem, _, rd, sub, by simp only [previewWithdrawN, hS', ↓reduceIte, hv], rfl,
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega, hl1.trans rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626

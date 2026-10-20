@@ -4,13 +4,14 @@ import EvmTest.InterpreterUtil
 # Interpreter unit tests: single-frame execution
 
 Hand-assembled programs run through `processMessageCallWith` with the FAKE test crypto and
-test precompiles (see `EvmLeanTest.InterpreterUtil`). Gas figures are computed by hand from
+test precompiles (see `EvmTest.InterpreterUtil`). Gas figures are computed by hand from
 the Cancun schedule.
 -/
 
-open EvmLean EvmLean.Interpreter EvmLean.Test
+open EvmLean EvmLean.Interpreter EvmTest EvmTest.InterpreterUtil
 
-namespace EvmLean.Test.InterpreterBasic
+namespace EvmTest.InterpreterBasic
+open EvmLean EvmTest.InterpreterUtil
 
 /-- Run `prog` followed by `retTop`, returning the output word. -/
 def evalTop (prog : List Asm) (ctx : Context := ctx0) : Word :=
@@ -263,4 +264,4 @@ def revertProg : List Asm :=
 #guard (processMessageCallWith testPrecompiles 10 ctx0 (mkWorld .empty)
   ∅ (callMsg contract (asm [.op .jumpdest, .push 0, .op .jump]))).toOption.isNone
 
-end EvmLean.Test.InterpreterBasic
+end EvmTest.InterpreterBasic

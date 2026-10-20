@@ -7,7 +7,7 @@ import EvmLogic.Bytes
 `MLOAD`, `MSTORE`, `MSTORE8`. The gas is `3 + expansion`, where the expansion cost is
 `memoryCost m x n = (Gas.extendMemory m.frame.memory.size [(x.toNat, n)]).cost`; memory is
 first expanded to cover the access (`Memory.expand`), then read or written. The
-read-after-write facts about the resulting memory are in `EvmLeanProofs.Bytes`
+read-after-write facts about the resulting memory are in `EvmLogic.Bytes`
 (`Memory.loadWord_storeWord`, `Memory.size_storeWord`, …).
 -/
 
@@ -137,7 +137,7 @@ memory pointer and of returned words. `memNorm` lists them for `wp_step [..]`.
 
 namespace EvmLean.Memory
 
-open Bytes
+open EvmLean.Bytes
 
 /-- Expansion does not change what is read. -/
 @[simp] theorem read_expand (m : Memory) (off len off' len' : Nat) :

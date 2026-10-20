@@ -8,8 +8,8 @@ import EvmLogic.Step.Memory
 /-!
 # Symbolic execution in the frame-local logic
 
-The tactics of `EvmLeanProofs.Tactic` advance goals of the form `run (n + 1) m = …`. Here the
-same step lemmas advance goals `WP m Q H` (`EvmLeanProofs.Program.Logic`), where `m` is a
+The tactics of `EvmLogic.Tactic.EvmStep` advance goals of the form `run (n + 1) m = …`. Here the
+same step lemmas advance goals `WP m Q H` (`EvmLogic.Program.Logic`), where `m` is a
 machine whose code, pc and stack shape are literal (values may be symbolic):
 
 * `wp_step [h₁, …]` applies `WP.of_step` with the step lemma for the next instruction (found
@@ -32,10 +32,11 @@ Jump destinations are checked by `decide` (as in `evm_step`) unless a hypothesis
 
 section
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Lean Elab Tactic Meta
-open Interpreter
+open Lean Elab Tactic EvmLogic.Tactic Meta
+open EvmLean.Interpreter
 
 /-- Prove `SameFrame m m'` when `m'` only changes mutable fields of `m`. Each field is closed
 by `dsimp only` (projections of structure instances), which unlike `rfl` never asks the
@@ -82,7 +83,7 @@ def stepLemmasFor (b : Nat) : List Name × Bool :=
   else if 0x90 ≤ b ∧ b < 0xa0 then ((swaps[b - 0x90]?).toList, false)
   else ((arith.lookup b).toList ++ (extraStepLemmas.lookup b).toList, false)
 where
-  /-- Step lemmas of `EvmLeanProofs.Program` for opcodes the base library does not cover. -/
+  /-- Step lemmas of `EvmLogic.Program` for opcodes the base library does not cover. -/
   extraStepLemmas : List (Nat × Name) := []
 
 /-- Run `tac`, turning any failure (including runtime exceptions such as the recursion limit)
@@ -279,7 +280,7 @@ macro_rules
       wp_hide_jump_tables
       subst_vars))
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end
 
@@ -301,9 +302,10 @@ through, even with a hypothesis `M.size = n` in context.
   the original `evm_gas` runs.
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Lean Elab Tactic Meta
+open Lean Elab Tactic EvmLogic.Tactic Meta
 open EvmLean.Interpreter
 
 /-- Rewrite the goal, and every other hypothesis mentioning `Memory.size`, with each hypothesis
@@ -361,6 +363,6 @@ macro_rules
       List.length_nil] at *
     omega))
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

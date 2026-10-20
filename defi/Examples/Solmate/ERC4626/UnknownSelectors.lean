@@ -3,7 +3,7 @@ import Examples.Solmate.ERC4626.ViewsSpec
 /-!
 # Unknown selectors and short calldata revert
 
-solc's dispatcher (`EvmLeanProofs/Solidity/Dispatch.lean`) compares the selector
+solc's dispatcher (`EvmLogic/Solidity/Dispatch.lean`) compares the selector
 `calldata[0:4]` against the contract's function selectors — a binary split on `GT` against
 pivots, then linear `EQ` chains — and falls through to `PUSH0 PUSH0 REVERT` when nothing
 matches; calldata shorter than four bytes jumps straight to the fallback, which reverts too
@@ -24,9 +24,10 @@ rejected by that function's ABI decoder; that is **not** proved here.
 
 section
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## Selectors -/
 
@@ -277,7 +278,7 @@ theorem asset_short_reverts {ia : SolmateAsset.Immutables} (m : Machine)
   pwp_steps [hval, hlt]
   exact ⟨_, rfl⟩
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end
 
@@ -292,9 +293,10 @@ malformed for a function shape (`Malformed`), the function shapes of the vault a
 in `MalformedVault*.lean`, `MalformedAsset.lean` and `MalformedCalldata.lean`.
 -/
 
-namespace EvmLeanSpecs.Refinement
+namespace Examples.Solmate.ERC4626
+open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-! ## Argument words -/
 
@@ -359,6 +361,6 @@ def assetArgShapes : List (Nat × Nat × List Nat) :=
     (0x40c10f19, 2, [0]), (0x7ecebe00, 1, [0]), (0xd505accf, 7, [0, 1]), (0xa9059cbb, 2, [0]),
     (0x23b872dd, 3, [0, 1])]
 
-end EvmLeanSpecs.Refinement
+end Examples.Solmate.ERC4626
 
 end

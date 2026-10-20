@@ -16,9 +16,10 @@ Vectors: go-ethereum `core/vm/testdata/precompiles/` (`ecRecover`, `modexp_eip25
 `pointEvaluation`).
 -/
 
-open EvmLean EvmLean.PrecompileTest
+open EvmLean EvmTest.Precompile
 
-namespace EvmLean.PrecompileTest.Run
+namespace EvmTest.Precompile.Run
+open EvmLean
 
 /-- Public key of the test account `0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b`. -/
 def testPub : ByteArray :=
@@ -410,4 +411,4 @@ def blakeInput : ByteArray :=
 -- mod_vul_pawel_3_exp_8
 #guard okWith .osaka 5 (hex "000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000017bffffffffffffffffffffffffffffffffffffffffffffbffffffffffffffffff7ffffffffffffffffffffffffffffffffffffffffffe") 1008 (hex "200f14de1d474710c1c979920452e0ffc2ac6f618afba5")
 
-end EvmLean.PrecompileTest.Run
+end EvmTest.Precompile.Run

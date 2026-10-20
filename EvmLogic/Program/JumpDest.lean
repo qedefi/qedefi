@@ -86,9 +86,10 @@ example : isValidJumpDest (validJumpDests code) 0x4e = true :=
 ```
 -/
 
-namespace EvmLean.Program
+namespace EvmLogic.Program
+open EvmLean
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- The jump-destination bitmap of a byte list, computed by one pass (`fuel` bounds the number
 of instructions; `bs.length + 1` suffices). -/
@@ -204,6 +205,6 @@ theorem isValidJumpDest_of_jdCheck {code : ByteArray} {d : Nat} (h : jdCheck cod
     isValidJumpDest (validJumpDests code) d = true := by
   rw [isValidJumpDest_validJumpDests_eq]; exact h
 
-end EvmLean.Program
+end EvmLogic.Program
 
 end

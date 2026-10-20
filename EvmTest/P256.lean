@@ -13,9 +13,9 @@ The vectors are all 782 entries of go-ethereum's `core/vm/testdata/precompiles/p
 strings are verbatim.
 -/
 
-open EvmLean EvmLean.PrecompileTest
+open EvmLean EvmTest.Precompile
 
-namespace EvmLeanTest.P256
+namespace EvmTest.P256
 
 /-- Split a 160-byte precompile input and run `P256.verify` on it. -/
 def check (s : String) : Bool :=
@@ -1605,4 +1605,4 @@ def check (s : String) : Bool :=
 -- reference point errors
 #guard check "2f77668a9dfbf8d5848b9eeb4a7145ca94c6ed9236e4a773f6dcafa5132b2f9170bebe684cdcb5ca72a42f0d873879359bd1781a591809947628d313a3814f67aec03aca8f5587a4d535fa31027bbe9cc0e464b1c3577f4c2dcde6b2094798a900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" = false
 
-end EvmLeanTest.P256
+end EvmTest.P256

@@ -35,11 +35,12 @@ world is unchanged on success:
   reverts (`MalformedCalldata.lean`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
@@ -313,4 +314,4 @@ theorem frameOk_malformed {m : Machine} (hv : VaultStart vault asset m)
       exact asset_malformed_reverts m hf hval hsz hg hmem rfl h4 hbad
   exact hrev.mono fun _ _ _ ⟨out, ho⟩ out' ho' => by rw [ho] at ho'; cases ho'
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested

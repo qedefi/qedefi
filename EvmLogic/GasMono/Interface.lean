@@ -4,7 +4,7 @@ import EvmLogic.Program.Logic
 # Gas monotonicity: shared interface
 
 Definitions shared by the generic gas-lockstep theorem (`GasMono/Lockstep*.lean`) and the
-code-specific facts about the compiled Solmate contracts (`specs/…/Refinement/LowGas*.lean`).
+code-specific facts about the compiled Solmate contracts (`defi/…/Refinement/LowGas*.lean`).
 
 The argument: a frame running code in which `GAS` only ever feeds the gas argument of the
 immediately following `CALL`/`STATICCALL` executes in lockstep with the same frame given more
@@ -23,9 +23,10 @@ low-gas run. If, after every call site, a failed call makes the frame revert
   stack (a failed call's success flag), the frame halts, and not successfully.
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter
+open EvmLean.Interpreter
 
 /-- Number of immediate bytes following opcode byte `b` (`PUSH1`–`PUSH32`). -/
 def immSize (b : UInt8) : Nat := if 0x60 ≤ b.toNat ∧ b.toNat ≤ 0x7f then b.toNat - 0x5f else 0
@@ -69,4 +70,4 @@ def FailureReverts (code : ByteArray) (p : Nat) : Prop :=
   ∀ m : Machine, m.frame.code = code → m.frame.pc = p → m.frame.stack.head? = some 0 →
     Halts m (fun _ o => ∀ out, o ≠ .success out)
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

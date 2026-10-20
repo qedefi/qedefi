@@ -3,7 +3,7 @@ import EvmLean
 /-!
 # Step lemmas: generic infrastructure
 
-The per-opcode step lemmas (`EvmLeanProofs.Step*`) all have the same shape:
+The per-opcode step lemmas (`EvmLogic.Step*`) all have the same shape:
 
 ```
 theorem step_add (hcode : m.frame.code[m.frame.pc]? = some 0x01)
@@ -18,7 +18,7 @@ theorem step_add (hcode : m.frame.code[m.frame.pc]? = some 0x01)
   the lemmas hold for every fork and every `Crypto`;
 * the stack shape is a hypothesis whose variables (`x`, `y`, `rest`) are determined by
   unification (`rfl`), so the lemma can be applied with `apply` and its side goals
-  discharged mechanically (see `EvmLeanProofs.Tactic`);
+  discharged mechanically (see `EvmLogic.Tactic.EvmStep`);
 * the gas hypothesis is sufficient for the instruction's charges (and its exact cost
   appears in the result).
 

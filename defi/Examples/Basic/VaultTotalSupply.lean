@@ -5,15 +5,16 @@ import Examples.Solmate.Contracts.SolmateVault
 /-!
 # Scale check: a function of the real Solmate vault
 
-`totalSupply()` of `EvmLean.Contracts.SolmateVault.runtimeCode` (5248 bytes), dispatcher and
+`totalSupply()` of `Examples.Solmate.Contracts.SolmateVault.runtimeCode` (5248 bytes), dispatcher and
 body, by `wp_steps` alone: code bytes, `PUSH` immediates and jump destinations come from
-kernel-checked facts (`EvmLeanProofs.Program.Code`, `jdCheck`), so the elaborator never
+kernel-checked facts (`EvmLogic.Program.Code`, `jdCheck`), so the elaborator never
 evaluates the large code. Elaboration takes a few seconds.
 -/
 
-namespace EvmLean.Program.Examples.VaultTotalSupply
+namespace Examples.Basic.VaultTotalSupply
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program
 
-open Interpreter Contracts
+open EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts
 
 /-- Postcondition of `totalSupply()`: returns storage slot 2 of the executing account, world
 unchanged. -/
@@ -37,4 +38,4 @@ theorem totalSupply_halts (m : Machine) (hf : Fresh SolmateVault.runtimeCode m) 
   wp_steps [hval, hsel, hlt]
   exact ⟨rfl, rfl⟩
 
-end EvmLean.Program.Examples.VaultTotalSupply
+end Examples.Basic.VaultTotalSupply

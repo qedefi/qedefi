@@ -22,9 +22,10 @@ relates the real end of a low-gas frame to the end of the same frame with more g
   child call (the child exits first, then the frame continues from `resumeAfter`).
 -/
 
-namespace EvmLean.Program.GasMono
+namespace EvmLogic.GasMono
+open EvmLean EvmLogic.Program
 
-open Interpreter Nested
+open EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-! ## The step that ends a frame -/
 
@@ -109,7 +110,7 @@ structure SameId (f g : Frame) : Prop where
   snapshot : f.snapshot = g.snapshot
 
 /-- Symmetry of `SameFrame`. -/
-theorem _root_.EvmLean.Program.SameFrame.symm {m m' : Machine} (h : SameFrame m m') : SameFrame m' m :=
+theorem _root_.EvmLogic.Program.SameFrame.symm {m m' : Machine} (h : SameFrame m m') : SameFrame m' m :=
   ⟨h.ctx.symm, h.precompiles.symm, h.originalWorld.symm, h.parents.symm, h.msg.symm,
    h.code.symm, h.jumpDests.symm, h.kind.symm, h.snapshot.symm⟩
 
@@ -121,6 +122,7 @@ def Above (m₀ m : Machine) : Prop :=
       ∃ fs f, m.parents = fs ++ f :: m₀.parents ∧ SameId f m₀.frame)
 
 namespace Above
+open EvmLean EvmLogic.Program
 
 variable {m₀ m₁ m : Machine}
 
@@ -413,4 +415,4 @@ theorem exit_of_halts_top {m : Machine} {H : Machine → Outcome → Prop} (hp :
   rw [show k + 1 + (b - (k + 1)) = b by omega, hb, hr] at h2
   rw [hr, hr', h2]
 
-end EvmLean.Program.GasMono
+end EvmLogic.GasMono

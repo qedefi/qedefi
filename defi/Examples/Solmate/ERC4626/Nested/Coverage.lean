@@ -21,12 +21,13 @@ summary. This file shows it is **everything** except gas and the `DOMAIN_SEPARAT
   `CoverOk`, and its committed calls are admitted (`FrameAdmitted`).
 -/
 
-namespace EvmLeanSpecs.Refinement.Nested
+namespace Examples.Solmate.ERC4626.Nested
+open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
-open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
-open EvmLeanSpecs.Refinement.Invariants EvmLeanSpecs.Refinement.Permit
-open EvmLean.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Defi.ERC4626 Examples.Solmate.ERC20.Permit Examples.Solmate.ERC4626.Permit
+open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
   {minGas : Nat}
@@ -416,4 +417,4 @@ theorem txOk_of {ctx : Context} {w : World} {tr : TransientStorage} {msg : Messa
   · exact .inl hc
   · exact covered_of_funded hv hd hf hc
 
-end EvmLeanSpecs.Refinement.Nested
+end Examples.Solmate.ERC4626.Nested
