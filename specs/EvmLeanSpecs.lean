@@ -82,12 +82,6 @@ import EvmLeanSpecs.Refinement.StringsAssetLong
 import EvmLeanSpecs.Refinement.StringsAssetSpec
 import EvmLeanSpecs.Refinement.StringsCanonical
 
-/-!
-# EvmLeanSpecs
-
-Abstract specifications (Mathlib-based) for contracts verified against evm-lean. See
-`specs/README.md`.
--/
 import EvmLeanSpecs.Vault.Permit
 import EvmLeanSpecs.Refinement.PermitDefs
 import EvmLeanSpecs.Refinement.PermitAssetDS
@@ -101,3 +95,10 @@ import EvmLeanSpecs.Refinement.PermitVault
 import EvmLeanSpecs.Refinement.PermitCall
 import EvmLeanSpecs.Refinement.PermitSpec
 import EvmLeanSpecs.Refinement.PermitEvents
+
+/-!
+# EvmLeanSpecs
+
+Abstract specifications (Mathlib-based) for contracts verified against evm-lean. See
+`specs/README.md`.
+-/
