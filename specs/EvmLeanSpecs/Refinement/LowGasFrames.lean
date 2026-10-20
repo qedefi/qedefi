@@ -37,6 +37,12 @@ open EvmLeanSpecs.Refinement.Nested EvmLeanSpecs.Refinement.Invariants
 
 /-! ## The frames -/
 
+/-- `0x01` (the `ECRECOVER` precompile) is not EIP-7702-delegated in the machine's world (always
+true before Prague; on a real chain nobody holds the key of `0x01`). Both codes call it in
+`permit`; delegated, the call would run the delegate's code. -/
+def EcrecoverOk (m : Machine) : Prop :=
+  m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code 1) = none
+
 /-- A high-gas frame of the asset's code, from its start. -/
 structure AssetHigh (ia : SolmateAsset.Immutables) (mh : Machine) : Prop where
   /-- The asset's code. -/
@@ -49,6 +55,10 @@ structure AssetHigh (ia : SolmateAsset.Immutables) (mh : Machine) : Prop where
   gasLt : mh.frame.gasLeft < 2 ^ 256
   /-- Standard precompiles. -/
   pre : mh.precompiles = PrecompileImpl.standard mh.ctx
+  /-- An empty stack. -/
+  stack : mh.frame.stack = []
+  /-- `0x01` is not delegated. -/
+  ecrecover : EcrecoverOk mh
 
 /-- A high-gas frame of the vault's code, with the asset immutable `asset`, from its start, in a
 deployed world. -/
@@ -68,6 +78,10 @@ structure VaultHigh (vault asset : Address) (i : SolmateVault.Immutables) (mh : 
   gasLt : mh.frame.gasLeft < 2 ^ 256
   /-- Standard precompiles. -/
   pre : mh.precompiles = PrecompileImpl.standard mh.ctx
+  /-- An empty stack. -/
+  stack : mh.frame.stack = []
+  /-- `0x01` is not delegated. -/
+  ecrecover : EcrecoverOk mh
 
 /-- **Call targets of the asset** (remaining hypothesis): every child an asset frame starts
 before its end is a precompile call. -/
@@ -125,20 +139,20 @@ theorem _root_.EvmLeanSpecs.Refinement.Nested.VaultStart.topBump {vault asset : 
 /-- The high-gas version of a frame of the vault or the asset is one of the gas-monotone
 frames. -/
 theorem high_of_vaultStart {vault asset : Address} {m : Machine} (hv : VaultStart vault asset m)
-    (hdep : Deployed m.world vault asset) {G : Nat} (hG : m.frame.gasLeft ≤ G)
-    (hG' : G < 2 ^ 256) :
+    (hdep : Deployed m.world vault asset) (hnd : EcrecoverOk m) {G : Nat}
+    (hG : m.frame.gasLeft ≤ G) (hG' : G < 2 ^ 256) :
     (∃ i, VaultHigh vault asset i (topBump G m)) ∨ (∃ ia, AssetHigh ia (topBump G m)) := by
   have hv' := hv.topBump hG
-  obtain ⟨hcode, hjd, hpc, -, -, hgas, -⟩ := hv'.fresh.frame
+  obtain ⟨hcode, hjd, hpc, hstk, -, hgas, -⟩ := hv'.fresh.frame
   have hgasG : (topBump G m).frame.gasLeft = G := by
     simp only [topBump, bump_frame, bumpF]; omega
   rcases hv.prot with ht | ht
   · obtain ⟨i, hi, hci⟩ := hdep.vaultCode
-    refine .inl ⟨i, ?_, hi, hdep, ?_, hpc, by omega, hv'.pre⟩
+    refine .inl ⟨i, ?_, hi, hdep, ?_, hpc, by omega, hv'.pre, hstk, hnd⟩
     · rw [hcode]; show m.world.code m.frame.msg.currentTarget = _; rw [ht]; exact hci
     · rw [hjd, hcode]
   · obtain ⟨ia, hci⟩ := hdep.assetCode
-    refine .inr ⟨ia, ?_, ?_, hpc, by omega, hv'.pre⟩
+    refine .inr ⟨ia, ?_, ?_, hpc, by omega, hv'.pre, hstk, hnd⟩
     · rw [hcode]; show m.world.code m.frame.msg.currentTarget = _; rw [ht]; exact hci
     · rw [hjd, hcode]
 
@@ -146,7 +160,8 @@ theorem high_of_vaultStart {vault asset : Address} {m : Machine} (hv : VaultStar
 theorem frameOk_of_topBump {crypto : Crypto} {vault asset : Address} {Act : List Address}
     {K : VCall → Prop} (hA : AssetCallsPrecompile) (hV : VaultCallsAsset vault asset)
     {m : Machine} (hv : VaultStart vault asset m) (hdep : Deployed m.world vault asset)
-    {ko ks : Nat} (hk : m.frame.kind = .call ko ks) {G : Nat} (hG : m.frame.gasLeft ≤ G)
+    (hnd : EcrecoverOk m) {ko ks : Nat} (hk : m.frame.kind = .call ko ks) {G : Nat}
+    (hG : m.frame.gasLeft ≤ G)
     (hG' : G < 2 ^ 256) (h : FrameOk crypto vault asset Act K (topBump G m)) :
     FrameOk crypto vault asset Act K m := by
   have key : ∀ {S : Machine → Prop}, MonoFrom S → S (topBump G m) →
@@ -154,7 +169,7 @@ theorem frameOk_of_topBump {crypto : Crypto} {vault asset : Address} {Act : List
     halts_world_of_mono (P := fun w => Deployed w vault asset ∧ ∃ cs : List VCall,
       (∀ c ∈ cs, Admitted Act K c) ∧ AgreeOn (ActorPairs Act) (abs crypto w vault asset)
         (EvmLeanSpecs.Vault.Solmate.exec (abs crypto m.world vault asset) (cs.map VCall.op))) hmono hk hS h
-  rcases high_of_vaultStart hv hdep hG hG' with hS | hS
+  rcases high_of_vaultStart hv hdep hnd hG hG' with hS | hS
   · exact key (vaultHigh_mono hA hV) hS
   · exact key (assetHigh_mono hA) hS
 
@@ -175,10 +190,10 @@ theorem frameOk_of_coveredAtSomeGas {crypto : Crypto} {vault asset : Address}
     (hs : SlotsOk crypto vault Act) {m : Machine} (hv : VaultStart vault asset m)
     {ko ks : Nat} (hkind : m.frame.kind = .call ko ks)
     (hdep : Deployed m.world vault asset) (hinv : Solmate.Inv (abs crypto m.world vault asset))
-    (hcr : m.ctx.crypto = crypto) (hc : CoveredAtSomeGas vault asset minGas m)
+    (hcr : m.ctx.crypto = crypto) (hnd : EcrecoverOk m) (hc : CoveredAtSomeGas vault asset minGas m)
     (hadm : FrameAdmitted crypto vault asset Act K m) : FrameOk crypto vault asset Act K m := by
   obtain ⟨G, hG, hG64, hcov⟩ := hc
-  refine frameOk_of_topBump hA hV hv hdep hkind hG (Nat.lt_of_lt_of_le hG64 (by decide)) ?_
+  refine frameOk_of_topBump hA hV hv hdep hnd hkind hG (Nat.lt_of_lt_of_le hG64 (by decide)) ?_
   have hgas : (topBump G m).frame.gasLeft < 2 ^ 64 := by
     simp only [topBump, bump_frame, bumpF]; omega
   exact frameOk_of_covered hmin hk hs (hv.topBump hG) hdep hinv hcr hgas hcov
@@ -190,7 +205,8 @@ def TxOkAtSomeGas (vault asset : Address) (minGas : Nat) (Act : List Address) (K
     (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
   ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m →
     (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
-    CoveredAtSomeGas vault asset minGas m ∧ FrameAdmitted ctx.crypto vault asset Act K m
+    EcrecoverOk m ∧ CoveredAtSomeGas vault asset minGas m ∧
+      FrameAdmitted ctx.crypto vault asset Act K m
 
 /-- **One transaction, frames covered at some gas** (given the call-target hypotheses). -/
 theorem follows_tx_atSomeGas {crypto : Crypto} {vault asset : Address} {Act : List Address}
@@ -211,7 +227,8 @@ theorem follows_tx_atSomeGas {crypto : Crypto} {vault asset : Address} {Act : Li
   have hcr' : m.ctx.crypto = crypto := by rw [hm.ctx]; exact hcr
   obtain ⟨ko, ks, hf⟩ := hd.fresh
   have hkind : m.frame.kind = .call ko ks := by rw [hf]; rfl
-  exact frameOk_of_coveredAtSomeGas hA hV hmin hk hs hv hkind hwm.1 (hwm.inv hs hinv) hcr'
-    (hok m hm hv hp).1 (hcr ▸ (hok m hm hv hp).2)
+  obtain ⟨hnd, hcov, hadm⟩ := hok m hm hv hp
+  exact frameOk_of_coveredAtSomeGas hA hV hmin hk hs hv hkind hwm.1 (hwm.inv hs hinv) hcr' hnd
+    hcov (hcr ▸ hadm)
 
 end EvmLeanSpecs.Refinement.LowGas

@@ -107,6 +107,8 @@ import EvmLeanSpecs.Refinement.NestedCoverage
 import EvmLeanSpecs.Refinement.LowGas
 import EvmLeanSpecs.Refinement.LowGasMono
 import EvmLeanSpecs.Refinement.LowGasFrames
+import EvmLeanSpecs.Refinement.LowGasTargets
+import EvmLeanSpecs.Refinement.LowGasHeadline
 
 /-!
 # EvmLeanSpecs
