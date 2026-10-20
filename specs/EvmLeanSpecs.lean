@@ -98,6 +98,12 @@ import EvmLeanSpecs.Refinement.PermitEvents
 import EvmLeanSpecs.Refinement.ViewsRest
 import EvmLeanSpecs.Refinement.UnknownSelectors
 import EvmLeanSpecs.Refinement.NestedPermit
+import EvmLeanSpecs.Refinement.MalformedDefs
+import EvmLeanSpecs.Refinement.MalformedVaultA
+import EvmLeanSpecs.Refinement.MalformedVaultB
+import EvmLeanSpecs.Refinement.MalformedAsset
+import EvmLeanSpecs.Refinement.MalformedCalldata
+import EvmLeanSpecs.Refinement.NestedCoverage
 
 /-!
 # EvmLeanSpecs

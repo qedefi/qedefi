@@ -292,7 +292,8 @@ theorem vault_transferFrom_short {i : SolmateVault.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the vault with dirty high bytes in its first argument (an `address`) reverts. -/
+/-- `transferFrom` of the vault with dirty high bytes in its first argument (an `address`) reverts.
+-/
 theorem vault_transferFrom_dirty0 {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)
@@ -312,7 +313,8 @@ theorem vault_transferFrom_dirty0 {i : SolmateVault.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the vault with dirty high bytes in its second argument (an `address`) reverts. -/
+/-- `transferFrom` of the vault with dirty high bytes in its second argument (an `address`)
+reverts. -/
 theorem vault_transferFrom_dirty1 {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)

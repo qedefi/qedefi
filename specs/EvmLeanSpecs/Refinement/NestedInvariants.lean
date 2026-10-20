@@ -92,11 +92,13 @@ structure FundedCall (vault : Address) (minGas : Nat) (m : Machine) : Prop where
 /-- **The frames of the vault and the asset with a proved frame summary**: a call carrying
 value (it reverts), or a funded call executing a modelled function, a covered view, `permit`
 with the permit frame conditions (`PermitFrame`: covered domain-separator case, `0x01` not
-delegated, depth below 1024), or selecting no function (`UnknownData`: it reverts). -/
+delegated, depth below 1024), selecting no function (`UnknownData`: it reverts), or malformed
+for the selected function's ABI decoder (`MalformedData`: it reverts). -/
 def Covered (vault asset : Address) (minGas : Nat) (m : Machine) : Prop :=
   (m.frame.msg.value ≠ 0 ∧ 100 ≤ m.frame.gasLeft) ∨
   (FundedCall vault minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m ∨
-    ((∃ c, PermitData vault asset m c) ∧ PermitFrame m) ∨ UnknownData vault asset m))
+    ((∃ c, PermitData vault asset m c) ∧ PermitFrame m) ∨ UnknownData vault asset m ∨
+    MalformedData vault asset m))
 
 /-- **The model calls a frame commits are admitted**: the modelled call it executes, and the
 approval a `permit` commits on success (`PermitData`: the owner's approval), whose owner's
@@ -142,11 +144,12 @@ theorem frameOk_of_covered (hmin : 250000 ≤ minGas)
   · exact frameOk_value hv hdep hval hg
   · have h : FrameHyp crypto vault asset Act minGas m :=
       ⟨hv, hdep, hinv, hcr, ⟨hf.value, hf.gas, hlt, hf.depth, hf.size⟩, hs⟩
-    rcases hx with ⟨c, hx⟩ | hx | ⟨⟨c, hx⟩, hp⟩ | hx
+    rcases hx with ⟨c, hx⟩ | hx | ⟨⟨c, hx⟩, hp⟩ | hx | hx
     · exact frameOk_of_executes hmin hk h hx (hadm.calls c hx)
     · exact frameOk_view (by omega) h hx
     · exact frameOk_permit (by omega) h hp hx (hadm.permits c hx).1 (hadm.permits c hx).2
     · exact frameOk_unknown hv hdep hf.value hf.size (by have := hf.gas; omega) hx
+    · exact frameOk_malformed hv hdep hf.value hf.size (by have := hf.gas; omega) hx
 
 /-- The gas of a dangerous frame is below `2⁶⁴` when the transaction's is. -/
 theorem DangerStart.gasLt {Good : World → Prop} {G : Nat} {m : Machine}

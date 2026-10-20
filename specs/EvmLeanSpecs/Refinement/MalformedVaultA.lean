@@ -346,7 +346,8 @@ theorem vault_maxWithdraw_short {i : SolmateVault.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `maxWithdraw` of the vault with dirty high bytes in its first argument (an `address`) reverts. -/
+/-- `maxWithdraw` of the vault with dirty high bytes in its first argument (an `address`) reverts.
+-/
 theorem vault_maxWithdraw_dirty0 {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xce96cb77) (hsize : 36 ≤ m.frame.msg.data.size)

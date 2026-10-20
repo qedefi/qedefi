@@ -372,7 +372,8 @@ theorem asset_transferFrom_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
+/-- `transferFrom` of the asset with dirty high bytes in its first argument (an `address`) reverts.
+-/
 theorem asset_transferFrom_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)
@@ -392,7 +393,8 @@ theorem asset_transferFrom_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the asset with dirty high bytes in its second argument (an `address`) reverts. -/
+/-- `transferFrom` of the asset with dirty high bytes in its second argument (an `address`)
+reverts. -/
 theorem asset_transferFrom_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)

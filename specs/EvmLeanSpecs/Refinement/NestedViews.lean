@@ -4,7 +4,7 @@ import EvmLeanSpecs.Refinement.VaultViewsSpec
 import EvmLeanSpecs.Refinement.ViewsRest
 import EvmLeanSpecs.Refinement.StringsAssetSpec
 import EvmLeanSpecs.Refinement.PermitSpec
-import EvmLeanSpecs.Refinement.UnknownSelectors
+import EvmLeanSpecs.Refinement.MalformedCalldata
 
 /-!
 # Frame summaries of views and of calls carrying value
@@ -30,7 +30,10 @@ world is unchanged on success:
   with every function non-payable, so the dispatcher's first instructions revert
   (`CALLVALUE ISZERO JUMPI … REVERT`), with at least 100 gas;
 * `frameOk_unknown`: calldata shorter than four bytes, or a selector that is none of the
-  contract's functions (`UnknownData`): the dispatcher reverts (`UnknownSelectors.lean`).
+  contract's functions (`UnknownData`): the dispatcher reverts (`UnknownSelectors.lean`);
+* `frameOk_malformed`: the selector of a function with arguments but too few argument words, or
+  an `address` argument with dirty high bytes (`MalformedData`): the function's ABI decoder
+  reverts (`MalformedCalldata.lean`).
 -/
 
 namespace EvmLeanSpecs.Refinement.Nested
@@ -281,6 +284,34 @@ theorem frameOk_unknown {m : Machine} (hv : VaultStart vault asset m)
       rcases hu with hu | ⟨h4, -, hu⟩
       · exact asset_short_reverts m hf hval hu hg
       · exact asset_unknown_reverts m hf hval h4 hsz hg (hu ht)
+  exact hrev.mono fun _ _ _ ⟨out, ho⟩ out' ho' => by rw [ho] at ho'; cases ho'
+
+/-! ## Malformed calldata -/
+
+/-- The calldata selects a function of the called contract that takes arguments, but is
+malformed for its ABI decoder (`Malformed`: too few argument words, or a dirty `address`
+argument after clean ones). -/
+def MalformedData (vault asset : Address) (m : Machine) : Prop :=
+  4 ≤ m.frame.msg.data.size ∧ ∃ k addrs,
+    ((m.frame.msg.currentTarget = vault ∧
+        (Abi.selectorOf m.frame.msg.data, k, addrs) ∈ vaultArgShapes) ∨
+      (m.frame.msg.currentTarget = asset ∧
+        (Abi.selectorOf m.frame.msg.data, k, addrs) ∈ assetArgShapes)) ∧
+    Malformed m.frame.msg.data k addrs
+
+/-- **Malformed calldata**, in any frame without value: the ABI decoder reverts (at least 2000
+gas). -/
+theorem frameOk_malformed {m : Machine} (hv : VaultStart vault asset m)
+    (hdep : Deployed m.world vault asset) (hval : m.frame.msg.value = 0)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 2000 ≤ m.frame.gasLeft)
+    (hu : MalformedData vault asset m) : FrameOk crypto vault asset Act K m := by
+  obtain ⟨h4, k, addrs, ht, hbad⟩ := hu
+  have hrev : Halts m (fun _ o => ∃ out, o = .revert out) := by
+    rcases ht with ⟨ht, hmem⟩ | ⟨ht, hmem⟩
+    · obtain ⟨i, -, hf⟩ := vault_fresh hv hdep ht
+      exact vault_malformed_reverts m hf hval hsz hg hmem rfl h4 hbad
+    · obtain ⟨ia, hf⟩ := asset_fresh hv hdep ht
+      exact asset_malformed_reverts m hf hval hsz hg hmem rfl h4 hbad
   exact hrev.mono fun _ _ _ ⟨out, ho⟩ out' ho' => by rw [ho] at ho'; cases ho'
 
 end EvmLeanSpecs.Refinement.Nested

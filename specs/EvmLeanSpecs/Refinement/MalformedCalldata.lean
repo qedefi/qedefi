@@ -43,7 +43,11 @@ theorem vault_malformed_reverts {i : SolmateVault.Immutables} (m : Machine)
     (hbad : Malformed m.frame.msg.data k addrs) :
     Halts m (fun _ o => ∃ out, o = .revert out) := by
   simp only [vaultArgShapes, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hmem
-  rcases hmem with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+  rcases hmem with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+      | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+      | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+      | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+      | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
   · rcases hbad with hs | ⟨hs, j, hj, hc, hd⟩
     · exact vault_allowance_short m hf hval hsel h4 hs hg
     · simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
@@ -154,7 +158,8 @@ theorem asset_malformed_reverts {ia : SolmateAsset.Immutables} (m : Machine)
     (hbad : Malformed m.frame.msg.data k addrs) :
     Halts m (fun _ o => ∃ out, o = .revert out) := by
   simp only [assetArgShapes, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hmem
-  rcases hmem with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+  rcases hmem with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
+      | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
   · rcases hbad with hs | ⟨hs, j, hj, hc, hd⟩
     · exact asset_allowance_short m hf hval hsel h4 hs hg
     · simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
