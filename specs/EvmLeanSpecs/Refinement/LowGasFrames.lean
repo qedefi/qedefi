@@ -16,10 +16,12 @@ instantiated for the compiled Solmate asset and vault (`CodeOk`: `LowGasMono.lea
   code — its calls are `asset.balanceOf`, `asset.transferFrom`, `asset.transfer` and the
   `ecrecover` of `permit`).
 
-The two call-target conditions are **the remaining hypotheses**: they are facts about the
-paths of the two codes (which address is on the stack at each call site), not provided by the
-code scans. They are stated for the high-gas frame up to its real end (`Exit`), which is the
-run the lockstep follows.
+The two call-target conditions are facts about the paths of the two codes (which address is on
+the stack at each call site), not provided by the code scans. They are stated for the high-gas
+frame up to its real end (`Exit`), which is the run the lockstep follows, and discharged by the
+certified abstract interpreter in `LowGasTargets.lean` (`assetCallsPrecompile`,
+`vaultCallsAsset`). Both high-gas frames start with an empty stack and with `0x01` not
+EIP-7702-delegated (`EcrecoverOk`).
 
 `frameOk_of_topBump`: **a frame summary transfers to every lower gas.** If the same frame
 with gas `G` (at the top level, `topBump G m`) satisfies `FrameOk`, so does `m`, for every
@@ -83,13 +85,13 @@ structure VaultHigh (vault asset : Address) (i : SolmateVault.Immutables) (mh : 
   /-- `0x01` is not delegated. -/
   ecrecover : EcrecoverOk mh
 
-/-- **Call targets of the asset** (remaining hypothesis): every child an asset frame starts
-before its end is a precompile call. -/
+/-- **Call targets of the asset**: every child an asset frame starts before its end is a
+precompile call (`LowGasTargets.assetCallsPrecompile`). -/
 def AssetCallsPrecompile : Prop :=
   ∀ ia mh N mfh oh, AssetHigh ia mh → Exit mh N mfh oh → CallsTo (fun _ => False) mh N
 
-/-- **Call targets of the vault** (remaining hypothesis): every non-precompile child a vault
-frame starts before its end runs the asset's code. -/
+/-- **Call targets of the vault**: every non-precompile child a vault frame starts before its end
+runs the asset's code (`LowGasTargets.vaultCallsAsset`). -/
 def VaultCallsAsset (vault asset : Address) : Prop :=
   ∀ i mh N mfh oh, VaultHigh vault asset i mh → Exit mh N mfh oh →
     CallsTo (fun mc => ∃ ia, AssetHigh ia mc) mh N

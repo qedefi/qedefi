@@ -9,7 +9,9 @@ transactions by arbitrary callers. Files: `Lift.lean` (generic), `InvariantsAgre
 (every call kind); for arbitrary transactions with nested calls: `EvmLeanProofs/Program/
 NestedExtra*.lean` (generic simulation), `NestedSystem.lean`, `NestedCalls.lean`,
 `NestedViews.lean`, `NestedPermit.lean`, `NestedInvariants.lean`, `NestedCoverage.lean`,
-`SharesFrame*.lean`, `ViewsRest.lean`, `UnknownSelectors.lean`, `Malformed*.lean` (§6).
+`SharesFrame*.lean`, `ViewsRest.lean`, `UnknownSelectors.lean`, `Malformed*.lean` (§6); for any
+gas and any depth: `LowGas*.lean` with `EvmLeanProofs/Program/GasMono/` and
+`EvmLeanProofs/Program/AbsInt/` (§6.5).
 Every theorem uses only `propext`, `Classical.choice`, `Quot.sound`; no `sorry`.
 
 ## 1. The concrete system (`InvariantsSystem.lean`)
@@ -138,8 +140,8 @@ restriction.
 
 * **Calls from other contracts (nested frames), reentrancy, reverting routers**: covered by
   §6. Reentrancy into the vault from the asset cannot happen: `MockERC20` makes no calls.
-* **Gas.** Calls with less than `minGas` are not steps, neither here nor in §6 (pending, §6.5).
-  Fuel is handled exactly (`Terminates`).
+* **Gas.** Calls with less than `minGas` are not steps here; §6.5 removes the gas requirement
+  for arbitrary transactions (`*_anyGas`). Fuel is handled exactly (`Terminates`).
 * **ETH / value.** Top-level steps carry zero value; §6 proves that calls with value to the
   vault or the asset revert (`vault_value_reverts`, `asset_value_reverts`).
 * **Transaction layer.** Steps are `processMessageCall`; the surrounding `processTransaction`
@@ -148,7 +150,7 @@ restriction.
 * **Unmodelled functions** in the top-level traces: `permit` (vault and asset), `name`/`symbol`,
   `nonces`, `DOMAIN_SEPARATOR`, the hook counters, the asset's views other than `balanceOf`,
   and calldata not encoding a function. All of these are covered by §6 (which includes direct
-  top-level transactions, `txOk_direct`), except the cases listed in §6.5. `permit` is not
+  top-level transactions, `txOk_direct`), except the cases listed in §6.6. `permit` is not
   added to the top-level `VCall`s: their per-call obligation `OpRefinesAt` relates a call to
   *one* model operation from the abstraction alone, and whether a permit succeeds depends on
   the nonce, the block timestamp and the chain id, which the abstraction does not hold (§6.3).
@@ -331,51 +333,79 @@ the type of `txOk_direct`'s / `follows_tx_pending`'s admission hypotheses. The d
 statement about a top-level trace (`donation_attack_deployed`): with nested calls the committed
 calls are only known to exist.
 
-### 6.5 What remains (pending frame summaries, `PendingFrames`)
+### 6.5 Any gas, any depth (`LowGas*.lean`)
 
-Every frame of the vault's or the asset's code started by other code during a transaction is
-now covered (`covered_of_funded`), except:
+The theorems of §6.4 ask every vault/asset frame to be covered **with at least `minGas ≥
+250000` gas** (and, for the vault and the asset's `permit`, below the call-depth limit). These
+requirements are gone:
 
-* **Low gas** (part 2): frames with less than `minGas` gas, the vault at depth 1024 (its call
-  into the asset fails), value with `< 100` gas; `name()`/`symbol()` with less gas than the
-  stored string needs (`Str.getterGas`), the asset's `permit` at depth 1024. A frame either
-  succeeds or rolls back; what is missing is that a *successful* low-gas frame commits the
-  high-gas outcome.
-  - Proved (`EvmLeanProofs/Program/NestedExtraGas.lean`, `exec_bump`): **every instruction
-    except `GAS`, `CALL*`, `CREATE*` commutes with adding gas** — a successful instruction
-    succeeds identically with more gas (one theorem for all opcodes, via a total-WP calculus).
-  - Proved (`EvmLeanProofs/Program/GasMono/`): **the frame-level lockstep**. `monoFrom_of_code`:
-    a frame whose code satisfies `CodeOk` (`GasFeedsCall`, `RegionOk`, `CallsFed`: every
-    `CALL`/`CREATE`-family byte follows a `GAS`, and `FailureReverts` at every call return point)
-    and whose children are precompile calls or gas-monotone frames (`CallsTo S'`,
-    `MonoFrom S'`) is gas-monotone (`MonoFrom`): with less gas it fails, or ends with the same
-    outcome, world, transient storage, substate and output (`Post`). The run followed is the
-    high-gas frame's real end (`Exit`, `exit_of_halts_top`: at the top level every `Halts`
-    witness agrees with it); the call macro-step is `execCall_*_mono` (EIP-150 forwarding is
-    monotone, `mcg_mono`), precompiles are gas-monotone (`preMono_standard`).
-    `halts_world_of_mono`: a summary `Halts (topBump G m) (success → P world)` transfers to `m`.
-  - Instantiated (`LowGasMono.lean`, `LowGasFrames.lean`): `vault_codeOk`, `asset_codeOk` (all
-    code conditions, arbitrary immutables); `frameOk_of_topBump`: `FrameOk` of the same frame with
-    gas `G ≥` its own gives `FrameOk` of the frame; `follows_tx_atSomeGas`: one transaction whose
-    vault/asset frames are covered *at some gas* (`CoveredAtSomeGas`: `Covered` of the frame with
-    more gas) keeps `Follows`.
-  - Missing: the call-target hypotheses `AssetCallsPrecompile` (the asset's only call, in
-    `permit`, goes to the `ECRECOVER` precompile) and `VaultCallsAsset vault asset` (the vault's
-    calls go to the asset's code or a precompile). They are path facts (the target is a stack
-    value, at 3955/4325 a parameter of the internal `SafeTransferLib` functions). An
-    explicit-state abstract interpretation of the two codes (constants for jump targets, the
-    asset immutable and the `1` of `ecrecover`, everything else unknown, exact stack depth)
-    terminates (≈6600 abstract states for the vault, ≈3000 for the asset, no unresolved jump)
-    and resolves every call target, so a kernel-checked certificate of it, plus the fact that
-    no step changes the code of an account that holds code, would discharge them.
+* **Gas monotonicity** (`EvmLeanProofs/Program/GasMono/`, `LowGasMono.lean`,
+  `LowGasFrames.lean`). Every instruction except `GAS`, `CALL*`, `CREATE*` commutes with adding
+  gas (`exec_bump`); the frame-level lockstep `monoFrom_of_code` (code conditions `CodeOk`:
+  `GAS` only feeds `CALL`/`STATICCALL`, execution stays in the code region, every call is fed
+  by `GAS`, and after each call a failed call makes the frame fail, `FailureReverts`, proved by
+  symbolic execution at the four vault and the one asset return points, `LowGas.lean`): with
+  less gas a frame fails or ends exactly as with more gas. `frameOk_of_topBump`: a frame
+  summary of the same frame with more gas `G` (at the top level, `topBump G m`) transfers.
+  Premises: `0x01` not EIP-7702-delegated in the frame's world (`EcrecoverOk`), and the
+  call targets below.
+* **Call targets by certified abstract interpretation** (`EvmLeanProofs/Program/AbsInt/`,
+  `LowGasTargets.lean`). The lockstep needs every child of a frame to be a precompile call or a
+  gas-monotone frame (`CallsTo`). An explicit-state abstract interpreter (exact stack depth;
+  values unknown, constant, or the symbolic address immutable `sym k`, so that one certificate
+  holds for all immutables; constants folded through `SHL`/`SUB`/`AND` and solc's address
+  mask) explores each code from pc 0 in the kernel (`decide +kernel` on a worklist over a
+  balanced tree of the instruction scan): the vault in 6618 abstract states (3304 instructions),
+  the asset in 2964 (1921 instructions), every jump resolved, no reachable `CREATE`, every
+  reachable call to the `asset` immutable or the constant `1` (vault) / to `1` only (asset).
+  `absint_frame` (soundness): every machine of a frame up to its real end (`Exit`) is described
+  by a recorded abstract state, children skipped by `exit_frame_ind`; the stack effect of every
+  opcode is one theorem (`exec_eff`). With the code of every account constant along those frames
+  (`exec_code`; the asset's frames call only the precompile, and a failed child restores a
+  snapshot taken inside the frame), the asset immutable's code is the asset's:
+  `assetCallsPrecompile`, `vaultCallsAsset` (no hypotheses).
+* **The depth limit** (`GasMono/Depth.lean`, `depth_lockstep`). Only the `CALL`/`CREATE`
+  families read a frame's depth; a frame at depth 1024 runs in lockstep with the same frame one
+  level up until its first call, which fails at once and makes it fail (`FailureReverts`).
+  `frameOk_of_depth`: the summary of the frame one level up (with more gas) transfers.
+
+**Headlines at any gas** (`LowGasHeadline.lean`). `CoveredAnyGas vault asset m`: `Covered` with
+its own gas, or (`EcrecoverOk m`) covered with some more gas below `2⁶⁴` (`CoveredAtSomeGas`), or
+at depth 1024 and covered one level up with more gas (`CoveredAtLimit`). `TxOkAnyGas` is `TxOk`
+with `CoveredAnyGas` and no `minGas`; `txOkAnyGas_of_txOk`: every transaction covered in the
+sense of §6.4 (with `minGas ≥ 250000`) is. **Simple sufficient condition** `txOkAnyGas_of`:
+before Prague or without authorizations, `0x01` holding no designator before the transaction
+(always true before Prague; no step can create one, `reaches_allWorlds`), message gas below
+`2⁶⁴`, and every vault/asset frame started by other code carries value, or carries none, has
+calldata below `2⁶⁴` bytes and `CoverOkAnyGas` (the `name`/`symbol` getter's gas below `2⁶⁴`,
+`DomainOk` for `DOMAIN_SEPARATOR()` and `permit`), with its committed calls admitted — **no gas
+and no depth condition**.
+
+| theorem | as in §6.4, without `hmin`, over `TxOkAnyGas` / `TxTraceAnyGas` |
+|---|---|
+| `follows_tx_anyGas`, `follows_trace_anyGas` | `follows_tx`, `follows_trace` |
+| `lift_any_tx_anyGas`, `lift_nested_anyGas` | `lift_any_tx`, `lift_nested` |
+| `invariant_any_tx_anyGas`, `invariant_nested_anyGas` | `invariant_any_tx`, `invariant_nested` |
+| `supply_eq_sum_any_tx_anyGas`, `supply_eq_sum_nested_anyGas` | `supply_eq_sum_any_tx`, `supply_eq_sum_nested` |
+| `solvent_any_tx_anyGas`, `solvent_nested_anyGas` | `solvent_any_tx`, `solvent_nested` |
+| `price_mono_any_tx_anyGas`, `price_mono_nested_anyGas` | `price_mono_any_tx`, `price_mono_nested` |
+
+Hypotheses: `hk`, `SlotsOk crypto vault Act`, `Deployed w₀`, `Inv (abs w₀)`; per transaction
+`ctx.crypto = crypto`, before Prague or no authorizations, `TopOk`, gas `< 2⁶⁴`, `TxOkAnyGas`.
+The §6.4 statements keep their names and proofs; they are the special case `minGas ≥ 250000`
+(`txTraceAnyGas_of_txTrace`).
+
+### 6.6 What remains
+
 * **`DOMAIN_SEPARATOR()` and `permit` outside `DomainOk`**: on a chain other than the token's
   deployment chain, with a name of 32 bytes or more (the out-of-place encoding loop of
-  `abi_encode_t_string_storage` is not verified); `permit` with `0x01` EIP-7702-delegated.
-* Calldata is **no longer** an exclusion: unknown selectors, calldata shorter than a selector
-  and calldata malformed for the selected function are covered (they revert,
-  `frameOk_unknown`, `frameOk_malformed`); a `uint8 v` above 255 in `permit` fails
-  `PermitValid`; `covered_of_funded` shows nothing else is left.
-* **Calldata of `2⁶⁴` bytes or more** (impossible within `2⁶⁴` gas: memory expansion).
+  `abi_encode_t_string_storage` is not verified).
+* **`0x01` EIP-7702-delegated** (from Prague): `EcrecoverOk`, derived from the world before the
+  transaction by `txOkAnyGas_of` (only authorizations can delegate an account; nobody holds the
+  key of `0x01`).
+* **Calldata of `2⁶⁴` bytes or more** (impossible within `2⁶⁴` gas: memory expansion), and a
+  stored `name`/`symbol` whose getter needs `2⁶⁴` gas or more (slots 0 and 1 are only written
+  by the constructor).
 * **Transaction layer**: `processTransaction` around `processMessageCall` as an `EnvStep`
   (stated, not proved).
 

@@ -124,3 +124,34 @@ kernel-checked patched-code facts of `Solidity/ExtraPatchedWP.lean`.
 Timings (M-series laptop, `lake env lean`): the whole `LowGas.lean` checks in ≈40 s; each scan
 fact 0.6–3.6 s; the bubble-revert sites ≈1 s each; the `safeTransfer*` sites ≈13 s each (kernel
 checks of the code facts of 55 instructions on patched code).
+
+## Call targets: the certified abstract interpreter
+
+The lockstep also needs to know **who** each frame calls (`CallsTo`): the asset only calls the
+`ECRECOVER` precompile, the vault only the asset (or `ECRECOVER`). The target is a stack value
+(at 3955/4325 a parameter of the internal `SafeTransferLib` functions), so this is a path fact.
+`EvmLeanProofs/Program/AbsInt/` is a generic, kernel-checked abstract interpreter:
+
+| File | Content |
+|---|---|
+| `Effect.lean` | `effOf`: the shape of every opcode; `exec_eff`: one theorem for the stack effect of all opcodes (WP calculus); `exec_target`: what a requested call runs |
+| `Domain.lean` | `AVal` (`top`, `const n`, `sym k` = address immutable `k`), folded `SHL`/`SUB`/`AND` (address mask), `ascan` (decorated instruction scan; `PUSH32` immediates are symbolic or unknown, so patching immutables does not change it), `ascan_ok` |
+| `Check.lean` | `asucc` (abstract step), `explore` (worklist over a balanced tree of the scan, structural fuel, runs in the kernel), `explore_sound` / `certify_sound`: the result is closed, right for the code, and contains the start (`Cert`) |
+| `Frame.lean` | `exit_frame_ind` (induction along a frame up to its `Exit`, children skipped), `absint_frame` (every machine of the frame is described), `absint_call`, `absint_no_create` |
+| `Code.lean`, `CodeRun.lean` | no instruction changes any code (`exec_code`); code properties along a whole message call (`reaches_allWorlds`; instance: no EIP-7702 designator appears) |
+
+`specs/…/LowGasTargets.lean`: `vault_certify` (6618 abstract states over 3304 instructions) and
+`asset_certify` (2964 over 1921) by `decide +kernel` on the canonical codes (`ascan_vault`,
+`ascan_asset`: the scans of the patched codes are the same, so the certificates hold for all
+immutables); the vault's six `asset` `PUSH32`s push the symbolic immutable (`vault_symOk`).
+`asset_run` / `vault_run`: along the frames the code of every account is unchanged, so the
+`asset` account runs the asset's code; `assetCallsPrecompile`, `vaultCallsAsset`.
+
+## The depth limit
+
+`EvmLeanProofs/Program/GasMono/Depth.lean`: only the `CALL`/`CREATE` families read a frame's
+depth (`exec_setDepth`), so a frame at depth 1024 runs in lockstep with the same frame one level
+up until its first call; that call fails at once (`execCall_limit`) and `FailureReverts` makes
+the frame fail (`depth_lockstep`, `halts_world_of_depth`). `LowGasHeadline.lean`:
+`frameOk_of_depth`, `CoveredAnyGas`, and the headline theorems at any gas and depth (see
+`INVARIANTS.md` §6.5).
