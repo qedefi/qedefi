@@ -3,8 +3,9 @@
 Preparation for verifying further tokens, one at a time, each as `defi/Examples/<Project>/`
 with pinned sources, artifacts, differential tests, a refinement against the `Defi.ERC20`
 model and invariants, the way Solmate's ERC-4626 vault is verified
-([erc4626](erc4626/README.md)). Nothing here is proved yet; this file records what each target
-is, exactly, and what should be proved about it.
+([erc4626](erc4626/README.md)). Nothing here is proved on the bytecode yet; this file records what
+each target is, exactly, and what should be proved about it. The model-level results (the
+`Defi.ERC20.Variant` model and its integration with the vault models) are in the last section.
 
 | Target | Kind | Artifact | Lean module | `difftest` family |
 |---|---|---|---|---|
