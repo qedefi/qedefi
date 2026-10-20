@@ -93,9 +93,9 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_le hbal']
   sol_steps [transferCalldata]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -115,7 +115,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_lt hbal']
   sol_steps [transferCalldata]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp
   · simp
 

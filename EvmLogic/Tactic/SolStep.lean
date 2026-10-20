@@ -46,11 +46,14 @@ def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) :=
 def readNat (bytes : Array Nat) (off n : Nat) : Nat :=
   (List.range n).foldl (fun acc j => acc * 256 + bytes.getD (off + j) 0) 0
 
-/-- A proof of the closed `lhs = rhs` by `decide`, as an auxiliary theorem (comparing the sides
-by lazy unfolding instead recurses too deeply on large numerals). -/
+/-- A proof of the closed `lhs = rhs` by `decide`, checked by the kernel with the enclosing
+declaration (comparing the sides by lazy unfolding instead recurses too deeply on large
+numerals). -/
 def kernelEq (lhs rhs : Expr) : MetaM Expr := do
+  trace[EvmLean.wp] "kernelEq: {lhs}"
   let eq ← mkEq lhs rhs
-  return mkConst (← mkAuxLemma [] eq (← mkDecideProof eq))
+  -- inline (no auxiliary declaration: adding one waits for all earlier kernel checks)
+  mkDecideProof eq
 
 /-- Evaluate `Bytes.toWord (readBytes code i n)` and `readBytes code i 32` for literal code. -/
 simproc_decl reduceCodeImm (_) := fun e => do
@@ -75,6 +78,14 @@ simproc_decl reduceCodeImm (_) := fun e => do
     let v := readNat bytes i 32
     let w := mkApp2 (mkConst ``BitVec.ofNat) (mkRawNatLit 256) (mkRawNatLit v)
     let rhs := mkApp (mkConst ``Bytes.ofWord) w
+    if let some (tab, ok, _) ← EvmLogic.Program.codeTable? c then
+      if let some pbytes ← EvmLogic.Program.codeBytes? c then
+        -- `readBytes c i 32 = ⟨⟨l⟩⟩` by lookups, `Bytes.ofWord w = ⟨⟨l⟩⟩` by evaluation
+        let h1 ← EvmLogic.Program.bytesFact c tab ok pbytes i 32
+        let some (_, _, lit) := (← inferType h1).eq? | return .continue
+        let h2 ← EvmLogic.Program.kernelFact (← mkEq rhs lit) lit
+        let pf ← mkEqTrans h1 (← mkEqSymm h2)
+        return .visit { expr := rhs, proof? := some (← mkExpectedTypeHint pf (← mkEq e rhs)) }
     return .visit { expr := rhs, proof? := some (← kernelEq e rhs) }
   | _ => return .continue
 
@@ -107,7 +118,7 @@ elab "sol_disch" : tactic => withMainContext do
     if !t.hasFVar && !t.hasMVar then
       let s ← saveState
       try
-        evalTactic (← `(tactic| decide +kernel))
+        evalTactic (← `(tactic| table_decide))
         return
       catch _ => s.restore
     tryCatchRuntimeEx (evalTactic (← `(tactic| evm_disch))) fun e =>

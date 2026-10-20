@@ -44,14 +44,14 @@ theorem transfer_ok_events (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_le hbal']
   psol_steps [transferData]
   refine ⟨_, rfl, ?_, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
   · rw [topLevelResult_logs_of_success]
     rotate_left
-    · simp [ChildResult.success]
+    · rfl
     event_log [amount]
 
 set_option maxHeartbeats 10000000 in
@@ -68,14 +68,14 @@ theorem approve_ok_events (hgas : 100000 ≤ gas) (k : Nat) :
   simp only [start, Frame.init, callMsg]
   psol_steps [approveData]
   refine ⟨_, rfl, ?_, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
   · rw [topLevelResult_logs_of_success]
     rotate_left
-    · simp [ChildResult.success]
+    · rfl
     event_log [amount]
 
 set_option maxRecDepth 10000 in
@@ -112,7 +112,7 @@ theorem transferFrom_ok_events (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]
@@ -146,7 +146,7 @@ theorem transferFrom_ok_events (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show ¬ w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]

@@ -111,7 +111,7 @@ theorem safeTransferFrom_wp {i : SolmateVault.Immutables} (m : Machine) {amount 
         rw [Memory.readBytes_read _ _ 100 0 4 (by decide)]
         simp (disch := decide) only [Memory.read_expand, Nat.add_zero,
           Memory.read_storeWord_of_disjoint, Memory.read_storeWord_prefix]
-        decide +kernel
+        kernel_decide
       all_goals
         rw [Memory.readBytes_read _ _ 100 _ 32 (by decide)]
         simp (disch := decide) only [Memory.read_expand, Nat.reduceAdd,

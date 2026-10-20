@@ -201,9 +201,9 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_le hbal']
   psol_steps [transferData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -224,7 +224,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_lt hbal']
   psol_steps [transferData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp
   · simp
 
@@ -269,9 +269,9 @@ theorem approve_ok (hgas : 100000 ≤ gas) (k : Nat) :
   simp only [start, Frame.init, callMsg]
   psol_steps [approveData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -337,7 +337,7 @@ theorem transferFrom_ok (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]
@@ -367,7 +367,7 @@ theorem transferFrom_ok (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show ¬ w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]

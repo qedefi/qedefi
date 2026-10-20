@@ -242,6 +242,18 @@ theorem toWord_readBytes (h : Ok code t) {off n v : Nat}
     ← hv, ByteTrie.readNat_eq]
   simp only [getD_eq h]
 
+/-- **A window of code bytes** as a literal, from table lookups. -/
+theorem readBytes_eq_of_table (h : Ok code t) {off n : Nat} {l : List UInt8}
+    (hl : (List.range' off n).map (fun k => (t.bytes.get t.depth k).getD 0) = l) :
+    readBytes code off n = ⟨⟨l⟩⟩ := by
+  have hd := data_readBytes code off n
+  have hf : Bytes.getD code = fun k => (t.bytes.get t.depth k).getD 0 := funext (getD_eq h)
+  rw [hf, hl] at hd
+  cases hr : readBytes code off n with
+  | mk data =>
+    cases data with
+    | mk l' => rw [hr] at hd; simp only at hd; rw [hd]
+
 end CodeTable
 
 end EvmLogic.Program

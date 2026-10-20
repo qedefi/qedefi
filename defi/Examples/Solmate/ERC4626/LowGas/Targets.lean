@@ -53,12 +53,12 @@ theorem ascan_asset (ia : SolmateAsset.Immutables) :
 /-- **The vault's exploration succeeds** (kernel evaluation, ≈6600 abstract states). -/
 theorem vault_certify :
     (certify vaultTargets SolmateVault.runtimeCode vaultSyms [] certFuel).isSome = true := by
-  decide +kernel
+  kernel_decide
 
 /-- **The asset's exploration succeeds** (kernel evaluation, ≈3000 abstract states). -/
 theorem asset_certify :
     (certify assetTargets SolmateAsset.runtimeCode [] [] certFuel).isSome = true := by
-  decide +kernel
+  kernel_decide
 
 theorem vault_readBytes_asset (i : SolmateVault.Immutables) {o : Nat}
     (ho : o = 688 ∨ o = 1170 ∨ o = 2014 ∨ o = 2169 ∨ o = 2668 ∨ o = 2995) :

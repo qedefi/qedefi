@@ -128,7 +128,7 @@ theorem sum_halts (m : Machine) (n : Nat) (hn : n < 2 ^ 256)
   wp_steps
   simp only [SumPost, outputMachine, and_self]
 
-theorem delegatedAddress?_code : delegatedAddress? code = none := by decide +kernel
+theorem delegatedAddress?_code : delegatedAddress? code = none := by kernel_decide
 
 /-- **`sum(n)` returns `∑_{i<n} i`** (mod `2²⁵⁶`): a top-level call with gas at least
 `55 n + 500` succeeds with output `sumTo n` and leaves the world unchanged. -/

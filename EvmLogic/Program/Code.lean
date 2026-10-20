@@ -39,7 +39,7 @@ def uint8Lit? (e : Expr) : MetaM (Option Nat) := do
     (evalNat v).run
 
 /-- The bytes of a literal code expression (unfolding constants and `have`/`let` chunks). -/
-def codeBytes? (code : Expr) : MetaM (Option (Array UInt8)) := do
+def codeBytes? (code : Expr) : MetaM (Option (Array UInt8)) := withTransparency .default do
   let mut e ← instantiateMVars code
   for _ in [0:32] do
     e := e.consumeMData
@@ -155,6 +155,22 @@ def wordFact (code t ok : Expr) (off n v : Nat) : MetaM Expr := do
   let hv ← kernelFact (← mkEq lhs (mkNatLit v)) (mkNatLit v)
   return mkAppN (mkConst ``CodeTable.toWord_readBytes)
     #[code, t, ok, mkNatLit off, mkNatLit n, mkNatLit v, hv]
+
+/-- `readBytes code off n = ⟨⟨[b₀, …]⟩⟩` (the literal window, zero past the end) from the table
+`t` (`ok` its `CodeTable.Ok` proof), by kernel evaluation of `n` lookups. -/
+def bytesFact (code t ok : Expr) (bytes : Array UInt8) (off n : Nat) : MetaM Expr := do
+  let u8 := mkConst ``UInt8
+  let elems ← (List.range n).mapM fun j => mkNumeral u8 (bytes.getD (off + j) 0).toNat
+  let l ← mkListLit u8 elems
+  let k := mkApp2 (mkConst ``ByteTrie.get) (mkApp (mkConst ``CodeTable.depth) t)
+    (mkApp (mkConst ``CodeTable.bytes) t)
+  let f ← withLocalDeclD `k (mkConst ``Nat) fun x => do
+    mkLambdaFVars #[x] (← mkAppOptM ``Option.getD #[u8, mkApp k x, ← mkNumeral u8 0])
+  let lhs ← mkAppM ``List.map
+    #[f, mkApp3 (mkConst ``List.range') (mkNatLit off) (mkNatLit n) (mkNatLit 1)]
+  let hl ← kernelFact (← mkEq lhs l) l
+  return mkAppN (mkConst ``CodeTable.readBytes_eq_of_table)
+    #[code, t, ok, mkNatLit off, mkNatLit n, l, hl]
 
 def immValue (bytes : Array UInt8) (off n : Nat) : Nat := Id.run do
   let mut v := 0
@@ -311,17 +327,33 @@ def closeByTable (g : MVarId) : MetaM Bool := g.withContext do
     let some 0 ← (evalNat p).run | return false
     let_expr Array.toList _ arr := lst | return false
     let_expr ByteArray.data code := arr | return false
-    let some dn ← (evalNat d).run | return false
+    let dn? ← match ← (evalNat d).run with
+      | some n => pure (some n)
+      | none => do (evalNat (← withTransparency .default <| whnf d)).run
+    let some dn := dn? | return false
     let some bytes ← codeBytes? code | return false
     unless (jumpDestsOf bytes).contains dn do return false
     let some hmem ← jumpDestMem? code d | return false
     assign hmem
 
-/-- `decide +kernel` for code facts, by a table lookup when the code has one (`code_table`). -/
+/-- `decide +kernel` for closed goals, without an auxiliary declaration where possible: code
+facts by a table lookup (`code_table`), small goals by `decide` in the elaborator; only what
+neither handles goes to `decide +kernel` (whose auxiliary declaration waits for every earlier
+kernel check of the file). Fails if the goal is false. -/
 elab "table_decide" : tactic => Elab.Tactic.withMainContext do
   let g ← Elab.Tactic.getMainGoal
+  unless ← isProp (← g.getType) do throwError "table_decide: goal is not a proposition"
   if ← closeByTable g then Elab.Tactic.replaceMainGoal []
-  else Elab.Tactic.evalTactic (← `(tactic| decide +kernel))
+  else
+    let s ← saveState
+    let ok ← tryCatchRuntimeEx
+      (do
+        Elab.Tactic.evalTactic (← `(tactic| decide))
+        return true)
+      (fun _ => do s.restore; return false)
+    unless ok do
+      trace[EvmLean.wp] "table_decide: decide +kernel on {← g.getType}"
+      Elab.Tactic.evalTactic (← `(tactic| decide +kernel))
 
 end EvmLogic.Program
 

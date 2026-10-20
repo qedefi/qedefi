@@ -534,7 +534,7 @@ def BodyPost (ds : Word) (owner spender : Address) (value deadline v r s : Word)
 theorem prefix_eq :
     (Bytes.ofWord 11309588061646438093662687302255421419811724423900836950936401294474059186176#256).extract
       0 2 = eip712Prefix := by
-  decide +kernel
+  kernel_decide
 
 set_option maxHeartbeats 0 in
 theorem asset_permit_body {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {F S : Nat}
