@@ -1,7 +1,7 @@
 import Examples.Solmate.ERC4626.EventsEntry
 import Examples.Solmate.ERC20.Events
 import Examples.Solmate.ERC4626.EventsShares
-import Examples.Solmate.ERC4626.Invariants.InvariantsDepositMint
+import Examples.Solmate.ERC4626.Invariants.Deployed
 
 /-!
 # The event stream of a trace

@@ -1,7 +1,5 @@
 import Examples.Solmate.Contracts.SolmateAsset
 import Examples.Solmate.Contracts.SolmateVault
-import Examples.OpenZeppelin.Contracts.OzAsset
-import Examples.OpenZeppelin.Contracts.OzVault
 
 /-!
 # Runtime code for arbitrary deployment parameters
@@ -16,10 +14,8 @@ constructor computes as follows:
 | | `INITIAL_CHAIN_ID` | `block.chainid` at deployment |
 | | `INITIAL_DOMAIN_SEPARATOR` | `computeDomainSeparator()` at deployment (`solmateDomainSeparator`) |
 | Solmate `ERC4626` | `asset` | constructor argument |
-| OpenZeppelin `ERC4626` | `_asset` | constructor argument |
-| | `_underlyingDecimals` | `asset.decimals()` at deployment (18 when the call fails) |
 
-`runtimeCodeFor` patches these values into the canonical code by position
+(OpenZeppelin: `Examples.OpenZeppelin.Contracts.Deploy`.) `runtimeCodeFor` patches these values into the canonical code by position
 (`runtimeCodeWith`). `lake exe difftest` checks the result against code deployed by running
 the creation code in evm-lean and in anvil.
 -/
@@ -79,24 +75,5 @@ def runtimeCodeFor (keccak256 : ByteArray → Word) (chainId : Nat) (asset self 
   runtimeCodeWith (immutablesFor keccak256 chainId asset self)
 
 end SolmateVault
-
-namespace OzAsset
-
-/-- `ERC20Mock` has no immutables: its runtime code is the same everywhere. -/
-def runtimeCodeFor : ByteArray := runtimeCode
-
-end OzAsset
-
-namespace OzVault
-
-/-- The immutables of an `OzVault` over `asset` with `decimals` decimals. -/
-def immutablesFor (asset : Address) (decimals : Nat := 18) : Immutables where
-  asset := asset
-  underlyingDecimals := BitVec.ofNat 256 decimals
-
-/-- The runtime code of an `OzVault` over `asset` (18 decimals), wherever it is deployed. -/
-def runtimeCodeFor (asset : Address) : ByteArray := runtimeCodeWith (immutablesFor asset)
-
-end OzVault
 
 end EvmLean.Contracts

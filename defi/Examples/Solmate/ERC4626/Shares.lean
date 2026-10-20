@@ -1,8 +1,5 @@
 import Defi.ERC20.Rep
-import Examples.Solmate.ERC4626.SharesTransfer
-import Examples.Solmate.ERC4626.SharesApprove
-import Examples.Solmate.ERC4626.SharesTransferFromRevert
-import Examples.Solmate.ERC4626.SharesViews
+import Examples.Solmate.ERC4626.SharesCode
 
 /-!
 # The vault's share token refines the `Token` model

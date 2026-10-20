@@ -1,6 +1,6 @@
 import EvmTest.InterpreterUtil
 import EvmLean.Crypto.Real
-import EvmLogic.Solidity.StringsEncoding
+import EvmLogic.Solidity.Strings
 import Examples.Solmate.Contracts.SolmateVault
 import Examples.Solmate.Contracts.SolmateAsset
 

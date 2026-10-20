@@ -2,6 +2,8 @@ import EvmLogic.Solidity.Dispatch
 import EvmLogic.Solidity.Call
 import EvmLogic.Solidity.ERC20
 import Examples.Solmate.Contracts.SolmateAsset
+import Examples.Solmate.ERC20.BalanceOf
+import EvmLogic.Tactic.Patched
 
 /-!
 # `SolmateAsset.transfer` refines the ERC-20 model
@@ -34,6 +36,8 @@ amount, gas ≥ 100 000 and warm sets:
    `gt_sub_self_of_le` / `gt_sub_self_of_lt` decide;
 4. `sol_steps` finishes at `RETURN` / `REVERT`.
 -/
+
+section
 
 namespace EvmLean.Solidity.Examples.SolmateAssetTransfer
 
@@ -144,3 +148,187 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   · simp
 
 end EvmLean.Solidity.Examples.SolmateAssetTransfer
+
+end
+
+section
+
+/-!
+## `SolmateAsset.transfer`: the refinement theorem
+
+`transfer_spec` lifts `transfer_ok` / `transfer_revert` (bytecode level) through the ERC-20
+storage abstraction: a top-level call of `transfer(to, amount)` on the deployed asset
+behaves as `Erc20.Model.transfer` on `Erc20.view` of the world.
+-/
+
+namespace EvmLean.Solidity.Examples.SolmateAssetTransfer
+
+open Interpreter Erc20 Contracts
+
+variable {ctx : Context} {w : World} {tr : TransientStorage} {token caller to : Address}
+  {amount : Word} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
+
+set_option maxHeartbeats 1000000 in
+/-- **`transfer` refines `Model.transfer`** on the deployed `SolmateAsset` bytecode, for every
+`Crypto`, context without EIP-7702 authorizations (or before Prague), world, transient
+storage, caller, recipient (possibly the caller), amount, gas ≥ 100 000, warm sets and fuel
+≥ 300, assuming only that the balance slots of `caller` and `to` do not collide with other
+balance/allowance-row slots or with `totalSupply` (`BalanceSlotOk`):
+
+* if the model succeeds with `s'`, the call succeeds, returns `true`, and the abstract
+  `totalSupply` and `balanceOf` after the call are those of `s'`; allowances whose slots are
+  not the written slots equal those of `s'` (that is, are unchanged); no other account's
+  storage changes;
+* if the model reverts (insufficient balance), the call reverts and the world is unchanged. -/
+theorem transfer_spec (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hpre : Precompile.isPrecompile ctx.fork token = false) (hgas : 100000 ≤ gas)
+    (hc : BalanceSlotOk ctx.crypto Layout.solmate caller)
+    (ht : BalanceSlotOk ctx.crypto Layout.solmate to) (fuel : Nat) (hfuel : 300 ≤ fuel) :
+    ∃ r, processMessageCall fuel ctx w tr
+        (transferCall token caller to amount gas warmAddrs warmKeys) = .ok r ∧
+      match Model.transfer (view ctx.crypto Layout.solmate w token) caller to amount with
+      | some s' =>
+        r.success = true ∧ r.output = Bytes.ofWord 1 ∧
+        (view ctx.crypto Layout.solmate r.world token).totalSupply = s'.totalSupply ∧
+        (view ctx.crypto Layout.solmate r.world token).balanceOf = s'.balanceOf ∧
+        (∀ o s, allowanceSlot ctx.crypto Layout.solmate o s ≠
+            balanceSlot ctx.crypto Layout.solmate caller →
+          allowanceSlot ctx.crypto Layout.solmate o s ≠ balanceSlot ctx.crypto Layout.solmate to →
+          (view ctx.crypto Layout.solmate r.world token).allowance o s = s'.allowance o s) ∧
+        (∀ b k, b ≠ token → r.world.sload b k = w.sload b k)
+      | none => r.success = false ∧ r.reverted = true ∧ r.world = w := by
+  obtain ⟨k, rfl⟩ : ∃ k, fuel = k + 300 := ⟨fuel - 300, by omega⟩
+  rw [transferCall, processMessageCall_callMsg hdeleg delegatedAddress?_runtimeCode hpre]
+  split
+  · rename_i s' hm
+    have hbal : amount.toNat ≤ ((view ctx.crypto Layout.solmate w token).balanceOf caller).toNat := by
+      unfold Model.transfer at hm
+      split at hm
+      · assumption
+      · cases hm
+    obtain ⟨r, hr, hs, ho, hw⟩ := transfer_ok (tr := tr) (to := to) (warmAddrs := warmAddrs)
+      (warmKeys := warmKeys) hgas hbal k
+    obtain ⟨h1, h2, h3, h4⟩ := view_transferWorld hc ht hm
+    refine ⟨r, hr, hs, ho, ?_, ?_, ?_, ?_⟩ <;> rw [hw]
+    · exact h1
+    · exact h2
+    · exact h3
+    · exact h4
+  · rename_i hm
+    have hbal : ((view ctx.crypto Layout.solmate w token).balanceOf caller).toNat < amount.toNat := by
+      unfold Model.transfer at hm
+      split at hm
+      · cases hm
+      · omega
+    exact transfer_revert hgas hbal k
+
+end EvmLean.Solidity.Examples.SolmateAssetTransfer
+
+end
+
+section
+
+/-!
+## The asset's `transfer` as a callee summary
+
+`transfer_halts_ok` / `transfer_halts_revert`: `transfer(to, amount)` of the deployed asset
+(Solmate `MockERC20`, any immutables), run in any fresh frame (non-static for the success
+case: the code writes storage and emits a log), either returns ABI `true` with the world
+`transferWorld` (the two balance writes, in the code's order; shared with the solidity
+package's top-level `transfer_spec`), or, when the caller's balance does not cover `amount`,
+reverts with `Panic(0x11)`. Both bound the gas used, so that a caller can continue after the
+call (`WP.call`). `AssetSpec` relates them to `Token.transfer`.
+-/
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean.Solidity.Erc20 (transferWorld)
+
+/-- Calldata of a function taking two static words `x`, `y`, with selector `sel`. -/
+structure TwoWordCall (data : ByteArray) (sel : Nat) (x y : Word) : Prop where
+  /-- The selector. -/
+  selector : Abi.selectorOf data = sel
+  /-- Two argument words. -/
+  size : 68 ≤ data.size
+  /-- The first argument. -/
+  arg0 : Bytes.toWord (readBytes data 4 32) = x
+  /-- The second argument. -/
+  arg1 : Bytes.toWord (readBytes data 36 32) = y
+
+/-- What a successful `transfer(to, amount)` of the asset ends with: it returns ABI `true`, the
+world is `transferWorld` (the two balance writes, in the order the code does them), transient
+storage and created accounts are unchanged, and at most 55000 gas is used. -/
+def TransferOk (to : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
+  o = .success (Bytes.ofWord 1) ∧
+  mf.world = transferWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
+    to amount ∧
+  mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
+  m.frame.gasLeft ≤ mf.frame.gasLeft + 55000
+
+/-- What a reverting call ends with: a `REVERT` (some data), at most `g` gas used. -/
+def Reverts (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
+  (∃ out, o = .revert out) ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + g
+
+set_option maxHeartbeats 0 in
+/-- **`transfer(to, amount)` of the asset, success**, in any non-static frame: when the
+caller's balance covers `amount`. -/
+theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {to : Address}
+    {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
+    (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
+      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat) :
+    Halts m (TransferOk to amount m) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  simp only [gt_sub_self_of_le hbal, iszero_zero]
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_codecopy
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  refine ⟨rfl, by simp only [outputMachine, transferWorld, balanceSlot_solmate], rfl, rfl, ?_⟩
+  dsimp only [outputMachine]
+  evm_gas
+
+set_option maxHeartbeats 0 in
+/-- **`transfer(to, amount)` of the asset, insufficient balance**, in any frame: the checked
+subtraction panics (`Panic(0x11)`). -/
+theorem transfer_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) {to : Address}
+    {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress to) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 10000 ≤ m.frame.gasLeft)
+    (hbal : (m.world.sload m.frame.msg.currentTarget
+      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat <
+        amount.toNat) :
+    Halts m (Reverts 10000 m) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  simp only [gt_sub_self_of_lt hbal, iszero_one]
+  pwp_steps
+  refine ⟨⟨_, rfl⟩, ?_⟩
+  dsimp only [outputMachine]
+  evm_gas
+
+end EvmLeanSpecs.Refinement
+
+end

@@ -1,6 +1,5 @@
-import EvmLogic.Solidity.StringsStep
+import EvmLogic.Solidity.Steps
 import EvmLogic.Tactic.Patched
-import EvmLogic.Tactic.SharesExtraTactic
 
 /-!
 # `MCOPY` in the symbolic executors, and memory facts for dynamic data
@@ -23,6 +22,8 @@ Facts about the copy: `Memory.getD_bytes_mcopy` (bytewise), `Memory.read_mcopy`,
 costs for sizes that are multiples of 32 (`Gas.extendMemory_one`, `Gas.extendMemory_two`),
 for gas side conditions whose ranges have symbolic lengths.
 -/
+
+section
 
 namespace EvmLean.Memory
 
@@ -394,3 +395,5 @@ macro_rules
       psol_mcopy_zero [$extra,*]))
 
 end EvmLean.Solidity.Patched
+
+end

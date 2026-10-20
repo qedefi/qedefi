@@ -5,7 +5,7 @@ import EvmLogic.Step.Arith
 import EvmLogic.Step.Env
 import EvmLogic.Step.Flow
 import EvmLogic.Step.Log
-import EvmLogic.Step.StepMemory
+import EvmLogic.Step.Memory
 import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage

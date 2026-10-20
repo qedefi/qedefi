@@ -270,3 +270,13 @@ for all calldata, including calldata shorter than four bytes (zero-padded). -/
 end Abi
 
 end EvmLean.Solidity
+
+/-! ## Selector tables in compiler output -/
+
+namespace EvmLean.Contracts
+
+/-- Look up a selector by signature, e.g. `selector? selectors "deposit(uint256,address)"`. -/
+def selector? (table : List (String × UInt32)) (sig : String) : Option UInt32 :=
+  table.lookup sig
+
+end EvmLean.Contracts

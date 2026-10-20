@@ -1,5 +1,5 @@
 import Defi.ERC20.Token
-import EvmLogic.Solidity.SharesExtraErc20
+import EvmLogic.Solidity.ERC20
 
 /-!
 # Word-level ERC-20 states and `Token` ledgers

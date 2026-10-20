@@ -1,4 +1,4 @@
-import Examples.Solmate.ERC4626.Invariants.InvariantsFinal
+import Examples.Solmate.ERC4626.Invariants.Deployed
 import EvmLogic.Program.Nested.Run
 
 /-!

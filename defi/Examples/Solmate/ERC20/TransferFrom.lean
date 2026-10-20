@@ -1,5 +1,5 @@
-import Examples.Solmate.ERC20.AssetTransfer
-import EvmLogic.Solidity.SharesExtraErc20
+import Examples.Solmate.ERC20.Transfer
+import EvmLogic.Solidity.ERC20
 
 /-!
 # The asset's `transferFrom` as a callee summary

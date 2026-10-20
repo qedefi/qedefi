@@ -1,4 +1,5 @@
-import EvmLogic.Solidity.Basic
+import EvmLogic.Solidity.Immutables
+import EvmLogic.Solidity.Layout
 
 /-!
 # `SolmateVault`: compiled bytecode and metadata (generated)

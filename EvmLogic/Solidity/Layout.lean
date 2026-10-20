@@ -183,3 +183,37 @@ theorem get_of_full (f : Field) (h0 : f.offset = 0) (h32 : f.size = 32) (v : Wor
 end Field
 
 end EvmLean.Solidity
+
+/-! ## Storage layouts in compiler output -/
+
+namespace EvmLean.Contracts
+
+/-- A Solidity storage type, as described by solc's `storageLayout.types` table. -/
+inductive StorageType where
+  /-- A value stored in place (elementary types), with its solc label and its size in bytes. -/
+  | inplace (label : String) (numberOfBytes : Nat)
+  /-- A `string` or `bytes` value (short strings in place, long ones at `keccak(slot)`). -/
+  | bytes (label : String)
+  /-- `mapping(key => value)`: the value of `k` lives at `keccak(k ‖ slot)`. -/
+  | mapping (key value : StorageType)
+  /-- A dynamic array of elements, stored from `keccak(slot)`. -/
+  | dynamicArray (elem : StorageType)
+  deriving Repr, DecidableEq, Inhabited
+
+/-- A state variable: its slot, byte offset within the slot and type. -/
+structure StorageVar where
+  /-- The variable name. -/
+  label : String
+  /-- The storage slot. -/
+  slot : Nat
+  /-- Byte offset within the slot (from the least significant end), for packed variables. -/
+  offset : Nat
+  /-- The variable's type. -/
+  type : StorageType
+  deriving Repr, DecidableEq, Inhabited
+
+/-- The slot of the state variable `label`, if any. -/
+def slotOf? (layout : List StorageVar) (label : String) : Option Nat :=
+  (layout.find? (·.label == label)).map (·.slot)
+
+end EvmLean.Contracts

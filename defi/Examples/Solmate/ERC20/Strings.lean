@@ -1,8 +1,178 @@
 import Examples.Solmate.ERC4626.Strings
-import Examples.Solmate.ERC20.StringsAsset
+import Examples.Solmate.ERC20.BalanceOf
+import EvmLogic.Solidity.Strings
 
 /-!
-# `name()` / `symbol()` of the compiled asset: long strings
+# `name()` / `symbol()` of the compiled asset: short strings
+
+The asset (`SolmateAsset.runtimeCodeWith ia`, Solmate `MockERC20`, any immutables) compiles
+the `string public` getters exactly as the vault does (`StringsVault`), at other offsets:
+`extract_byte_array_length` at `0x0a07` (called from the getter with return address
+`0x025f`), the getter returning to `0x00f1`, the ABI encoder at `0x0897` (its `MCOPY` at
+`0x08ae`). The lemmas mirror the vault's: `assetEncodeShort_wp`, `assetStringShort_wp`.
+-/
+
+section
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+set_option maxHeartbeats 0 in
+/-- **The asset's string encoder from its `MCOPY`, for a short string** (1–31 bytes at
+`0xa0`, its length at `0x80`, the head at the free pointer `0xc0`). -/
+theorem assetEncodeShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {L : Nat}
+    {rest : List Word} {data : ByteArray}
+    (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
+    (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
+    (hpc : m.frame.pc = 0x8ae)
+    (hs : m.frame.stack = 256#256 :: 160#256 :: BitVec.ofNat 256 L :: BitVec.ofNat 256 L ::
+      0#256 :: 192#256 :: 128#256 :: 254#256 :: rest)
+    (hL1 : 1 ≤ L) (hL2 : L ≤ 31) (hsize : m.frame.memory.size = 256)
+    (h40 : m.frame.memory.loadWord 64 = 192#256) (hd : m.frame.memory.read 160 L = data)
+    (hh : m.frame.memory.read 192 64 = ofWord 32#256 ++ ofWord (BitVec.ofNat 256 L))
+    (hlen : rest.length ≤ 1005) (hg : 200 ≤ m.frame.gasLeft) :
+    WP m (fun _ => False)
+      (fun mf o => mf.world = m.world ∧ o = .success (Abi.encodeString data)) := by
+  have hagree := assetJumpDestsAgree ia
+  have hLn : (BitVec.ofNat 256 L).toNat = L := Str.toNat_ofNat_of_lt (by omega)
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hs hpc hc
+  have hcost1 : (Gas.extendMemory 256 [(160, L), (256, L)]).cost = 3 := by
+    rw [Gas.extendMemory_two (by omega) (by decide),
+      show max (max 256 ((160 + L + 31) / 32 * 32)) ((256 + L + 31) / 32 * 32) = 288 by omega]
+    rfl
+  apply WP.of_step
+  case h =>
+    apply step_mcopy
+    case hcode => pcode_fact
+    case hstk => exact rfl
+    case hz => omega
+    case hgas => simp only [mcopyCost, hsize, hLn, BitVec.reduceToNat, hcost1]; omega
+  case hs => same_frame
+  dsimp only
+  simp only [mcopyCost, hsize, hLn, BitVec.reduceToNat, hcost1]
+  wp_generalize_mem M1 hM1
+  have hM1s : M1.size = 288 := by
+    subst hM1; rw [Memory.size_mcopy _ _ _ _ (by omega), hsize]; omega
+  have hM1f : M1.loadWord 64 = 192#256 := by
+    subst hM1; rw [Memory.loadWord_mcopy_of_disjoint _ _ _ _ _ (by omega), h40]
+  pwp_steps [hM1s, hM1f]
+  have hx : (192#256 + BitVec.ofNat 256 L + 64#256).toNat = L + 256 := by
+    rw [BitVec.toNat_add, BitVec.toNat_add, hLn]; simp only [BitVec.reduceToNat]; omega
+  have hx' : ((192 : Word) + BitVec.ofNat 256 L + (64 : Word)).toNat = L + 256 := by
+    rw [BitVec.toNat_add, BitVec.toNat_add, hLn]; simp only [BitVec.reduceToNat]; omega
+  wp_generalize_gas g1 hg1
+  have hcost2 : (Gas.extendMemory 288 [(L + 256, 32)]).cost = 3 := by
+    rw [Gas.extendMemory_one (by omega) (by decide),
+      show max 288 ((L + 256 + 32 + 31) / 32 * 32) = 320 by omega]
+    rfl
+  apply WP.of_step
+  case h =>
+    apply step_mstore
+    case hcode => pcode_fact
+    case hstk => exact rfl
+    case hgas => simp only [memoryCost, hM1s, hx, hcost2, Gas.veryLow]; omega
+  case hs => same_frame
+  dsimp only
+  simp only [memoryCost, hM1s, hx, hcost2]
+  wp_generalize_mem M2 hM2
+  have hM2s : M2.size = 320 := by
+    subst hM2; rw [Memory.size_storeWord, Memory.size_expand, hM1s]
+    simp only [Memory.wordsAfter, Memory.words, hM1s, Nat.reduceEqDiff, ↓reduceIte]; omega
+  have hM2f : M2.loadWord 64 = 192#256 := by
+    subst hM2; rw [Memory.loadWord_storeWord_of_disjoint _ _ _ _ (by omega),
+      Memory.loadWord_expand, hM1f]
+  have hM2r : M2.read 192 96 = Abi.encodeString data := by
+    subst hM2 hM1; exact read_encodeShort m_memory hL1 hL2 hd hh
+  have hround : (L + 31) / 32 * 32 = 32 := by omega
+  pwp_steps [hM2s, hM2f, Str.and_notMask31 (show L < 2 ^ 255 by omega), hround, hM2r]
+  exact ⟨rfl, trivial⟩
+
+end EvmLeanSpecs.Refinement
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+set_option maxHeartbeats 0 in
+/-- **The asset's string getter, short (even) slot word**, from the entry of
+`extract_byte_array_length` (`0xa07`, called from the getter with return address `0x025f`). -/
+theorem assetStringShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot : Word}
+    {rest : List Word}
+    (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
+    (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
+    (hpc : m.frame.pc = 0xa07)
+    (hs : m.frame.stack = S :: 607#256 :: slot :: 241#256 :: rest)
+    (hS : m.world.sload m.frame.msg.currentTarget slot = S) (hev : S.toNat % 2 = 0)
+    (hmem : m.frame.memory = initMemory)
+    (hlen : rest.length ≤ 1000) (hg : 5000 ≤ m.frame.gasLeft) :
+    WP m (fun _ => False)
+      (StringPost m (Str.decode m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) slot)) := by
+  have hagree := assetJumpDestsAgree ia
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hs hpc hc hmem
+  have hL := Str.slotLen_lt S
+  by_cases hshort : Str.slotLen S < 32
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot =
+        some ((ofWord S).extract 0 (Str.slotLen S)) := by
+      simp [Str.decode, hS, Str.slotOk, hev, hshort]
+    rw [hdec]
+    by_cases hz : Str.slotLen S = 0
+    · rw [hz]
+      pwp_msteps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev, hz]
+      refine ⟨rfl, ?_⟩
+      simp only
+      rw [Abi.encodeString_of_size_zero (by simp), Memory.read_64]
+      simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand,
+        Memory.read_storeWord]
+    · have hround : (Str.slotLen S + 31) / 32 * 32 = 32 := by omega
+      pwp_steps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev,
+        Str.lt_32_of_lt hshort, Str.iszero_of_ne hz (by omega), Str.div_32_mul_32 hL, hround,
+        Str.lt_31_of_le (show Str.slotLen S ≤ 31 by omega), Str.div_256_mul_256 S]
+      wp_generalize_mem M0 hM0
+      have hM0s : M0.size = 256 := by
+        subst hM0; simp [Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]
+      have hM0f : M0.loadWord 64 = 192#256 := by
+        subst hM0
+        simp (disch := omega) only [Memory.loadWord_storeWord_of_disjoint, Memory.loadWord_expand,
+          Memory.loadWord_storeWord]
+      have hM0d : M0.read 160 (Str.slotLen S) = (ofWord S).extract 0 (Str.slotLen S) := by
+        subst hM0
+        simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand]
+        rw [Memory.read_storeWord_prefix (hn := by omega), extract_ofWord_div256 _ (by omega)]
+      have hM0h : M0.read 192 64 = ofWord 32#256 ++ ofWord (BitVec.ofNat 256 (Str.slotLen S)) := by
+        subst hM0
+        rw [Memory.read_64]
+        simp (disch := omega) only [Memory.read_storeWord_of_disjoint, Memory.read_expand,
+          Memory.read_storeWord]
+      refine WP.mono (assetEncodeShort_wp _ (L := Str.slotLen S) rfl hj rfl rfl (by omega)
+        (by omega) hM0s hM0f hM0d
+        hM0h (by simp only [List.length_cons]; omega) (by dsimp only; evm_gas))
+        (fun _ _ h => h.elim) ?_
+      rintro mf o - ⟨hw, ho⟩
+      exact ⟨hw, ho⟩
+  · have hdec : Str.decode m_ctx.crypto (m_world.sload m_msg.currentTarget) slot = none := by
+      simp [Str.decode, hS, Str.slotOk, hev, hshort]
+    rw [hdec]
+    pwp_steps [initMemory, hS, Str.and_one_of_even hev, Str.shr_one_and_127 hev,
+      Str.lt_32_of_ge (Nat.le_of_not_lt hshort) (by omega)]
+    exact ⟨rfl, _, rfl⟩
+
+end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## `name()` / `symbol()` of the compiled asset: long strings
 
 The asset's copy loop (`0x02b9`–`0x02cc`, exit `0x02cd`) and encoder are the vault's
 (`StringsVaultLong`) at other offsets; the lemmas mirror the vault's: `AssetCopy`,
@@ -436,3 +606,225 @@ theorem assetStringLong_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot 
     exact ⟨rfl, _, rfl⟩
 
 end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## `name()` / `symbol()` of the compiled asset refine the storage strings
+
+The asset's counterparts of `StringsVaultSpec` (`SolmateAsset.runtimeCodeWith ia`, any
+immutables): `assetName_refines`, `assetSymbol_refines` (any frame) and `assetName_call`,
+`assetSymbol_call` (top level, the asset of a `Deployed` vault): the call returns
+`Abi.encodeString s` for `stringAt crypto world asset slot = some s` (slot 0: `name`, slot 1:
+`symbol`), reverts for `none`, and leaves the world unchanged.
+-/
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts Bytes
+
+variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
+  {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
+
+set_option maxHeartbeats 0 in
+/-- **The asset's string getter** from the entry of `extract_byte_array_length` (`0xa07`),
+any slot word. -/
+theorem assetString_wp {ia : SolmateAsset.Immutables} (m : Machine) {S slot : Word}
+    {rest : List Word}
+    (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
+    (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
+    (hpc : m.frame.pc = 0xa07)
+    (hs : m.frame.stack = S :: 607#256 :: slot :: 241#256 :: rest)
+    (hS : m.world.sload m.frame.msg.currentTarget slot = S)
+    (hmem : m.frame.memory = initMemory) (hlen : rest.length ≤ 1000)
+    (hg : 5000 + 2400 * ((Str.slotLen S + 31) / 32) +
+      Gas.memoryCost (256 + 64 * ((Str.slotLen S + 31) / 32)) ≤ m.frame.gasLeft)
+    (hg' : m.frame.gasLeft < 2 ^ 64) :
+    WP m (fun _ => False)
+      (StringPost m (Str.decode m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) slot)) := by
+  rcases Nat.mod_two_eq_zero_or_one S.toNat with hev | hodd
+  · exact assetStringShort_wp m hc hj hpc hs hS hev hmem hlen (by omega)
+  · exact assetStringLong_wp m hc hj hpc hs hS hodd hmem hlen hg hg'
+
+set_option maxHeartbeats 0 in
+/-- **`name()` of the asset refines the storage string at slot 0**, in any frame. -/
+theorem assetName_refines {ia : SolmateAsset.Immutables} (m : Machine)
+    (h : StringPre (SolmateAsset.runtimeCodeWith ia) 0#256 m)
+    (hd : NoArgCall m.frame.msg.data 0x06fdde03) :
+    Halts m (StringPost m (stringAt m.ctx.crypto m.world m.frame.msg.currentTarget 0#256)) := by
+  obtain ⟨hf, hval, hg, hg', hsz'⟩ := h
+  obtain ⟨hsel, hsz4⟩ := hd
+  have hsel' := Dispatch.selector_eq hsel
+  apply WP.halts_of_false
+  have hagree := assetJumpDestsAgree ia
+  have hlt := lt_size_four (n := m.frame.msg.data.size) hsz4 (by omega)
+  have hg0 : 8000 ≤ m.frame.gasLeft := by unfold Str.getterGas at hg; omega
+  fresh_intro
+  pwp_run_to 0xa07 [hval, hsel', hlt, Abi.shr_calldataload_zero]
+  refine WP.mono (assetString_wp _ rfl hj rfl rfl rfl rfl (by simp) ?_ (by dsimp only; omega))
+    (fun _ _ h => h.elim) (fun _ _ _ h => h)
+  have hsl := sloadCost_le (storageKeyWarm m_sub.accessedStorageKeys m_msg.currentTarget 0#256)
+  dsimp only
+  generalize sloadCost _ = sl at *
+  exact getterGas_le hg _ (by omega)
+
+set_option maxHeartbeats 0 in
+/-- **`symbol()` of the asset refines the storage string at slot 1**, in any frame. -/
+theorem assetSymbol_refines {ia : SolmateAsset.Immutables} (m : Machine)
+    (h : StringPre (SolmateAsset.runtimeCodeWith ia) 1#256 m)
+    (hd : NoArgCall m.frame.msg.data 0x95d89b41) :
+    Halts m (StringPost m (stringAt m.ctx.crypto m.world m.frame.msg.currentTarget 1#256)) := by
+  obtain ⟨hf, hval, hg, hg', hsz'⟩ := h
+  obtain ⟨hsel, hsz4⟩ := hd
+  have hsel' := Dispatch.selector_eq hsel
+  apply WP.halts_of_false
+  have hagree := assetJumpDestsAgree ia
+  have hlt := lt_size_four (n := m.frame.msg.data.size) hsz4 (by omega)
+  have hg0 : 8000 ≤ m.frame.gasLeft := by unfold Str.getterGas at hg; omega
+  fresh_intro
+  pwp_run_to 0xa07 [hval, hsel', hlt, Abi.shr_calldataload_zero]
+  refine WP.mono (assetString_wp _ rfl hj rfl rfl rfl rfl (by simp) ?_ (by dsimp only; omega))
+    (fun _ _ h => h.elim) (fun _ _ _ h => h)
+  have hsl := sloadCost_le (storageKeyWarm m_sub.accessedStorageKeys m_msg.currentTarget 1#256)
+  dsimp only
+  generalize sloadCost _ = sl at *
+  exact getterGas_le hg _ (by omega)
+
+/-- **`name()` as a top-level transaction** on the deployed asset: the string at slot 0. -/
+theorem assetName_call (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hgas : Str.getterGas (Str.slotLen (w.sload asset 0#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x06fdde03 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ StringResult res (stringAt ctx.crypto w asset 0#256) := by
+  obtain ⟨ia, hcode⟩ := hdep.assetCode
+  rw [hcode]
+  exact string_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
+    (assetName_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
+      (noArgCall_encodeCall (by decide)))
+
+/-- **`symbol()` as a top-level transaction** on the deployed asset: the string at slot 1. -/
+theorem assetSymbol_call (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hgas : Str.getterGas (Str.slotLen (w.sload asset 1#256)) ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x95d89b41 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ StringResult res (stringAt ctx.crypto w asset 1#256) := by
+  obtain ⟨ia, hcode⟩ := hdep.assetCode
+  rw [hcode]
+  exact string_call hdeleg (delegatedAddress?_assetCode ia) (hdep.assetNotPrecompile _)
+    (assetSymbol_refines _ (stringPre_start hgas hgas' (by rw [Abi.size_encodeCall]; simp))
+      (noArgCall_encodeCall (by decide)))
+
+end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## `name()` / `symbol()` for the canonical deployment strings
+
+The canonical deployment (`contracts/artifacts/deployment.json`) constructs the asset with
+`("Solmate Asset", "SAST")` and the vault with `("Solmate Vault", "svSAST")`; Solidity stores
+these short strings (at most 31 bytes) in their slots in the short form `Str.shortWord`. When
+a slot holds that word, the getter returns its ABI encoding: corollaries of the `*_call`
+theorems and of `Str.decode_shortWord`. Short strings live in the slot itself, so no Keccak
+is involved at all (the theorems hold for every `Crypto`).
+
+`stringAt_shortWord` is the general step: a slot holding `Str.shortWord s` reads as `s`.
+-/
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+
+variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
+  {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
+
+/-- A slot holding the short form of `s` reads as `s`. -/
+theorem stringAt_shortWord {crypto : Crypto} {a : Address} {p : Word} {s : ByteArray}
+    (hs : s.size ≤ 31) (h : w.sload a p = Str.shortWord s) : stringAt crypto w a p = some s :=
+  Str.decode_shortWord crypto hs h
+
+/-- The getter's gas for a short string slot. -/
+theorem getterGas_shortWord {s : ByteArray} (hs : s.size ≤ 31) :
+    Str.getterGas (Str.slotLen (Str.shortWord s)) ≤ 10430 := by
+  rw [Str.slotLen_shortWord hs, Str.getterGas]
+  by_cases h0 : s.size = 0
+  · rw [h0]; decide
+  · rw [show (s.size + 31) / 32 = 1 by omega]; decide
+
+/-- A string getter call returning the short string `s`. -/
+theorem stringResult_some {res : MessageResult} {s : ByteArray}
+    (h : StringResult res (some s)) : res.success = true ∧ res.output = Abi.encodeString s := h
+
+/-- **`name()` of the vault holding `"Solmate Vault"`** returns its ABI encoding. -/
+theorem vaultName_canonical (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hslot : w.sload vault 0#256 = Str.shortWord "Solmate Vault".toUTF8)
+    (hgas : 10430 ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code vault) vault caller (Abi.encodeCall 0x06fdde03 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ res.success = true ∧ res.output = Abi.encodeString "Solmate Vault".toUTF8 := by
+  have hs : ("Solmate Vault".toUTF8).size ≤ 31 := by decide
+  obtain ⟨n, hn⟩ := vaultName_call (ctx := ctx) (tr := tr) (caller := caller) (wa := wa)
+    (wk := wk) hdep hdeleg (by rw [hslot]; exact Nat.le_trans (getterGas_shortWord hs) hgas) hgas'
+  refine ⟨n, fun fuel hle => ?_⟩
+  obtain ⟨res, hrun, hw, hres⟩ := hn fuel hle
+  rw [stringAt_shortWord hs hslot] at hres
+  exact ⟨res, hrun, hw, stringResult_some hres⟩
+
+/-- **`symbol()` of the vault holding `"svSAST"`** returns its ABI encoding. -/
+theorem vaultSymbol_canonical (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hslot : w.sload vault 1#256 = Str.shortWord "svSAST".toUTF8)
+    (hgas : 10430 ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code vault) vault caller (Abi.encodeCall 0x95d89b41 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ res.success = true ∧ res.output = Abi.encodeString "svSAST".toUTF8 := by
+  have hs : ("svSAST".toUTF8).size ≤ 31 := by decide
+  obtain ⟨n, hn⟩ := vaultSymbol_call (ctx := ctx) (tr := tr) (caller := caller) (wa := wa)
+    (wk := wk) hdep hdeleg (by rw [hslot]; exact Nat.le_trans (getterGas_shortWord hs) hgas) hgas'
+  refine ⟨n, fun fuel hle => ?_⟩
+  obtain ⟨res, hrun, hw, hres⟩ := hn fuel hle
+  rw [stringAt_shortWord hs hslot] at hres
+  exact ⟨res, hrun, hw, stringResult_some hres⟩
+
+/-- **`name()` of the asset holding `"Solmate Asset"`** returns its ABI encoding. -/
+theorem assetName_canonical (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hslot : w.sload asset 0#256 = Str.shortWord "Solmate Asset".toUTF8)
+    (hgas : 10430 ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x06fdde03 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ res.success = true ∧ res.output = Abi.encodeString "Solmate Asset".toUTF8 := by
+  have hs : ("Solmate Asset".toUTF8).size ≤ 31 := by decide
+  obtain ⟨n, hn⟩ := assetName_call (ctx := ctx) (tr := tr) (caller := caller) (wa := wa)
+    (wk := wk) hdep hdeleg (by rw [hslot]; exact Nat.le_trans (getterGas_shortWord hs) hgas) hgas'
+  refine ⟨n, fun fuel hle => ?_⟩
+  obtain ⟨res, hrun, hw, hres⟩ := hn fuel hle
+  rw [stringAt_shortWord hs hslot] at hres
+  exact ⟨res, hrun, hw, stringResult_some hres⟩
+
+/-- **`symbol()` of the asset holding `"SAST"`** returns its ABI encoding. -/
+theorem assetSymbol_canonical (hdep : Deployed w vault asset)
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (hslot : w.sload asset 1#256 = Str.shortWord "SAST".toUTF8)
+    (hgas : 10430 ≤ gas) (hgas' : gas < 2 ^ 64) :
+    ∃ n, ∀ fuel, n ≤ fuel → ∃ res, processMessageCall fuel ctx w tr
+        (callMsg (w.code asset) asset caller (Abi.encodeCall 0x95d89b41 []) gas wa wk) = .ok res ∧
+      res.world = w ∧ res.success = true ∧ res.output = Abi.encodeString "SAST".toUTF8 := by
+  have hs : ("SAST".toUTF8).size ≤ 31 := by decide
+  obtain ⟨n, hn⟩ := assetSymbol_call (ctx := ctx) (tr := tr) (caller := caller) (wa := wa)
+    (wk := wk) hdep hdeleg (by rw [hslot]; exact Nat.le_trans (getterGas_shortWord hs) hgas) hgas'
+  refine ⟨n, fun fuel hle => ?_⟩
+  obtain ⟨res, hrun, hw, hres⟩ := hn fuel hle
+  rw [stringAt_shortWord hs hslot] at hres
+  exact ⟨res, hrun, hw, stringResult_some hres⟩
+
+end EvmLeanSpecs.Refinement
+
+end

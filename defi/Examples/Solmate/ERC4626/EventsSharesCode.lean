@@ -1,6 +1,4 @@
-import Examples.Solmate.ERC4626.SharesTransfer
-import Examples.Solmate.ERC4626.SharesApprove
-import Examples.Solmate.ERC4626.SharesTransferFrom
+import Examples.Solmate.ERC4626.SharesCode
 import Defi.ERC4626.Logs
 
 /-!

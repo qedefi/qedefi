@@ -1,4 +1,6 @@
 import Examples.Solmate.Contracts.Deploy
+import Examples.OpenZeppelin.Contracts.Deploy
+import Examples.Deployment
 
 /-!
 # Tests for the compiled-contract constants

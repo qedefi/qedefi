@@ -1,6 +1,6 @@
 import EvmLogic.Tactic.WpStep
-import EvmLogic.Program.ExtraLogic
-import EvmLogic.Solidity.ExtraWord
+import EvmLogic.Program.Summary
+import EvmLogic.Solidity.Word
 import Examples.Solmate.Contracts.SolmateVault
 import EvmLogic.Tactic.Patched
 import Examples.Solmate.ERC4626.SharesCode

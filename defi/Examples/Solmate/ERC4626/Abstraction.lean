@@ -1,11 +1,42 @@
+import Defi.Math.Arith
+import Defi.ERC20.Token
 import Defi.ERC4626.Solmate
-import Examples.Solmate.ERC4626.VaultViewsMax
+import Defi.ERC4626.SolmateProps
+import Defi.ERC4626.Oz
+import Defi.ERC4626.OzProps
+import Defi.ERC4626.Inflation
+import Defi.ERC4626.Witnesses
+import Defi.ERC4626.MoreProps
+import Defi.ERC4626.Events
+import EvmLean
+import Examples.Solmate.ERC4626.Views
 import Examples.Solmate.ERC20.TransferFrom
 import EvmLogic.Solidity.Call
 import Defi.ERC20.Rep
 
 /-!
-# The bridge: deployed bytecode ↔ the Solmate vault model
+# Bridge to evm-lean
+
+This file checks that the specification package can import both Mathlib (through the
+vault model) and the evm-lean semantics (by path dependency on the parent package), and
+fixes the actor type used by the refinement proofs: EVM addresses.
+-/
+
+section
+
+namespace EvmLeanSpecs
+
+/-- The Solmate vault model over EVM addresses, as used by the refinement proofs. -/
+abbrev SolmateVaultState := Vault.Solmate.State EvmLean.Address
+
+end EvmLeanSpecs
+
+end
+
+section
+
+/-!
+## The bridge: deployed bytecode ↔ the Solmate vault model
 
 * `Deployed w vault asset`: the world holds the compiled `MockERC4626` at `vault`, deployed
   with any immutables `i` whose `asset` is `asset` (`SolmateVault.runtimeCodeWith i`; e.g.
@@ -193,3 +224,5 @@ theorem absOf_sharesOf (asset : Address) (m : Machine) (a : Address) :
   simp [absOf, abs, sharesOf]
 
 end EvmLeanSpecs.Refinement
+
+end

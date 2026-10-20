@@ -1,7 +1,175 @@
-import EvmLogic.GasMono.LockstepDefs
+import EvmLogic.GasMono.CallStep
+import EvmLogic.GasMono.Pc
 
 /-!
-# Gas monotonicity: the lockstep theorem
+# Gas monotonicity: definitions of the lockstep
+
+* `Failed o`: not a successful outcome.
+* `Post mfh oh mfl ol`: how the real end `(mfl, ol)` of a low-gas frame relates to the real end
+  `(mfh, oh)` of the same frame with more gas: the low frame failed, or it ended the same way
+  with a machine of which the high one is a bump (same world, transient storage, substate,
+  output; more gas left).
+* `MonoFrom S`: **the frames whose high-gas version satisfies `S` are gas-monotone**: for every
+  low-gas version (`BumpOf`: the same machine with less frame gas, any message gas, any
+  parents), the low frame ends, and `Post` holds of its end and the high frame's exit. This is
+  compositional: a frame whose children are gas-monotone is gas-monotone
+  (`GasMono/Lockstep.lean`).
+* `CallsTo S' mh N`: every child the high frame starts before its exit at step `N` is a
+  precompile call or a frame satisfying `S'`.
+* `Rel code n ml mh`: the lockstep invariant.
+-/
+
+section
+
+namespace EvmLean.Program.GasMono
+
+open Interpreter Nested
+
+/-- Not a successful outcome. -/
+def Failed (o : Outcome) : Prop := ∀ out, o ≠ .success out
+
+/-- **The end of a low-gas frame against the end of the high-gas frame**: the low frame failed,
+or it ended with the same outcome from a machine that the high one bumps. -/
+def Post (mfh : Machine) (oh : Outcome) (mfl : Machine) (ol : Outcome) : Prop :=
+  Failed ol ∨ (ol = oh ∧ ∃ d x ps, mfh = bump d x ps mfl)
+
+/-- **Gas-monotone frames.** Every high-gas frame satisfying `S`, against any version of it with
+less gas: the low frame ends, failing or as the high frame does. -/
+def MonoFrom (S : Machine → Prop) : Prop :=
+  ∀ ml mh N mfh oh, S mh → BumpOf mh.frame.msg.gas mh.parents ml mh → Exit mh N mfh oh →
+    Halts ml (Post mfh oh)
+
+/-- The children the high frame `mh` starts before its exit at step `N` are precompile calls or
+frames satisfying `S'`. -/
+def CallsTo (S' : Machine → Prop) (mh : Machine) (N : Nat) : Prop :=
+  ∀ k < N, ∀ m' b req m'', stepN k mh = .running m' → SameFrame mh m' →
+    m'.frame.code[m'.frame.pc]? = some b →
+    (exec (Opcode.decode m'.ctx.fork b)).run m' = .ok (.call req, m'') →
+    precompileOf m''.precompiles req.msg = none → S' (pushCall m'' req)
+
+/-- **The lockstep invariant**: the high machine bumps the low one, which runs `code` at a
+boundary of the region `[0, n)`; the high gas fits a word; the precompiles return at most their
+gas and are gas-monotone. -/
+structure Rel (code : ByteArray) (n : Nat) (ml mh : Machine) : Prop where
+  /-- More gas, otherwise equal. -/
+  bump : BumpOf mh.frame.msg.gas mh.parents ml mh
+  /-- The code. -/
+  codeEq : ml.frame.code = code
+  /-- Its jump table. -/
+  jd : ml.frame.jumpDests = validJumpDests code
+  /-- A boundary of the region. -/
+  pc : PcOk code n ml.frame.pc
+  /-- The high gas fits a word (so `GAS` pushes it exactly). -/
+  gasLt : mh.frame.gasLeft < 2 ^ 256
+  /-- Precompiles return at most their gas. -/
+  preOk : PrecompilesOk mh.precompiles
+  /-- Precompiles are gas-monotone. -/
+  preMono : PreMono mh.precompiles
+
+/-! ## Basic facts -/
+
+/-- A bump is a `BumpOf`. -/
+theorem bumpOf_bump (d x : Nat) (ps : List Frame) (m : Machine) :
+    BumpOf x ps m (bump d x ps m) :=
+  ⟨by simp [bump], by simp only [bump_frame, bumpF, Nat.add_sub_cancel_left]⟩
+
+/-- `BumpOf` fixes the message gas and the parents. -/
+theorem BumpOf.msgGas {x : Nat} {ps : List Frame} {m m' : Machine} (h : BumpOf x ps m m') :
+    m'.frame.msg.gas = x ∧ m'.parents = ps := by
+  rw [h.2]; exact ⟨rfl, rfl⟩
+
+/-- The fields a bump keeps. -/
+theorem BumpOf.fields {x : Nat} {ps : List Frame} {m m' : Machine} (h : BumpOf x ps m m') :
+    m'.ctx = m.ctx ∧ m'.precompiles = m.precompiles ∧ m'.world = m.world ∧
+      m'.transient = m.transient ∧ m'.frame.code = m.frame.code ∧ m'.frame.pc = m.frame.pc ∧
+      m'.frame.stack = m.frame.stack ∧ m'.frame.jumpDests = m.frame.jumpDests := by
+  rw [h.2]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- Bumps of machines in the same frame are in the same frame. -/
+theorem sameFrame_bump {m m' : Machine} (h : SameFrame m m') (d d' x : Nat) (ps : List Frame) :
+    SameFrame (bump d x ps m) (bump d' x ps m') :=
+  ⟨h.ctx, h.precompiles, h.originalWorld, rfl, by simp [bump, h.msg], h.code,
+    h.jumpDests, h.kind, h.snapshot⟩
+
+/-- `withTop` with the current top is the identity. -/
+theorem withTop_self {m : Machine} {a : Word} {s : List Word} (h : m.frame.stack = a :: s) :
+    withTop a m = m := by
+  simp only [withTop, h, List.tail_cons]
+  rw [← h]
+
+/-- The children called by a frame, seen from a later machine of the frame. -/
+theorem CallsTo.shift {S' : Machine → Prop} {mh mh' : Machine} {N j : Nat}
+    (h : CallsTo S' mh N) (hj : stepN j mh = .running mh') (hs : SameFrame mh mh') :
+    CallsTo S' mh' (N - j) := by
+  intro k hk m' b req m'' hk' hs' hb hx hp
+  exact h (j + k) (by omega) m' b req m'' (by rw [stepN_add_of_running hj]; exact hk')
+    (hs.trans hs') hb hx hp
+
+/-- The frame's gas never exceeds its gas at an earlier machine of the frame. -/
+theorem gas_le_of_stepN {m m' : Machine} {j : Nat} (hpre : PrecompilesOk m.precompiles)
+    (hj : stepN j m = .running m') (hp : m'.parents = m.parents) :
+    m'.frame.gasLeft ≤ m.frame.gasLeft := by
+  have := stepN_gas hpre j
+  rw [hj] at this
+  simp only [resultGas, gasSum, hp] at this
+  omega
+
+/-- After a failed child of a message call, the caller resumes with `0` on the stack. -/
+theorem resumeAfter_failed {p : Frame} {ps : List Frame} {mf : Machine} {o : Outcome}
+    {ko ks : Nat} (hk : mf.frame.kind = .call ko ks) (hf : Failed o) :
+    (resumeAfter p ps mf o).frame.stack = 0 :: p.stack ∧
+      (resumeAfter p ps mf o).frame.pc = p.pc + 1 ∧
+      (resumeAfter p ps mf o).frame.code = p.code := by
+  cases o with
+  | success out => exact absurd rfl (hf out)
+  | revert out => rw [resumeAfter_revert hk]; exact ⟨rfl, rfl, rfl⟩
+  | halt e => rw [resumeAfter_halt hk]; exact ⟨rfl, rfl, rfl⟩
+
+/-- The exit of a `STOP`/`RETURN`/`REVERT` step. -/
+theorem exitOf_of_exec {m m' : Machine} {b : UInt8} {a : Action}
+    (hcode : m.frame.code[m.frame.pc]? = some b)
+    (hexec : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m')) :
+    (∀ out, a = .stop out → exitOf m = some (m', .success out)) ∧
+      (∀ out, a = .revert out → exitOf m = some (m', .revert out)) := by
+  rw [getElem?_eq_some_iff] at hcode
+  obtain ⟨hlt, hb⟩ := hcode
+  unfold exitOf
+  simp only [hlt, ↓reduceDIte, hb, hexec]
+  refine ⟨fun out h => by subst h; rfl, fun out h => by subst h; rfl⟩
+
+/-- An exit right away. -/
+theorem exit_zero {m mf : Machine} {o : Outcome} (h : exitOf m = some (mf, o)) :
+    Exit m 0 mf o :=
+  ⟨fun k hk => by rw [Nat.le_zero.1 hk]; exact ⟨m, rfl, .of_same (.refl m)⟩,
+    m, rfl, .refl m, h⟩
+
+/-- The pc of a frame at a region boundary is inside the code. -/
+theorem code_getElem? {code : ByteArray} {n : Nat} {m : Machine} (hc : m.frame.code = code)
+    (hpc : PcOk code n m.frame.pc) :
+    m.frame.code[m.frame.pc]? = some (Bytes.getD code m.frame.pc) := by
+  have hlt := hpc.lt_size
+  subst hc
+  rw [getElem?_eq_some_iff]
+  exact ⟨hlt, (getD_eq_getElem hlt).symm⟩
+
+/-- The region starts at a boundary. -/
+theorem pcOk_zero {code : ByteArray} {n : Nat} (h : RegionOk code n) : PcOk code n 0 := by
+  have hs := lt_size_of_mem_boundaries h.2.1
+  refine ⟨?_, h.1⟩
+  unfold boundaries
+  obtain ⟨k, hk⟩ : ∃ k, code.size = k + 1 := ⟨code.size - 1, by omega⟩
+  rw [hk, boundariesFrom_succ]
+  simp only [show 0 < code.size by omega, ↓reduceIte]
+  exact List.mem_cons_self
+
+end EvmLean.Program.GasMono
+
+end
+
+section
+
+/-!
+## Gas monotonicity: the lockstep theorem
 
 **`monoFrom_of_code`**: a frame running code that satisfies the code-level conditions
 (`CodeOk`: `GasFeedsCall`, `RegionOk`, `CallsFed`, `FailureReverts` at every call return point)
@@ -428,3 +596,93 @@ theorem monoFrom_of_code {code : ByteArray} {n : Nat} (hc : CodeOk code n)
     (hcalls mh N mfh oh hSm hex)
 
 end EvmLean.Program.GasMono
+
+end
+
+section
+
+/-!
+## Gas monotonicity: frame summaries for any gas
+
+The form the nested-call simulation consumes (`FrameOk` in `specs/…/NestedSystem.lean` is
+`Halts m (fun mf o => ∀ out, o = .success out → P mf.world)` for a property `P` of the world):
+
+**`halts_world_of_mono`**: let `S` be gas-monotone (`MonoFrom S`) and `ml` a frame of a message
+call with any gas `g`. For any `G ≥ g`, consider the same frame with gas `G` at the top level
+(`topBump G ml`: frame gas and message gas `G`, no parents). If that frame satisfies `S` and
+its summary says that every successful end has a world satisfying `P`, then so does every
+successful end of `ml` — and `ml` does end (its failures roll back to its snapshot by
+`frameResult`, which needs no summary).
+
+The high frame is taken at the top level on purpose: there the end of a frame is
+determined by its `Halts` witness (a finished message is absorbing, `exit_of_halts_top`), while
+a nested `Halts` witness may describe a later point at which the parent happens to look like a
+resumption.
+-/
+
+namespace EvmLean.Program.GasMono
+
+open Interpreter Nested
+
+/-- The frame of `m` with gas `G` (frame and message), at the top level. -/
+def topBump (G : Nat) (m : Machine) : Machine := bump (G - m.frame.gasLeft) G [] m
+
+/-- Nothing is gas-monotone vacuously: the callee condition of a frame that only calls
+precompiles. -/
+theorem monoFrom_false : MonoFrom (fun _ => False) := fun _ _ _ _ _ h => h.elim
+
+/-- The top-level bump is related to the frame. -/
+theorem bumpOf_topBump (G : Nat) (m : Machine) :
+    BumpOf (topBump G m).frame.msg.gas (topBump G m).parents m (topBump G m) :=
+  bumpOf_bump _ _ _ _
+
+/-- The top-level results of a successful end of a message call. -/
+theorem topLevelResult_frameResult_success {target : Option Address} {mf mf' : Machine}
+    {out : ByteArray} {o' : Outcome} {ko ks : Nat} (hk : mf.frame.kind = .call ko ks)
+    (hk' : mf'.frame.kind = .call ko ks)
+    (h : topLevelResult target (frameResult mf' o').2.1 (frameResult mf' o').2.2
+        (frameResult mf' o').1 =
+      topLevelResult target (frameResult mf (.success out)).2.1
+        (frameResult mf (.success out)).2.2 (frameResult mf (.success out)).1) :
+    ∃ out', o' = .success out' ∧ mf'.world = mf.world := by
+  rw [frameResult_success_call hk] at h
+  cases o' with
+  | success out' =>
+    rw [frameResult_success_call hk'] at h
+    refine ⟨out', rfl, ?_⟩
+    have := congrArg MessageResult.world h
+    simpa [topLevelResult, ChildResult.success] using this
+  | revert out' =>
+    have := congrArg MessageResult.reverted h
+    simp [topLevelResult, ChildResult.success, frameResult_revert] at this
+  | halt e =>
+    have := congrArg MessageResult.error h
+    simp [topLevelResult, ChildResult.success, frameResult_halt] at this
+
+/-- **A frame summary transfers to any lower gas.** -/
+theorem halts_world_of_mono {S : Machine → Prop} (hmono : MonoFrom S) {ml : Machine} {G : Nat}
+    {ko ks : Nat} (hk : ml.frame.kind = .call ko ks) (hS : S (topBump G ml))
+    {P : World → Prop}
+    (h : Halts (topBump G ml) (fun mf o => ∀ out, o = .success out → P mf.world)) :
+    Halts ml (fun mf o => ∀ out, o = .success out → P mf.world) := by
+  obtain ⟨N, mfh, oh, hex, mf', o', hH, hs', hfin⟩ := exit_of_halts_top rfl h
+  have hlow := hmono ml (topBump G ml) N mfh oh hS (bumpOf_topBump G ml) hex
+  refine hlow.mono fun mfl ol _ hpost out hol => ?_
+  rcases hpost with hf | ⟨rfl, dd, xx, pp, hmf⟩
+  · exact absurd hol (hf out)
+  · subst hol
+    have hfh := hex.finish
+    have hph : mfh.parents = [] := hfh.2.parents
+    have hp' : mf'.parents = [] := hs'.parents
+    have hkh : mfh.frame.kind = .call ko ks := hfh.2.kind.trans hk
+    have hk' : mf'.frame.kind = .call ko ks := hs'.kind.trans hk
+    rw [finishFrame_of_top _ hp', finishFrame_of_top _ hph, hs'.msg, hfh.2.msg] at hfin
+    injection hfin with hfin
+    obtain ⟨out', ho', hw⟩ := topLevelResult_frameResult_success hkh hk' hfin
+    have := hH out' ho'
+    rw [hw, hmf] at this
+    exact this
+
+end EvmLean.Program.GasMono
+
+end

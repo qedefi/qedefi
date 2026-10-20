@@ -1,11 +1,279 @@
-import Examples.Solmate.ERC20.EventsAssetTransfer
-import Examples.Solmate.ERC20.EventsAssetTransferFrom
-import Examples.Solmate.ERC20.EventsAssetMint
-import Examples.Solmate.ERC4626.Invariants.InvariantsCalls
+import Examples.Solmate.ERC20.Approve
+import Defi.ERC4626.Logs
+import Examples.Solmate.ERC20.TransferFrom
+import Examples.Solmate.ERC20.MintBurn
+import Examples.Solmate.ERC4626.Invariants.System
 import Examples.Solmate.ERC4626.Events
 
 /-!
-# Events of the asset's functions against the model
+# Events of the asset's `transfer` and `approve`: bytecode
+
+Companions of `transfer_halts_ok` (`AssetTransfer.lean`) and `approve_halts`
+(`AssetApprove.lean`) that also determine the frame's logs: the same symbolic execution, with
+the postcondition strengthened by the log the `LOG3` appends.
+
+* `transfer_halts_ok_events`: `TransferOk` and the frame's logs gain exactly
+  `Transfer(caller, dst, amount)` emitted by the asset;
+* `approve_halts_events`: `ApproveOk` and the logs gain exactly `Approval(caller, spender,
+  amount)`.
+
+The topic is the `PUSH32` / code-copied constant of the bytecode; the indexed addresses are the
+masked calldata words; the data is the amount, stored at the free pointer.
+-/
+
+section
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean.Solidity.Erc20 (transferWorld)
+
+set_option maxHeartbeats 0 in
+/-- **`transfer(dst, amount)` of the asset, success, with its log**: as `transfer_halts_ok`,
+and the frame's logs gain `Transfer(caller, dst, amount)`. -/
+theorem transfer_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {dst : Address}
+    {amount : Word} (hd : TwoWordCall m.frame.msg.data 0xa9059cbb (Word.ofAddress dst) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
+    (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
+      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate m.frame.msg.caller)).toNat) :
+    Halts m (fun mf o => TransferOk dst amount m mf o ∧
+      mf.frame.sub.logs = m.frame.sub.logs.push
+        (transferLog m.frame.msg.currentTarget m.frame.msg.caller dst amount)) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  simp only [gt_sub_self_of_le hbal, iszero_zero]
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_codecopy
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  refine ⟨⟨rfl, by simp only [outputMachine, transferWorld, balanceSlot_solmate], rfl, rfl, ?_⟩,
+    ?_⟩
+  · dsimp only [outputMachine]
+    evm_gas
+  · dsimp only [outputMachine]
+    event_log [amount]
+
+set_option maxHeartbeats 0 in
+/-- **`approve(spender, amount)` of the asset, with its log**: as `approve_halts`, and the
+frame's logs gain `Approval(caller, spender, amount)`. -/
+theorem approve_halts_events {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {spender : Address}
+    {amount : Word}
+    (hd : TwoWordCall m.frame.msg.data 0x095ea7b3 (Word.ofAddress spender) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 40000 ≤ m.frame.gasLeft) :
+    Halts m (fun mf o => ApproveOk spender amount m mf o ∧
+      mf.frame.sub.logs = m.frame.sub.logs.push
+        (approvalLog m.frame.msg.currentTarget m.frame.msg.caller spender amount)) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
+  · simp only [outputMachine, Erc20.approveWorld, allowanceSlot_solmate]
+  · dsimp only [outputMachine]
+    evm_gas
+  · dsimp only [outputMachine]
+    event_log [amount]
+
+end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## Events of the asset's `transferFrom`: bytecode
+
+`transferFrom_halts_ok_events`: the companion of `transferFrom_halts_ok`
+(`AssetTransferFrom.lean`) that also determines the frame's logs — on both success paths
+(infinite and finite allowance) the frame's logs gain exactly `Transfer(src, dst, amount)`
+emitted by the asset. Solmate emits **no** `Approval` when it spends the allowance.
+-/
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLean.Solidity.Erc20 (transferWorld)
+
+set_option maxHeartbeats 0 in
+/-- **`transferFrom(src, dst, amount)` of the asset, success, with its log**: as
+`transferFrom_halts_ok`, and the frame's logs gain `Transfer(src, dst, amount)` (and nothing
+else: no `Approval`). -/
+theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}
+    {amount : Word}
+    (hd : ThreeWordCall m.frame.msg.data 0x23b872dd (Word.ofAddress src) (Word.ofAddress dst)
+      amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 90000 ≤ m.frame.gasLeft)
+    (hspend : m.world.sload m.frame.msg.currentTarget
+        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller) =
+        Erc20.maxWord ∨
+      amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
+        (Erc20.allowanceSlot m.ctx.crypto Erc20.Layout.solmate src m.frame.msg.caller)).toNat)
+    (hbal : amount.toNat ≤ ((Erc20.spendWorld m.ctx.crypto m.world m.frame.msg.currentTarget src
+      m.frame.msg.caller amount).sload m.frame.msg.currentTarget
+        (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+    Halts m (fun mf o => TransferFromOk src dst amount m mf o ∧
+      mf.frame.sub.logs = m.frame.sub.logs.push
+        (transferLog m.frame.msg.currentTarget src dst amount)) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1, harg2⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 96))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate, allowanceSlot_solmate] at hbal hspend
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  by_cases hmax : m_world.sload m_msg.currentTarget (m_ctx.crypto.keccak256
+      (Bytes.ofWord (Word.ofAddress m_msg.caller) ++ Bytes.ofWord (m_ctx.crypto.keccak256
+        (Bytes.ofWord (Word.ofAddress src) ++ Bytes.ofWord 4#256)))) = MAXW
+  · simp only [hmax, Solidity.eq_self, ↓reduceIte] at hbal ⊢
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    simp only [gt_sub_self_of_le hbal, iszero_zero]
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    pwp_codecopy
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
+    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
+        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+        allowanceSlot_solmate, hmax, ↓reduceIte]
+    · dsimp only [outputMachine]
+      evm_gas
+    · dsimp only [outputMachine]
+      event_log [amount]
+  · simp only [eq_of_ne hmax, hmax, ↓reduceIte] at hbal ⊢
+    have hle := hspend.resolve_left hmax
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    simp only [gt_sub_self_of_le hle, iszero_zero]
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    simp only [gt_sub_self_of_le hbal, iszero_zero]
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    pwp_codecopy
+    pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    refine ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
+    · simp only [outputMachine, Erc20.transferFromWorld, Erc20.transferWorld, transferWorld,
+        Erc20.spendWorld, maxWord_eq_MAXW, balanceSlot_solmate,
+        allowanceSlot_solmate, hmax, ↓reduceIte]
+    · dsimp only [outputMachine]
+      evm_gas
+    · dsimp only [outputMachine]
+      event_log [amount]
+
+end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## Events of the asset's `mint` and `burn`: bytecode
+
+Companions of `mint_halts_ok` (`AssetMint.lean`) and `burn_halts_ok` (`AssetBurn.lean`) that
+also determine the frame's logs: `MockERC20.mint(dst, amount)` emits `Transfer(0, dst, amount)`
+and `burn(src, amount)` emits `Transfer(src, 0, amount)` (Solmate's `_mint` / `_burn`).
+-/
+
+namespace EvmLeanSpecs.Refinement
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+
+set_option maxHeartbeats 0 in
+/-- **`mint(dst, amount)` of the asset, success, with its log**: as `mint_halts_ok`, and the
+frame's logs gain `Transfer(0, dst, amount)`. -/
+theorem mint_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {dst : Address}
+    {amount : Word}
+    (hd : TwoWordCall m.frame.msg.data 0x40c10f19 (Word.ofAddress dst) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
+    (hov : (m.world.sload m.frame.msg.currentTarget 2#256).toNat + amount.toNat < 2 ^ 256) :
+    Halts m (fun mf o => MintOk dst amount m mf o ∧
+      mf.frame.sub.logs = m.frame.sub.logs.push
+        (transferLog m.frame.msg.currentTarget 0 dst amount)) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  simp only [gt_add_self_of_lt hov, iszero_zero]
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_codecopy
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  refine WP.halt_of_step (step_stop ?_) (by same_frame) ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
+  · pcode_fact
+  · simp only [mintWorld, balanceSlot_solmate]
+  · evm_gas
+  · event_log [amount]
+
+set_option maxHeartbeats 0 in
+/-- **`burn(src, amount)` of the asset, success, with its log**: as `burn_halts_ok`, and the
+frame's logs gain `Transfer(src, 0, amount)`. -/
+theorem burn_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src : Address}
+    {amount : Word}
+    (hd : TwoWordCall m.frame.msg.data 0x9dc29fac (Word.ofAddress src) amount)
+    (hsz : m.frame.msg.data.size < 2 ^ 64) (hg : 60000 ≤ m.frame.gasLeft)
+    (hbal : amount.toNat ≤ (m.world.sload m.frame.msg.currentTarget
+      (Erc20.balanceSlot m.ctx.crypto Erc20.Layout.solmate src)).toNat) :
+    Halts m (fun mf o => BurnOk src amount m mf o ∧
+      mf.frame.sub.logs = m.frame.sub.logs.push
+        (transferLog m.frame.msg.currentTarget src 0 amount)) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [balanceSlot_solmate] at hbal
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
+  simp only [gt_sub_self_of_le hbal, iszero_zero]
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  pwp_codecopy
+  pwp_steps [ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+  refine WP.halt_of_step (step_stop ?_) (by same_frame) ⟨⟨rfl, ?_, rfl, rfl, ?_⟩, ?_⟩
+  · pcode_fact
+  · simp only [burnWorld, balanceSlot_solmate]
+  · evm_gas
+  · event_log [amount]
+
+end EvmLeanSpecs.Refinement
+
+end
+
+section
+
+/-!
+## Events of the asset's functions against the model
 
 For the deployed asset (Solmate `MockERC20`, any immutables), the logs of `transfer`,
 `transferFrom`, `approve`, `mint` and `burn` are the encoding of the model's events
@@ -300,3 +568,5 @@ theorem assetBurn_events_call (hdep : Deployed w vault asset)
     (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
 end EvmLeanSpecs.Refinement
+
+end

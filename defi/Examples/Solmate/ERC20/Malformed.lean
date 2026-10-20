@@ -1,4 +1,4 @@
-import Examples.Solmate.ERC4626.MalformedDefs
+import Examples.Solmate.ERC4626.UnknownSelectors
 
 /-!
 # Malformed calldata for the asset

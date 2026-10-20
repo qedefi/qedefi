@@ -1,8 +1,8 @@
-import Examples.Solmate.ERC4626.Invariants.InvariantsCalls
-import Examples.Solmate.ERC4626.Invariants.AssetApproveCall
-import Examples.Solmate.ERC4626.Invariants.AssetBurnCall
+import Examples.Solmate.ERC4626.Invariants.System
 import Defi.ERC4626.Price
 import Defi.ERC4626.Inflation
+import Examples.Solmate.ERC4626.Withdraw
+import Examples.Solmate.ERC4626.Deposit
 
 /-!
 # The model's invariants hold for the deployed bytecode
@@ -58,6 +58,8 @@ whose two ledgers are well formed)
 `*_now` versions (`supply_eq_sum_now`, `solvent_now`, `no_dilution_now`, `price_mono_now`)
 instantiate `refinesFor_now` (every call but the four entry points).
 -/
+
+section
 
 namespace EvmLeanSpecs.Refinement.Invariants
 
@@ -528,3 +530,370 @@ theorem donation_attack_view {w : World} {ctx : Context} {tr : TransientStorage}
   exact h
 
 end EvmLeanSpecs.Refinement.Invariants
+
+end
+
+section
+
+/-!
+## `vault.withdraw` and `vault.redeem` at the top level: the invariants layer's obligations
+
+`opRefines_withdraw`, `opRefines_redeem`: the `withdraw` and `redeem` fields of
+`Invariants.Pending` (`OpRefinesAt` for every caller and arguments), from the top-level
+refinement theorems `withdraw_call` / `redeem_call`. The trace-level hash hypothesis `SlotsOk`
+gives the per-call `Out.OutSlots` for actors (`outSlots_of`), except the fixed-slot rows, which are
+the hypothesis `KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]` (no balance row is the
+`totalSupply` slot or the `beforeWithdraw` counter: both are written). `withdraw` / `redeem`
+need `200000 ≤ minGas` (four storage writes and a call into the asset).
+-/
+
+namespace EvmLeanSpecs.Refinement.Invariants
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+open EvmLeanSpecs.Refinement.Out
+
+variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
+
+/-- The per-call hash hypotheses of `withdraw` / `redeem` for actors. -/
+theorem outSlots_of (hs : SlotsOk crypto vault Act)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]) {c r o : Address}
+    (hc : c ∈ Act) (hr : r ∈ Act) (ho : o ∈ Act) : OutSlots crypto vault c o r where
+  rows := hk
+  ownerOk := hs.bal o ho
+  owner7 := (hs.balFixed o ho).2
+  allowOk := fun _ => hs.allow o ho c hc
+  allow67 := fun _ => hs.allowFixed o ho c hc
+  vaultOk := hs.bal vault hs.vault_mem
+  receiverOk := hs.bal r hr
+
+/-- Actor pairs are among the share allowances known after `withdraw` / `redeem`. -/
+theorem outAllowances_of (hs : SlotsOk crypto vault Act) {c o : Address} (hc : c ∈ Act)
+    (ho : o ∈ Act) {a b : Address} (h : ActorPairs Act a b) : OutAllowances crypto c o a b := by
+  obtain ⟨ha, hb⟩ := h
+  refine ⟨?_, (hs.allowFixed a ha b hb).1,
+    (Erc20.balanceSlot_ne_allowanceSlot (hs.allow a ha b hb) o).symm, (hs.allow a ha b hb).2.2⟩
+  rcases hs.allowP ha hb ho hc with h | h
+  · exact .inr (.inl h)
+  · exact .inr (.inr h)
+
+/-- Actor pairs are among the asset allowances known after the payout. -/
+theorem transferAllowances_of (hs : SlotsOk crypto vault Act) {r : Address} {a b : Address}
+    (h : ActorPairs Act a b) : TransferAllowances crypto vault r a b :=
+  ⟨(Erc20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm,
+    (Erc20.balanceSlot_ne_allowanceSlot (hs.allow a h.1 b h.2) _).symm⟩
+
+/-- `RefinesOn` with the actor pairs inside both predicates gives `AgreeOn`. -/
+theorem agree_of_refinesOn (hs : SlotsOk crypto vault Act) {c r o : Address} (hc : c ∈ Act)
+    (ho : o ∈ Act) {w' : World} {s' : State Address}
+    (h : RefinesOn (OutAllowances crypto c o) (TransferAllowances crypto vault r) crypto w' vault
+      asset s') :
+    AgreeOn (ActorPairs Act) (abs crypto w' vault asset) s' :=
+  agree_of_reps h.self h.shares h.asset (fun _ _ hp => outAllowances_of hs hc ho hp)
+    (fun _ _ hp => transferAllowances_of hs hp) h.afterDeposit h.beforeWithdraw
+
+set_option maxHeartbeats 1000000 in
+/-- **`vault.withdraw`** refines `Op.withdraw`. -/
+theorem opRefines_withdraw (hmin : 200000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]) (caller : Address)
+    (assets : Word) (receiver owner : Address) :
+    OpRefinesAt crypto vault asset minGas Act (.withdraw caller assets receiver owner) := by
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩, hw'⟩
+  subst hcr hw'
+  simp only [VCall.target, VCall.onAsset, VCall.caller, VCall.data, Bool.false_eq_true,
+    ite_false] at hn
+  have hc : caller ∈ Act := hact caller (by simp [VCall.actors])
+  have hr : receiver ∈ Act := hact receiver (by simp [VCall.actors])
+  have ho : owner ∈ Act := hact owner (by simp [VCall.actors])
+  obtain ⟨n', hn'⟩ := withdraw_call (tr := tr) (wa := wa) (wk := wk) hdep hdeleg (by omega) hg'
+    (outSlots_of hs hk hc hr ho) hinv assets
+  obtain ⟨res, hrun, hres⟩ := hn' (max n n') (le_max_right _ _)
+  obtain rfl := terminates_unique hn (le_max_left _ _) hrun
+  unfold OutResult at hres
+  split at hres
+  · rename_i s' v hW
+    obtain ⟨-, -, hR, hC⟩ := hres
+    refine ⟨hdep.of_code (hC vault) (hC asset), callRefines_some ?_ (agree_of_refinesOn hs hc ho hR)⟩
+    show Option.map Prod.fst (Solmate.withdraw _ _ _ _ _) = _
+    rw [hW]; rfl
+  · rename_i hW
+    obtain ⟨-, -, hwld⟩ := hres
+    refine ⟨hwld ▸ hdep, callRefines_none ?_ hwld⟩
+    show Option.map Prod.fst (Solmate.withdraw _ _ _ _ _) = _
+    rw [hW]; rfl
+
+set_option maxHeartbeats 1000000 in
+/-- **`vault.redeem`** refines `Op.redeem`. -/
+theorem opRefines_redeem (hmin : 200000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256]) (caller : Address)
+    (shares : Word) (receiver owner : Address) :
+    OpRefinesAt crypto vault asset minGas Act (.redeem caller shares receiver owner) := by
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩, hw'⟩
+  subst hcr hw'
+  simp only [VCall.target, VCall.onAsset, VCall.caller, VCall.data, Bool.false_eq_true,
+    ite_false] at hn
+  have hc : caller ∈ Act := hact caller (by simp [VCall.actors])
+  have hr : receiver ∈ Act := hact receiver (by simp [VCall.actors])
+  have ho : owner ∈ Act := hact owner (by simp [VCall.actors])
+  obtain ⟨n', hn'⟩ := redeem_call (tr := tr) (wa := wa) (wk := wk) hdep hdeleg (by omega) hg'
+    (outSlots_of hs hk hc hr ho) hinv shares
+  obtain ⟨res, hrun, hres⟩ := hn' (max n n') (le_max_right _ _)
+  obtain rfl := terminates_unique hn (le_max_left _ _) hrun
+  unfold OutResult at hres
+  split at hres
+  · rename_i s' v hW
+    obtain ⟨-, -, hR, hC⟩ := hres
+    refine ⟨hdep.of_code (hC vault) (hC asset), callRefines_some ?_ (agree_of_refinesOn hs hc ho hR)⟩
+    show Option.map Prod.fst (Solmate.redeem _ _ _ _ _) = _
+    rw [hW]; rfl
+  · rename_i hW
+    obtain ⟨-, -, hwld⟩ := hres
+    refine ⟨hwld ▸ hdep, callRefines_none ?_ hwld⟩
+    show Option.map Prod.fst (Solmate.redeem _ _ _ _ _) = _
+    rw [hW]; rfl
+
+end EvmLeanSpecs.Refinement.Invariants
+
+end
+
+section
+
+/-!
+## `vault.deposit` and `vault.mint` at the top level: the invariants layer's obligations
+
+`opRefines_deposit`, `opRefines_mint`: the `deposit` and `mint` fields of
+`Invariants.Pending` (`OpRefinesAt` for every caller and arguments), from the top-level
+refinement theorems `deposit_call` / `mint_call`. The trace-level hash hypothesis `SlotsOk`
+gives the per-call hypotheses for actors (balance slots of caller, receiver and vault, the
+allowance `allowance[caller][vault]` of the asset, the actor allowance pairs avoiding the
+written slots), except the fixed-slot rows, which are the hypothesis
+`KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]` (no balance row is the
+`totalSupply` slot or a hook counter: slots 2 and 7 are written, and the receiver's balance
+write must not touch counter 6). `deposit` / `mint` need `250000 ≤ minGas` (four storage
+writes in the vault, three in the asset, and the `transferFrom` call).
+-/
+
+namespace EvmLeanSpecs.Refinement.Invariants
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+
+variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
+
+/-- Actor pairs are among the share allowances known after `deposit` / `mint`. -/
+theorem depositAllowances_of (hs : SlotsOk crypto vault Act) {r : Address} {a b : Address}
+    (h : ActorPairs Act a b) : DepositAllowances crypto r a b :=
+  ⟨⟨(hs.allow a h.1 b h.2).2.2, hs.balP h.1 h.2 r⟩, (hs.allowFixed a h.1 b h.2).2⟩
+
+/-- Actor pairs are among the asset allowances known after the asset's `transferFrom`. -/
+theorem transferFromAllowances_of (hs : SlotsOk crypto vault Act) {c : Address} (hc : c ∈ Act)
+    {a b : Address} (h : ActorPairs Act a b) : TransferFromAllowances crypto vault c vault a b :=
+  ⟨⟨hs.balP h.1 h.2 c, hs.balP h.1 h.2 vault⟩, hs.allowP h.1 h.2 hc hs.vault_mem⟩
+
+/-- `Out.RefinesOn` with the actor pairs inside both predicates gives `AgreeOn`. -/
+theorem agree_of_entry (hs : SlotsOk crypto vault Act) {c r : Address} (hc : c ∈ Act)
+    {w' : World} {s' : State Address}
+    (h : Out.RefinesOn (DepositAllowances crypto r) (TransferFromAllowances crypto vault c vault)
+      crypto w' vault asset s') :
+    AgreeOn (ActorPairs Act) (abs crypto w' vault asset) s' :=
+  agree_of_reps h.self h.shares h.asset (fun _ _ hp => depositAllowances_of hs hp)
+    (fun _ _ hp => transferFromAllowances_of hs hc hp) h.afterDeposit h.beforeWithdraw
+
+set_option maxHeartbeats 1000000 in
+/-- **`vault.deposit`** refines `Op.deposit`. -/
+theorem opRefines_deposit (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) (caller : Address)
+    (assets : Word) (receiver : Address) :
+    OpRefinesAt crypto vault asset minGas Act (.deposit caller assets receiver) := by
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩, hw'⟩
+  subst hcr hw'
+  simp only [VCall.target, VCall.onAsset, VCall.caller, VCall.data, Bool.false_eq_true,
+    ite_false] at hn
+  have hc : caller ∈ Act := hact caller (by simp [VCall.actors])
+  have hr : receiver ∈ Act := hact receiver (by simp [VCall.actors])
+  obtain ⟨n', hn'⟩ := deposit_call (tr := tr) (wa := wa) (wk := wk) hdep hdeleg (by omega) hg'
+    hk (hs.bal caller hc) (hs.bal vault hs.vault_mem) (hs.bal receiver hr)
+    (hs.allow caller hc vault hs.vault_mem) hinv assets
+  obtain ⟨res, hrun, hres⟩ := hn' (max n n') (le_max_right _ _)
+  obtain rfl := terminates_unique hn (le_max_left _ _) hrun
+  unfold EntryResult at hres
+  split at hres
+  · rename_i s' v hW
+    obtain ⟨-, -, hwld, hR⟩ := hres
+    refine ⟨hdep.of_code (by rw [hwld]; exact code_depositWorld ..)
+      (by rw [hwld]; exact code_depositWorld ..), callRefines_some ?_ (agree_of_entry hs hc hR)⟩
+    show Option.map Prod.fst (Solmate.deposit _ _ _ _) = _
+    rw [hW]; rfl
+  · rename_i hW
+    obtain ⟨-, -, hwld⟩ := hres
+    refine ⟨hwld ▸ hdep, callRefines_none ?_ hwld⟩
+    show Option.map Prod.fst (Solmate.deposit _ _ _ _) = _
+    rw [hW]; rfl
+
+set_option maxHeartbeats 1000000 in
+/-- **`vault.mint`** refines `Op.mint`. -/
+theorem opRefines_mint (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) (caller : Address)
+    (shares : Word) (receiver : Address) :
+    OpRefinesAt crypto vault asset minGas Act (.mint caller shares receiver) := by
+  rintro hs hact w w' hdep hinv ⟨ctx, tr, gas, wa, wk, r, hcr, hdeleg, hg, hg', -, -, ⟨n, hn⟩, hw'⟩
+  subst hcr hw'
+  simp only [VCall.target, VCall.onAsset, VCall.caller, VCall.data, Bool.false_eq_true,
+    ite_false] at hn
+  have hc : caller ∈ Act := hact caller (by simp [VCall.actors])
+  have hr : receiver ∈ Act := hact receiver (by simp [VCall.actors])
+  obtain ⟨n', hn'⟩ := mint_call (tr := tr) (wa := wa) (wk := wk) hdep hdeleg (by omega) hg'
+    hk (hs.bal caller hc) (hs.bal vault hs.vault_mem) (hs.bal receiver hr)
+    (hs.allow caller hc vault hs.vault_mem) hinv shares
+  obtain ⟨res, hrun, hres⟩ := hn' (max n n') (le_max_right _ _)
+  obtain rfl := terminates_unique hn (le_max_left _ _) hrun
+  unfold EntryResult at hres
+  split at hres
+  · rename_i s' v hW
+    obtain ⟨-, -, hwld, hR⟩ := hres
+    refine ⟨hdep.of_code (by rw [hwld]; exact code_depositWorld ..)
+      (by rw [hwld]; exact code_depositWorld ..), callRefines_some ?_ (agree_of_entry hs hc hR)⟩
+    show Option.map Prod.fst (Solmate.mint _ _ _ _) = _
+    rw [hW]; rfl
+  · rename_i hW
+    obtain ⟨-, -, hwld⟩ := hres
+    refine ⟨hwld ▸ hdep, callRefines_none ?_ hwld⟩
+    show Option.map Prod.fst (Solmate.mint _ _ _ _) = _
+    rw [hW]; rfl
+
+/-- **All four pending obligations**, from `opRefines_deposit` / `opRefines_mint` here and
+`opRefines_withdraw` / `opRefines_redeem` (`InvariantsWithdrawRedeem`), under the one fixed-slot
+hypothesis `[2, 6, 7]`. With `refinesFor_all` every call kind is refined. -/
+theorem pending_of (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) :
+    Pending crypto vault asset minGas Act where
+  deposit c a r := opRefines_deposit hmin hk c a r
+  mint c n r := opRefines_mint hmin hk c n r
+  withdraw c a r o := opRefines_withdraw (by omega) (KeccakAvoids.sub hk (by simp)) c a r o
+  redeem c n r o := opRefines_redeem (by omega) (KeccakAvoids.sub hk (by simp)) c n r o
+
+/-- **Every call kind refines its operation** under `SlotsOk` and the fixed-slot hypothesis. -/
+theorem refinesFor_all_of (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256]) :
+    RefinesFor crypto vault asset minGas Act (fun _ => True) :=
+  refinesFor_all (by omega) (KeccakAvoids.sub hk (by simp)) (pending_of hmin hk)
+
+end EvmLeanSpecs.Refinement.Invariants
+
+end
+
+section
+
+/-!
+## The headline theorems, with every call kind proved
+
+`Invariants.lean` states each headline property for any refinement hypothesis
+`RefinesFor … K`. `refinesFor_all_of` discharges that hypothesis for **every** modelled call
+(the four ERC-4626 entry points, the vault's share-token functions and views, and the asset's
+transfers, approvals, mints and burns, including donations to the vault). This file
+instantiates it, so the theorems below are about the deployed bytecode with no pending
+refinement obligations.
+
+The remaining hypotheses, all explicit:
+
+* `hmin`: every modelled call in the trace carries at least 250 000 gas (and below 2⁶⁴, in
+  `Trace`); calls carry no ETH; no EIP-7702 authorizations (or a fork before Prague).
+* `hk`, `hs`: Keccak freshness. No address's share-balance slot is one of the fixed slots
+  2, 6, 7, and the balance/allowance slots of the finitely many actors are fresh (`SlotsOk`).
+  Global Keccak injectivity is false (pigeonhole) and is never assumed.
+* `hdep`, `hinv`: the vault and the asset hold the compiled Solmate `MockERC4626` /
+  `MockERC20` runtime code (any immutables), and the initial ledgers are well formed.
+* `htr`: the trace consists of top-level modelled calls by arbitrary callers (success or
+  revert) interleaved with arbitrary steps that leave the vault's and asset's storage and code
+  unchanged. Nested calls into the vault from other contracts are covered at frame level for
+  the entry points and views, not yet by the trace (see `INVARIANTS.md`).
+-/
+
+namespace EvmLeanSpecs.Refinement.Invariants
+
+open EvmLean EvmLean.Program EvmLean.Interpreter EvmLean.Solidity EvmLean.Contracts
+open EvmLeanSpecs.Vault EvmLeanSpecs.Vault.Solmate EvmLeanSpecs.Refinement.Lift
+
+variable {crypto : Crypto} {vault asset : Address} {minGas : Nat} {Act : List Address}
+
+/-- **Share and asset supply equal the sum of balances**, on the deployed bytecode, after any
+trace of modelled calls. -/
+theorem supply_eq_sum_deployed (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall}
+    (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (htr : Trace crypto vault asset minGas w₀ cs w) (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) :
+    (w.sload vault 2#256).toNat =
+        ∑ a : Address, (w.sload vault (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat ∧
+      (w.sload asset 2#256).toNat =
+        ∑ a : Address, (w.sload asset (Erc20.balanceSlot crypto Erc20.Layout.solmate a)).toNat :=
+  supply_eq_sum hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial)
+
+/-- **Solvency**: the vault's asset balance covers every holder's shares converted at the
+current price (rounding down), on the deployed bytecode, after any trace of modelled calls. -/
+theorem solvent_deployed (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall}
+    (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (htr : Trace crypto vault asset minGas w₀ cs w) (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act) :
+    ∑ a : Address, sharesAt crypto w vault a * assetsAt crypto w vault asset / supplyAt w vault ≤
+      assetsAt crypto w vault asset :=
+  solvent hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial)
+
+/-- **No dilution**: inside any trace, a user operation (deposit, mint, withdraw, redeem)
+starting with shares outstanding never lowers the assets-per-share price `T / S`. -/
+theorem no_dilution_deployed (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs₁ cs₂ : List VCall} {c : VCall}
+    (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (htr : Trace crypto vault asset minGas w₀ (cs₁ ++ c :: cs₂) w)
+    (hact : ∀ d ∈ cs₁ ++ c :: cs₂, ∀ a ∈ d.actors, a ∈ Act) (hu : UserOp vault c.op) :
+    ∃ v v', CallStep crypto vault asset minGas v c v' ∧
+      (supplyAt v vault ≠ 0 →
+        assetsAt crypto v vault asset * supplyAt v' vault ≤
+          assetsAt crypto v' vault asset * supplyAt v vault) :=
+  no_dilution hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial) hu
+
+/-- **Price monotonicity**: along a trace of user operations that never empties the vault,
+the assets-per-share price never decreases. -/
+theorem price_mono_deployed (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {w₀ w : World} {cs : List VCall}
+    (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (htr : Trace crypto vault asset minGas w₀ cs w) (hact : ∀ c ∈ cs, ∀ a ∈ c.actors, a ∈ Act)
+    (hu : ∀ c ∈ cs, UserOp vault c.op)
+    (hS : ∀ k v, Trace crypto vault asset minGas w₀ (cs.take k) v →
+      Trace crypto vault asset minGas v (cs.drop k) w → supplyAt v vault ≠ 0) :
+    (assetsAt crypto w₀ vault asset : ℚ) / supplyAt w₀ vault ≤
+      (assetsAt crypto w vault asset : ℚ) / supplyAt w vault :=
+  price_mono hs (refinesFor_all_of hmin hk) hdep hinv htr hact (fun _ _ => trivial) hu hS
+
+/-- **The first-depositor donation attack, executed on the deployed bytecode**: attacker
+`deposit(1)`, donation of `D` assets, victim `deposit(a)`. If `a ≤ D` the victim's receiver
+gets no shares and the attacker holds the only share; if `D < a ≤ 2D + 1` either the victim's
+call reverted or the receiver got exactly one share worth `⌊(a + D + 1)/2⌋`. -/
+theorem donation_attack_deployed (hmin : 250000 ≤ minGas)
+    (hk : KeccakAvoids crypto (AddressKeyed [3#256]) [2#256, 6#256, 7#256])
+    (hs : SlotsOk crypto vault Act) {att v r : Address} (hatt : att ∈ Act) (hv : v ∈ Act)
+    (hr : r ∈ Act) (hattv : att ≠ vault) (hvv : v ≠ vault)
+    {w₀ w : World} (hdep : Deployed w₀ vault asset) (hinv : Solmate.Inv (abs crypto w₀ vault asset))
+    (hS : supplyAt w₀ vault = 0) (hT : assetsAt crypto w₀ vault asset = 0)
+    {D a : Word} {s₁ s₂ : State Address} {n : ℕ}
+    (h₁ : Solmate.deposit (abs crypto w₀ vault asset) att 1 att = some (s₁, n))
+    (h₂ : step s₁ (.assetTransfer att vault D.toNat) = some s₂)
+    (htr : Trace crypto vault asset minGas w₀
+      [.deposit att 1#256 att, .assetTransfer att vault D, .deposit v a r] w) :
+    (a.toNat ≤ D.toNat →
+      supplyAt w vault = 1 ∧ assetsAt crypto w vault asset = D.toNat + 1 ∧
+        sharesAt crypto w vault att = 1 ∧ (r ≠ att → sharesAt crypto w vault r = 0)) ∧
+    (D.toNat < a.toNat → a.toNat ≤ 2 * D.toNat + 1 →
+      (supplyAt w vault = 1 ∧ assetsAt crypto w vault asset = D.toNat + 1) ∨
+      (supplyAt w vault = 2 ∧ assetsAt crypto w vault asset = a.toNat + D.toNat + 1 ∧
+        (r ≠ att → sharesAt crypto w vault r = 1) ∧
+        (abs crypto w vault asset).convertToAssets 1 = some ((a.toNat + D.toNat + 1) / 2))) :=
+  donation_attack (by omega) (fun c a r => opRefines_deposit hmin hk c a r) hs hatt hv hr hattv
+    hvv hdep hinv hS hT h₁ h₂ htr
+
+end EvmLeanSpecs.Refinement.Invariants
+
+end

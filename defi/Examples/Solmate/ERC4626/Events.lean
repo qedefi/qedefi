@@ -1,7 +1,7 @@
 import Defi.ERC4626.Events
 import Examples.Solmate.ERC4626.Abstraction
 import Defi.ERC4626.Logs
-import EvmLogic.Solidity.ExtraWord
+import EvmLogic.Solidity.Word
 
 /-!
 # Events as EVM logs

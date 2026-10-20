@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the ERC-4626 verification targets with the pinned compiler, extract their artifacts
-# and generate the Lean constants in EvmLeanProofs/Contracts/.
+# and generate the Lean constants in defi/Examples/{Solmate,OpenZeppelin}/Contracts/.
 #
 #   scripts/build-contracts.sh            # rebuild artifacts and Lean files
 #   scripts/build-contracts.sh --check    # rebuild and fail if anything committed changed
@@ -11,7 +11,8 @@
 #     runtime.hex, abi.json, methodIdentifiers.json, events.json, errors.json,
 #     storageLayout.json, immutableReferences.json}
 #   contracts/artifacts/deployment.json
-#   EvmLeanProofs/Contracts/{SolmateAsset,SolmateVault,OzAsset,OzVault}.lean
+#   defi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}.lean
+#   defi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault}.lean
 #
 # Immutables. solc emits the runtime code with zero placeholders where immutables go
 # (`runtime.template.hex`, positions in `immutableReferences.json`); the constructor fills
@@ -25,7 +26,6 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 C="$ROOT/contracts"
 ART="$C/artifacts"
-LEAN="$ROOT/EvmLeanProofs/Contracts"
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
 
@@ -55,6 +55,13 @@ declare -A SOLNAME=(
   [OzVault]="src/OzVault.sol:OzVault"
 )
 TARGETS=(SolmateAsset SolmateVault OzAsset OzVault)
+# Directory of each generated Lean module.
+declare -A LEANDIR=(
+  [SolmateAsset]="$ROOT/defi/Examples/Solmate/Contracts"
+  [SolmateVault]="$ROOT/defi/Examples/Solmate/Contracts"
+  [OzAsset]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
+  [OzVault]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
+)
 
 # Names of all immutables, by AST id (forge artifacts carry each source's AST).
 IMM_NAMES=$(find "$C/out" -name '*.json' -not -path '*/build-info/*' -print0 \
@@ -169,13 +176,14 @@ for t in "${TARGETS[@]}"; do
   [ "$masked" = "$tmpl" ] || { echo "error: $t: deployed code differs outside immutables" >&2; exit 1; }
 
   # ------------------------------------------------------------ Lean file
-  f="$LEAN/$t.lean"
+  f="${LEANDIR[$t]}/$t.lean"
   nimm=$(jq length "$d/immutableReferences.json")
   rsize=$(( ${#code} / 2 ))
   csize=$(( $(wc -c < "$d/creation.hex" | tr -d ' ') / 2 ))
   {
     cat <<EOF
-import EvmLeanProofs.Contracts.Basic
+import EvmLogic.Solidity.Immutables
+import EvmLogic.Solidity.Layout
 
 /-!
 # \`$t\`: compiled bytecode and metadata (generated)
@@ -311,7 +319,8 @@ for t in "${TARGETS[@]}"; do
 done
 
 if [ $CHECK -eq 1 ]; then
-  git -C "$ROOT" diff --exit-code -- contracts/artifacts EvmLeanProofs/Contracts \
+  git -C "$ROOT" diff --exit-code -- contracts/artifacts defi/Examples/Solmate/Contracts \
+    defi/Examples/OpenZeppelin/Contracts \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"
 fi

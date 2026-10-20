@@ -1,5 +1,4 @@
 import EvmLogic.GasMono.Lockstep
-import EvmLogic.GasMono.LockstepTop
 import EvmLogic.AbsInt.Effect
 
 /-!

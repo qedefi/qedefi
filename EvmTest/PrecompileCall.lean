@@ -1,5 +1,5 @@
 import EvmLean.Crypto.Real
-import EvmLogic.Program.PrecompileCallEcrecover
+import EvmLogic.Program.PrecompileCall
 
 /-!
 # Tests for `ECRECOVER` on four words (`EvmLeanProofs.Program.PrecompileCallEcrecover`)

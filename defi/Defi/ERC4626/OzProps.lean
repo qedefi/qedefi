@@ -1,7 +1,7 @@
 module
 
 public import Defi.ERC4626.Oz
-public import Defi.Math.RoundTripAlgebra
+public import Defi.Math.Arith
 
 /-!
 # Properties of the OpenZeppelin vault

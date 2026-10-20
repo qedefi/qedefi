@@ -1,7 +1,7 @@
 import EvmLogic.Step.Log
 import EvmLogic.Step.Storage
 import EvmLogic.Program.Call
-import EvmLogic.Program.ExtraLogic
+import EvmLogic.Program.Summary
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Memory
 

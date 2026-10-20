@@ -1,6 +1,7 @@
 import Examples.Differential.Rpc
 import Examples.Differential.Local
 import Examples.Differential.Gen
+import Examples.Deployment
 
 /-!
 # `lake exe difftest`: evm-lean vs. anvil on the ERC-4626 targets

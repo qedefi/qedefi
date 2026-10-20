@@ -1,10 +1,9 @@
 import Examples.Solmate.ERC4626.Nested.Calls
-import Examples.Solmate.ERC4626.SharesFrameViews
+import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.ViewsSpec
-import Examples.Solmate.ERC4626.ViewsRest
-import Examples.Solmate.ERC20.StringsAssetSpec
+import Examples.Solmate.ERC20.Strings
 import Examples.Solmate.ERC4626.PermitSpec
-import Examples.Solmate.ERC4626.MalformedCalldata
+import Examples.Solmate.ERC4626.Malformed
 
 /-!
 # Frame summaries of views and of calls carrying value

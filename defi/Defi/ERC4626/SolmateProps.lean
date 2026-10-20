@@ -1,7 +1,7 @@
 module
 
-public import Defi.ERC4626.SolmateEffects
-public import Defi.Math.RoundTripAlgebra
+public import Defi.ERC4626.Solmate
+public import Defi.Math.Arith
 
 /-!
 # Properties of the Solmate vault

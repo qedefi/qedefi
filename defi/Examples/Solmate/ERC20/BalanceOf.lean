@@ -3,7 +3,7 @@ import EvmLogic.Program.Summary
 import EvmLogic.Solidity.ERC20
 import EvmLogic.Tactic.SolStep
 import EvmLogic.Solidity.Dispatch
-import EvmLogic.Solidity.ExtraWord
+import EvmLogic.Solidity.Word
 import Examples.Solmate.Contracts.SolmateAsset
 import EvmLogic.Tactic.Patched
 import EvmLogic.Tactic.KernelRfl

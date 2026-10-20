@@ -1,9 +1,77 @@
-import EvmLogic.Solidity.Basic
+import EvmLean
 import EvmLogic.Solidity.JumpDest
 import EvmLogic.Solidity.Abi
 
 /-!
-# Code with immutables: reading around the patches
+# Compiled contracts: shared definitions
+
+The verification targets (`contracts/`, see `contracts/README.md`) are compiled by
+`scripts/build-contracts.sh`, which generates one Lean module per contract:
+
+| Module | Solidity contract | Role |
+|---|---|---|
+| `Contracts.SolmateAsset` | Solmate `MockERC20` | asset of the Solmate vault |
+| `Contracts.SolmateVault` | Solmate `MockERC4626` | Solmate ERC-4626 vault |
+| `Contracts.OzAsset` | OpenZeppelin `ERC20Mock` | asset of the OpenZeppelin vault |
+| `Contracts.OzVault` | `OzVault` (OpenZeppelin `ERC4626`, nothing overridden) | OpenZeppelin vault |
+
+Each module defines `creationCode`, `constructorArgs`, `runtimeCode` (the code deployed in
+the canonical deployment, `Deployment`), `address`, `selectors`, `events`, `errors`,
+`storageLayout`, `immutableRefs` and, for contracts with immutables, `Immutables`,
+`runtimeCodeWith` and `deployment`.
+
+This file holds the immutables types those modules use (the storage-layout types are in
+`EvmLogic.Solidity.Layout`, the canonical deployment parameters in `Examples.Deployment`).
+
+## Immutables
+
+solc compiles a Solidity `immutable` into 32-byte `PUSH32` placeholders in the runtime code;
+the constructor writes the value into each placeholder before returning the code. The
+positions are part of the compiler output (`immutableReferences`), so the runtime code for
+other deployment parameters is `runtimeCodeWith` (the canonical code patched by position).
+`Contracts.Deploy` computes the immutables from the deployment parameters.
+-/
+
+section
+
+namespace EvmLean.Contracts
+
+/-- An immutable variable and the byte offsets of its 32-byte placeholders in the runtime code. -/
+structure ImmutableRef where
+  /-- The Solidity name of the immutable. -/
+  name : String
+  /-- Offsets of the 32-byte slots holding its value. -/
+  offsets : List Nat
+  deriving Repr, DecidableEq, Inhabited
+
+/-- Overwrite `l` from position `off` with `src` (truncated at the end of `l`). Structural on
+lists, so it reduces in the kernel (`ByteArray.copySlice` does not, usefully). -/
+def writeList : List UInt8 → Nat → List UInt8 → List UInt8
+  | l, _, [] => l
+  | [], _, _ => []
+  | _ :: xs, 0, y :: ys => y :: writeList xs 0 ys
+  | x :: xs, n + 1, ys => x :: writeList xs n ys
+
+/-- Overwrite the 32 bytes at each offset with the corresponding word (big-endian). -/
+def patchWords (code : ByteArray) (ps : List (Nat × Word)) : ByteArray :=
+  ⟨⟨ps.foldl (fun l p => writeList l p.1 (Bytes.ofWord p.2).data.toList) code.data.toList⟩⟩
+
+/-- Byte arrays with the same bytes are equal. Kernel checks of code equality should compare
+`.data.toList` (structural) rather than use `ByteArray`'s `DecidableEq`, which does not
+reduce well in the kernel. -/
+theorem eq_of_data_toList_eq {a b : ByteArray} (h : a.data.toList = b.data.toList) : a = b := by
+  rcases a with ⟨⟨a⟩⟩
+  rcases b with ⟨⟨b⟩⟩
+  simp_all
+
+end EvmLean.Contracts
+
+end
+
+section
+
+/-!
+## Code with immutables: reading around the patches
 
 solc compiles a Solidity `immutable` into 32-byte `PUSH32` placeholders that the constructor
 fills in; `Contracts.patchWords code ps` is the canonical runtime code with the word `w`
@@ -224,3 +292,5 @@ theorem isValidJumpDest_of_agree {code base : ByteArray} {d : Nat} (h : JumpDest
   Solidity.isValidJumpDest_of_mem (by rw [h.1, h.2]; exact hd)
 
 end EvmLean.Contracts
+
+end

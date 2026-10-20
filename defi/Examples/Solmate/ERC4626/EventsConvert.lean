@@ -1,5 +1,5 @@
-import Examples.Solmate.ERC4626.DepositConvert
-import Defi.ERC4626.EventsTactic
+import Examples.Solmate.ERC4626.ConvertGas
+import Defi.ERC4626.Logs
 
 /-!
 # The vault's conversions emit no logs
