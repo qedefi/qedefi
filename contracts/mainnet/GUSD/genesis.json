@@ -1,0 +1,30 @@
+{
+  "note": "ERC20Proxy (the token address): custodian alice, erc20Impl the mainnet ERC20Impl (0x483A\u202640A2), name Gemini dollar, symbol GUSD, 2 decimals; lockRequestCount 0. Balances, allowances and the supply live in ERC20Store (GUSDStore/genesis.json).",
+  "storage": [
+    {
+      "label": "custodian",
+      "slot": "0x1",
+      "value": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+    },
+    {
+      "label": "erc20Impl",
+      "slot": "0x3",
+      "value": "0x000000000000000000000000483a1e7f16f46266400f1baf7abdf445c8d140a2"
+    },
+    {
+      "label": "name",
+      "slot": "0x5",
+      "value": "0x47656d696e6920646f6c6c61720000000000000000000000000000000000001a"
+    },
+    {
+      "label": "symbol",
+      "slot": "0x6",
+      "value": "0x4755534400000000000000000000000000000000000000000000000000000008"
+    },
+    {
+      "label": "decimals",
+      "slot": "0x7",
+      "value": "0x2"
+    }
+  ]
+}

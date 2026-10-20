@@ -1,0 +1,20 @@
+{
+  "name": "YAMV2",
+  "address": "0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A",
+  "chainId": 1,
+  "block": 26236997,
+  "blockHash": "0x0889f6b976aa315c0d37e02a7e11b9bf8231cbed0574f246f80f8f3a9b53e608",
+  "codeHash": "0xba80d2f3d66c1c11fe204b02db121186e3113415910213bbe355db422dc595b1",
+  "codeSize": 3683,
+  "contractName": "YAMv2",
+  "compiler": "0.6.12+commit.27d51765",
+  "optimizer": {
+    "runs": 50000,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

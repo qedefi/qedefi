@@ -1,0 +1,90 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (no solc 0.6.12 storageLayout output available locally); checked against mainnet storage and getters (layout-check.txt).",
+  "storage": [
+    {
+      "label": "minter",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_balances",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_allowances",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "3",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_name",
+      "slot": "4",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_symbol",
+      "slot": "5",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "YAMv2"
+    },
+    {
+      "label": "_decimals",
+      "slot": "6",
+      "offset": 0,
+      "type": "t_uint8",
+      "contract": "YAMv2"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint8": {
+      "encoding": "inplace",
+      "label": "uint8",
+      "numberOfBytes": "1"
+    }
+  }
+}

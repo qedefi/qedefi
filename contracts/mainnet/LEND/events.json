@@ -1,0 +1,6 @@
+{
+  "Approval(address,address,uint256)": "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
+  "LogBurn(address,uint256)": "0x38d762ef507761291a578e921acfe29c1af31a7331ea03e391cf16cfc4d4f581",
+  "LogBuy(address,uint256)": "0x4f79409f494e81c38036d80aa8a6507c2cb08d90bfb2fead5519447646b3497e",
+  "Transfer(address,address,uint256)": "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+}

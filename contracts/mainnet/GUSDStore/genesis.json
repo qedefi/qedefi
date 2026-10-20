@@ -1,0 +1,70 @@
+{
+  "note": "ERC20Store: custodian alice, erc20Impl the mainnet ERC20Impl; balances for the four actors (100 units = 1 GUSD), totalSupply their sum; two allowances (one infinite, which GUSD still decrements).",
+  "storage": [
+    {
+      "label": "custodian",
+      "slot": "0x1",
+      "value": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+    },
+    {
+      "label": "erc20Impl",
+      "slot": "0x3",
+      "value": "0x000000000000000000000000483a1e7f16f46266400f1baf7abdf445c8d140a2"
+    },
+    {
+      "label": "totalSupply",
+      "slot": "0x5",
+      "value": "0xa6e4a24"
+    },
+    {
+      "label": "balance[alice]",
+      "mapping": "6",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0x5f5e100"
+    },
+    {
+      "label": "balance[bob]",
+      "mapping": "6",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x2faf080"
+    },
+    {
+      "label": "balance[carol]",
+      "mapping": "6",
+      "keys": [
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x17d7840"
+    },
+    {
+      "label": "balance[dave]",
+      "mapping": "6",
+      "keys": [
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0x64"
+    },
+    {
+      "label": "allowance[bob][carol]",
+      "mapping": "7",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B",
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x186a0"
+    },
+    {
+      "label": "allowance[alice][dave]",
+      "mapping": "7",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE",
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

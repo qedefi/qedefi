@@ -1,0 +1,605 @@
+[
+  {
+    "name": "supply",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "name",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "teamTokenBonus",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "approve",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_spender",
+        "type": "address"
+      },
+      {
+        "name": "_value",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "TOTAL_SOLD_TOKEN_SUPPLY_LIMIT",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "currentState",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "PRESALE_MAX_ETH",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "totalSupply",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "buyTokensPresale",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "payable": true,
+    "constant": false,
+    "stateMutability": "payable"
+  },
+  {
+    "name": "transferFrom",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_from",
+        "type": "address"
+      },
+      {
+        "name": "_to",
+        "type": "address"
+      },
+      {
+        "name": "_value",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "presaleSoldTokens",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "tokenManager",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "decimals",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "icoSoldTokens",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "setState",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_nextState",
+        "type": "uint8"
+      }
+    ],
+    "outputs": [],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "PRESALE_PRICE",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "ICO_PRICE1",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "balanceOf",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_owner",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "withdrawEther",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "DEVELOPERS_BONUS",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "setTokenManager",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_mgr",
+        "type": "address"
+      }
+    ],
+    "outputs": [],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "TOTAL_SUPPLY",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "symbol",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "getPrice",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "transfer",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_to",
+        "type": "address"
+      },
+      {
+        "name": "_value",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "constant": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "enableTransfers",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "buyTokens",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "payable": true,
+    "constant": false,
+    "stateMutability": "payable"
+  },
+  {
+    "name": "buyTokensICO",
+    "type": "function",
+    "inputs": [],
+    "outputs": [],
+    "payable": true,
+    "constant": false,
+    "stateMutability": "payable"
+  },
+  {
+    "name": "totalSoldTokens",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "allowance",
+    "type": "function",
+    "inputs": [
+      {
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "name": "_spender",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "escrow",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "ICO_PRICE3",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "PRESALE_TOKEN_SUPPLY_LIMIT",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "name": "ICO_PRICE2",
+    "type": "function",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "constant": true,
+    "stateMutability": "view"
+  },
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_tokenManager",
+        "type": "address"
+      },
+      {
+        "name": "_escrow",
+        "type": "address"
+      },
+      {
+        "name": "_teamTokenBonus",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "fallback",
+    "payable": true,
+    "stateMutability": "payable"
+  },
+  {
+    "name": "LogBuy",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "LogBurn",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "Transfer",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "_from",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "_to",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "_value",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "name": "Approval",
+    "type": "event",
+    "inputs": [
+      {
+        "name": "_owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "_spender",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "_value",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

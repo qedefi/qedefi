@@ -1,0 +1,80 @@
+{
+  "note": "Constructor state with test parameters: name and symbol YAMv2, 24 decimals, minter alice; balances for the four actors (10^24 units = 1 YAMv2), _totalSupply their sum; two allowances (one infinite, which YAMv2 still decrements).",
+  "storage": [
+    {
+      "label": "minter",
+      "slot": "0x0",
+      "value": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "0x3",
+      "value": "0x16168ee62e971b6d4791000000"
+    },
+    {
+      "label": "_name",
+      "slot": "0x4",
+      "value": "0x59414d763200000000000000000000000000000000000000000000000000000a"
+    },
+    {
+      "label": "_symbol",
+      "slot": "0x5",
+      "value": "0x59414d763200000000000000000000000000000000000000000000000000000a"
+    },
+    {
+      "label": "_decimals",
+      "slot": "0x6",
+      "value": "0x18"
+    },
+    {
+      "label": "balance[alice]",
+      "mapping": "1",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0xc9f2c9cd04674edea40000000"
+    },
+    {
+      "label": "balance[bob]",
+      "mapping": "1",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x64f964e68233a76f520000000"
+    },
+    {
+      "label": "balance[carol]",
+      "mapping": "1",
+      "keys": [
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x327cb2734119d3b7a90000000"
+    },
+    {
+      "label": "balance[dave]",
+      "mapping": "1",
+      "keys": [
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xd3c21bcecceda1000000"
+    },
+    {
+      "label": "allowance[bob][carol]",
+      "mapping": "2",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B",
+        "0x00000000000000000000000000000000000CA401"
+      ],
+      "value": "0x204fce5e3e25026110000000"
+    },
+    {
+      "label": "allowance[alice][dave]",
+      "mapping": "2",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE",
+        "0x000000000000000000000000000000000000DA7E"
+      ],
+      "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

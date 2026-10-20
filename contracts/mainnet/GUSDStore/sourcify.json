@@ -1,0 +1,46 @@
+{
+  "address": "0xc42B14e49744538e3C239f8ae48A1Eaaf35e68a0",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2025-07-04T16:29:13Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.21+commit.dfe3193c",
+    "compilerSettings": {
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      }
+    },
+    "name": "ERC20Store",
+    "fullyQualifiedName": "ERC20Store.sol:ERC20Store"
+  },
+  "deployment": {
+    "transactionHash": "0x01a2c67b36b1b8f5c7398cf774c4f4198ff4d2820fcdc251c234b019970a4ce8",
+    "blockNumber": "6301768",
+    "transactionIndex": "2",
+    "deployer": "0x4c2F150Fc90fed3d8281114c2349f1906cdE5346"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 1983,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820d1e33473873d581c9a39e240b85382ae7123ed8a3fa52eca0090f157492317d30029",
+      "offset": 1983
+    }
+  }
+}

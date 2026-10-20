@@ -86,7 +86,7 @@ declare -A LEANDIR=(
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
 # (its directory mirrors the namespace).
-MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy)
+MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy GUSD GUSDImpl GUSDStore YAMV2 LEND ZRX)
 declare -A MNS=(
   [WETH9]="Examples.WETH9.Contracts"
   [USDT]="Examples.WeirdERC20.USDT.Contracts"
@@ -94,6 +94,12 @@ declare -A MNS=(
   [STA]="Examples.WeirdERC20.STA.Contracts"
   [AMPL]="Examples.WeirdERC20.AMPL.Contracts"
   [AMPLProxy]="Examples.WeirdERC20.AMPL.Contracts"
+  [GUSD]="Examples.WeirdERC20.GUSD.Contracts"
+  [GUSDImpl]="Examples.WeirdERC20.GUSD.Contracts"
+  [GUSDStore]="Examples.WeirdERC20.GUSD.Contracts"
+  [YAMV2]="Examples.WeirdERC20.YAMV2.Contracts"
+  [LEND]="Examples.WeirdERC20.LEND.Contracts"
+  [ZRX]="Examples.WeirdERC20.ZRX.Contracts"
 )
 
 # Names of all immutables, by AST id (forge artifacts carry each source's AST).
@@ -470,7 +476,7 @@ def codeHash : Word := $hash
 /-- The mainnet block at which \`runtimeCode\` was read. -/
 def fetchBlock : Nat := $(jq -r .block "$d/meta.json")
 
-/-- The contract has no immutables. -/
+/-- Not tracked for mainnet code: it is installed as deployed, immutables (if any) filled in. -/
 def immutableRefs : List ImmutableRef := []
 
 /-- Storage of the test deployment as \`(slot, value)\` pairs; every other slot is zero. -/

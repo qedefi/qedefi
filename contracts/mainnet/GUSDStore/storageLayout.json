@@ -1,0 +1,132 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (solc 0.4.21 has no storageLayout output); checked against mainnet storage and getters (layout-check.txt).",
+  "storage": [
+    {
+      "label": "lockRequestCount",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "LockRequestable"
+    },
+    {
+      "label": "custodian",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "CustodianUpgradeable"
+    },
+    {
+      "label": "custodianChangeReqs",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_mapping(t_bytes32,t_struct(CustodianChangeRequest))",
+      "contract": "CustodianUpgradeable"
+    },
+    {
+      "label": "erc20Impl",
+      "slot": "3",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "ERC20ImplUpgradeable"
+    },
+    {
+      "label": "implChangeReqs",
+      "slot": "4",
+      "offset": 0,
+      "type": "t_mapping(t_bytes32,t_struct(ImplChangeRequest))",
+      "contract": "ERC20ImplUpgradeable"
+    },
+    {
+      "label": "totalSupply",
+      "slot": "5",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "ERC20Store"
+    },
+    {
+      "label": "balances",
+      "slot": "6",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "ERC20Store"
+    },
+    {
+      "label": "allowed",
+      "slot": "7",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "ERC20Store"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_mapping(t_bytes32,t_struct(CustodianChangeRequest))": {
+      "encoding": "mapping",
+      "key": "t_bytes32",
+      "label": "mapping(bytes32 => struct CustodianChangeRequest)",
+      "numberOfBytes": "32",
+      "value": "t_struct(CustodianChangeRequest)"
+    },
+    "t_mapping(t_bytes32,t_struct(ImplChangeRequest))": {
+      "encoding": "mapping",
+      "key": "t_bytes32",
+      "label": "mapping(bytes32 => struct ImplChangeRequest)",
+      "numberOfBytes": "32",
+      "value": "t_struct(ImplChangeRequest)"
+    },
+    "t_struct(CustodianChangeRequest)": {
+      "encoding": "inplace",
+      "label": "struct CustodianUpgradeable.CustodianChangeRequest",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "proposedNew",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_address"
+        }
+      ]
+    },
+    "t_struct(ImplChangeRequest)": {
+      "encoding": "inplace",
+      "label": "struct ERC20ImplUpgradeable.ImplChangeRequest",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "proposedNew",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_address"
+        }
+      ]
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}

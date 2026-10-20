@@ -1,0 +1,6 @@
+{
+  "CustodianChangeConfirmed(bytes32,address)": "0x9a99272c0f6b7a30ef9e76e684a7cd408bfd4f11a72f36a8e276253c920e442d",
+  "CustodianChangeRequested(bytes32,address,address)": "0xd76fc900a7e1a6fcf11d54b7ba943918df6c53a3128140658c389b3da1e997ba",
+  "ImplChangeConfirmed(bytes32,address)": "0x9d55b0349a0a4c5b511f72228170bb91d45c9ac78dba8ab5b4175d3ed42f06b3",
+  "ImplChangeRequested(bytes32,address,address)": "0x5df12834436b8dc248df3f7f1796a3e39f851d610be49cdcd92514fa821b9f97"
+}

@@ -1,0 +1,47 @@
+{
+  "address": "0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2025-09-03T12:08:16Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.11+commit.68ef5810",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      }
+    },
+    "name": "ZRXToken",
+    "fullyQualifiedName": "ZRXToken.sol:ZRXToken"
+  },
+  "deployment": {
+    "transactionHash": "0xbdab447ba2fd0a493d93635da202ebcfaa309bcc6a22a95d808c93ce8f1c6c2d",
+    "blockNumber": "4145415",
+    "transactionIndex": "54",
+    "deployer": "0xa3b2d1087bCEBe59d188a23F75620612d967DF72"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 2903,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a723058204b1a52a9db49a4b7e5e4888f5413ab16138204fe64f3b770222e41dc94d362550029",
+      "offset": 2903
+    }
+  }
+}

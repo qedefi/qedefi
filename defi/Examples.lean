@@ -75,8 +75,14 @@ import Examples.WETH9.Contracts.WETH9
 import Examples.WeirdERC20.AMPL.Contracts.AMPL
 import Examples.WeirdERC20.AMPL.Contracts.AMPLProxy
 import Examples.WeirdERC20.BNB.Contracts.BNB
+import Examples.WeirdERC20.GUSD.Contracts.GUSD
+import Examples.WeirdERC20.GUSD.Contracts.GUSDImpl
+import Examples.WeirdERC20.GUSD.Contracts.GUSDStore
+import Examples.WeirdERC20.LEND.Contracts.LEND
 import Examples.WeirdERC20.STA.Contracts.STA
 import Examples.WeirdERC20.USDT.Contracts.USDT
+import Examples.WeirdERC20.YAMV2.Contracts.YAMV2
+import Examples.WeirdERC20.ZRX.Contracts.ZRX
 
 /-!
 # Examples

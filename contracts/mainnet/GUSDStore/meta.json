@@ -1,0 +1,20 @@
+{
+  "name": "GUSDStore",
+  "address": "0xc42B14e49744538e3C239f8ae48A1Eaaf35e68a0",
+  "chainId": 1,
+  "block": 26236997,
+  "blockHash": "0x0889f6b976aa315c0d37e02a7e11b9bf8231cbed0574f246f80f8f3a9b53e608",
+  "codeHash": "0xe768e3d1ee8a04a3b06d8c6ec2c498fb6494c7d50312f9ffb9dcc984143ed775",
+  "codeSize": 2026,
+  "contractName": "ERC20Store",
+  "compiler": "0.4.21+commit.dfe3193c",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

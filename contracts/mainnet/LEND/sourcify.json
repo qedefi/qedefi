@@ -1,0 +1,48 @@
+{
+  "address": "0x80fB784B7eD66730e8b1DBd9820aFD29931aab03",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T15:31:48Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.16+commit.d7661dd9",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      },
+      "remappings": []
+    },
+    "name": "EthLendToken",
+    "fullyQualifiedName": "EthLendToken.sol:EthLendToken"
+  },
+  "deployment": {
+    "transactionHash": "0xca4a7821624b27f1cfddf865c401fa01018f9494ec94fad21e6ef17d6baf11d9",
+    "blockNumber": "4285018",
+    "transactionIndex": "6",
+    "deployer": "0xFe1A6056EE03235f30f7a48407A5673BBf25eD48"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 6829,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a72305820b9684ddb55a3f45126e6565230a5d0fc1c0bddb1d478e38c32749f650c5b006d0029",
+      "offset": 6829
+    }
+  }
+}

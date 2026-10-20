@@ -1,0 +1,285 @@
+{
+  "address": "0x483A1E7F16F46266400f1bAF7abdF445c8D140A2",
+  "chainId": "1",
+  "match": "exact_match",
+  "runtimeMatch": "exact_match",
+  "creationMatch": "exact_match",
+  "verifiedAt": "2026-10-16T17:09:05Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.8.30+commit.73712a01",
+    "compilerSettings": {
+      "viaIR": false,
+      "metadata": {
+        "appendCBOR": true,
+        "bytecodeHash": "ipfs",
+        "useLiteralContent": false
+      },
+      "libraries": {},
+      "optimizer": {
+        "runs": 100000,
+        "enabled": true
+      },
+      "evmVersion": "shanghai",
+      "remappings": [
+        "forge-std/=lib/forge-std/src/"
+      ]
+    },
+    "name": "ERC20Impl",
+    "fullyQualifiedName": "contracts/ERC20Impl.sol:ERC20Impl"
+  },
+  "deployment": {
+    "transactionHash": "0x96a9335860796684c147cc5c37241e3bc7905f1a100aafd33d3edc1812485caf",
+    "blockNumber": "26155545",
+    "transactionIndex": "100",
+    "deployer": "0x4878Fd96C301C22f8e6D92829f9240A1399b53d4"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 759,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 992,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 1630,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 1799,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 2138,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 2440,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 2609,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 3482,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 3813,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 4107,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 4399,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 4560,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 4732,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 4903,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 5031,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 5370,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 5659,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 5922,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 6479,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 6651,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 6806,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 6899,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 7243,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 7412,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 8617,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 8756,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 9087,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 9379,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 9540,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 9711,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 9815,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 10013,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 10195,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 10364,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 10713,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 11003,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 11092,
+      "reason": "immutable"
+    },
+    {
+      "id": "342",
+      "type": "replace",
+      "offset": 11153,
+      "reason": "immutable"
+    },
+    {
+      "id": "338",
+      "type": "replace",
+      "offset": 11448,
+      "reason": "immutable"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa2646970667358221220f40ad9a43783e557d38eaa2127c2acde1d0e4ab06e499dda7418cdf3bae1f0cd64736f6c634300081e0033",
+      "offset": 12127
+    }
+  }
+}

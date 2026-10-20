@@ -1,0 +1,18 @@
+{
+  "addBalance(address,uint256)": "21e5383a",
+  "allowed(address,address)": "5c658165",
+  "balances(address)": "27e235e3",
+  "confirmCustodianChange(bytes32)": "3a8343ee",
+  "confirmImplChange(bytes32)": "8181b029",
+  "custodian()": "375b74c3",
+  "custodianChangeReqs(bytes32)": "cf6e4488",
+  "erc20Impl()": "3c389cc4",
+  "implChangeReqs(bytes32)": "b508069b",
+  "lockRequestCount()": "cb81fecf",
+  "requestCustodianChange(address)": "15b21082",
+  "requestImplChange(address)": "48f9e246",
+  "setAllowance(address,address,uint256)": "da46098c",
+  "setBalance(address,uint256)": "e30443bc",
+  "setTotalSupply(uint256)": "f7ea7a3d",
+  "totalSupply()": "18160ddd"
+}

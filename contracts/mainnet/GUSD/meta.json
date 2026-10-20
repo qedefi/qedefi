@@ -1,0 +1,19 @@
+{
+  "name": "GUSD",
+  "address": "0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd",
+  "chainId": 1,
+  "block": 26236997,
+  "blockHash": "0x0889f6b976aa315c0d37e02a7e11b9bf8231cbed0574f246f80f8f3a9b53e608",
+  "codeHash": "0xfd0ab716aa170c34925e0c205ae36765d6f4e7e74d2235f6a365b4ca81e3c8f5",
+  "codeSize": 3490,
+  "contractName": "ERC20Proxy",
+  "compiler": "0.4.21+commit.dfe3193c",
+  "optimizer": {
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

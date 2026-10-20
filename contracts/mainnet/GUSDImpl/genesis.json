@@ -1,0 +1,10 @@
+{
+  "note": "ERC20Impl (its immutables erc20Proxy and erc20Store are the mainnet addresses, so all three contracts are installed at their mainnet addresses): custodian alice, lockRequestCount 0, no pending prints.",
+  "storage": [
+    {
+      "label": "custodian",
+      "slot": "0x1",
+      "value": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+    }
+  ]
+}

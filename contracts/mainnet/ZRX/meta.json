@@ -1,0 +1,20 @@
+{
+  "name": "ZRX",
+  "address": "0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+  "chainId": 1,
+  "block": 26236997,
+  "blockHash": "0x0889f6b976aa315c0d37e02a7e11b9bf8231cbed0574f246f80f8f3a9b53e608",
+  "codeHash": "0x44d31e602fd21d6ca2e92923b0a6626c47c1986a92e1abc87bea9ae71e553229",
+  "codeSize": 2946,
+  "contractName": "ZRXToken",
+  "compiler": "0.4.11+commit.68ef5810",
+  "optimizer": {
+    "runs": 200,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

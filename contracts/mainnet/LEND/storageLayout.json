@@ -1,0 +1,118 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (solc 0.4.16 has no storageLayout output); checked against mainnet storage and getters (layout-check.txt).",
+  "storage": [
+    {
+      "label": "balances",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "StdToken"
+    },
+    {
+      "label": "allowed",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "StdToken"
+    },
+    {
+      "label": "supply",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "StdToken"
+    },
+    {
+      "label": "currentState",
+      "slot": "3",
+      "offset": 0,
+      "type": "t_enum(State)",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "enableTransfers",
+      "slot": "3",
+      "offset": 1,
+      "type": "t_bool",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "teamTokenBonus",
+      "slot": "3",
+      "offset": 2,
+      "type": "t_address",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "escrow",
+      "slot": "4",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "tokenManager",
+      "slot": "5",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "presaleSoldTokens",
+      "slot": "6",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "icoSoldTokens",
+      "slot": "7",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "EthLendToken"
+    },
+    {
+      "label": "totalSoldTokens",
+      "slot": "8",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "EthLendToken"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_enum(State)": {
+      "encoding": "inplace",
+      "label": "enum EthLendToken.State",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}

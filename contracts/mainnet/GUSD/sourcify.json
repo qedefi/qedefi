@@ -1,0 +1,46 @@
+{
+  "address": "0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T14:42:53Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.4.21+commit.dfe3193c",
+    "compilerSettings": {
+      "libraries": {},
+      "optimizer": {
+        "enabled": true
+      }
+    },
+    "name": "ERC20Proxy",
+    "fullyQualifiedName": ".sol:ERC20Proxy"
+  },
+  "deployment": {
+    "transactionHash": "0xf51a232b0e5604aa3549f5d22fd470971a627d55536eb7477b39a80b5c38b01b",
+    "blockNumber": "6301780",
+    "transactionIndex": "10",
+    "deployer": "0x4c2F150Fc90fed3d8281114c2349f1906cdE5346"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 3447,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa165627a7a7230582007f17f5dae7dcd0c7786f3ebfe9da710494367254ed614bdea7e5020fd4945a70029",
+      "offset": 3447
+    }
+  }
+}

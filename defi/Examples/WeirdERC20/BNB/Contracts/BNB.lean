@@ -369,7 +369,7 @@ def codeHash : Word := 0xa1b62b5dd40a9c7b0f0a91ffd2578f7b1b22ca6d312846a0b88b3ae
 /-- The mainnet block at which `runtimeCode` was read. -/
 def fetchBlock : Nat := 26236596
 
-/-- The contract has no immutables. -/
+/-- Not tracked for mainnet code: it is installed as deployed, immutables (if any) filled in. -/
 def immutableRefs : List ImmutableRef := []
 
 /-- Storage of the test deployment as `(slot, value)` pairs; every other slot is zero. -/

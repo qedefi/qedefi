@@ -1,0 +1,59 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (solc 0.4.11 has no storageLayout output); checked against mainnet storage and getters (layout-check.txt). ZRXToken redeclares totalSupply: StandardToken.totalSupply (slot 2) is shadowed and never written; the public getter reads slot 3.",
+  "storage": [
+    {
+      "label": "balances",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "StandardToken"
+    },
+    {
+      "label": "allowed",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "StandardToken"
+    },
+    {
+      "label": "totalSupply",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "StandardToken"
+    },
+    {
+      "label": "totalSupply",
+      "slot": "3",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "ZRXToken"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}

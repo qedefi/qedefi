@@ -1,0 +1,6 @@
+{
+  "CustodianChangeConfirmed(bytes32,address)": "0x9a99272c0f6b7a30ef9e76e684a7cd408bfd4f11a72f36a8e276253c920e442d",
+  "CustodianChangeRequested(bytes32,address,address,uint256)": "0x8286bbf6adfae598c227689d4e361af126e220106aaa15764538028b07f3a0d4",
+  "PrintingConfirmed(bytes32,address,uint256)": "0x1445852a2ef41b86fd81f90a02261a68635ceb02cdbc73f9c5f690af8288f360",
+  "PrintingLocked(bytes32,address,uint256,uint256)": "0x35f833208ffdbd94619a0f63f3efa186ebc2dc9fcf45b6ab6544ffa8b9cdf327"
+}

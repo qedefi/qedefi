@@ -1,0 +1,96 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (solc 0.8.30 not installed locally); checked against mainnet storage and getters (layout-check.txt). erc20Proxy and erc20Store are immutables (in the code, not in storage).",
+  "storage": [
+    {
+      "label": "lockRequestCount",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "LockRequestableV1dot1"
+    },
+    {
+      "label": "custodian",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "CustodianUpgradeableV1dot1"
+    },
+    {
+      "label": "custodianChangeReqs",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_mapping(t_bytes32,t_struct(CustodianChangeRequest))",
+      "contract": "CustodianUpgradeableV1dot1"
+    },
+    {
+      "label": "pendingPrintMap",
+      "slot": "3",
+      "offset": 0,
+      "type": "t_mapping(t_bytes32,t_struct(PendingPrint))",
+      "contract": "ERC20Impl"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_mapping(t_bytes32,t_struct(CustodianChangeRequest))": {
+      "encoding": "mapping",
+      "key": "t_bytes32",
+      "label": "mapping(bytes32 => struct CustodianChangeRequest)",
+      "numberOfBytes": "32",
+      "value": "t_struct(CustodianChangeRequest)"
+    },
+    "t_mapping(t_bytes32,t_struct(PendingPrint))": {
+      "encoding": "mapping",
+      "key": "t_bytes32",
+      "label": "mapping(bytes32 => struct PendingPrint)",
+      "numberOfBytes": "32",
+      "value": "t_struct(PendingPrint)"
+    },
+    "t_struct(CustodianChangeRequest)": {
+      "encoding": "inplace",
+      "label": "struct CustodianUpgradeable.CustodianChangeRequest",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "proposedNew",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_address"
+        }
+      ]
+    },
+    "t_struct(PendingPrint)": {
+      "encoding": "inplace",
+      "label": "struct ERC20Impl.PendingPrint",
+      "numberOfBytes": "64",
+      "members": [
+        {
+          "label": "receiver",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_address"
+        },
+        {
+          "label": "value",
+          "slot": "1",
+          "offset": 0,
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    }
+  }
+}

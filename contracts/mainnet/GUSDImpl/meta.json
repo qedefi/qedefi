@@ -1,0 +1,20 @@
+{
+  "name": "GUSDImpl",
+  "address": "0x483A1E7F16F46266400f1bAF7abdF445c8D140A2",
+  "chainId": 1,
+  "block": 26236997,
+  "blockHash": "0x0889f6b976aa315c0d37e02a7e11b9bf8231cbed0574f246f80f8f3a9b53e608",
+  "codeHash": "0x5b5d5718eed66700397b9b47da1141322e171501f795c3e7d2f25b7d930c1181",
+  "codeSize": 12180,
+  "contractName": "ERC20Impl",
+  "compiler": "0.8.30+commit.73712a01",
+  "optimizer": {
+    "runs": 100000,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "exact_match",
+    "runtimeMatch": "exact_match",
+    "creationMatch": "exact_match"
+  }
+}

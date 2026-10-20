@@ -1,0 +1,52 @@
+{
+  "address": "0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2024-08-08T15:45:50Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.6.12+commit.27d51765",
+    "compilerSettings": {
+      "metadata": {
+        "bytecodeHash": "ipfs"
+      },
+      "libraries": {},
+      "optimizer": {
+        "runs": 50000,
+        "enabled": true
+      },
+      "evmVersion": "istanbul",
+      "remappings": []
+    },
+    "name": "YAMv2",
+    "fullyQualifiedName": "YAMv2.sol:YAMv2"
+  },
+  "deployment": {
+    "transactionHash": "0xc34af3e81fa0af3f07f080b1909ce074a755c2b9a19d8ea22c3e8994b3f91737",
+    "blockNumber": "10691249",
+    "transactionIndex": "39",
+    "deployer": "0x683A78bA1f6b25E29fbBC9Cd1BFA29A51520De84"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 3630,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa2646970667358221220ebf85072cf940989d9b3c5b5ac691b0ff72b389357371c2c7b643d988883c20764736f6c634300060c0033",
+      "offset": 3630
+    }
+  }
+}
