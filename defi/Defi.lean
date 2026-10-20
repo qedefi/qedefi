@@ -10,6 +10,7 @@ import Defi.ERC4626.AssetVariants
 import Defi.ERC4626.Events
 import Defi.ERC4626.Inflation
 import Defi.ERC4626.Integration
+import Defi.ERC4626.IntegrationUsdt
 import Defi.ERC4626.Logs
 import Defi.ERC4626.MoreProps
 import Defi.ERC4626.Oz
