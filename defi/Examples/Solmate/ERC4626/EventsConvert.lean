@@ -4,23 +4,18 @@ import Defi.ERC4626.Logs
 /-!
 # The vault's conversions emit no logs
 
-Companions of `totalAssets_wp_gas`, `convertToShares_wp_gas`, `previewMint_wp_gas`
-(`DepositConvert.lean`), `convertToAssets_wp_gas` and `previewWithdraw_wp_gas`
-(`AssetCallOutGas.lean`): the same symbolic executions, whose postconditions also say that the
-substate the function returns with has the logs it started with (`sub.logs =
-m.frame.sub.logs`). The existing summaries quantify the substate existentially (the
-`STATICCALL` to the asset's `balanceOf` changes the warm sets), so they say nothing about logs;
-the entry points `deposit`, `mint`, `withdraw`, `redeem` need these to know their logs.
+The `*_wp_gas` summaries quantify the returned substate existentially (the `STATICCALL` to the
+asset's `balanceOf` changes the warm sets); these restate them with `sub.logs = m.frame.sub.logs`,
+which the entry points' events need.
 -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- `totalAssets_wp_gas`, and the frame's logs are unchanged (the `STATICCALL`ed `balanceOf`
-emits none). -/
 theorem totalAssets_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x47b) (hs : m.frame.stack = r :: rest)
@@ -118,7 +113,6 @@ theorem totalAssets_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {r :
     · logs_simp [hlogs]
 
 set_option maxHeartbeats 0 in
-/-- `convertToShares_wp_gas`, and the frame's logs are unchanged. -/
 theorem convertToShares_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0xbda) (hs : m.frame.stack = x :: r :: rest)
@@ -175,7 +169,6 @@ theorem convertToShares_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) 
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega, hl1.trans rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `previewMint_wp_gas`, and the frame's logs are unchanged. -/
 theorem previewMint_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x96b) (hs : m.frame.stack = x :: r :: rest)
@@ -232,7 +225,6 @@ theorem previewMint_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {x r
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega, hl1.trans rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `convertToAssets_wp_gas`, and the frame's logs are unchanged. -/
 theorem convertToAssets_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x593) (hs : m.frame.stack = x :: r :: rest)
@@ -289,7 +281,6 @@ theorem convertToAssets_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) 
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega, hl1.trans rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `previewWithdraw_wp_gas`, and the frame's logs are unchanged. -/
 theorem previewWithdraw_wp_gas_logs {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x62b) (hs : m.frame.stack = x :: r :: rest)

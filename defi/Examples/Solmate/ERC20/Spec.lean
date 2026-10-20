@@ -4,37 +4,20 @@ import Examples.Solmate.ERC4626.Shares
 /-!
 # The asset's functions refine the model's `Token` operations, in any frame
 
-The asset summaries (`balanceOf_halts`, `transfer_halts_ok` / `_revert`,
-`transferFrom_halts_ok` / `_revert`) describe the deployed `MockERC20` (any immutables) on the
-world: `transferWorld` and `Erc20.transferFromWorld` are the exact `SSTORE` sequences of the
-code. Here they are stated against the model's ledger operations (`Token.transfer`,
-`Token.transferFrom`), as **callee summaries** (`Halts` from any fresh frame of the asset, so
-that they plug into `WP.call` / `WP.staticcall` of the vault):
-
-* `assetBalanceOf_refines`: returns the represented balance;
-* `assetTransfer_refines`, `assetTransferFrom_refines`: `match` on the model result: on
-  `some t'` the frame succeeds (`TransferOk` / `TransferFromOk`: output ABI `true`, exact world,
-  gas bound) and the asset's storage view represents `t'` (`Shares.RepOn`: total supply, every
-  balance, and the allowances whose slots were not written); on `none` it reverts (`Reverts`).
-
-The relation to the model is `Shares.Rep` / `Shares.RepOn` and the model-level lemmas
-`Shares.rep_transfer`, `Shares.rep_transferFrom` of the share-token refinement, which hold for
-every Solmate `ERC20` (here instantiated with the asset's storage).
-
-## Hypotheses
-
-* `Erc20.BalanceSlotOk` for the balance entries written and `Erc20.AllowanceSlotOk` for the
-  allowance entry written (pointwise Keccak freshness; `EvmLogic.Solidity.Keccak`).
-* `Token.WF` of the represented ledger (the model's invariant), so that the unchecked
-  `balanceOf[to] += amount` does not wrap.
+The asset's callee summaries stated against the model ledger (`Shares.Rep`/`Shares.RepOn`):
+`assetBalanceOf_refines`, `assetTransfer_refines`, `assetTransferFrom_refines` (success with a
+represented `t'` when the model returns `some t'`, revert on `none`). Hypotheses:
+`BalanceSlotOk`/`AllowanceSlotOk` for the written entries and `Token.WF` (the unchecked
+`balanceOf[to] += amount` does not wrap). See `docs/erc4626/details.md` §2.
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
 /-- The asset's storage view in the frame `m` (the asset is the executing account). -/
 abbrev assetView (m : Machine) : ERC20.State :=
@@ -54,16 +37,14 @@ theorem assetBalanceOf_refines {ia : SolmateAsset.Immutables} (m : Machine)
   (balanceOf_halts m hf a hval hsel hsize hsize' harg hg).mono fun _ _ _ ⟨ho, hw, _⟩ =>
     ⟨by rw [ho, ← hr.balanceOf a, ofNat_toNat_word]; rfl, hw⟩
 
-/-- The allowance predicate of a `transfer`'s result: entries whose slot is neither written
-balance slot. -/
+/-- Allowance entries represented after `transfer`: those in neither written balance slot. -/
 def TransferAllowances (crypto : Crypto) (src dst : Address) (o sp : Address) : Prop :=
   ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
       ERC20.balanceSlot crypto ERC20.Layout.solmate src ∧
     ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
       ERC20.balanceSlot crypto ERC20.Layout.solmate dst
 
-/-- **`transfer(dst, amount)` of the asset refines `Token.transfer`**, in any non-static frame
-(e.g. the vault's `safeTransfer`): success with the model's ledger, or a revert. -/
+/-- **The asset's `transfer` refines `Token.transfer`**, in any non-static frame. -/
 theorem assetTransfer_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {dst : Address} {amount : Word}
@@ -105,16 +86,14 @@ theorem assetTransfer_refines {ia : SolmateAsset.Immutables} (m : Machine)
       · cases hT
     exact transfer_halts_revert m hf hval hd hsz (by omega) hbal
 
-/-- The allowance predicate of a `transferFrom`'s result. -/
+/-- Allowance entries represented after `transferFrom`. -/
 def TransferFromAllowances (crypto : Crypto) (spender src dst : Address) (o sp : Address) :
     Prop :=
   TransferAllowances crypto src dst o sp ∧
     ((o = src ∧ sp = spender) ∨ ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
       ERC20.allowanceSlot crypto ERC20.Layout.solmate src spender)
 
-/-- **`transferFrom(src, dst, amount)` of the asset refines `Token.transferFrom`**, in any
-non-static frame (e.g. the vault's `safeTransferFrom` in `deposit` / `mint`): success with the
-model's ledger, or a revert. -/
+/-- **The asset's `transferFrom` refines `Token.transferFrom`**, in any non-static frame. -/
 theorem assetTransferFrom_refines {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src dst : Address} {amount : Word}

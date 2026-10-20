@@ -4,18 +4,12 @@ import Defi.ERC4626.Logs
 import Examples.Solmate.ERC4626.WithdrawInternal
 
 /-!
-# Logs of `deposit` / `mint`'s internal functions
+# Logs of the vault's internal functions
 
-Companions of `safeTransferFrom_wp` (`AssetCallIn.lean`), `mintShares_wp` and
-`afterDeposit_wp` (`DepositInternal.lean`) that also determine the logs of the substate each
-returns with:
-
-* `assetTransferFrom_halts_logs`: the asset's `transferFrom` as a callee summary
-  (`assetTransferFrom_halts`), with the child frame's logs on success (its `Transfer`);
-* `safeTransferFrom_wp_logs`: on success the vault frame's logs gain the asset's
-  `Transfer(src, dst, amount)` (the child's logs, merged on return);
-* `mintShares_wp_logs`: `_mint` appends the vault's `Transfer(0, to, amount)`;
-* `afterDeposit_wp_logs`: the hook emits nothing.
+Companions of the internal summaries of `deposit`/`mint` (`safeTransferFrom_wp`, `mintShares_wp`,
+`afterDeposit_wp`) and `withdraw`/`redeem` (`bump_wp`, `burn_wp`, `*Spend_wp`, `safeTransfer_wp`)
+that also fix the logs: `_mint`/`_burn` append the vault's `Transfer`, the safe transfers the
+asset's (the callee's log, merged on return); the hooks and allowance spending emit nothing.
 -/
 
 section
@@ -23,11 +17,10 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
 
-/-- `assetTransferFrom_halts` with the child frame's logs on success: the callee summary of
-the asset's `transferFrom` that `safeTransferFrom_wp_logs` uses. -/
 theorem assetTransferFrom_halts_logs {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src dst : Address} {amount : Word}
@@ -71,18 +64,6 @@ theorem assetTransferFrom_halts_logs {ia : SolmateAsset.Immutables} (m : Machine
     exact h.mono fun _ _ _ h => .inr ⟨rfl, h⟩
 
 set_option maxHeartbeats 0 in
-/-- **With its log** (`safeTransferFrom_wp`, and on success the frame's logs gain the asset's
-`Transfer(src, dst, amount)`, emitted in the child frame and kept by the merge): **`safeTransferFrom(asset, src, dst, amount)` (internal, entry `0x0f38`, stack
-`amount :: dst :: src :: asset :: r :: rest`)**: Solmate's `SafeTransferLib.safeTransferFrom`
-in the vault (immutables `i`). It writes the calldata of `transferFrom(src, dst, amount)` at the
-free pointer, `CALL`s the asset with all remaining gas and no value (`WP.call0`, the asset's
-callee summary `assetTransferFrom_halts`), and checks `success && (returndata == 1 ||
-(returndatasize == 0 && extcodesize(asset) > 0))`. When the model's
-`Token.transferFrom` of the asset ledger (spender: the vault) succeeds, the call returns
-`true`, the check passes and the function returns to `r` with the asset's `transferFrom`
-writes applied to the world (`Erc20.transferFromWorld`), whose asset view represents the
-model's ledger; otherwise the asset reverts and so does the vault
-(`TRANSFER_FROM_FAILED`). -/
 theorem safeTransferFrom_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {src dst : Address} {rest : List Word}
     (hv : VaultFrame i m) (hstatic : m.frame.msg.isStatic = false)
@@ -224,9 +205,6 @@ theorem safeTransferFrom_wp_logs {i : SolmateVault.Immutables} (m : Machine) {am
         exact ⟨hT, _, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **With its log** (`mintShares_wp`, and the frame's logs gain `Transfer(0, to, amount)`):
-**`_mint(to, amount)` (internal, entry `0x0fdc`)**: without supply overflow it returns to
-`r` with the world `mintWorld` (at most 55000 gas); on overflow it reverts. -/
 theorem mintShares_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {dst : Address} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -272,10 +250,6 @@ theorem mintShares_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r
       exact ⟨Nat.le_of_not_lt hov, _, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **Without logs** (`afterDeposit_wp`, and the frame's logs are unchanged):
-**`afterDeposit(assets, shares)` (internal, entry `0x1033`)**: without counter overflow it
-returns to `r` with the world `bumpWorld` (at most 30000 gas); at `type(uint256).max` it
-reverts. -/
 theorem afterDeposit_wp_logs {i : SolmateVault.Immutables} (m : Machine) {x y r : Word}
     {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -317,26 +291,18 @@ end
 
 section
 
-/-!
-## Logs of `withdraw` / `redeem`'s internal functions
-
-Companions of `bump_wp`, `burn_wp` (`WithdrawCode.lean`), `withdrawSpend_wp`,
-`redeemSpend_wp` (`WithdrawSpend.lean`) and `safeTransfer_wp` (`AssetCallOut.lean`) that also
-determine the logs of the substate each returns with: the hook and the allowance steps emit
-nothing (no `Approval` on spending), `_burn` appends the vault's `Transfer(from, 0, amount)`,
-and `safeTransfer` appends the asset's `Transfer(vault, to, amount)` (the callee's log, merged
-on return).
--/
+/-! ## Logs of `withdraw` / `redeem`'s internal functions -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open Examples.Solmate.ERC4626.Out
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
-/-- `OutPost` with the frame's final logs: on `some (w', v)` the call returns the ABI word `v`
-with the world `w'` and the frame's logs `L v`; on `none` it reverts. -/
+/-- `OutPost` with the frame's final logs: on `some (w', v)` the call returns the word `v` with
+world `w'` and logs `L v`; on `none` it reverts. -/
 def OutPostLogs (L : Word → Array Log) (r : Option (World × Word)) (mf : Machine) (o : Outcome) :
     Prop :=
   match r with
@@ -344,9 +310,6 @@ def OutPostLogs (L : Word → Array Log) (r : Option (World × Word)) (mf : Mach
   | none => ∃ out, o = .revert out
 
 set_option maxHeartbeats 0 in
-/-- **Without logs** (`bump_wp`, and the frame's logs are unchanged): **`beforeWithdraw` (internal, entry `0x104b`, stack `a :: b :: r :: rest`)**:
-`beforeWithdrawHookCalledCounter++` (checked) — returns to `r` with `bumpStep` applied, or
-panics. -/
 theorem bump_wp_logs {i : SolmateVault.Immutables} (m : Machine) {a b r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
     (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
@@ -380,10 +343,6 @@ theorem bump_wp_logs {i : SolmateVault.Immutables} (m : Machine) {a b r : Word} 
     exact ⟨_, by simp [bumpStep, hmax], _, _, rfl, by evm_gas, by evm_gas, by rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **With its log** (`burn_wp`, and the frame's logs gain `Transfer(from, 0, amount)`):
-**`_burn(from, amount)` (internal, entry `0x105a`, stack `amount :: from :: r :: rest`)**:
-returns to `r` with `burnStep` applied (and a `Transfer` log), or panics when the balance does
-not cover `amount`. -/
 theorem burn_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r : Word} {src : Address}
     {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -449,10 +408,6 @@ theorem burn_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r : Wor
       exact ⟨by simp only [hbal, ↓reduceIte], _, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **Without logs** (the summary of the same name without `_logs`, and the frame's logs are
-unchanged: Solmate emits no `Approval` when it spends an allowance): **The allowance step of `withdraw`** (pc `0x0993`, stack `v :: x :: owner :: rest`, `v` the
-shares of `previewWithdraw`): continues at `0x0a00` with stack `v :: owner :: rest` and the world
-of `spendStep`, or panics. -/
 theorem withdrawSpend_wp_logs {i : SolmateVault.Immutables} (m : Machine) {v x : Word}
     {owner : Address} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -528,10 +483,6 @@ theorem withdrawSpend_wp_logs {i : SolmateVault.Immutables} (m : Machine) {v x :
           exact ⟨by simp [hmax, hle], _, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **Without logs** (the summary of the same name without `_logs`, and the frame's logs are
-unchanged: Solmate emits no `Approval` when it spends an allowance): **The allowance step of `redeem`** (pc `0x0a93`, stack `owner :: y :: v :: rest`, `v` the
-`shares` argument): continues at `0x0aff` with stack `0 :: owner :: y :: v :: rest` and the
-world of `spendStep`, or panics. -/
 theorem redeemSpend_wp_logs {i : SolmateVault.Immutables} (m : Machine) {v y : Word}
     {owner : Address} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
@@ -607,10 +558,6 @@ theorem redeemSpend_wp_logs {i : SolmateVault.Immutables} (m : Machine) {v y : W
           exact ⟨by simp [hmax, hle], _, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- **With its log** (`safeTransfer_wp`, and on success the frame's logs gain the asset's
-`Transfer(vault, to, amount)`, emitted in the child frame): **`safeTransfer(asset, to, amount)` (internal, entry `0x10b9`, stack
-`amount :: to :: asset :: r :: rest`)**: when the vault's asset balance covers `amount`,
-returns to `r` with the asset's `transfer` applied to the world; otherwise reverts. -/
 theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {rcv : Address} {rest : List Word} (hv : VaultFrame i m) (hpc : m.frame.pc = 0x10b9)
     (hs : m.frame.stack = amount :: Word.ofAddress rcv :: Word.ofAddress i.asset :: r :: rest)

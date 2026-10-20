@@ -7,27 +7,12 @@ import EvmLogic.Solidity.Call
 import EvmLogic.Solidity.Memory
 
 /-!
-# The vault's `totalAssets()` as an internal function
+# The vault's internal `totalAssets()` and conversions
 
-`MockERC4626.totalAssets()` is `asset.balanceOf(address(this))`. solc compiles it as an
-internal function at pc `0x047b` (called by `totalAssets()`, the conversions and the
-previews): it writes the calldata of `balanceOf(address(this))` at the free-memory pointer,
-`STATICCALL`s the asset with all remaining gas, checks success, re-aligns the free-memory
-pointer to the returned data and ABI-decodes one word.
-
-`totalAssets_wp` summarises it once. The asset's code enters only through its callee summary
-`balanceOf_halts`, plugged into the callee-summary rule `WP.staticcall`: the result is the
-asset's balance slot of the vault (`assetsOf m`), the world is unchanged, the free-memory
-pointer moves from `0x80` to `0xa0` and memory grows to six words (`FmpAfterCall`).
-
-## Assumptions
-
-* the frame runs the vault's code deployed with immutables `i` (`VaultFrame i`): any asset
-  address `i.asset`, chain id, domain separator and decimals; the asset account holds the
-  asset's runtime code (with any immutables), is not a precompile, and the call depth leaves
-  room for one more frame;
-* solc's memory discipline at entry (`FmpInit`: free pointer `0x80`, three words of memory);
-* `20000 ≤ gas < 2⁶⁴`.
+Summaries, for any immutables, of the internal `totalAssets()` (`0x047b`: `STATICCALL` to the
+asset, plugged in through its callee summary `balanceOf_halts`) and of the four internal
+conversions (`convertToShares`, `convertToAssets`, `previewMint`, `previewWithdraw`), each
+returning the `Nat`-level specification (`convertToSharesN` …) at `supplyOf`/`assetsOf`.
 -/
 
 section
@@ -35,24 +20,18 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- A frame executing the vault deployed with immutables `i`: its code and jump table, the
-asset's code (any immutables) at `i.asset`, `i.asset` not a precompile, and room for one more
-call frame. -/
+/-- A frame executing the vault (immutables `i`): its code and jump table, the asset's code at
+`i.asset` (not a precompile), and room for one more call frame. -/
 structure VaultFrame (i : SolmateVault.Immutables) (m : Machine) : Prop where
-  /-- The frame runs the vault's runtime code. -/
   code : m.frame.code = SolmateVault.runtimeCodeWith i
-  /-- Its jump table. -/
   jumpTable : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i)
-  /-- The asset is deployed. -/
   assetCode : ∃ ia, m.world.code i.asset = SolmateAsset.runtimeCodeWith ia
-  /-- The asset is not a precompile. -/
   assetNotPrecompile : m.precompiles.isPrecompile i.asset = false
-  /-- A call from this frame does not exceed the depth limit. -/
   depth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit
 
-/-- The `asset` immutable, as the `PUSH32` at `0x0491` (in `totalAssets()`) reads it. -/
 theorem readBytes_code_asset1170 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 1170 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -63,7 +42,6 @@ theorem readBytes_code_asset1170 (i : SolmateVault.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
     (by simp)
 
-/-- The `asset` immutable, as the `PUSH32` at `0x02af` (in `asset()`) reads it. -/
 theorem readBytes_code_asset688 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 688 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator)] ++
@@ -74,7 +52,6 @@ theorem readBytes_code_asset688 (i : SolmateVault.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
     (by simp)
 
-/-- The asset's code is not a delegation designator, whatever its immutables. -/
 theorem delegatedAddress?_assetCode (ia : SolmateAsset.Immutables) :
     delegatedAddress? (SolmateAsset.runtimeCodeWith ia) = none :=
   delegatedAddress?_of_size (by
@@ -83,8 +60,7 @@ theorem delegatedAddress?_assetCode (ia : SolmateAsset.Immutables) :
 /-- The vault's `totalSupply` word (slot 2 of the executing account). -/
 def supplyOf (m : Machine) : Word := m.world.sload m.frame.msg.currentTarget (2#256)
 
-/-- The balance word of the executing account in the asset at `asset`: what `totalAssets()`
-returns. -/
+/-- The executing account's balance word in the asset at `asset` (what `totalAssets()` returns). -/
 def assetsOf (asset : Address) (m : Machine) : Word :=
   m.world.sload asset (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate
     m.frame.msg.currentTarget)
@@ -97,8 +73,7 @@ def FmpAfterCall (mem : Memory) : Prop := mem.loadWord 64 = 160#256 ∧ mem.size
 
 set_option maxHeartbeats 0 in
 /-- **`totalAssets()` (internal, entry `0x047b`, stack `r :: rest`)**: returns to `r` with
-`assetsOf i.asset m` on the stack; memory, gas, return data and substate change as described by
-`FmpAfterCall` and the gas bound, nothing else (in particular not the world). -/
+`assetsOf i.asset m`; the world is unchanged and memory ends as `FmpAfterCall`. -/
 theorem totalAssets_wp {i : SolmateVault.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x47b) (hs : m.frame.stack = r :: rest)
@@ -195,34 +170,17 @@ end
 section
 
 /-!
-## The vault's conversions as internal functions
+## The conversions as internal functions
 
-Solmate's `ERC4626` computes every conversion and preview through one of four `internal view`
-functions, each compiled once (the external functions jump to them); entry pcs are those of
-`SolmateVault.runtimeCodeWith i` for any immutables `i`:
-
-| internal function | entry | non-empty vault (`supply ≠ 0`) | summary |
-|---|---|---|---|
-| `convertToShares(assets)` | `0x0bda` | `assets.mulDivDown(supply, totalAssets())` | `convertToShares_wp` |
-| `convertToAssets(shares)` | `0x0593` | `shares.mulDivDown(totalAssets(), supply)` | `convertToAssets_wp` |
-| `previewMint(shares)` | `0x096b` | `shares.mulDivUp(totalAssets(), supply)` | `previewMint_wp` |
-| `previewWithdraw(assets)` | `0x062b` | `assets.mulDivUp(supply, totalAssets())` | `previewWithdraw_wp` |
-
-(`previewDeposit` and `previewRedeem` are `convertToShares` and `convertToAssets`.) With
-`supply == 0` each returns its argument without calling the asset.
-
-Each summary is proved by symbolic execution of the function's own code, with the internal
-calls replaced by their summaries (`totalAssets_wp`, `mulDivDown_wp`, `mulDivUp_wp`) through
-`WP.bind_mono`. The result is the `Nat`-level specification (`convertToSharesN` …, which are
-the specification's `Vault.Solmate.State` views with `S = totalSupply`, `T = totalAssets`)
-evaluated at the vault's storage (`supplyOf`, `assetsOf i.asset`): on `some v` the function returns
-`v`; on `none` (a `mulDiv` revert) the frame ends with `revert(0, 0)`.
+With `supply = 0` each returns its argument without calling the asset. (`previewDeposit` and
+`previewRedeem` are `convertToShares` and `convertToAssets`.)
 -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- `convertToShares(x)`: `supply == 0 ? x : x.mulDivDown(supply, totalAssets())`. -/
 def convertToSharesN (S T x : Nat) : Option Nat := if S = 0 then some x else mulDivDownN x S T
@@ -236,13 +194,12 @@ def previewMintN (S T x : Nat) : Option Nat := if S = 0 then some x else mulDivU
 /-- `previewWithdraw(x)`: `supply == 0 ? x : x.mulDivUp(supply, totalAssets())`. -/
 def previewWithdrawN (S T x : Nat) : Option Nat := if S = 0 then some x else mulDivUpN x S T
 
-/-- Memory facts at the end of a conversion: unchanged-shape (`FmpInit`, no call made) or
-after the `totalAssets()` call (`FmpAfterCall`). -/
+/-- Memory at the end of a conversion: `FmpInit` (no call made) or `FmpAfterCall`. -/
 def FmpOk (mem : Memory) : Prop := FmpInit mem ∨ FmpAfterCall mem
 
 set_option maxHeartbeats 0 in
-/-- **`convertToShares(x)` (internal, entry `0xbda`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
+/-- **`convertToShares(x)` (internal, entry `0xbda`, stack `x :: r :: rest`)**: returns to `r`
+with the specification's value, or reverts as `mulDiv` does. -/
 theorem convertToShares_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0xbda) (hs : m.frame.stack = x :: r :: rest)
@@ -297,8 +254,8 @@ theorem convertToShares_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
       .inr ⟨hfmp1, hsize1⟩, by omega⟩
 
 set_option maxHeartbeats 0 in
-/-- **`convertToAssets(x)` (internal, entry `0x593`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
+/-- **`convertToAssets(x)` (internal, entry `0x593`, stack `x :: r :: rest`)**: returns to `r`
+with the specification's value, or reverts as `mulDiv` does. -/
 theorem convertToAssets_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x593) (hs : m.frame.stack = x :: r :: rest)
@@ -353,8 +310,8 @@ theorem convertToAssets_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Wo
       .inr ⟨hfmp1, hsize1⟩, by omega⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewMint(x)` (internal, entry `0x96b`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
+/-- **`previewMint(x)` (internal, entry `0x96b`, stack `x :: r :: rest`)**: returns to `r`
+with the specification's value, or reverts as `mulDiv` does. -/
 theorem previewMint_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x96b) (hs : m.frame.stack = x :: r :: rest)
@@ -409,8 +366,8 @@ theorem previewMint_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} 
       .inr ⟨hfmp1, hsize1⟩, by omega⟩
 
 set_option maxHeartbeats 0 in
-/-- **`previewWithdraw(x)` (internal, entry `0x62b`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
+/-- **`previewWithdraw(x)` (internal, entry `0x62b`, stack `x :: r :: rest`)**: returns to `r`
+with the specification's value, or reverts as `mulDiv` does. -/
 theorem previewWithdraw_wp {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x62b) (hs : m.frame.stack = x :: r :: rest)

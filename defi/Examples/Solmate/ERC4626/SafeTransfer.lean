@@ -5,48 +5,20 @@ import EvmLogic.Program.Call
 /-!
 # The vault's `safeTransfer` into the asset
 
-Solmate's `SafeTransferLib.safeTransfer(asset, to, amount)` (used by `withdraw` and `redeem`)
-is compiled once, as an internal function at pc `0x10b9` with stack
-`amount :: to :: token :: r :: rest`. It writes the calldata of `transfer(to, amount)` at the
-free-memory pointer (without moving it), `CALL`s `token` with all remaining gas, no value, and
-an output window of one word at `0x00`, and then checks the result:
-
-```
-success := call(gas(), token, 0, fmp, 68, 0, 32)
-if and(iszero(and(eq(mload(0), 1), gt(returndatasize(), 31))), success) {
-    success := iszero(or(iszero(extcodesize(token)), returndatasize()))
-}
-require(success, "TRANSFER_FAILED");
-```
-
-`safeTransfer_wp` summarises it for `token` the vault's asset immutable. The asset's code
-enters only through its callee summaries `transfer_halts_ok` / `transfer_halts_revert`
-(`Examples.Solmate.ERC20.Transfer`), plugged into the callee-summary rule for a value-free `CALL`
-(`WP.callNoValue`, `EvmLogic.Program.Call`):
-
-* when the vault's asset balance covers `amount`, the asset returns ABI `true` (exactly one
-  word `1`), so the return-data check passes without reaching `EXTCODESIZE`; the function
-  returns to `r` with the world `transferWorld … i.asset vault to amount` (the asset's two
-  balance writes), the free-memory pointer unchanged and memory one word larger;
-* otherwise the asset reverts (`Panic(0x11)`), `success = 0`, and the vault reverts with
-  `Error("TRANSFER_FAILED")`.
-
-## Assumptions
-
-`VaultFrame i` (the asset deployed at `i.asset`, not a precompile, call depth below the limit),
-a non-static frame, the asset not the executing account (true for a deployed vault: the codes
-differ), solc's memory discipline at the call site (`FmpCall`: the free pointer at `0x80` or
-`0xa0` with two words used above it, as `withdraw` / `redeem` leave it), and
-`70000 ≤ gas < 2⁶⁴` (the asset's `transfer` needs up to 55000 gas of the forwarded 63/64).
+`safeTransfer_wp`: the internal `SafeTransferLib.safeTransfer` (entry `0x10b9`, used by
+`withdraw` / `redeem`) `CALL`s the asset's `transfer`; it returns with the asset's two balance
+writes applied when the vault's balance covers the amount, and reverts otherwise. The asset's
+code enters only through its callee summaries `transfer_halts_ok` / `transfer_halts_revert`.
 -/
 
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
-/-- The `asset` immutable, as the `PUSH32` at `0x0a6b` (in `withdraw`) reads it. -/
+-- The `asset` immutable as read by the `PUSH32` at `0x0a6b` (in `withdraw`).
 theorem readBytes_code_asset2668 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 2668 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -57,7 +29,7 @@ theorem readBytes_code_asset2668 (i : SolmateVault.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
     (by simp)
 
-/-- The `asset` immutable, as the `PUSH32` at `0x0bb2` (in `redeem`) reads it. -/
+-- The `asset` immutable as read by the `PUSH32` at `0x0bb2` (in `redeem`).
 theorem readBytes_code_asset2995 (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 2995 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -74,12 +46,10 @@ theorem readBytes_code_asset2995 (i : SolmateVault.Immutables) :
 def FmpCall (mem : Memory) : Prop :=
   (mem.loadWord 64 = 128#256 ∧ mem.size = 192) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 224)
 
-/-- An `MSTORE` at or above `0x60` keeps the free-memory pointer. -/
 theorem loadWord_64_storeWord {mem : Memory} {off : Nat} (w : Word) (h : 96 ≤ off) :
     (mem.storeWord off w).loadWord 64 = mem.loadWord 64 :=
   Memory.loadWord_storeWord_of_disjoint _ _ _ _ (.inl h)
 
-/-- `x AND 0` (the success flag of a failed call masks the return-data test). -/
 theorem and_zero_word (x : Word) : x &&& 0 = 0 := by simp
 
 /-- `m` with the world and the mutable fields of its frame replaced: where an internal function
@@ -89,9 +59,9 @@ abbrev resumeWorld (m : Machine) (pc : Nat) (stack : List Word) (mem : Memory) (
   { m.resumeWith pc stack mem gas rd sub with world := w }
 
 set_option maxHeartbeats 0 in
-/-- **`safeTransfer(asset, to, amount)` (internal, entry `0x10b9`, stack
-`amount :: to :: asset :: r :: rest`)**: when the vault's asset balance covers `amount`,
-returns to `r` with the asset's `transfer` applied to the world; otherwise reverts. -/
+/-- **`safeTransfer(asset, to, amount)`** (internal, entry `0x10b9`, stack
+`amount :: to :: asset :: r :: rest`): when the vault's asset balance covers `amount`, returns
+to `r` with the asset's `transfer` applied to the world; otherwise reverts. -/
 theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : Word}
     {to : Address} {rest : List Word} (hv : VaultFrame i m) (hpc : m.frame.pc = 0x10b9)
     (hs : m.frame.stack = amount :: Word.ofAddress to :: Word.ofAddress i.asset :: r :: rest)

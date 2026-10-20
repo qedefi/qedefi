@@ -2,13 +2,10 @@ import Examples.Solmate.ERC20.Permit
 import Examples.Solmate.ERC4626.SharesCode
 
 /-!
-# The vault's `DOMAIN_SEPARATOR()` and `nonces(owner)`
+# The vault's `permit`, `DOMAIN_SEPARATOR()` and `nonces(owner)`
 
-The share token of the compiled vault (`SolmateVault.runtimeCodeWith i`, any immutables) has
-the same Solmate `ERC20` code as the asset at other offsets (internal `DOMAIN_SEPARATOR()` at
-`0x0724`, `computeDomainSeparator()` at `0x0ea0`): `vault_ds_wp`,
-`vault_domainSeparator_halts`, `vault_nonces_halts` are `asset_ds_wp`, … for the vault (same
-proof scripts, see `Examples.Solmate.ERC20.Permit`).
+The share token of the vault has the same Solmate `ERC20` code as the asset at other offsets, so
+these are the asset's theorems (`Examples.Solmate.ERC20.Permit`) with the same proof scripts.
 -/
 
 section
@@ -16,9 +13,9 @@ section
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
-/-- The `INITIAL_CHAIN_ID` immutable of the vault, as the `PUSH32` at `0x0726` reads it. -/
 theorem readBytes_vault_chainId (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 1831 32 = Bytes.ofWord i.initialChainId := by
   have hp : i.patches = [] ++ (1831, i.initialChainId) :: [(1879, i.initialDomainSeparator),
@@ -29,8 +26,6 @@ theorem readBytes_vault_chainId (i : SolmateVault.Immutables) :
   exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
     (by simp)
 
-/-- The `INITIAL_DOMAIN_SEPARATOR` immutable of the vault, as the `PUSH32` at `0x0756` reads
-it. -/
 theorem readBytes_vault_ds (i : SolmateVault.Immutables) :
     readBytes (SolmateVault.runtimeCodeWith i) 1879 32 = Bytes.ofWord i.initialDomainSeparator := by
   have hp : i.patches = [(1831, i.initialChainId)] ++ (1879, i.initialDomainSeparator) ::
@@ -42,11 +37,8 @@ theorem readBytes_vault_ds (i : SolmateVault.Immutables) :
     (by simp)
 
 set_option maxHeartbeats 0 in
-/-- **`DOMAIN_SEPARATOR()` of the vault, internal (entry `0x0724`, stack `r :: rest`)**: returns
-to `r` with `Permit.domainSeparator …` on the stack. Entered with solc's initial memory
-(`FmpInit`); the world, transient storage and return data are unchanged; memory as in
-`DsMem`; no logs; at most 6000 gas. Covers the deployment chain (any name) and other chains for a
-short name (`DomainCase`). -/
+/-- **`DOMAIN_SEPARATOR()` of the vault, internal (entry `0x0724`)**: returns to `r` with
+`dsOf …` on the stack, at most 6000 gas, under `DomainCase`. -/
 theorem vault_ds_wp {i : SolmateVault.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hc : m.frame.code = SolmateVault.runtimeCodeWith i)
     (hj : JumpTable m.frame.jumpDests (SolmateVault.runtimeCodeWith i))
@@ -190,20 +182,16 @@ end
 
 section
 
-/-!
-## The vault's `permit`: from the `ECRECOVER` call to the end
-
-`vault_permit_tail` is `asset_permit_tail` for the vault's code (`STATICCALL` at `0x0d6e`).
--/
+/-! ## The vault's `permit`: from the `ECRECOVER` call (`0x0d6e`) to the end -/
 
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- **The end of the vault's `permit`**, from the `ECRECOVER` call (pc `0x0d6e`), for the free
-pointer `F ∈ {0x80, 0x140}` at the start of the body. -/
+/-- The end of the vault's `permit`, from the `ECRECOVER` call (pc `0x0d6e`). -/
 theorem vault_permit_tail {i : SolmateVault.Immutables} (m : Machine) {M : Memory} {F : Nat}
     {dg v r s deadline value : Word} {owner spender : Address}
     (hF : F = 128 ∨ F = 320)
@@ -305,20 +293,15 @@ end
 
 section
 
-/-!
-## The vault's `permit`: the body after `DOMAIN_SEPARATOR()`
-
-`vault_permit_body` is `asset_permit_body` for the vault's code (pc `0x0c75`).
--/
+/-! ## The vault's `permit`: the body after `DOMAIN_SEPARATOR()` (pc `0x0c75`) -/
 
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- **The body of the vault's `permit`** (pc `0x0c75` to the end), for both memory layouts that
-`DOMAIN_SEPARATOR()` leaves. -/
 theorem vault_permit_body {i : SolmateVault.Immutables} (m : Machine) {M : Memory} {F S : Nat}
     {ds deadline value v r s : Word} {owner spender : Address}
     (hFS : (F = 128 ∧ S = 96) ∨ (F = 320 ∧ S = 320))
@@ -413,21 +396,16 @@ end
 
 section
 
-/-!
-## The vault's `permit`, in any frame
-
-`vault_permit_halts` is `asset_permit_halts` for the share token of the compiled vault
-(`SolmateVault.runtimeCodeWith i`, any immutables): same statement (`PermitPost`), same
-assumptions.
--/
+/-! ## The vault's `permit`, in any frame -/
 
 namespace Examples.Solmate.ERC4626.Permit
 open Examples.Solmate.ERC20 Defi.ERC4626 Examples.Solmate.ERC20.Permit
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- **`permit` of the vault, in any frame** (see the module docstring). -/
+/-- **`permit` of the vault, in any frame**: as `asset_permit_halts` (`PermitPost`). -/
 theorem vault_permit_halts {i : SolmateVault.Immutables} (m : Machine)
     (hf : Fresh (SolmateVault.runtimeCodeWith i) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false)

@@ -8,43 +8,22 @@ import Examples.Solmate.ERC4626.Malformed
 /-!
 # Frame summaries of views and of calls carrying value
 
-`FrameOk` (`NestedSystem.lean`) holds with **no** model call for every dangerous frame whose
-world is unchanged on success:
-
-* `frameOk_view`: a funded frame (`Funded`, at least 60000 gas) calling one of the covered views
-  (`ViewData`) — called with a non-static `CALL` (a `STATICCALL` frame is not dangerous and
-  needs no summary):
-  - the vault's twelve ERC-4626 views (`VaultViews*.lean`), its share-token views
-    `totalSupply`, `balanceOf`, `allowance`, `decimals` (`SharesFrameViews.lean`), its hook
-    counters `beforeWithdrawHookCalledCounter`, `afterDepositHookCalledCounter`
-    (`ViewsRest.lean`) and `nonces` (`PermitVaultDS.lean`);
-  - the asset's `balanceOf` (`AssetBalanceOf.lean`), `totalSupply`, `allowance`, `decimals`
-    (`ViewsRest.lean`) and `nonces` (`PermitAssetDS.lean`);
-  - for both tokens `name()` and `symbol()` (`Strings*Spec.lean`, with the gas the stored
-    string's length needs, `Str.getterGas`) and `DOMAIN_SEPARATOR()` (`Permit*DS.lean`) in the
-    cases `Permit.DomainCase` covers (`DomainOk`: the deployment chain, or a name shorter than
-    32 bytes). `DOMAIN_SEPARATOR()` on another chain with a name of 32 bytes or more is **not**
-    covered (the out-of-place string encoder is not verified);
-* `frameOk_value`: any call with non-zero value to the vault or the asset: both are compiled
-  with every function non-payable, so the dispatcher's first instructions revert
-  (`CALLVALUE ISZERO JUMPI … REVERT`), with at least 100 gas;
-* `frameOk_unknown`: calldata shorter than four bytes, or a selector that is none of the
-  contract's functions (`UnknownData`): the dispatcher reverts (`UnknownSelectors.lean`);
-* `frameOk_malformed`: the selector of a function with arguments but too few argument words, or
-  an `address` argument with dirty high bytes (`MalformedData`): the function's ABI decoder
-  reverts (`MalformedCalldata.lean`).
+`FrameOk` with no model call for frames that leave the world unchanged on success:
+`frameOk_view` (the covered views of both tokens, called with a non-static `CALL`),
+`frameOk_value` (every function is non-payable), `frameOk_unknown` (no function selected) and
+`frameOk_malformed` (the ABI decoder reverts). See `docs/erc4626/details.md` §4–5.
 -/
 
 namespace Examples.Solmate.ERC4626.Nested
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
-/-- `FrameOk` of a frame that, on success, leaves the world unchanged. -/
 theorem frameOk_of_world {m : Machine} (hdep : Deployed m.world vault asset)
     (h : Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world)) :
     FrameOk crypto vault asset Act K m :=
@@ -75,10 +54,9 @@ def AssetViewData (d : ByteArray) : Prop :=
   (∃ o s, TwoWordCall d 0xdd62ed3e (Word.ofAddress o) (Word.ofAddress s)) ∨
   NoArgCall d 0x313ce567 ∨ (∃ a, AddrCall d 0x7ecebe00 a)
 
-/-- The chain and the token's stored name are in a case `DOMAIN_SEPARATOR()` (and `permit`) is
-proved for (`Permit.DomainCase`): `block.chainid` is the chain id immutable of the code running
-at the frame's account (the deployment chain), or the name in slot 0 is stored in Solidity's
-short form (fewer than 32 bytes). -/
+/-- The cases `DOMAIN_SEPARATOR()` and `permit` are proved for (`Permit.DomainCase`): the
+deployment chain, or a name in slot 0 shorter than 32 bytes. A long name on another chain is not
+covered (the out-of-place string encoder is not verified). -/
 def DomainOk (m : Machine) : Prop :=
   (∀ i : SolmateVault.Immutables,
     m.world.code m.frame.msg.currentTarget = SolmateVault.runtimeCodeWith i →
@@ -106,18 +84,15 @@ def ViewData (vault asset : Address) (m : Machine) : Prop :=
   (m.frame.msg.currentTarget = asset ∧ AssetViewData m.frame.msg.data) ∨
   ((m.frame.msg.currentTarget = vault ∨ m.frame.msg.currentTarget = asset) ∧ TokenViewData m)
 
-/-- A view post leaves the world unchanged. -/
 theorem viewPost_world {m mf : Machine} {r : Option ℕ} {o : Outcome} (h : ViewPost m r mf o) :
     mf.world = m.world := h.1
 
-/-- A summary whose post fixes the world gives the success-only world summary. -/
 theorem halts_world {m : Machine} {H : Machine → Outcome → Prop} (hH : Halts m H)
     (hw : ∀ mf o, H mf o → mf.world = m.world) :
     Halts m (fun mf o => ∀ out, o = .success out → mf.world = m.world) :=
   hH.mono fun mf o _ hp _ _ => hw mf o hp
 
 set_option maxHeartbeats 1000000 in
-/-- The vault's views, in any frame: on success the world is unchanged. -/
 theorem vaultView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
     (h : FrameHyp crypto vault asset Act minGas m) (ht : m.frame.msg.currentTarget = vault)
     (hd : VaultViewData m.frame.msg.data) :
@@ -153,7 +128,6 @@ theorem vaultView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
       (by omega)) fun _ _ h => h.2.1
 
 set_option maxHeartbeats 1000000 in
-/-- The asset's views, in any frame: on success the world is unchanged. -/
 theorem assetView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
     (h : FrameHyp crypto vault asset Act minGas m) (ht : m.frame.msg.currentTarget = asset)
     (hd : AssetViewData m.frame.msg.data) :
@@ -172,8 +146,6 @@ theorem assetView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
       (by omega)) fun _ _ h => h.2.1
 
 set_option maxHeartbeats 1000000 in
-/-- `name()`, `symbol()`, `DOMAIN_SEPARATOR()` of either token, in any frame: on success the
-world is unchanged. -/
 theorem tokenView_world {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
     (h : FrameHyp crypto vault asset Act minGas m)
     (ht : m.frame.msg.currentTarget = vault ∨ m.frame.msg.currentTarget = asset)
@@ -213,7 +185,6 @@ theorem frameOk_view {minGas : Nat} {m : Machine} (hmin : 60000 ≤ minGas)
 
 /-! ## Calls carrying value -/
 
-/-- `ISZERO` of a non-zero word. -/
 theorem iszero_of_ne {v : Word} (h : v ≠ 0) : Word.iszero v = 0#256 := by
   unfold Word.iszero
   have : (v == 0) = false := by simpa using h

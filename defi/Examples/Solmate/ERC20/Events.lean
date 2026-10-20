@@ -6,19 +6,12 @@ import Examples.Solmate.ERC4626.Invariants.System
 import Examples.Solmate.ERC4626.Events
 
 /-!
-# Events of the asset's `transfer` and `approve`: bytecode
+# Events of the asset's functions
 
-Companions of `transfer_halts_ok` (`AssetTransfer.lean`) and `approve_halts`
-(`AssetApprove.lean`) that also determine the frame's logs: the same symbolic execution, with
-the postcondition strengthened by the log the `LOG3` appends.
-
-* `transfer_halts_ok_events`: `TransferOk` and the frame's logs gain exactly
-  `Transfer(caller, dst, amount)` emitted by the asset;
-* `approve_halts_events`: `ApproveOk` and the logs gain exactly `Approval(caller, spender,
-  amount)`.
-
-The topic is the `PUSH32` / code-copied constant of the bytecode; the indexed addresses are the
-masked calldata words; the data is the amount, stored at the free pointer.
+Companions of the asset's success theorems that also fix the frame's logs
+(`*_halts_ok_events`, same symbolic execution with a stronger post), and the theorems that the
+logs of `transfer`/`transferFrom`/`approve`/`mint`/`burn` encode the model's events, in any
+frame (`asset*_events`) and at the top level (`asset*_events_call`); `docs/erc4626/details.md` §6.
 -/
 
 section
@@ -26,12 +19,12 @@ section
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
 set_option maxHeartbeats 0 in
-/-- **`transfer(dst, amount)` of the asset, success, with its log**: as `transfer_halts_ok`,
-and the frame's logs gain `Transfer(caller, dst, amount)`. -/
+/-- **`transfer_halts_ok` with its log** `Transfer(caller, dst, amount)`. -/
 theorem transfer_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {dst : Address}
@@ -65,8 +58,7 @@ theorem transfer_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     event_log [amount]
 
 set_option maxHeartbeats 0 in
-/-- **`approve(spender, amount)` of the asset, with its log**: as `approve_halts`, and the
-frame's logs gain `Approval(caller, spender, amount)`. -/
+/-- **`approve_halts` with its log** `Approval(caller, spender, amount)`. -/
 theorem approve_halts_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {spender : Address}
@@ -99,25 +91,18 @@ end
 
 section
 
-/-!
-## Events of the asset's `transferFrom`: bytecode
-
-`transferFrom_halts_ok_events`: the companion of `transferFrom_halts_ok`
-(`AssetTransferFrom.lean`) that also determines the frame's logs — on both success paths
-(infinite and finite allowance) the frame's logs gain exactly `Transfer(src, dst, amount)`
-emitted by the asset. Solmate emits **no** `Approval` when it spends the allowance.
--/
+/-! ## `transferFrom`: bytecode -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
 set_option maxHeartbeats 0 in
-/-- **`transferFrom(src, dst, amount)` of the asset, success, with its log**: as
-`transferFrom_halts_ok`, and the frame's logs gain `Transfer(src, dst, amount)` (and nothing
-else: no `Approval`). -/
+/-- **`transferFrom_halts_ok` with its log** `Transfer(src, dst, amount)` only: Solmate emits
+no `Approval` when spending an allowance. -/
 theorem transferFrom_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}
@@ -188,22 +173,16 @@ end
 
 section
 
-/-!
-## Events of the asset's `mint` and `burn`: bytecode
-
-Companions of `mint_halts_ok` (`AssetMint.lean`) and `burn_halts_ok` (`AssetBurn.lean`) that
-also determine the frame's logs: `MockERC20.mint(dst, amount)` emits `Transfer(0, dst, amount)`
-and `burn(src, amount)` emits `Transfer(src, 0, amount)` (Solmate's `_mint` / `_burn`).
--/
+/-! ## `mint` and `burn`: bytecode -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- **`mint(dst, amount)` of the asset, success, with its log**: as `mint_halts_ok`, and the
-frame's logs gain `Transfer(0, dst, amount)`. -/
+/-- **`mint_halts_ok` with its log** `Transfer(0, dst, amount)`. -/
 theorem mint_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {dst : Address}
@@ -235,8 +214,7 @@ theorem mint_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
   · event_log [amount]
 
 set_option maxHeartbeats 0 in
-/-- **`burn(src, amount)` of the asset, success, with its log**: as `burn_halts_ok`, and the
-frame's logs gain `Transfer(src, 0, amount)`. -/
+/-- **`burn_halts_ok` with its log** `Transfer(src, 0, amount)`. -/
 theorem burn_halts_ok_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src : Address}
@@ -276,35 +254,22 @@ end
 section
 
 /-!
-## Events of the asset's functions against the model
+## Against the model
 
-For the deployed asset (Solmate `MockERC20`, any immutables), the logs of `transfer`,
-`transferFrom`, `approve`, `mint` and `burn` are the encoding of the model's events
-(`Solmate.Events`):
-
-* **Frame form** (`assetTransfer_events`, …): in any non-static fresh frame (top level, or the
-  vault's `safeTransfer` / `safeTransferFrom`), with the hypotheses of the refinement theorems
-  `assetTransfer_refines`, … (fewer: no hash or well-formedness hypothesis is needed to know
-  the events, except `AllowanceSlotOk` for `transferFrom`), the frame ends as `EventsPost`
-  with `L = encode vault asset (Events.transfer .asset t caller dst amount)` (… for the other
-  functions), `t` the ledger the asset's storage represents: on success it appended exactly
-  these logs, on revert the model emits nothing. The success cases are the bytecode
-  companions `*_halts_ok_events`, the reverts the existing `*_halts_revert` theorems.
-* **Top-level form** (`assetTransfer_events_call`, …): a top-level call to the deployed asset
-  returns a result whose `logs` are `encode vault asset (events (abs ctx.crypto w vault asset)
-  op)` for the model operation `op` (also when it reverts: then both are empty).
+`EventsPost` with the encoded model events of the represented ledger `t`. No hash or
+well-formedness hypothesis is needed, except `AllowanceSlotOk` for `transferFrom`.
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Shares
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Examples.Solmate.ERC4626.Shares
 
 /-! ## Frame form -/
 
-/-- **`transfer(dst, amount)` of the asset emits the model's events**, in any non-static
-frame. -/
+/-- **The asset's `transfer` emits the model's events**, in any non-static frame. -/
 theorem assetTransfer_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {dst : Address} {amount : Word}
@@ -338,8 +303,7 @@ theorem assetTransfer_events {ia : SolmateAsset.Immutables} (m : Machine)
       encode_nil]
     exact eventsPost_revert hrev.1
 
-/-- **`transferFrom(src, dst, amount)` of the asset emits the model's events** (`Transfer`
-only, no `Approval`), in any non-static frame. -/
+/-- **The asset's `transferFrom` emits the model's events**, in any non-static frame. -/
 theorem assetTransferFrom_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src dst : Address} {amount : Word}
@@ -397,8 +361,7 @@ theorem assetTransferFrom_events {ia : SolmateAsset.Immutables} (m : Machine)
         encode_nil]
       exact eventsPost_revert hrev.1
 
-/-- **`approve(spender, amount)` of the asset emits the model's event**, in any non-static
-frame. -/
+/-- **The asset's `approve` emits the model's event**, in any non-static frame. -/
 theorem assetApprove_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {spender : Address} {amount : Word}
@@ -410,7 +373,7 @@ theorem assetApprove_events {ia : SolmateAsset.Immutables} (m : Machine)
     rw [hok.1]
     exact eventsPost_success (by rw [hl]; exact push_eq_encode (toLog_approval ..))
 
-/-- **`mint(dst, amount)` of the asset emits the model's events**, in any non-static frame. -/
+/-- **The asset's `mint` emits the model's events**, in any non-static frame. -/
 theorem assetMint_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {dst : Address} {amount : Word}
@@ -440,7 +403,7 @@ theorem assetMint_events {ia : SolmateAsset.Immutables} (m : Machine)
     simp only [Events.mint, hT, Option.isSome_none, Bool.false_eq_true, ↓reduceIte, encode_nil]
     exact eventsPost_revert hrev.1
 
-/-- **`burn(src, amount)` of the asset emits the model's events**, in any non-static frame. -/
+/-- **The asset's `burn` emits the model's events**, in any non-static frame. -/
 theorem assetBurn_events {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hstatic : m.frame.msg.isStatic = false) {src : Address} {amount : Word}
@@ -476,13 +439,10 @@ theorem assetBurn_events {ia : SolmateAsset.Immutables} (m : Machine)
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
 
-/-- Short calldata fits the frame theorems' size bound. -/
 theorem encodeCall_size_lt (sel : Nat) (args : List Word) (h : args.length ≤ 3) :
     (Abi.encodeCall sel args).size < 2 ^ 64 := by
   rw [Abi.size_encodeCall]; omega
 
-/-- Lift a frame theorem `EventsPost` about the start of a top-level call to the deployed asset
-to the result of `processMessageCall`. -/
 theorem asset_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) {data : ByteArray}
     {L : Array Log}
@@ -498,8 +458,7 @@ theorem asset_events_call (hdep : Deployed w vault asset)
     (h ia (fresh_startMachine ctx w tr
       (callMsg (SolmateAsset.runtimeCodeWith ia) asset caller data gas wa wk)))
 
-/-- **`asset.transfer(dst, amount)` at the top level**: the result's logs are the model's
-events, encoded. -/
+/-- **`asset.transfer` at the top level** logs the model's events. -/
 theorem assetTransfer_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (dst : Address) (amount : Word) :
@@ -512,8 +471,7 @@ theorem assetTransfer_events_call (hdep : Deployed w vault asset)
     (Invariants.twoWordCall_encodeCall (by decide) _ _)
     (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
-/-- **`asset.transferFrom(src, dst, amount)` at the top level**: the result's logs are the
-model's events, encoded. -/
+/-- **`asset.transferFrom` at the top level** logs the model's events. -/
 theorem assetTransferFrom_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 90000 ≤ gas)
     {src : Address} (ha : ERC20.AllowanceSlotOk ctx.crypto ERC20.Layout.solmate src caller)
@@ -529,8 +487,7 @@ theorem assetTransferFrom_events_call (hdep : Deployed w vault asset)
     (Invariants.threeWordCall_encodeCall (by decide) _ _ _)
     (encodeCall_size_lt _ _ (by simp)) hgas ha (rep_toToken _) vault
 
-/-- **`asset.approve(spender, amount)` at the top level**: the result's logs are the model's
-event, encoded. -/
+/-- **`asset.approve` at the top level** logs the model's event. -/
 theorem assetApprove_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 40000 ≤ gas)
     (spender : Address) (amount : Word) :
@@ -543,8 +500,7 @@ theorem assetApprove_events_call (hdep : Deployed w vault asset)
     (Invariants.twoWordCall_encodeCall (by decide) _ _)
     (encodeCall_size_lt _ _ (by simp)) hgas vault
 
-/-- **`asset.mint(dst, amount)` at the top level** (any caller): the result's logs are the
-model's events, encoded. -/
+/-- **`asset.mint` at the top level** (any caller) logs the model's events. -/
 theorem assetMint_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (dst : Address) (amount : Word) :
@@ -557,8 +513,7 @@ theorem assetMint_events_call (hdep : Deployed w vault asset)
     (Invariants.twoWordCall_encodeCall (by decide) _ _)
     (encodeCall_size_lt _ _ (by simp)) hgas (rep_toToken _) vault
 
-/-- **`asset.burn(src, amount)` at the top level** (any caller): the result's logs are the
-model's events, encoded. -/
+/-- **`asset.burn` at the top level** (any caller) logs the model's events. -/
 theorem assetBurn_events_call (hdep : Deployed w vault asset)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hgas : 60000 ≤ gas)
     (src : Address) (amount : Word) :

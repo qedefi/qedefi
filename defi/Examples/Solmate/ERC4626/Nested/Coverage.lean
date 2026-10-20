@@ -3,30 +3,18 @@ import Examples.Solmate.ERC4626.Nested.Invariants
 /-!
 # Coverage: which frames are covered
 
-`Covered` (`NestedInvariants.lean`) is a disjunction of the frame shapes with a proved frame
-summary. This file shows it is **everything** except gas and the `DOMAIN_SEPARATOR()` cases:
-
-* `covered_of_funded`: a frame of the vault or the asset (`VaultStart`, deployed) that is
-  funded (`FundedCall`: no value, at least `minGas` gas, for the vault depth below 1024,
-  calldata below `2⁶⁴` bytes) is covered, **whatever its calldata**, provided `CoverOk`:
-  `name()`/`symbol()` get the gas the stored string needs, `DOMAIN_SEPARATOR()` is in a
-  covered case (`DomainOk`), and `permit` meets `PermitFrame` (`DomainOk`, `0x01` not
-  delegated, depth below 1024). The calldata is either shorter than a selector or has an
-  unknown selector (`UnknownData`), or is malformed for the selected function
-  (`MalformedData`), or decodes to a modelled call (`Executes`), a view (`ViewData`) or a
-  `permit` (`PermitData`) — by case analysis over the 30 selectors of the vault and the 14 of
-  the asset (`vaultSelectors`, `assetSelectors`, which are the ABI's).
-* `txOk_of`: hence a transaction is covered (`TxOk`) as soon as every frame of the vault or
-  the asset that other code starts carries value with at least 100 gas or is funded with
-  `CoverOk`, and its committed calls are admitted (`FrameAdmitted`).
+`covered_of_funded`: every funded vault/asset frame is `Covered`, whatever its calldata, under
+`CoverOk`, by case analysis over the 30 vault and 14 asset selectors (`vaultSelectors`,
+`assetSelectors`, the ABI's). Hence `txOk_of`. See `docs/erc4626/details.md` §4.
 -/
 
 namespace Examples.Solmate.ERC4626.Nested
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
-
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Invariants Defi.ERC4626 Examples.Solmate.ERC20.Permit Examples.Solmate.ERC4626.Permit
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Invariants Examples.Solmate.ERC20.Permit
+open Examples.Solmate.ERC4626.Permit
 open EvmLogic.Program.Nested (Keep KeepP GoodOk DangerStart Danger TopOk Reaches bottom)
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
@@ -34,7 +22,6 @@ variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCa
 
 /-! ## Decoding calldata -/
 
-/-- A clean `address` argument is the word of the address it encodes. -/
 theorem ofAddress_toAddress_of_clean {d : ByteArray} {j : Nat} (h : CleanAddr d j) :
     Word.ofAddress (Word.toAddress (argWord d j)) = argWord d j := by
   have h' := congrArg BitVec.toNat h
@@ -44,8 +31,6 @@ theorem ofAddress_toAddress_of_clean {d : ByteArray} {j : Nat} (h : CleanAddr d 
   simp only [Word.ofAddress, Word.toAddress, BitVec.toNat_setWidth]
   rw [h', Nat.mod_eq_of_lt (argWord d j).isLt]
 
-/-- Calldata that is not malformed for a function shape holds all the argument words, and its
-`address` arguments are clean. -/
 theorem wellFormed_of {d : ByteArray} {k : Nat} {addrs : List Nat} (h : ¬ Malformed d k addrs) :
     4 + 32 * k ≤ d.size ∧ ∀ j ∈ addrs, CleanAddr d j := by
   have hs : 4 + 32 * k ≤ d.size := by
@@ -60,25 +45,20 @@ theorem wellFormed_of {d : ByteArray} {k : Nat} {addrs : List Nat} (h : ¬ Malfo
   by_contra hc
   exact Nat.find_min hex hlt ⟨hj', hc⟩
 
-/-- One argument word. -/
 theorem wordCall_of {d : ByteArray} {s : Nat} (h : Abi.selectorOf d = s) (hs : 36 ≤ d.size) :
     WordCall d s (argWord d 0) := ⟨h, hs, rfl⟩
 
-/-- One clean `address` argument. -/
 theorem addrCall_of {d : ByteArray} {s : Nat} (h : Abi.selectorOf d = s) (hs : 36 ≤ d.size)
     (hc : CleanAddr d 0) : AddrCall d s (Word.toAddress (argWord d 0)) :=
   ⟨h, hs, (ofAddress_toAddress_of_clean hc).symm⟩
 
-/-- Two argument words. -/
 theorem twoWordCall_of {d : ByteArray} {s : Nat} (h : Abi.selectorOf d = s) (hs : 68 ≤ d.size) :
     TwoWordCall d s (argWord d 0) (argWord d 1) := ⟨h, hs, rfl, rfl⟩
 
-/-- Three argument words. -/
 theorem threeWordCall_of {d : ByteArray} {s : Nat} (h : Abi.selectorOf d = s)
     (hs : 100 ≤ d.size) : ThreeWordCall d s (argWord d 0) (argWord d 1) (argWord d 2) :=
   ⟨h, hs, rfl, rfl, rfl⟩
 
-/-- `permit` calldata with clean `owner` and `spender`. -/
 theorem permitCall_of {d : ByteArray} (h : Abi.selectorOf d = 0xd505accf) (hs : 228 ≤ d.size)
     (hc0 : CleanAddr d 0) (hc1 : CleanAddr d 1) :
     PermitCall d (Word.toAddress (argWord d 0)) (Word.toAddress (argWord d 1)) (argWord d 2)
@@ -86,13 +66,11 @@ theorem permitCall_of {d : ByteArray} (h : Abi.selectorOf d = 0xd505accf) (hs : 
   ⟨h, hs, (ofAddress_toAddress_of_clean hc0).symm, (ofAddress_toAddress_of_clean hc1).symm, rfl,
     rfl, rfl, rfl, rfl⟩
 
-/-- A `permit` frame of the vault. -/
 theorem permitData_vault {m : Machine} (ht : m.frame.msg.currentTarget = vault)
     {o sp : Address} {v dl v' r s : Word} (hp : PermitCall m.frame.msg.data o sp v dl v' r s) :
     PermitData vault asset m (.approve o sp v) := by
   unfold PermitData; exact ⟨ht, dl, v', r, s, hp⟩
 
-/-- A `permit` frame of the asset. -/
 theorem permitData_asset {m : Machine} (ht : m.frame.msg.currentTarget = asset)
     {o sp : Address} {v dl v' r s : Word} (hp : PermitCall m.frame.msg.data o sp v dl v' r s) :
     PermitData vault asset m (.assetApprove o sp v) := by
@@ -104,21 +82,15 @@ theorem permitData_asset {m : Machine} (ht : m.frame.msg.currentTarget = asset)
 stored `name`/`symbol` string, `DOMAIN_SEPARATOR()` in a covered case, `permit` with its frame
 conditions. -/
 structure CoverOk (m : Machine) : Prop where
-  /-- `name()`: the gas the stored string needs. -/
   name : Abi.selectorOf m.frame.msg.data = 0x06fdde03 →
     Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 0#256)) ≤
       m.frame.gasLeft
-  /-- `symbol()`: the gas the stored string needs. -/
   symbol : Abi.selectorOf m.frame.msg.data = 0x95d89b41 →
     Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 1#256)) ≤
       m.frame.gasLeft
-  /-- `DOMAIN_SEPARATOR()`: a covered case. -/
   domain : Abi.selectorOf m.frame.msg.data = 0x3644e515 → DomainOk m
-  /-- `permit`: the permit frame conditions. -/
   permit : Abi.selectorOf m.frame.msg.data = 0xd505accf → PermitFrame m
 
-/-- **Every well-formed call of a vault function** decodes to a modelled call, a view or a
-`permit`. -/
 theorem vault_known_covered {m : Machine} (ht : m.frame.msg.currentTarget = vault)
     (h4 : 4 ≤ m.frame.msg.data.size) (hmal : ¬ MalformedData vault asset m) (hc : CoverOk m)
     (hs : Abi.selectorOf m.frame.msg.data ∈ vaultSelectors) :
@@ -288,8 +260,6 @@ theorem vault_known_covered {m : Machine} (ht : m.frame.msg.currentTarget = vaul
     left
     exact ⟨h, h4⟩
 
-/-- **Every well-formed call of an asset function** decodes to a modelled call, a view or a
-`permit`. -/
 theorem asset_known_covered {m : Machine} (ht : m.frame.msg.currentTarget = asset)
     (h4 : 4 ≤ m.frame.msg.data.size) (hmal : ¬ MalformedData vault asset m) (hc : CoverOk m)
     (hs : Abi.selectorOf m.frame.msg.data ∈ assetSelectors) :
@@ -399,9 +369,9 @@ theorem covered_of_funded {m : Machine} (hv : VaultStart vault asset m)
     · exact .inr (.inr (.inr (.inl (.inr ⟨h4', fun h => absurd (h.symm.trans ht) hne,
         fun _ => hs⟩))))
 
-/-- **A transaction is covered** when every frame of the vault or the asset that other code
-starts either carries value (with at least 100 gas) or is funded with `CoverOk`, and the model
-calls it commits are admitted. -/
+/-- **A transaction is covered** when every vault/asset frame started by other code carries
+value (with at least 100 gas) or is funded with `CoverOk`, and its committed calls are
+admitted. -/
 theorem txOk_of {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     (h : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset →
       (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →

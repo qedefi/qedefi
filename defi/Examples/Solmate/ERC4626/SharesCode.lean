@@ -8,62 +8,47 @@ import EvmLogic.Tactic.KernelRfl
 /-!
 # The vault's share token: code, calldata, dispatch
 
-Shared definitions for the refinement proofs of the share-token functions of the compiled
-Solmate vault (`Contracts.SolmateVault`, Solmate `MockERC4626`, 5248 bytes), **for arbitrary
-immutables** `i : SolmateVault.Immutables` (asset address, chain id, domain separator,
-decimals): the code is `SolmateVault.runtimeCodeWith i` (the canonical code patched by
-position; `runtimeCodeFor … asset self` is an instance, and so is the canonical deployment,
-`runtimeCodeWith_deployment`). Symbolic execution runs on it with `psol_steps`
-(`EvmLogic.Tactic.Patched`), using `jumpDestsAgree`.
-
-* calldata (`transferData`, …) and the top-level call message `vaultCall`;
-* `reaches_*`: the dispatcher reaches each function's ABI decoder (entry pc, number of steps,
-  gas), for every machine (`Dispatch.Reaches`).
-
-The share token's storage is Solmate's `ERC20` layout (`Erc20.Layout.solmate`: `totalSupply`
-2, `balanceOf` 3, `allowance` 4), read with `Erc20.view`.
+Shared definitions for the share-token proofs of the compiled vault for **arbitrary immutables**
+(`code i = SolmateVault.runtimeCodeWith i`), and the top-level bytecode theorems (`*_ok`,
+`*_revert`) behind `Shares.lean`. Symbolic execution uses `psol_steps` with `jumpDestsAgree`.
 -/
 
 section
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch
 
 /-! ## Code -/
 
 /-- The runtime code of the vault deployed with immutables `i`. -/
 abbrev code (i : SolmateVault.Immutables) : ByteArray := SolmateVault.runtimeCodeWith i
 
-/-- The canonical deployment is an instance. -/
 theorem code_deployment : code SolmateVault.deployment = SolmateVault.runtimeCode :=
   SolmateVault.runtimeCodeWith_deployment
 
-/-- `runtimeCodeFor` (a deployment over `asset` at `self`, canonical name) is an instance. -/
 theorem code_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat) (asset self : Address) :
     code (SolmateVault.immutablesFor keccak256 chainId asset self) =
       SolmateVault.runtimeCodeFor keccak256 chainId asset self := rfl
 
-/-- `runtimeCodeFor` deploys with 18 decimals. -/
 theorem decimals_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat)
     (asset self : Address) : (SolmateVault.immutablesFor keccak256 chainId asset self).decimals = 18#256 :=
   rfl
 
-/-- The patches only touch `PUSH32` immediates: the jump table is the canonical one, for all
+/-- The patches only touch `PUSH32` immediates, so the jump table is the canonical one for all
 immutables (kernel evaluation of the `JUMPDEST` scan, which skips the patched bytes). -/
 theorem jumpDestsAgree (i : SolmateVault.Immutables) :
     JumpDestsAgree (code i) SolmateVault.runtimeCode := by
   unfold JumpDestsAgree; kernel_decide
 
-/-- The vault code has 5248 bytes. -/
 theorem size_code (i : SolmateVault.Immutables) : (code i).size = 5248 := by
   exact (size_patchWords _ _).trans SolmateVault.size_runtimeCode
 
-/-- The vault code is not an EIP-7702 delegation designator. -/
 theorem delegatedAddress?_code (i : SolmateVault.Immutables) : delegatedAddress? (code i) = none :=
   delegatedAddress?_of_size (by rw [size_code]; decide)
 
-/-- The `decimals` immutable, as `PUSH32` at 622 reads it. -/
+-- The `decimals` immutable, as the `PUSH32` at 622 reads it.
 theorem readBytes_code_decimals (i : SolmateVault.Immutables) :
     readBytes (code i) 623 32 = Bytes.ofWord i.decimals := by
   have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
@@ -77,32 +62,24 @@ theorem readBytes_code_decimals (i : SolmateVault.Immutables) :
 
 /-! ## Calldata -/
 
-/-- Calldata of `transfer(dst, amount)`. -/
 def transferData (dst : Address) (amount : Word) : ByteArray :=
   Abi.encodeCall 0xa9059cbb [Word.ofAddress dst, amount]
 
-/-- Calldata of `approve(spender, amount)`. -/
 def approveData (spender : Address) (amount : Word) : ByteArray :=
   Abi.encodeCall 0x095ea7b3 [Word.ofAddress spender, amount]
 
-/-- Calldata of `transferFrom(src, dst, amount)`. -/
 def transferFromData (src dst : Address) (amount : Word) : ByteArray :=
   Abi.encodeCall 0x23b872dd [Word.ofAddress src, Word.ofAddress dst, amount]
 
-/-- Calldata of `balanceOf(a)`. -/
 def balanceOfData (a : Address) : ByteArray := Abi.encodeCall 0x70a08231 [Word.ofAddress a]
 
-/-- Calldata of `allowance(owner, spender)`. -/
 def allowanceData (owner spender : Address) : ByteArray :=
   Abi.encodeCall 0xdd62ed3e [Word.ofAddress owner, Word.ofAddress spender]
 
-/-- Calldata of `totalSupply()`. -/
 def totalSupplyData : ByteArray := Abi.encodeCall 0x18160ddd []
 
-/-- Calldata of `decimals()`. -/
 def decimalsData : ByteArray := Abi.encodeCall 0x313ce567 []
 
-/-- The selectors are the artifact's method identifiers. -/
 theorem selectors_mem :
     ("transfer(address,uint256)", (0xa9059cbb : UInt32)) ∈ SolmateVault.selectors ∧
     ("approve(address,uint256)", (0x095ea7b3 : UInt32)) ∈ SolmateVault.selectors ∧
@@ -118,7 +95,6 @@ abbrev vaultCall (i : SolmateVault.Immutables) (vault caller : Address) (data : 
     (gas : Nat) (warmAddrs : AddressSet) (warmKeys : StorageKeySet) : Message :=
   callMsg (code i) vault caller data gas warmAddrs warmKeys
 
-/-- `processMessageCall` of a vault call starts the interpreter on the vault code. -/
 theorem processMessageCall_vaultCall {i : SolmateVault.Immutables} {ctx : Context} {w : World}
     {tr : TransientStorage} {vault caller : Address} {data : ByteArray} {gas : Nat}
     {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
@@ -131,53 +107,45 @@ theorem processMessageCall_vaultCall {i : SolmateVault.Immutables} {ctx : Contex
 /-! ## Dispatch -/
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `transfer`: entry 893, 51 steps, 208 gas. -/
 theorem reaches_transfer (i : SolmateVault.Immutables) : Reaches (code i) 0xa9059cbb 893 51 208 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `approve`: entry 536, 41 steps, 164 gas. -/
 theorem reaches_approve (i : SolmateVault.Immutables) : Reaches (code i) 0x095ea7b3 536 41 164 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `transferFrom`: entry 599, 56 steps, 230 gas. -/
 theorem reaches_transferFrom (i : SolmateVault.Immutables) :
     Reaches (code i) 0x23b872dd 599 56 230 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `totalSupply`: entry 590, 51 steps, 208 gas. -/
 theorem reaches_totalSupply (i : SolmateVault.Immutables) :
     Reaches (code i) 0x18160ddd 590 51 208 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `balanceOf`: entry 804, 50 steps, 207 gas. -/
 theorem reaches_balanceOf (i : SolmateVault.Immutables) : Reaches (code i) 0x70a08231 804 50 207 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `allowance`: entry 1077, 44 steps, 184 gas. -/
 theorem reaches_allowance (i : SolmateVault.Immutables) :
     Reaches (code i) 0xdd62ed3e 1077 44 184 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 set_option maxHeartbeats 1000000 in
-/-- Dispatch of `decimals`: entry 618, 41 steps, 164 gas. -/
 theorem reaches_decimals (i : SolmateVault.Immutables) : Reaches (code i) 0x313ce567 618 41 164 := by
   have hjd := jumpDestsAgree i
   psol_dispatch
 
 /-! ## Calldata facts -/
 
-/-- Selector and size of calldata with `n` word arguments. -/
 theorem encodeCall_facts (sel : Nat) (args : List Word) (hsel : sel < 2 ^ 32)
     (hn : 4 + 32 * args.length < 2 ^ 256) :
     Abi.selectorOf (Abi.encodeCall sel args) = sel ∧ 4 ≤ (Abi.encodeCall sel args).size ∧
@@ -191,26 +159,17 @@ end
 
 section
 
-/-!
-## The vault's `transfer`: bytecode
-
-`transfer(dst, amount)` of the compiled vault (`SharesCode.code i`, arbitrary immutables), from
-the start of a top-level call:
-
-* `transfer_ok`: with `amount ≤ balanceOf[caller]`, the call returns ABI `true` and the world
-  is `Erc20.transferWorld` (the same two `SSTORE`s as the asset's `transfer`);
-* `transfer_revert`: otherwise the checked subtraction panics and the world is unchanged.
--/
+/-! ## `transfer`: bytecode -/
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
   {warmKeys : StorageKeySet}
 
-/-- The dispatcher on a `transfer` call. -/
 theorem run_start_transfer (hgas : 208 ≤ gas) (k : Nat) :
     run (k + 51) (start ctx w tr (vaultCall i vault caller (transferData dst amount) gas warmAddrs
       warmKeys)) =
@@ -224,7 +183,7 @@ theorem run_start_transfer (hgas : 208 ≤ gas) (k : Nat) :
   (reaches_transfer i).run_start h.1 h.2.1 h.2.2 hgas k
 
 set_option maxHeartbeats 10000000 in
-/-- **`transfer`, success.** -/
+/-- **`transfer`, success**: returns `true`, world `transferWorld`. -/
 theorem transfer_ok (hgas : 100000 ≤ gas)
     (hbal : amount.toNat ≤ ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat)
     (k : Nat) :
@@ -249,8 +208,7 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
     rfl
 
 set_option maxHeartbeats 10000000 in
-/-- **`transfer`, insufficient balance**: the checked subtraction panics; the call reverts and
-the world is unchanged. -/
+/-- **`transfer`, insufficient balance**: panics; the world is unchanged. -/
 theorem transfer_revert (hgas : 100000 ≤ gas)
     (hbal : ((view ctx.crypto Layout.solmate w vault).balanceOf caller).toNat < amount.toNat)
     (k : Nat) :
@@ -276,23 +234,17 @@ end
 
 section
 
-/-!
-## The vault's `approve`: bytecode
-
-`approve(spender, amount)` of the compiled vault (`SharesCode.code i`, arbitrary immutables):
-the call always succeeds, returns ABI `true`, and the world is `Erc20.approveWorld` (one
-`SSTORE` to `allowance[caller][spender]`).
--/
+/-! ## `approve`: bytecode -/
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller spender : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
   {warmKeys : StorageKeySet}
 
-/-- The dispatcher on an `approve` call. -/
 theorem run_start_approve (hgas : 164 ≤ gas) (k : Nat) :
     run (k + 41) (start ctx w tr (vaultCall i vault caller (approveData spender amount) gas
       warmAddrs warmKeys)) =
@@ -329,26 +281,17 @@ end
 
 section
 
-/-!
-## The vault's `transferFrom`: bytecode, success
-
-`transferFrom(src, dst, amount)` of the compiled vault (`SharesCode.code i`, arbitrary
-immutables) called by `caller`: if the allowance `allowance[src][caller]` is
-`type(uint256).max` or at least `amount`, and `balanceOf[src]` (after the allowance update)
-is at least `amount`, the call returns ABI `true` and the world is
-`Erc20.transferFromWorld` (allowance update unless maximal, then the two balance writes).
-The reverting cases are in `Examples.Solmate.ERC4626.SharesCode`.
--/
+/-! ## `transferFrom`: bytecode, success -/
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
   {warmKeys : StorageKeySet}
 
-/-- The dispatcher on a `transferFrom` call. -/
 theorem run_start_transferFrom (hgas : 230 ≤ gas) (k : Nat) :
     run (k + 56) (start ctx w tr (vaultCall i vault caller (transferFromData src dst amount) gas
       warmAddrs warmKeys)) =
@@ -364,7 +307,7 @@ theorem run_start_transferFrom (hgas : 230 ≤ gas) (k : Nat) :
 
 set_option maxRecDepth 10000 in
 set_option maxHeartbeats 10000000 in
-/-- **`transferFrom`, success.** -/
+/-- **`transferFrom`, success**: returns `true`, world `transferFromWorld`. -/
 theorem transferFrom_ok (hgas : 100000 ≤ gas)
     (hal : (view ctx.crypto Layout.solmate w vault).allowance src caller = maxWord ∨
       amount.toNat ≤ ((view ctx.crypto Layout.solmate w vault).allowance src caller).toNat)
@@ -436,20 +379,12 @@ end
 
 section
 
-/-!
-## The vault's `transferFrom`: bytecode, reverts
-
-* `transferFrom_revert_allowance`: a finite allowance below `amount` panics in the checked
-  subtraction (`Panic(0x11)`);
-* `transferFrom_revert_balance`: otherwise, a balance of `src` (after the allowance update)
-  below `amount` panics in the balance subtraction.
-
-Either way the call reverts and the world is unchanged (the allowance write is rolled back).
--/
+/-! ## `transferFrom`: bytecode, reverts (world unchanged) -/
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller src dst : Address} {amount : Word} {gas : Nat} {warmAddrs : AddressSet}
@@ -552,18 +487,12 @@ end
 
 section
 
-/-!
-## The vault's share-token views: bytecode
-
-`totalSupply()`, `balanceOf(a)`, `allowance(owner, spender)` and `decimals()` of the compiled
-vault (`SharesCode.code i`, arbitrary immutables), from the start of a top-level call by any
-caller: each succeeds, returns the ABI encoding of the value read through `Erc20.view`
-(resp. the `decimals` immutable, masked to `uint8`), and leaves the world unchanged.
--/
+/-! ## Share-token views: bytecode -/
 
 namespace Examples.Solmate.ERC4626.Shares
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch EvmLogic.Solidity.ERC20 EvmLean.Bytes
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller a owner spender : Address} {gas : Nat} {warmAddrs : AddressSet}

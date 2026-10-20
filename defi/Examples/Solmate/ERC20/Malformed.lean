@@ -3,18 +3,18 @@ import Examples.Solmate.ERC4626.UnknownSelectors
 /-!
 # Malformed calldata for the asset
 
-The asset functions of `assetArgShapes`: fewer argument words than the function takes
-(`asset_<f>_short`), or a dirty `address` argument after clean ones (`asset_<f>_dirty<j>`)
-reverts in the ABI decoder. See `MalformedCalldata.lean`.
+For each asset function of `assetArgShapes`: too few argument words (`asset_<f>_short`) or a
+dirty `address` argument after clean ones (`asset_<f>_dirty<j>`) reverts in the ABI decoder
+(`docs/erc4626/details.md` §5).
 -/
 
 namespace Examples.Solmate.ERC20
 open Examples.Solmate.ERC4626 Defi.ERC4626
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- `allowance` of the asset with fewer than 2 argument words reverts. -/
 theorem asset_allowance_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xdd62ed3e) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -31,7 +31,6 @@ theorem asset_allowance_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `allowance` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_allowance_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xdd62ed3e) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -51,7 +50,6 @@ theorem asset_allowance_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `allowance` of the asset with dirty high bytes in its second argument (an `address`) reverts. -/
 theorem asset_allowance_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xdd62ed3e) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -74,7 +72,6 @@ theorem asset_allowance_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `approve` of the asset with fewer than 2 argument words reverts. -/
 theorem asset_approve_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x095ea7b3) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -91,7 +88,6 @@ theorem asset_approve_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `approve` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_approve_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x095ea7b3) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -111,7 +107,6 @@ theorem asset_approve_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `balanceOf` of the asset with fewer than 1 argument word reverts. -/
 theorem asset_balanceOf_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x70a08231) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -128,7 +123,6 @@ theorem asset_balanceOf_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `balanceOf` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_balanceOf_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x70a08231) (hsize : 36 ≤ m.frame.msg.data.size)
@@ -148,7 +142,6 @@ theorem asset_balanceOf_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `burn` of the asset with fewer than 2 argument words reverts. -/
 theorem asset_burn_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x9dc29fac) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -165,7 +158,6 @@ theorem asset_burn_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `burn` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_burn_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x9dc29fac) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -185,7 +177,6 @@ theorem asset_burn_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `mint` of the asset with fewer than 2 argument words reverts. -/
 theorem asset_mint_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x40c10f19) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -202,7 +193,6 @@ theorem asset_mint_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `mint` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_mint_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x40c10f19) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -222,7 +212,6 @@ theorem asset_mint_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `nonces` of the asset with fewer than 1 argument word reverts. -/
 theorem asset_nonces_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x7ecebe00) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -239,7 +228,6 @@ theorem asset_nonces_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `nonces` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_nonces_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x7ecebe00) (hsize : 36 ≤ m.frame.msg.data.size)
@@ -259,7 +247,6 @@ theorem asset_nonces_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `permit` of the asset with fewer than 7 argument words reverts. -/
 theorem asset_permit_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xd505accf) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -276,7 +263,6 @@ theorem asset_permit_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `permit` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_permit_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xd505accf) (hsize : 228 ≤ m.frame.msg.data.size)
@@ -296,7 +282,6 @@ theorem asset_permit_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `permit` of the asset with dirty high bytes in its second argument (an `address`) reverts. -/
 theorem asset_permit_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xd505accf) (hsize : 228 ≤ m.frame.msg.data.size)
@@ -319,7 +304,6 @@ theorem asset_permit_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transfer` of the asset with fewer than 2 argument words reverts. -/
 theorem asset_transfer_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xa9059cbb) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -336,7 +320,6 @@ theorem asset_transfer_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transfer` of the asset with dirty high bytes in its first argument (an `address`) reverts. -/
 theorem asset_transfer_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0xa9059cbb) (hsize : 68 ≤ m.frame.msg.data.size)
@@ -356,7 +339,6 @@ theorem asset_transfer_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the asset with fewer than 3 argument words reverts. -/
 theorem asset_transferFrom_short {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 4 ≤ m.frame.msg.data.size)
@@ -373,8 +355,6 @@ theorem asset_transferFrom_short {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the asset with dirty high bytes in its first argument (an `address`) reverts.
--/
 theorem asset_transferFrom_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)
@@ -394,8 +374,6 @@ theorem asset_transferFrom_dirty0 {ia : SolmateAsset.Immutables} (m : Machine)
   exact ⟨_, rfl⟩
 
 set_option maxHeartbeats 0 in
-/-- `transferFrom` of the asset with dirty high bytes in its second argument (an `address`)
-reverts. -/
 theorem asset_transferFrom_dirty1 {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x23b872dd) (hsize : 100 ≤ m.frame.msg.data.size)

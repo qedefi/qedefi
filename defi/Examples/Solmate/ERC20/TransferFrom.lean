@@ -4,45 +4,34 @@ import EvmLogic.Solidity.ERC20
 /-!
 # The asset's `transferFrom` as a callee summary
 
-`transferFrom_halts_ok` / `transferFrom_halts_revert`: `transferFrom(src, dst, amount)` of the
-deployed asset (any immutables) in any non-static fresh frame, with `msg.sender` the spender.
-On success (the allowance is infinite or covers `amount`, and `src`'s balance after the
-allowance step covers it) it returns ABI `true` with the world `Erc20.transferFromWorld` (the
-allowance step `Erc20.spendWorld`, then the `transfer` writes; the definitions are shared with
-the share-token refinement); otherwise one of the two checked subtractions panics. The proof
-splits on the three paths of the code (infinite allowance, finite allowance, and the revert
-points). `Examples.Solmate.ERC20.Spec` relates them to `Token.transferFrom`.
+`transferFrom_halts_ok`/`_revert`: `transferFrom(src, dst, amount)` of the deployed asset in
+any non-static frame succeeds with `ERC20.transferFromWorld` when the allowance (unless
+infinite) and the balance after the allowance step cover `amount`, and otherwise reverts.
 -/
 
 namespace Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
 /-- Calldata of a function taking three static words `x`, `y`, `z`, with selector `sel`. -/
 structure ThreeWordCall (data : ByteArray) (sel : Nat) (x y z : Word) : Prop where
-  /-- The selector. -/
   selector : Abi.selectorOf data = sel
-  /-- Three argument words. -/
   size : 100 ≤ data.size
-  /-- The first argument. -/
   arg0 : Bytes.toWord (readBytes data 4 32) = x
-  /-- The second argument. -/
   arg1 : Bytes.toWord (readBytes data 36 32) = y
-  /-- The third argument. -/
   arg2 : Bytes.toWord (readBytes data 68 32) = z
 
-/-- The allowance slot of `allowance[owner][spender]` as symbolic execution computes it. -/
 theorem allowanceSlot_solmate (crypto : Crypto) (owner spender : Address) :
     ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender =
       crypto.keccak256 (Bytes.ofWord (Word.ofAddress spender) ++
         Bytes.ofWord (crypto.keccak256 (Bytes.ofWord (Word.ofAddress owner) ++ Bytes.ofWord 4#256))) :=
   rfl
 
-/-- `type(uint256).max` as the symbolic executor prints it. -/
 theorem maxWord_eq_MAXW : ERC20.maxWord = MAXW := by decide
 
-/-- What a successful `transferFrom(src, dst, amount)` ends with (see `TransferOk`). -/
+/-- A successful `transferFrom`: ABI `true`, world `ERC20.transferFromWorld`, ≤ 80000 gas. -/
 def TransferFromOk (src dst : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord 1) ∧
   mf.world = ERC20.transferFromWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
@@ -51,9 +40,8 @@ def TransferFromOk (src dst : Address) (amount : Word) (m mf : Machine) (o : Out
   m.frame.gasLeft ≤ mf.frame.gasLeft + 80000
 
 set_option maxHeartbeats 0 in
-/-- **`transferFrom(src, dst, amount)` of the asset, success**, in any non-static frame: when the
-allowance is infinite or covers `amount`, and the source balance (after the allowance step)
-covers `amount`. -/
+/-- **The asset's `transferFrom`, success**: when the allowance is infinite or covers `amount`
+and the balance after the allowance step covers `amount`. -/
 theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}
@@ -113,9 +101,7 @@ theorem transferFrom_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
       evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transferFrom(src, dst, amount)` of the asset, revert**, in any non-static frame: when
-the allowance (unless infinite) or the source balance (after the allowance step) does not cover
-`amount`, the checked subtraction panics. -/
+/-- **The asset's `transferFrom`, revert**: otherwise a checked subtraction panics. -/
 theorem transferFrom_halts_revert {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
     (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = false) {src dst : Address}

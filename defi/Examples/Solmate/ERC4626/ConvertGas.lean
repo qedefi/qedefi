@@ -1,15 +1,12 @@
 import Examples.Solmate.ERC4626.Convert
 
 /-!
-# Gas upper bounds through the asset's `balanceOf`
+# Conversions with an upper bound on the gas left
 
-The callee summaries of the core files (`balanceOf_halts`, and through it `totalAssets_wp`
-and the conversions) bound the gas *used*, not the gas *left*: after a call, the caller only
-knows a lower bound on its gas. `withdraw` and `redeem` make a second call (`safeTransfer`)
-after a conversion, and the gas they forward is `GAS - 2` as a word, so they need the gas left
-to stay below `2²⁵⁶`. This file restates `balanceOf_halts`, `totalAssets_wp`,
-`previewWithdraw_wp` and `convertToAssets_wp` (same proofs) with the additional conclusion that
-the gas left at the end is at most the gas at the start (`*_gas`).
+`*_gas`: `balanceOf_halts`, `totalAssets_wp` and the conversions, by the same proofs, with the
+extra conclusion that the gas left at the end is at most the gas at the start. Needed because
+`deposit`/`mint`/`withdraw`/`redeem` make a second call after a conversion, forwarding the
+word `GAS - 2`, whose summary needs the gas left to still be `< 2⁶⁴`.
 -/
 
 section
@@ -17,10 +14,10 @@ section
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- `balanceOf_halts` with an upper bound on the gas left at the end. -/
 theorem balanceOf_halts_gas {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (a : Address)
     (hval : m.frame.msg.value = 0)
@@ -45,7 +42,6 @@ theorem balanceOf_halts_gas {ia : SolmateAsset.Immutables} (m : Machine)
     evm_gas
 
 set_option maxHeartbeats 0 in
-/-- `totalAssets_wp` with an upper bound on the gas left at the end. -/
 theorem totalAssets_wp_gas {i : SolmateVault.Immutables} (m : Machine) {r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x47b) (hs : m.frame.stack = r :: rest)
@@ -142,8 +138,6 @@ theorem totalAssets_wp_gas {i : SolmateVault.Immutables} (m : Machine) {r : Word
 
 
 set_option maxHeartbeats 0 in
-/-- With an upper bound on the gas left at the end: **`convertToAssets(x)` (internal, entry `0x593`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
 theorem convertToAssets_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x593) (hs : m.frame.stack = x :: r :: rest)
@@ -199,8 +193,6 @@ theorem convertToAssets_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r 
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega⟩
 
 set_option maxHeartbeats 0 in
-/-- With an upper bound on the gas left at the end: **`previewWithdraw(x)` (internal, entry `0x62b`, stack `x :: r :: rest`)**: returns to `r` with the
-specification's value, or reverts as `mulDiv` does. -/
 theorem previewWithdraw_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x62b) (hs : m.frame.stack = x :: r :: rest)
@@ -261,28 +253,13 @@ end
 
 section
 
-/-!
-## Conversions with an upper bound on the gas left
-
-`deposit` and `mint` make a second external call (the asset's `transferFrom`, with
-`call(gas(), …)`) after the conversion (`convertToShares` / `previewMint`), which may itself
-call the asset (`balanceOf`). The amount of gas forwarded by `gas()` is the word
-`gasLeft − 2`, so the second call's summary needs `gasLeft < 2²⁵⁶` (here `< 2⁶⁴`) *after*
-the conversion: the gas left must not have grown. The summaries `balanceOf_halts`,
-`totalAssets_wp`, `convertToShares_wp`, `previewMint_wp` only bound the gas used from above;
-the `_gas` versions (`balanceOf_halts_gas`, `totalAssets_wp_gas` of `Examples.Solmate.ERC4626.ConvertGas`, and
-`convertToShares_wp_gas`, `previewMint_wp_gas` here) are the same proofs with the extra
-conclusion that the gas left at the end is at most the gas at the start (the callee returns at
-most what it was forwarded).
--/
-
 namespace Examples.Solmate.ERC4626
 open Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
-/-- `convertToShares_wp`, with the gas left at the end bounded by the gas at the start. -/
 theorem convertToShares_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0xbda) (hs : m.frame.stack = x :: r :: rest)
@@ -338,7 +315,6 @@ theorem convertToShares_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r 
       .inr ⟨hfmp1, hsize1⟩, by omega, by omega⟩
 
 set_option maxHeartbeats 0 in
-/-- `previewMint_wp`, with the gas left at the end bounded by the gas at the start. -/
 theorem previewMint_wp_gas {i : SolmateVault.Immutables} (m : Machine) {x r : Word} {rest : List Word}
     (hv : VaultFrame i m)
     (hpc : m.frame.pc = 0x96b) (hs : m.frame.stack = x :: r :: rest)

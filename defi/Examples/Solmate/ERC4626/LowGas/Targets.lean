@@ -5,33 +5,22 @@ import EvmLogic.Tactic.KernelRfl
 /-!
 # Low gas: the call targets of the Solmate vault and asset
 
-Discharges the two call-target hypotheses of the gas-monotonicity argument
-(`LowGasFrames.lean`) with the certified abstract interpreter (`EvmLogic/AbsInt`):
-
-* **Certificates** (`vault_cert`, `asset_cert`): the abstract interpretation of each code from
-  pc `0` with an empty stack terminates with no unresolved jump, no reachable `CREATE`, and
-  every reachable `CALL`/`STATICCALL` target either the `asset` immutable (symbolic: the six
-  `PUSH32`s of the vault that push it, `vaultSyms`, so one certificate holds for **all
-  immutables**) or the constant `1` (`ecrecover`) for the vault, and `1` only for the asset.
-  The worklist exploration runs in the kernel (`decide +kernel` on the canonical code; the
-  scan is the same for every choice of immutables, `ascan_vault`, `ascan_asset`).
-* **The asset** (`asset_run`): an asset frame keeps the code of every account up to its exit,
-  and every call it makes is answered by the `ECRECOVER` precompile (given `0x01` not
-  delegated at its start, `EcrecoverOk`): `assetCallsPrecompile`.
-* **The vault** (`vaultCallsAsset`): every call a vault frame makes that is not answered by a
-  precompile starts a frame of the asset's code (the code of the `asset` account is the
-  deployed asset code throughout: the vault's own instructions and its asset children keep all
-  code, and a failed child restores a snapshot taken during the frame).
+Discharges `VaultCallsAsset` and `AssetCallsPrecompile` (`Frames.lean`) with the certified
+abstract interpreter (`EvmLogic/AbsInt`): one kernel-checked certificate per code, for all
+immutables (the vault's `asset` immutable is a symbolic value), shows every call goes to the
+`asset` immutable or `0x01` (vault) / `0x01` only (asset). See `docs/erc4626/details.md` §9.
 -/
 
 namespace Examples.Solmate.ERC4626.LowGas
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts EvmLogic.GasMono
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open Examples.Solmate.Contracts EvmLogic.GasMono
 open EvmLogic.AbsInt
-open EvmLogic.Program.Nested (bump Reaches Danger InstrFrame exec_frame pushCall precompilesOk_standard)
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open EvmLogic.Program.Nested (bump Reaches Danger InstrFrame exec_frame pushCall)
+open EvmLogic.Program.Nested (precompilesOk_standard)
+open Defi.Math Defi.ERC20 Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants
 
 /-! ## Certificates -/
 
@@ -51,15 +40,12 @@ def assetTargets : AVal → Bool
   | .sym _ => false
   | .top => false
 
-/-- Worklist steps for the explorations. -/
 def certFuel : Nat := 100000
 
-/-- The vault's decorated scan does not depend on the immutables. -/
 theorem ascan_vault (i : SolmateVault.Immutables) :
     ascan (SolmateVault.runtimeCodeWith i) vaultSyms = ascan SolmateVault.runtimeCode vaultSyms := by
   kernel_decide
 
-/-- The asset's decorated scan does not depend on the immutables. -/
 theorem ascan_asset (ia : SolmateAsset.Immutables) :
     ascan (SolmateAsset.runtimeCodeWith ia) [] = ascan SolmateAsset.runtimeCode [] := by
   kernel_decide
@@ -74,7 +60,6 @@ theorem asset_certify :
     (certify assetTargets SolmateAsset.runtimeCode [] [] certFuel).isSome = true := by
   decide +kernel
 
-/-- The patched `asset` immutable, as each of the six `PUSH32`s reads it. -/
 theorem vault_readBytes_asset (i : SolmateVault.Immutables) {o : Nat}
     (ho : o = 688 ∨ o = 1170 ∨ o = 2014 ∨ o = 2169 ∨ o = 2668 ∨ o = 2995) :
     readBytes (SolmateVault.runtimeCodeWith i) o 32 = Bytes.ofWord (Word.ofAddress i.asset) := by
@@ -119,7 +104,6 @@ theorem vault_readBytes_asset (i : SolmateVault.Immutables) {o : Nat}
     simp only [SolmateVault.runtimeCodeWith, hp]
     exact readBytes_patchWords_last _ _ _ _ _ (hfit _ (by decide)) (by simp)
 
-/-- The listed `PUSH32`s of the vault push its `asset` immutable. -/
 theorem vault_symOk (i : SolmateVault.Immutables) :
     SymOk (fun _ => i.asset) (SolmateVault.runtimeCodeWith i) vaultSyms := by
   intro q k h
@@ -161,32 +145,26 @@ theorem asset_cert (ia : SolmateAsset.Immutables) :
 
 /-! ## Targets -/
 
-/-- The address of a word described by the constant `1`. -/
 theorem toAddress_of_one {w : Word} (h : w.toNat = 1) : Word.toAddress w = 1 := by
   apply BitVec.eq_of_toNat_eq
   simp only [Word.toAddress, BitVec.toNat_setWidth, h]
   rfl
 
-/-- The address of a zero-extended address. -/
 theorem toAddress_ofAddress (a : Address) : Word.toAddress (Word.ofAddress a) = a := by
   apply BitVec.eq_of_toNat_eq
   simp only [Word.toAddress, Word.ofAddress, BitVec.toNat_setWidth]
   rw [Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le a.isLt (Nat.pow_le_pow_right (by omega) (by omega))),
     Nat.mod_eq_of_lt a.isLt]
 
-/-- `0x01` is a standard precompile in every fork. -/
 theorem isPrecompile_one (fork : Fork) : Precompile.isPrecompile fork 1 = true := by
   cases fork <;> rfl
 
-/-- A call to `0x01`, not delegated, is answered by the precompile. -/
 theorem precompileOf_one {ctx : Context} {msg : Message} (hca : msg.codeAddress = some 1)
     (hdis : msg.disablePrecompiles = false) :
     precompileOf (PrecompileImpl.standard ctx) msg = some 1 := by
   have h1 : (PrecompileImpl.standard ctx).isPrecompile 1 = true := isPrecompile_one ctx.fork
   simp only [precompileOf, hdis, hca, h1, Bool.false_eq_true, ↓reduceIte]
 
-/-- A call of a described machine to the abstract constant `1`, with `0x01` not delegated, is
-answered by the precompile. -/
 theorem call_one_precompile {m m' : Machine} {b : UInt8} {req : CallRequest} {tw : Word}
     (he : (exec (Opcode.decode m.ctx.fork b)).run m = .ok (.call req, m'))
     (hpre : m.precompiles = PrecompileImpl.standard m.ctx) (hnd : EcrecoverOk m)
@@ -205,23 +183,16 @@ theorem call_one_precompile {m m' : Machine} {b : UInt8} {req : CallRequest} {tw
 
 /-- An asset frame from its start, without a gas bound. -/
 structure AssetRun (ia : SolmateAsset.Immutables) (mh : Machine) : Prop where
-  /-- The asset's code. -/
   code : mh.frame.code = SolmateAsset.runtimeCodeWith ia
-  /-- From the start. -/
   pc : mh.frame.pc = 0
-  /-- An empty stack. -/
   stack : mh.frame.stack = []
-  /-- Standard precompiles. -/
   pre : mh.precompiles = PrecompileImpl.standard mh.ctx
-  /-- `0x01` is not delegated. -/
   ecrecover : EcrecoverOk mh
 
-/-- The invariant of an asset frame. -/
 def AssetInv (ia : SolmateAsset.Immutables) (t : Tree) (mh m : Machine) : Prop :=
   SameFrame mh m ∧ m.frame.code = SolmateAsset.runtimeCodeWith ia ∧ InCert (fun _ => 0) t m ∧
     SameCode mh.world m.world
 
-/-- In an asset frame, every requested call is answered by the precompile. -/
 theorem asset_call_answered {ia : SolmateAsset.Immutables} {t : Tree}
     (hc : Cert (fun _ => 0) assetTargets (SolmateAsset.runtimeCodeWith ia) [] t) {mh m m' : Machine}
     (hA : AssetRun ia mh) (hI : AssetInv ia t mh m) {b : UInt8} {req : CallRequest}
@@ -264,7 +235,6 @@ theorem asset_run {ia : SolmateAsset.Immutables} {t : Tree}
     · exact asset_call_answered hc hA hI hb he hpre
     · exact inCert_no_create hc hI.2.1 hI.2.2.1 hb he
 
-/-- **The world an asset frame ends in has the code of its start.** -/
 theorem asset_exit_code {ia : SolmateAsset.Immutables} {mh : Machine} (hA : AssetRun ia mh)
     {N : Nat} {mfh : Machine} {oh : Outcome} (hex : Exit mh N mfh oh) :
     SameCode mh.world mfh.world := by
@@ -283,7 +253,6 @@ theorem asset_callsTo {ia : SolmateAsset.Immutables} {mh : Machine} (hA : AssetR
   intro k hk m' b req m'' hm hs hb he hpre
   exact asset_call_answered hc hA (asset_run hc hA hex k (Nat.le_of_lt hk) m' hm hs) hb he hpre
 
-/-- The run conditions of a high-gas asset frame. -/
 theorem AssetHigh.run {ia : SolmateAsset.Immutables} {mh : Machine} (h : AssetHigh ia mh) :
     AssetRun ia mh :=
   ⟨h.code, h.pc, h.stack, h.pre, h.ecrecover⟩
@@ -294,12 +263,10 @@ theorem assetCallsPrecompile : AssetCallsPrecompile :=
 
 /-! ## The vault's frames -/
 
-/-- The invariant of a vault frame. -/
 def VaultInv (i : SolmateVault.Immutables) (t : Tree) (mh m : Machine) : Prop :=
   SameFrame mh m ∧ m.frame.code = SolmateVault.runtimeCodeWith i ∧
     InCert (fun _ => i.asset) t m ∧ SameCode mh.world m.world
 
-/-- **A child of a vault frame is an asset frame.** -/
 theorem vault_child {vault asset : Address} {i : SolmateVault.Immutables} {t : Tree}
     (hc : Cert (fun _ => i.asset) vaultTargets (SolmateVault.runtimeCodeWith i) [] t)
     {mh m m' : Machine} (hV : VaultHigh vault asset i mh) (hI : VaultInv i t mh m) {b : UInt8}

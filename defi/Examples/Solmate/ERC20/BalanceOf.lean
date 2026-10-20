@@ -11,28 +11,21 @@ import EvmLogic.Tactic.KernelRfl
 /-!
 # The asset's `balanceOf` as a callee summary
 
-`balanceOf_halts`: `balanceOf(address)` of the deployed asset (`Contracts.SolmateAsset`,
-Solmate `MockERC20`, deployed with arbitrary immutables `ia`: chain id, domain separator,
-decimals; `SolmateAsset.runtimeCodeWith ia`) run in **any** fresh frame — a top-level call or a frame pushed by
-`CALL`/`STATICCALL` from another contract, at any depth, with any parents — returns the word
-in the balance slot of the argument and changes nothing. It is stated as `Halts`, the form the
-callee-summary rules `WP.call` / `WP.staticcall` consume.
-
-The calldata is described by what the ABI decoder reads (selector, length, argument word), so
-the summary applies both to `Abi.encodeCall` calldata and to calldata a caller assembled in
-memory.
+`balanceOf_halts`: `balanceOf(a)` of the deployed asset (any immutables), in any fresh frame
+(top level or a callee at any depth), returns the balance word of `a` and changes nothing.
+Stated as `Halts` for `WP.call`/`WP.staticcall`; the calldata is described by what the ABI
+decoder reads, so it also covers calldata a caller assembled in memory.
 -/
 
 namespace Examples.Solmate.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open EvmLogic.Tactic Examples.Solmate.Contracts
 
 /-- The selector of `balanceOf(address)`. -/
 def balanceOfSelector : Nat := 0x70a08231
 
-/-- What a frame running `balanceOf(a)` on the asset ends with: it returns the balance word of
-`a` (slot `keccak(a ‖ 3)` of the executing account), the world, transient storage, created
-accounts and logs are unchanged, and it uses at most 3000 gas. -/
+/-- `balanceOf(a)` returns the word in `a`'s balance slot, changes nothing, uses ≤ 3000 gas. -/
 def BalanceOfPost (a : Address) (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord (m.world.sload m.frame.msg.currentTarget
     (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a))) ∧
@@ -40,11 +33,9 @@ def BalanceOfPost (a : Address) (m mf : Machine) (o : Outcome) : Prop :=
   mf.frame.sub.logs = m.frame.sub.logs ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + 3000
 
 set_option hygiene false in
-/-- Open a fresh frame for symbolic execution: from `hf : Fresh code m`, destructure `m` into
-`m_ctx`, `m_world`, `m_msg`, `m_gasLeft`, `m_sub`, … and substitute the frame's start values
-(code, pc, empty stack and memory); the jump table is kept as `hj : JumpTable m_jumpDests code`.
-Unlike `wp_intro` it substitutes nothing else, so hypotheses about other variables (e.g. an
-`amount` that the calldata carries) survive. -/
+/-- Open a fresh frame (`hf : Fresh code m`) for symbolic execution: destructure `m` and
+substitute only the frame's start values, so hypotheses about other variables survive (unlike
+`wp_intro`). -/
 macro "fresh_intro" : tactic => `(tactic| (
   obtain ⟨hc, hj, hpc, hs, hmem, -, -⟩ := hf.frame
   clear hf
@@ -55,19 +46,14 @@ macro "fresh_intro" : tactic => `(tactic| (
   wp_hide_jump_tables
   subst hs hpc hc hmem))
 
-/-- The asset's immutables only patch `PUSH32` immediates: its jump table is the canonical one,
-for all immutables (kernel evaluation of the `JUMPDEST` scan). -/
 theorem assetJumpDestsAgree (ia : SolmateAsset.Immutables) :
     JumpDestsAgree (SolmateAsset.runtimeCodeWith ia) SolmateAsset.runtimeCode := by
   unfold JumpDestsAgree; kernel_decide
 
-/-- The dispatcher's `CALLDATASIZE < 4` test fails for calldata holding a selector. -/
 theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by
   rw [Word.lt_eq_zero_iff]; simp only [ofNat, BitVec.toNat_ofNat]; omega
 
-/-- The balance slot of `a` in a Solmate `ERC20`, as symbolic execution computes it
-(`keccak256(a ‖ 3)`). -/
 theorem balanceSlot_solmate (crypto : Crypto) (a : Address) :
     ERC20.balanceSlot crypto ERC20.Layout.solmate a =
       crypto.keccak256 (Bytes.ofWord (Word.ofAddress a) ++ Bytes.ofWord 3#256) := rfl

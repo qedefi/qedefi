@@ -5,51 +5,33 @@ import EvmLogic.GasMono.Depth
 /-!
 # The invariants for arbitrary transactions, at any gas
 
-The headline theorems of `NestedInvariants.lean` (`follows_tx`, `lift_any_tx`, …) ask every
-frame of the vault or the asset that other code starts to be covered with at least
-`minGas ≥ 250000` gas. With the gas-monotonicity of both codes (`LowGasFrames.lean`) and its
-call-target premises discharged by the certified abstract interpreter (`LowGasTargets.lean`:
-`assetCallsPrecompile`, `vaultCallsAsset`), **the gas requirement is gone**: a frame with any
-gas is covered as soon as it would be covered with more (`CoveredAnyGas`): a successful
-low-gas frame commits exactly what the high-gas frame commits.
-
-* `CoveredAnyGas vault asset m`: `Covered` with its own gas (≥ 250000), or `0x01` not
-  EIP-7702-delegated (`EcrecoverOk`, always true before Prague) and covered with some gas
-  `G` between its own and `2⁶⁴` (`CoveredAtSomeGas`). `coveredAnyGas_of` gives a gas-free
-  sufficient condition: value (any gas), or no value, room for one more call level for the
-  vault, calldata below `2⁶⁴` bytes, and `CoverOkAnyGas` (the `name`/`symbol` getter's gas
-  fits 64 bits, `DomainOk` for `DOMAIN_SEPARATOR()`, `PermitFrame` for `permit`).
-* `TxOkAnyGas`: `TxOk` with `CoveredAnyGas` (no `minGas`); `txOkAnyGas_of_txOk`: every
-  transaction covered in the old sense (`minGas ≥ 250000`) is covered.
-* The headline theorems without `hmin`: `follows_tx_anyGas`, `follows_trace_anyGas`,
-  `lift_any_tx_anyGas`, `lift_nested_anyGas`, `invariant_any_tx_anyGas`,
-  `invariant_nested_anyGas`, `supply_eq_sum_any_tx_anyGas`, `supply_eq_sum_nested_anyGas`,
-  `solvent_any_tx_anyGas`, `solvent_nested_anyGas`, `price_mono_any_tx_anyGas`,
-  `price_mono_nested_anyGas`, over `TxTraceAnyGas`. The old statements (`Examples.Solmate.ERC4626.Nested.Invariants`)
-  keep their names and proofs; they are special cases (`txTraceAnyGas_of_txTrace`).
+The `Nested` headline theorems ask every vault/asset frame that other code starts to be covered
+with `minGas ≥ 250000`. With gas monotonicity (`Frames.lean`, `Targets.lean`) that requirement
+is gone: `CoveredAnyGas`, `TxOkAnyGas` (sufficient gas-free condition `txOkAnyGas_of`), and the
+`*_anyGas` headline theorems over `TxTraceAnyGas`, of which the `minGas` ones are special cases
+(`txTraceAnyGas_of_txTrace`). See `docs/erc4626/details.md` §9.
 -/
 
 namespace Examples.Solmate.ERC4626.LowGas
 open Examples.Solmate.ERC20 Defi.ERC4626 Defi.Trace
 
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts EvmLogic.GasMono
-open EvmLogic.Solidity EvmLogic.Tactic
+open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
+open Examples.Solmate.Contracts EvmLogic.GasMono
+open EvmLogic.Tactic
 open EvmLogic.Program.Nested (bump Reaches Danger DangerStart TopOk)
-open Defi.ERC4626 Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
-open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants Defi.ERC4626
+open Defi.Math Defi.ERC20 Defi.ERC4626.Solmate Defi.Trace.Lift
+open Examples.Solmate.ERC4626.Nested Examples.Solmate.ERC4626.Invariants
 
 variable {crypto : Crypto} {vault asset : Address} {Act : List Address} {K : VCall → Prop}
 
 /-! ## The depth limit -/
 
-/-- `VaultStart` survives changing the depth. -/
 theorem _root_.Examples.Solmate.ERC4626.Nested.VaultStart.setDepth {m : Machine}
     (hv : VaultStart vault asset m) (d : Nat) : VaultStart vault asset (setDepth d m) := by
   obtain ⟨msg, k, s, hf, hc⟩ := hv.fresh
   refine ⟨⟨{ msg with depth := d }, k, s, ?_, hc⟩, hv.static, hv.prot, hv.pre, hv.caller⟩
   simp only [GasMono.setDepth, hf, Frame.init]
 
-/-- The admitted calls of a frame only depend on its caller, account and calldata. -/
 theorem _root_.Examples.Solmate.ERC4626.Nested.FrameAdmitted.congr {m m' : Machine}
     (h : FrameAdmitted crypto vault asset Act K m) (hc : m'.frame.msg.caller = m.frame.msg.caller)
     (ht : m'.frame.msg.currentTarget = m.frame.msg.currentTarget)
@@ -58,10 +40,9 @@ theorem _root_.Examples.Solmate.ERC4626.Nested.FrameAdmitted.congr {m m' : Machi
     fun c hx => h.permits c ?_⟩
   cases c <;> simp only [PermitData] at hx ⊢ <;> rw [ht, hd] at hx <;> exact hx
 
-/-- **A frame summary transfers to the call-depth limit and any lower gas**: for a frame of the
-vault or the asset at depth 1024, `FrameOk` of the same frame with gas `G` at another depth (at
-the top level) gives `FrameOk` of the frame. Every call of a frame at the limit fails, and a
-failed call makes the frame fail (`depth_lockstep`). -/
+/-- **A frame summary transfers to the call-depth limit and any lower gas**: for a frame at
+depth 1024, `FrameOk` of the same frame with gas `G` at the top level gives `FrameOk` of the
+frame (every call at the limit fails, and a failed call makes the frame fail). -/
 theorem frameOk_of_depth {m : Machine} (hv : VaultStart vault asset m)
     (hdep : Deployed m.world vault asset) (hnd : EcrecoverOk m) {ko ks : Nat}
     (hk : m.frame.kind = .call ko ks) (hd : Gas.stackDepthLimit < m.frame.msg.depth + 1) {G : Nat}
@@ -122,17 +103,13 @@ theorem frameOk_of_coveredAnyGas
 needs less than `2⁶⁴` gas, `DOMAIN_SEPARATOR()` is a covered case, `permit` has its frame
 conditions. -/
 structure CoverOkAnyGas (m : Machine) : Prop where
-  /-- `name()`: the getter's gas fits 64 bits. -/
   name : Abi.selectorOf m.frame.msg.data = 0x06fdde03 →
     Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 0#256)) < 2 ^ 64
-  /-- `symbol()`: the getter's gas fits 64 bits. -/
   symbol : Abi.selectorOf m.frame.msg.data = 0x95d89b41 →
     Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 1#256)) < 2 ^ 64
-  /-- `DOMAIN_SEPARATOR()`: a covered case. -/
   domain : Abi.selectorOf m.frame.msg.data = 0x3644e515 → DomainOk m
-  /-- `permit`: the domain separator is computed in a covered case (the other permit frame
-  conditions, `0x01` not delegated and room for the precompile call, are taken care of by
-  `EcrecoverOk` and the depth-limit argument). -/
+  /-- `permit`: only `DomainOk`; `0x01` not delegated and room for the precompile call come
+  from `EcrecoverOk` and the depth-limit argument. -/
   permit : Abi.selectorOf m.frame.msg.data = 0xd505accf → DomainOk m
 
 /-- The gas a frame is lifted to: at least 250000, and enough for the stored string of
@@ -144,8 +121,6 @@ def liftGas (m : Machine) : Nat :=
       (if Abi.selectorOf m.frame.msg.data = 0x95d89b41 then
         Str.getterGas (Str.slotLen (m.world.sload m.frame.msg.currentTarget 1#256)) else 0))
 
-/-- A frame `M` with the calldata, account, world and context of `m`, no value, room for one
-more call level and the lifted gas (`liftGas m`) is covered, given `CoverOkAnyGas m`. -/
 theorem covered_of_lift {m M : Machine} (hvM : VaultStart vault asset M)
     (hdM : Deployed M.world vault asset) (hw : M.world = m.world)
     (ht : M.frame.msg.currentTarget = m.frame.msg.currentTarget)
@@ -232,7 +207,6 @@ def TxOkAnyGas (vault asset : Address) (Act : List Address) (K : VCall → Prop)
     (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
     CoveredAnyGas vault asset m ∧ FrameAdmitted ctx.crypto vault asset Act K m
 
-/-- `Covered` is monotone in the minimum gas. -/
 theorem Covered.mono {minGas minGas' : Nat} (h : minGas' ≤ minGas) {m : Machine}
     (hc : Covered vault asset minGas m) : Covered vault asset minGas' m := by
   rcases hc with hc | ⟨hf, hx⟩
@@ -436,7 +410,6 @@ theorem price_mono_nested_anyGas
   rw [abs_totalAssets', abs_totalSupply'] at hp hmodel
   rw [hp]; exact hmodel
 
-/-- One transaction covered at any gas is a `TxTraceAnyGas`. -/
 theorem txTraceAnyGas_single {w : World} {ctx : Context} {tr : TransientStorage} {msg : Message}
     {fuel : Nat} {r : MessageResult} (hcr : ctx.crypto = crypto)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])

@@ -4,52 +4,29 @@ import Examples.Solmate.ERC4626.SharesCode
 /-!
 # The vault's share token refines the `Token` model
 
-End-to-end refinement theorems for the share-token functions of the **compiled Solmate vault**
-(`Contracts.SolmateVault`, `MockERC4626`, solc 0.8.28) deployed with **arbitrary immutables**
-`i` (any asset, chain id, domain separator, decimals; `SharesCode.code i`), against the share
-ledger operations of the abstract model (`Defi.ERC20.Token`, used as
-`Solmate.State.shares` by `Solmate.step`'s `.transfer`, `.transferFrom`, `.approve`).
-
-Each theorem is about `processMessageCall` of a top-level call (any `Crypto`, context without
-EIP-7702 authorizations or before Prague, world, transient storage, caller, arguments, warm
-sets, enough gas and fuel) from a world whose share storage, read through `Erc20.view`
-(Solmate layout), represents a ledger `t` (`Rep`); state-changing functions also need
-`t.WF` (balances sum to `totalSupply ≤ MAX`, the model's invariant `Solmate.Inv`), which makes
-the unchecked word additions exact. Then:
-
-* **success** (the model op returns `some t'`): the call succeeds, returns ABI `true`, the
-  world is the exact one the bytecode produces (`transferWorld`, …), its share view represents
-  `t'` (`RepOn`: `totalSupply` and every balance; allowances for every entry whose slot is not
-  a written slot — nested-mapping frames are only available pointwise), and every other
-  storage slot of every account is unchanged;
-* **revert** (`none`): the call reverts and the world is unchanged.
-
-Hypotheses on the hash are explicit and local: `BalanceSlotOk` for the balance entries
-written and `AllowanceSlotOk` for the allowance entry written (`EvmLogic.Solidity.Keccak`).
-
-The views (`totalSupply`, `balanceOf`, `allowance`, `decimals`) return the represented values
-and leave the world unchanged. `name()` / `symbol()` are not covered (string copies with
-`MCOPY`, for which the symbolic executor has no step lemma yet).
+Top-level `processMessageCall` theorems for the share-token functions of the compiled vault
+(any immutables) against `Defi.ERC20.Token`: on `some t'` the call returns `true` and the new
+share storage represents `t'` (`RepOn`), on `none` it reverts with the world unchanged. Views
+return the represented values. See `docs/erc4626/details.md` §1–2.
 -/
 
 namespace Examples.Solmate.ERC4626.Shares
 open Defi.ERC20
 
-open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic Examples.Solmate.Contracts EvmLogic.Solidity.ERC20 Defi.Math Defi.ERC20
+open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+open Examples.Solmate.Contracts EvmLogic.Solidity.ERC20 Defi.Math
 
 variable {i : SolmateVault.Immutables} {ctx : Context} {w : World} {tr : TransientStorage}
   {vault caller : Address} {gas : Nat} {warmAddrs : AddressSet} {warmKeys : StorageKeySet}
 
 /-! ## Storage frames -/
 
-/-- An `SSTORE` changes one slot of one account. -/
 theorem sload_sstore_frame {w : World} {a b : Address} {key k v : Word} (h : b ≠ a ∨ k ≠ key) :
     (w.sstore a key v).sload b k = w.sload b k := by
   rw [World.sload_sstore]
   have : ¬ (b = a ∧ k = key) := by rintro ⟨rfl, rfl⟩; rcases h with h | h <;> exact h rfl
   simp [this]
 
-/-- `transfer` writes only the two balance slots. -/
 theorem sload_transferWorld {crypto : Crypto} {w : World} {token src dst b : Address}
     {amount k : Word}
     (h : b ≠ token ∨ (k ≠ balanceSlot crypto Layout.solmate src ∧
@@ -59,7 +36,6 @@ theorem sload_transferWorld {crypto : Crypto} {w : World} {token src dst b : Add
   rw [sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.2),
     sload_sstore_frame (by rcases h with h | h; exact .inl h; exact .inr h.1)]
 
-/-- The allowance step writes only the allowance slot. -/
 theorem sload_spendWorld {crypto : Crypto} {w : World} {token o sp b : Address} {amount k : Word}
     (h : b ≠ token ∨ k ≠ allowanceSlot crypto Layout.solmate o sp) :
     (spendWorld crypto w token o sp amount).sload b k = w.sload b k := by
@@ -150,7 +126,6 @@ theorem approve_refines {spender : Address} {amount : Word}
 
 /-! ## `transferFrom` -/
 
-/-- `Model.spend` keeps the balances. -/
 theorem Model_spend_balanceOf {s s₁ : ERC20.State} {o sp : Address} {amount : Word}
     (h : ERC20.Model.spend s o sp amount = some s₁) : s₁.balanceOf = s.balanceOf := by
   unfold ERC20.Model.spend at h
@@ -160,7 +135,6 @@ theorem Model_spend_balanceOf {s s₁ : ERC20.State} {o sp : Address} {amount : 
     · cases h; rfl
     · cases h
 
-/-- The allowance condition of `Token.spend`, through `Rep`. -/
 theorem allowance_cond_of_spend {s : ERC20.State} {t t₁ : Token Address} (hr : Rep s t)
     {o sp : Address} {amount : Word} (h : t.spend o sp amount.toNat = some t₁) :
     s.allowance o sp = maxWord ∨ amount.toNat ≤ (s.allowance o sp).toNat := by
@@ -172,7 +146,6 @@ theorem allowance_cond_of_spend {s : ERC20.State} {t t₁ : Token Address} (hr :
     · cases h
     · exact .inr (by omega)
 
-/-- The balance of `src` after the allowance step, through the abstraction. -/
 theorem balance_spendWorld {crypto : Crypto} {w : World} {token src sp : Address} {amount : Word}
     (ha : AllowanceSlotOk crypto Layout.solmate src sp) {s₁ : ERC20.State}
     (hm : ERC20.Model.spend (view crypto Layout.solmate w token) src sp amount = some s₁) :
@@ -239,7 +212,6 @@ theorem transferFrom_refines {src dst : Address} {amount : Word}
   · rename_i hT
     cases hsp : t.spend src caller amount.toNat with
     | none =>
-      -- the allowance is finite and too small
       unfold Token.spend at hsp
       have ha' := hr.allowance src caller trivial
       split at hsp
@@ -328,7 +300,6 @@ theorem allowance_refines {P : Address → Address → Prop} {owner spender : Ad
   refine ⟨r, h1, h2, ?_, h4⟩
   rw [h3, ← hr.allowance owner spender hP, BitVec.ofNat_toNat, BitVec.setWidth_eq]
 
-/-- Masking to `uint8` keeps a value below 256. -/
 theorem and_255 {x : Word} (h : x.toNat < 256) : x &&& 255#256 = x := by
   apply BitVec.eq_of_toNat_eq
   have h255 : (255#256).toNat = 2 ^ 8 - 1 := by simp
