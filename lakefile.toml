@@ -1,24 +1,25 @@
 name = "evm-lean"
 version = "0.1.0"
-defaultTargets = ["EvmLean"]
-testDriver = "EvmLeanTest"
+defaultTargets = ["EvmLean", "EvmLogic", "Conformance", "conform"]
+testDriver = "EvmTest"
 
 [leanOptions]
 autoImplicit = false
 relaxedAutoImplicit = false
-linter.missingDocs = true
 
 # The executable EVM semantics. No Mathlib, no FFI, no `opaque`, no `partial`.
 [[lean_lib]]
 name = "EvmLean"
+leanOptions = { linter.missingDocs = true }
+
+# Generic program logic and proof library over the semantics: step lemmas, a frame-local
+# program logic, Solidity idioms, gas monotonicity, abstract interpretation, tactics.
+[[lean_lib]]
+name = "EvmLogic"
 
 # Unit tests: `#guard` checks evaluated at build time (`lake test`).
 [[lean_lib]]
-name = "EvmLeanTest"
-
-# Kernel-checked sanity theorems about the semantics.
-[[lean_lib]]
-name = "EvmLeanProofs"
+name = "EvmTest"
 
 # Ethereum conformance-test runner (`lake exe conform`).
 [[lean_lib]]
@@ -28,11 +29,3 @@ name = "Conformance"
 name = "conform"
 root = "Conformance.Main"
 supportInterpreter = false
-
-# Differential testing of compiled contracts: evm-lean vs. Foundry (`lake exe difftest`).
-[[lean_lib]]
-name = "Differential"
-
-[[lean_exe]]
-name = "difftest"
-root = "Differential.Main"
