@@ -4,26 +4,15 @@ import EvmLogic.Solidity.ERC20
 /-!
 # Word-level ERC-20 states and `Token` ledgers
 
-The bytecode theorems (`Examples.Solmate.ERC4626.SharesCode`, …) are stated on the word-level storage view
-`Erc20.view` and its models `Erc20.Model.transfer` / `approve` / `spend` / `transferFrom`
-(`EvmLogic.Solidity.ERC20`, `EvmLogic.Solidity.ERC20`). The abstract vault (`Defi`)
-keeps its share ledger as a `Token Address` (`ℕ` balances, `Finsupp`). This file relates the
-two:
-
-* `RepOn P s t`: the ledger `t` is the word-level state `s` (`toNat` of every field), for the
-  allowance entries satisfying `P` (frames over nested mappings are only available pointwise,
-  see `EvmLogic.Solidity.Keccak`); `Rep` is the case `P = ⊤`.
-* `rep_transfer`, `rep_approve`, `rep_spend`, `rep_transferFrom`: the word-level operation and
-  the `Token` operation succeed together, and their results are again related. Word arithmetic
-  is wrapping, `Token` arithmetic is in `ℕ`; they agree on well-formed ledgers (`Token.WF`:
-  balances sum to `totalSupply ≤ MAX`), which bound every credited balance.
-
-Nothing here is specific to the vault: it applies to any Solmate `ERC20` (e.g. the asset).
+`RepOn P s t`: the `ℕ` ledger `t` is the word-level state `s` of `EvmLogic.Solidity.ERC20`
+(allowances only where `P` holds, since nested-mapping frames are pointwise). The `rep_*`
+theorems show the word-level models and the `Token` operations succeed together with related
+results; wrapping word arithmetic agrees with `ℕ` on `Token.WF` ledgers.
 -/
 
 namespace Defi.ERC20
 
-open EvmLean EvmLogic EvmLogic.Solidity Defi.Math Defi.ERC20
+open EvmLean EvmLogic EvmLogic.Solidity Defi.Math
 
 /-- The ℕ-valued ledger `t` is the word-valued ERC-20 state `s`, for the allowance entries
 satisfying `P`. -/
@@ -38,12 +27,10 @@ structure RepOn (P : Address → Address → Prop) (s : ERC20.State) (t : Token 
 /-- `t` is the word-valued state `s`, everywhere. -/
 abbrev Rep (s : ERC20.State) (t : Token Address) : Prop := RepOn (fun _ _ => True) s t
 
-/-- Weakening the allowance predicate. -/
 theorem RepOn.mono {P Q : Address → Address → Prop} {s : ERC20.State} {t : Token Address}
     (h : RepOn P s t) (hPQ : ∀ o sp, Q o sp → P o sp) : RepOn Q s t :=
   ⟨h.totalSupply, h.balanceOf, fun o sp hq => h.allowance o sp (hPQ o sp hq)⟩
 
-/-- A view that agrees with `s'` (allowances on `P`) represents what `s'` represents. -/
 theorem RepOn.of_eq {P : Address → Address → Prop} {v s' : ERC20.State} {t' : Token Address}
     (h1 : v.totalSupply = s'.totalSupply) (h2 : v.balanceOf = s'.balanceOf)
     (h3 : ∀ o sp, P o sp → v.allowance o sp = s'.allowance o sp) (hr : Rep s' t') :
@@ -53,7 +40,6 @@ theorem RepOn.of_eq {P : Address → Address → Prop} {v s' : ERC20.State} {t' 
 
 /-! ## Arithmetic -/
 
-/-- Two distinct balances fit in the total. -/
 theorem add_le_total {f : Address →₀ ℕ} {a b : Address} (h : a ≠ b) : f a + f b ≤ total f := by
   have h1 := Token.total_sub_single (f := f) (a := a) (v := f a) le_rfl
   have h2 := Token.le_total (f - Finsupp.single a (f a)) b
@@ -61,11 +47,9 @@ theorem add_le_total {f : Address →₀ ℕ} {a b : Address} (h : a ≠ b) : f 
   have h3 := Token.le_total f a
   omega
 
-/-- `type(uint256).max` as a word. -/
 theorem toNat_maxWord : ERC20.maxWord.toNat = MAX := by
   simp [ERC20.maxWord, MAX]
 
-/-- A word is `type(uint256).max` iff its value is `MAX`. -/
 theorem eq_maxWord_iff (x : Word) : x = ERC20.maxWord ↔ x.toNat = MAX := by
   constructor
   · rintro rfl; exact toNat_maxWord
@@ -73,7 +57,6 @@ theorem eq_maxWord_iff (x : Word) : x = ERC20.maxWord ↔ x.toNat = MAX := by
 
 /-! ## `transfer` -/
 
-/-- `Model.transfer` and `Token.transfer` succeed together. -/
 theorem transfer_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (c d : Address) (amount : Word) :
     (ERC20.Model.transfer s c d amount).isSome ↔ (t.transfer c d amount.toNat).isSome := by
@@ -83,8 +66,7 @@ theorem transfer_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
   · simp [h, Nat.not_lt.2 h]
   · simp [h, Nat.lt_of_not_le h]
 
-/-- **`transfer` refinement of the models**: on a well-formed ledger, the results of
-`Model.transfer` and `Token.transfer` are related (the word additions do not wrap). -/
+/-- On a well-formed ledger, `Model.transfer` and `Token.transfer` have related results. -/
 theorem rep_transfer {s s' : ERC20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
     {c d : Address} {amount : Word} (hm : ERC20.Model.transfer s c d amount = some s')
     (ht : t.transfer c d amount.toNat = some t') : Rep s' t' := by
@@ -121,7 +103,6 @@ theorem rep_transfer {s s' : ERC20.State} {t t' : Token Address} (hr : Rep s t) 
 
 /-! ## `approve` -/
 
-/-- **`approve` refinement of the models.** -/
 theorem rep_approve {s : ERC20.State} {t : Token Address} (hr : Rep s t) (o sp : Address)
     (amount : Word) : Rep (ERC20.Model.approve s o sp amount) (t.approve o sp amount.toNat) := by
   refine ⟨hr.totalSupply, hr.balanceOf, fun o' sp' _ => ?_⟩
@@ -131,7 +112,6 @@ theorem rep_approve {s : ERC20.State} {t : Token Address} (hr : Rep s t) (o sp :
 
 /-! ## `spend` and `transferFrom` -/
 
-/-- `Model.spend` and `Token.spend` succeed together. -/
 theorem spend_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (o sp : Address) (amount : Word) :
     (ERC20.Model.spend s o sp amount).isSome ↔ (t.spend o sp amount.toNat).isSome := by
@@ -143,7 +123,6 @@ theorem spend_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     · simp [hm, h, Nat.not_lt.2 h]
     · simp [hm, h, Nat.lt_of_not_le h]
 
-/-- **The allowance step, models.** -/
 theorem rep_spend {s s₁ : ERC20.State} {t t₁ : Token Address} (hr : Rep s t)
     {o sp : Address} {amount : Word} (hm : ERC20.Model.spend s o sp amount = some s₁)
     (ht : t.spend o sp amount.toNat = some t₁) : Rep s₁ t₁ := by
@@ -175,8 +154,6 @@ theorem rep_spend {s s₁ : ERC20.State} {t t₁ : Token Address} (hr : Rep s t)
         exact hr.allowance _ _ trivial
     · cases hm
 
-/-- **`transferFrom` refinement of the models**: `Model.transferFrom` and
-`Token.transferFrom` succeed together, with related results. -/
 theorem transferFrom_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep s t)
     (sp src dst : Address) (amount : Word) :
     (ERC20.Model.transferFrom s sp src dst amount).isSome ↔
@@ -196,7 +173,8 @@ theorem transferFrom_isSome_iff {s : ERC20.State} {t : Token Address} (hr : Rep 
     simp only [Option.bind_some, h2]
     exact transfer_isSome_iff (rep_spend hr h1 h2) src dst amount
 
-/-- **`transferFrom` refinement of the models**: related results. -/
+/-- On a well-formed ledger, `Model.transferFrom` and `Token.transferFrom` have related
+results. -/
 theorem rep_transferFrom {s s' : ERC20.State} {t t' : Token Address} (hr : Rep s t) (hw : t.WF)
     {sp src dst : Address} {amount : Word}
     (hm : ERC20.Model.transferFrom s sp src dst amount = some s')

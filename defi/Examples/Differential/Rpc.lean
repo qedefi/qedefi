@@ -4,18 +4,9 @@ import Conformance.Hex
 /-!
 # JSON-RPC client for anvil
 
-The reference side of the differential tester is Foundry's `anvil` (revm), driven over
-JSON-RPC. Requests go through `curl` (Lean core has no HTTP client); every request of a
-step is sent as one JSON-RPC batch to keep the number of round trips small.
-
-What is observed per transaction:
-
-* the receipt: status, logs, `gasUsed`;
-* `debug_traceTransaction` with `callTracer`: the top-level return or revert data;
-* `debug_traceTransaction` with `prestateTracer` in diff mode: which storage slots of which
-  accounts the transaction wrote. The storage comparison reads these slots (together with
-  every slot evm-lean has non-zero before or after the call) with `eth_getStorageAt`, so a
-  write on either side is never missed.
+The reference side is Foundry's `anvil`, driven over JSON-RPC through `curl` (Lean core has
+no HTTP client), one batch per step. Per transaction: the receipt, the top-level return data
+(`callTracer`), and the storage slots written (`prestateTracer` diff mode).
 -/
 
 namespace Examples.Differential
@@ -27,7 +18,6 @@ structure Rpc where
   /-- HTTP URL, e.g. `http://127.0.0.1:8545`. -/
   url : String
 
-/-- Raise a user error. -/
 def fail {α : Type} (msg : String) : IO α := throw (IO.userError msg)
 
 /-- Lift an `Except String` into `IO`. -/
@@ -67,7 +57,6 @@ def Rpc.batch (r : Rpc) (calls : Array (String × Json)) : IO (Array Json) := do
       out := out.set id ((item.getObjVal? "result").toOption.getD Json.null)
   return out
 
-/-- Send one request. -/
 def Rpc.call (r : Rpc) (method : String) (params : Json) : IO Json := do
   let rs ← r.batch #[(method, params)]
   pure (rs[0]?.getD Json.null)
@@ -85,10 +74,8 @@ def natField (j : Json) (k : String) : Nat :=
 def bytesField (j : Json) (k : String) : ByteArray :=
   (parseHexBytes (strField j k)).toOption.getD .empty
 
-/-- Parse a hex word. -/
 def wordOfHex (s : String) : Word := BitVec.ofNat 256 ((parseHexNat s).toOption.getD 0)
 
-/-- Parse a hex address. -/
 def addressOfHex (s : String) : Address := BitVec.ofNat 160 ((parseHexNat s).toOption.getD 0)
 
 /-- The members of a JSON object (empty if not an object). -/
@@ -125,7 +112,6 @@ def txJson (sender : Address) (to : Option Address) (data : ByteArray) (gas : Na
     | some a => ("to", Json.str (hexOfAddress a)) :: base
     | none => base)
 
-/-- Parse a receipt log. -/
 def logOfJson (j : Json) : Log :=
   let topics := match j.getObjValAs? (Array String) "topics" with
     | .ok ts => ts.map wordOfHex

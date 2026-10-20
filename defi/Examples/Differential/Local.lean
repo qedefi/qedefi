@@ -3,12 +3,9 @@ import EvmLean
 /-!
 # The evm-lean side of the differential tester
 
-A transaction is executed the way `EvmLean.Tx.process` does it, except that the top-level
-message is run directly with `Interpreter.processMessageCall` so that its return data is
-visible: the sender's nonce is incremented, `Tx.prepareMessage` builds the message (warm
-precompiles, origin, target and coinbase), the interpreter runs it, and the receipt's
-`gasUsed` is computed with the EIP-3529 refund cap. Gas price and value are zero, so no
-ether moves. Contract creations (`to = none`) run the creation code as a creation message.
+Transactions are executed as `EvmLean.Tx.process` does, except that the top-level message
+is run directly with `Interpreter.processMessageCall` so its return data is visible. Gas
+price and value are zero, so no ether moves.
 -/
 
 namespace Examples.Differential
@@ -29,10 +26,8 @@ structure Outcome where
 /-- Interpreter steps allowed per transaction (far more than 10M gas can pay for). -/
 def fuel : Nat := 50_000_000
 
-/-- Execute a transaction from `sender` to `to` (or a creation) with calldata `data` and gas
-limit `gas` in a block with environment `env` (the tester uses the block anvil mined the
-same transaction in). Returns the outcome and the new world, or an error if the interpreter ran out
-of fuel or the gas limit does not cover the intrinsic cost. -/
+/-- Execute a transaction (a creation if `to = none`) in the block environment `env`; fails
+if the interpreter runs out of fuel or `gas` is below the intrinsic cost. -/
 def execTx (crypto : Crypto) (env : BlockEnv) (world : World) (sender : Address)
     (to : Option Address) (data : ByteArray) (gas : Nat) : Except String (Outcome × World) := do
   let tx : Transaction := .legacy

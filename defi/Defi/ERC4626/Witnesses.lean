@@ -5,18 +5,14 @@ public import Defi.ERC4626.Inflation
 /-!
 # Concrete witnesses
 
-The refutations in `SolmateProps.lean` and the attack theorems in `Inflation.lean` are
-stated as "if these calls succeed then …". The witnesses below run the model on concrete,
-well-formed (`Inv`) states over the address type `ℕ` and show that the calls do succeed
-with the claimed results, so none of those statements is vacuous.
+Concrete well-formed states (addresses `ℕ`) on which the calls in the refutations and
+attack theorems do succeed, so those statements are not vacuous.
 -/
 
 @[expose] public noncomputable section
 
 namespace Defi.ERC4626.Witnesses
-open Defi.Math Defi.ERC20
-
-open Finsupp
+open Defi.Math Defi.ERC20 Finsupp
 
 /-! ## Solmate: deposit→redeem returns more than deposited -/
 
@@ -30,7 +26,6 @@ def solmateDonated : Solmate.State ℕ where
   afterDepositCount := 0
   beforeWithdrawCount := 0
 
-/-- The witness state is well formed. -/
 theorem solmateDonated_inv : Solmate.Inv solmateDonated := by
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩ <;> simp only [solmateDonated, MAX]
   · rw [Token.total_add_single]; simp [total, sum_single_index]
@@ -38,8 +33,7 @@ theorem solmateDonated_inv : Solmate.Inv solmateDonated := by
   · simp [total]
   · norm_num
 
-/-- [RT-DEPOSIT-REDEEM ✗, witness] User `1` deposits `1` asset, receives `1` share, redeems
-it and receives `2` assets. -/
+/-- Deposit→redeem fails: user `1` deposits `1` asset and redeems the share for `2`. -/
 theorem solmate_rt_deposit_redeem_witness :
     ((Solmate.deposit solmateDonated 1 1 1).bind fun p =>
       (Solmate.redeem p.1 1 p.2 1 1).map fun q => (p.2, q.2)) = some (1, 2) := by
@@ -61,9 +55,8 @@ def solmateAttacked : Solmate.State ℕ where
   afterDepositCount := 1
   beforeWithdrawCount := 0
 
-/-- [INFL-SOLMATE, witness] The victim deposits `201 = 2D + 1` assets and receives `1`
-share, which then converts to `151` assets: a loss of `50`, matching
-`solmate_attack_victim_one_share`. Depositing `100 = D` instead reverts. -/
+/-- The victim's `deposit(201 = 2D + 1)` gets `1` share worth `151` (a loss of `50`);
+`deposit(100 = D)` reverts. -/
 theorem solmate_attack_witness :
     ((Solmate.deposit solmateAttacked 1 201 1).bind fun p =>
       (p.1.convertToAssets p.2).map fun v => (p.2, v)) = some (1, 151) ∧
@@ -87,9 +80,8 @@ def ozAttacked : Oz.State ℕ where
              allowance := fun o sp => if o = 1 ∧ sp = 10 then MAX else 0 }
   shares := { balanceOf := single 2 1, totalSupply := 1, allowance := fun _ _ => 0 }
 
-/-- [EIP-DEPOSIT-ZERO, witness] The victim's `deposit(50)` succeeds and mints `0` shares;
-the vault now holds `151` assets for `1` share. (By `oz_donation_attack` the attacker
-still lost: the virtual share absorbed half of the donation.) -/
+/-- The victim's `deposit(50)` succeeds and mints `0` shares (the attacker still lost: the
+virtual share absorbed half of the donation). -/
 theorem oz_zero_shares_witness :
     (Oz.deposit 0 ozAttacked 1 50 1).map (fun p => (p.2, p.1.totalAssets, p.1.totalSupply)) =
       some (0, 151, 1) := by

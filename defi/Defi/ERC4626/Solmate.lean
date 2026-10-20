@@ -5,30 +5,10 @@ public import Defi.ERC20.Token
 /-!
 # The Solmate ERC-4626 vault, as an abstract state machine
 
-Mirrors `transmissions11/solmate` `src/tokens/ERC4626.sol` instantiated as
-`src/test/utils/mocks/MockERC4626.sol` (`totalAssets() = asset.balanceOf(address(this))`,
-hook counters), over a Solmate `MockERC20` asset — the pinned verification target
-(`contracts/src/Targets.sol`).
-
-State (`State A`, `A` = addresses):
-
-* `self` — the vault's own address;
-* `asset` — the storage of the asset token (`MockERC20`);
-* `shares` — the vault's own ERC-20 storage (balances, `totalSupply`, allowances);
-* `afterDepositCount`, `beforeWithdrawCount` — `MockERC4626`'s hook counters.
-
-Every external function is a partial function `State A → Option (State A × ℕ)`; `none`
-means the transaction reverts (and so leaves the state unchanged). Each one follows the
-Solidity source statement by statement, including every place where it can revert:
-`mulDivDown`/`mulDivUp` (zero denominator, 256-bit product overflow), `ZERO_SHARES` /
-`ZERO_ASSETS`, checked balance and allowance subtractions in both tokens, the checked
-`totalSupply += shares` in `_mint`, and the checked hook-counter increments. Unchecked
-Solidity arithmetic is `ℕ` arithmetic, sound under `Inv` (see `Token.WF`).
-
-Out of scope: `permit` (EIP-2612; its storage effect is an `approve` by the owner, which
-`Op.approve` covers), events, gas, and reentrancy (the asset is `MockERC20`, which makes no
-calls). The vault never calls itself, so theorems about value flows assume
-`caller ≠ self`.
+Solmate `ERC4626` + `MockERC4626` (`totalAssets() = asset.balanceOf(this)`, hook counters)
+over a `MockERC20` asset. Each entry point is `State A → Option (State A × ℕ)` (`none` =
+revert), following the source statement by statement including every revert. `permit`,
+events, gas and reentrancy are out of scope; value-flow theorems assume `caller ≠ self`.
 -/
 
 section
@@ -36,9 +16,7 @@ section
 @[expose] public noncomputable section
 
 namespace Defi.ERC4626.Solmate
-open Defi.Math Defi.ERC20
-
-open Defi.ERC20.Token
+open Defi.Math Defi.ERC20 Defi.ERC20.Token
 
 /-- Storage of a deployed Solmate `MockERC4626` together with its `MockERC20` asset. -/
 structure State (A : Type) where
@@ -56,7 +34,6 @@ structure State (A : Type) where
 variable {A : Type} [DecidableEq A]
 
 namespace State
-open Defi.Math Defi.ERC20
 
 variable (s : State A)
 
@@ -109,8 +86,8 @@ def bump (c : ℕ) : Option ℕ := checkedAdd c 1
 def deposit (s : State A) (caller : A) (assets : ℕ) (receiver : A) : Option (State A × ℕ) :=
   (s.previewDeposit assets).bind fun shares =>
   if shares = 0 then none else                                    -- "ZERO_SHARES"
-  (s.asset.transferFrom s.self caller s.self assets).bind fun asset =>  -- safeTransferFrom
-  (s.shares.mint receiver shares).bind fun sh =>                   -- _mint
+  (s.asset.transferFrom s.self caller s.self assets).bind fun asset =>
+  (s.shares.mint receiver shares).bind fun sh =>
   (bump s.afterDepositCount).map fun c =>                          -- afterDeposit
   ({ s with asset := asset, shares := sh, afterDepositCount := c }, shares)
 
@@ -132,8 +109,8 @@ def withdraw (s : State A) (caller : A) (assets : ℕ) (receiver owner : A) :
   (s.previewWithdraw assets).bind fun shares =>
   (spendIfNotOwner s.shares caller owner shares).bind fun sh1 =>
   (bump s.beforeWithdrawCount).bind fun c =>                       -- beforeWithdraw
-  (sh1.burn owner shares).bind fun sh2 =>                          -- _burn
-  (s.asset.transfer s.self receiver assets).map fun asset =>       -- safeTransfer
+  (sh1.burn owner shares).bind fun sh2 =>
+  (s.asset.transfer s.self receiver assets).map fun asset =>
   ({ s with asset := asset, shares := sh2, beforeWithdrawCount := c }, shares)
 
 /-- `redeem(shares, receiver, owner)` called by `caller`. Returns the assets paid out. -/
@@ -147,9 +124,8 @@ def redeem (s : State A) (caller : A) (shares : ℕ) (receiver owner : A) :
   (s.asset.transfer s.self receiver assets).map fun asset =>
   ({ s with asset := asset, shares := sh2, beforeWithdrawCount := c }, assets)
 
-/-- External calls that change state: the vault's ERC-4626 and ERC-20 entry points, and the
-asset's (`MockERC20`) entry points, which model donations (`assetTransfer` to the vault),
-yield (`assetMint` to the vault) and losses (`assetBurn` from the vault). -/
+/-- State-changing external calls: the vault's entry points and the asset's, which model
+donations, yield (`assetMint`) and losses (`assetBurn`). -/
 inductive Op (A : Type) where
   /-- `vault.deposit(assets, receiver)` from `caller`. -/
   | deposit (caller : A) (assets : ℕ) (receiver : A)
@@ -211,17 +187,13 @@ section
 /-!
 ## Effects of the Solmate vault operations
 
-Characterisation lemmas: when an entry point succeeds, what it returned and how the two
-ledgers changed. Everything downstream (invariants, rounding, round trips, inflation
-attack) is proved from these.
+What each successful entry point returned and how the two ledgers changed.
 -/
 
 @[expose] public section
 
 namespace Defi.ERC4626.Solmate
-open Defi.Math Defi.ERC20
-
-open Defi.ERC20.Token Finsupp
+open Defi.Math Defi.ERC20 Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
@@ -276,7 +248,6 @@ theorem spendIfNotOwner_eq_some {t t' : Token A} {c o : A} {n : ℕ}
   · exact spend_eq_some h
   · cases h; exact ⟨rfl, rfl⟩
 
-/-- What a successful `deposit` did. -/
 theorem deposit_eq_some {s s' : State A} {c r : A} {a n : ℕ}
     (h : deposit s c a r = some (s', n)) :
     s.previewDeposit a = some n ∧ n ≠ 0 ∧ a ≤ s.asset.balanceOf c ∧
@@ -296,7 +267,6 @@ theorem deposit_eq_some {s s' : State A} {c r : A} {a n : ℕ}
   obtain ⟨hmx, rfl⟩ := mint_eq_some.1 hm
   exact ⟨hp, hz, hv, hmx, rfl, hb, hs, rfl, rfl⟩
 
-/-- What a successful `mint` did. -/
 theorem mint_eq_some' {s s' : State A} {c r : A} {n a : ℕ}
     (h : mint s c n r = some (s', a)) :
     s.previewMint n = some a ∧ a ≤ s.asset.balanceOf c ∧
@@ -315,7 +285,6 @@ theorem mint_eq_some' {s s' : State A} {c r : A} {n a : ℕ}
   obtain ⟨hmx, rfl⟩ := mint_eq_some.1 hm
   exact ⟨hp, hv, hmx, rfl, hb, hs, rfl, rfl⟩
 
-/-- What a successful `withdraw` did. -/
 theorem withdraw_eq_some {s s' : State A} {c r o : A} {a n : ℕ}
     (h : withdraw s c a r o = some (s', n)) :
     s.previewWithdraw a = some n ∧ n ≤ s.shares.balanceOf o ∧ a ≤ s.totalAssets ∧
@@ -336,7 +305,6 @@ theorem withdraw_eq_some {s s' : State A} {c r o : A} {a n : ℕ}
   obtain ⟨ha, rfl⟩ := transfer_eq_some.1 ht
   exact ⟨hp, e1 ▸ hn, ha, rfl, rfl, rfl, by simp [e1], by simp [State.totalSupply, e2]⟩
 
-/-- What a successful `redeem` did. -/
 theorem redeem_eq_some {s s' : State A} {c r o : A} {n a : ℕ}
     (h : redeem s c n r o = some (s', a)) :
     s.previewRedeem n = some a ∧ a ≠ 0 ∧ n ≤ s.shares.balanceOf o ∧ a ≤ s.totalAssets ∧
@@ -360,21 +328,18 @@ theorem redeem_eq_some {s s' : State A} {c r o : A} {n a : ℕ}
 
 /-! ## Total assets after the asset moves -/
 
-/-- Assets flowing in from a caller other than the vault raise `totalAssets` by the amount. -/
 theorem totalAssets_in {s s' : State A} {c : A} {a : ℕ} (hc : c ≠ s.self)
     (hself : s'.self = s.self)
     (hb : s'.asset.balanceOf = s.asset.balanceOf - single c a + single s.self a) :
     s'.totalAssets = s.totalAssets + a := by
   simp only [State.totalAssets, hself, hb, move_apply_dst _ _ hc]
 
-/-- Assets flowing out to a receiver other than the vault lower `totalAssets` by the amount. -/
 theorem totalAssets_out {s s' : State A} {r : A} {a : ℕ} (hr : r ≠ s.self)
     (hself : s'.self = s.self)
     (hb : s'.asset.balanceOf = s.asset.balanceOf - single s.self a + single r a) :
     s'.totalAssets = s.totalAssets - a := by
   simp only [State.totalAssets, hself, hb, move_apply_src _ _ (Ne.symm hr)]
 
-/-- Paying the vault itself (`receiver = self`) leaves `totalAssets` unchanged. -/
 theorem totalAssets_out_self {s s' : State A} {a : ℕ} (ha : a ≤ s.totalAssets)
     (hself : s'.self = s.self)
     (hb : s'.asset.balanceOf = s.asset.balanceOf - single s.self a + single s.self a) :
@@ -434,7 +399,6 @@ theorem Inv_redeem {s s' : State A} {c r o : A} {n a : ℕ} (hi : Inv s)
   cases h
   exact ⟨WF_transfer hi.1 ht, WF_burn (WF_spendIfNotOwner hi.2 hs1) hb2⟩
 
-/-- Every external call preserves the invariant. -/
 theorem Inv_step {s s' : State A} {op : Op A} (hi : Inv s) (h : step s op = some s') :
     Inv s' := by
   cases op with
@@ -463,8 +427,7 @@ theorem Inv_step {s s' : State A} {op : Op A} (hi : Inv s) (h : step s op = some
   | assetBurn src v =>
     obtain ⟨t, h1, rfl⟩ := Option.map_eq_some_iff.1 h; exact ⟨WF_burn hi.1 h1, hi.2⟩
 
-/-- **Multi-transaction invariant.** Any sequence of calls, by arbitrary callers with
-arbitrary arguments, reverting or not, preserves `Inv`. -/
+/-- Any sequence of calls, by any callers with any arguments, preserves `Inv`. -/
 theorem Inv_exec {s : State A} (hi : Inv s) (ops : List (Op A)) : Inv (exec s ops) := by
   induction ops generalizing s with
   | nil => exact hi
@@ -474,14 +437,12 @@ theorem Inv_exec {s : State A} (hi : Inv s) (ops : List (Op A)) : Inv (exec s op
     | none => exact hi
     | some s' => exact Inv_step hi h
 
-/-- **INV-SUPPLY.** In every reachable state `totalSupply = Σ balanceOf` (shares) and the
-asset ledger is consistent too. -/
+/-- In every reachable state `totalSupply = Σ balanceOf`, for shares and asset. -/
 theorem totalSupply_eq_sum_exec {s : State A} (hi : Inv s) (ops : List (Op A)) :
     (exec s ops).totalSupply = total (exec s ops).shares.balanceOf ∧
       (exec s ops).asset.totalSupply = total (exec s ops).asset.balanceOf :=
   ⟨((Inv_exec hi ops).2.1).symm, ((Inv_exec hi ops).1.1).symm⟩
 
-/-- `self` never changes. -/
 theorem self_step {s s' : State A} {op : Op A} (h : step s op = some s') : s'.self = s.self := by
   cases op with
   | deposit c a r =>

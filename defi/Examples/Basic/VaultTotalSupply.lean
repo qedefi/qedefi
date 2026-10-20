@@ -5,16 +5,14 @@ import Examples.Solmate.Contracts.SolmateVault
 /-!
 # Scale check: a function of the real Solmate vault
 
-`totalSupply()` of `Examples.Solmate.Contracts.SolmateVault.runtimeCode` (5248 bytes), dispatcher and
-body, by `wp_steps` alone: code bytes, `PUSH` immediates and jump destinations come from
-kernel-checked facts (`EvmLogic.Program.Code`, `jdCheck`), so the elaborator never
-evaluates the large code. Elaboration takes a few seconds.
+`totalSupply()` of the 5248-byte compiled Solmate vault, by `wp_steps` alone: code facts
+are kernel-checked (`EvmLogic.Program.Code`, `jdCheck`), so the elaborator never evaluates
+the large code.
 -/
 
 namespace Examples.Basic.VaultTotalSupply
-open EvmLean Examples.Solmate EvmLogic EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Solidity Examples.Solmate.Contracts
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Solidity
+open Examples.Solmate Examples.Solmate.Contracts
 
 /-- Postcondition of `totalSupply()`: returns storage slot 2 of the executing account, world
 unchanged. -/
@@ -22,8 +20,8 @@ def totalSupplyPost (m mf : Machine) (o : Outcome) : Prop :=
   o = .success (Bytes.ofWord (m.world.sload m.frame.msg.currentTarget 2)) ∧ mf.world = m.world
 
 set_option maxHeartbeats 0 in
-/-- **`totalSupply()` of the compiled Solmate vault** (5248 bytes of real solc output),
-proved by symbolic execution of dispatcher and body, for any frame (top level or callee). -/
+/-- `totalSupply()` of the compiled Solmate vault halts with the right output, for any
+frame. -/
 theorem totalSupply_halts (m : Machine) (hf : Fresh SolmateVault.runtimeCode m) (hval : m.frame.msg.value = 0)
     (hsize : 4 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 256)
     (hsel : selectorOf m.frame.msg.data = 0x18160ddd#256) (hg : 5000 ≤ m.frame.gasLeft) :

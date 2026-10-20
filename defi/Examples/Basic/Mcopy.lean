@@ -3,22 +3,17 @@ import EvmLogic.Tactic.Mcopy
 /-!
 # `MCOPY` in the symbolic executors: examples
 
-`copy42` stores the word 42 at `0x00`, copies it with `MCOPY` to `0x20` and returns the copy:
-`PUSH1 42 PUSH0 MSTORE PUSH1 32 PUSH0 PUSH1 32 MCOPY PUSH1 32 PUSH1 32 RETURN`. It returns
-the word 42 in any context, world and message, by `psol_msteps` (a `run` goal) and by
-`pwp_msteps` (a frame-local `WP` goal).
+`copy42` stores 42, copies it with `MCOPY` and returns the copy; proved by `psol_msteps`
+(a `run` goal) and `pwp_msteps` (a frame-local `WP` goal).
 -/
 
 namespace Examples.Basic.Mcopy
-open EvmLean EvmLogic
-
-open EvmLean.Interpreter EvmLogic EvmLogic.Program
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program
 
 /-- Store 42, copy it with `MCOPY`, return the copy. -/
 def copy42 : ByteArray :=
   ⟨#[0x60, 0x2a, 0x5f, 0x52, 0x60, 0x20, 0x5f, 0x60, 0x20, 0x5e, 0x60, 0x20, 0x60, 0x20, 0xf3]⟩
 
-/-- A top-level call frame running `copy42` with `g` gas. -/
 def copy42Machine (ctx : Context) (g : Nat) (msg : Message) (w : World) : Machine where
   ctx := ctx
   precompiles := PrecompileImpl.standard ctx

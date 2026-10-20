@@ -7,21 +7,10 @@ public import Defi.ERC4626.OzProps
 /-!
 # The algebra of the donation ("inflation") attack
 
-One computation covers both vaults. Before the attack the vault has `T` assets and `S`
-shares; the conversions use *virtual* totals `T + vT` and `S + vS` (Solmate: `vT = vS = 0`;
-OpenZeppelin: `vT = 1`, `vS = 10^δ`). The attacker holds `b` of the `S` shares, donates `D`
-assets (a plain asset transfer to the vault), then the victim deposits `a` assets and
-receives `n = ⌊a·(S+vS)/(T+D+vT)⌋` shares.
-
-Value is measured at the vault's own exchange rate, `value(x) = x·(T+vT)/(S+vS)`:
-
-* the victim's loss `L = a − value₂(n)`;
-* the attacker's profit `P = value₂(b) − value₀(b) − D`.
-
-Then (`profit_mul`) `P·(S+vS) = b·L − D·(S − b + vS)`: the attacker gets a `b/(S+vS)` share
-of whatever the victim loses, and loses the part `D·(S−b+vS)/(S+vS)` of the donation that
-accrues to the other (real and virtual) shares. And (`loss_mul`)
-`L·(S+n+vS) = a·(S+vS) − n·(T+D+vT)`, i.e. `0 ≤ L <` one share at the post-donation price.
+One computation over `ℚ` for both vaults, with virtual totals `T + vT`, `S + vS` (Solmate
+`0, 0`; OpenZeppelin `1, 10^δ`). An attacker holding `b` shares donates `D`; a victim then
+deposits `a` for `n` shares. At the vault's rate, the victim's loss `L` and the attacker's
+profit `P` satisfy `P·(S+vS) = b·L − D·(S − b + vS)` and `0 ≤ L <` one share.
 -/
 
 section
@@ -33,22 +22,18 @@ open Defi.Math Defi.ERC20
 
 variable {T S vT vS D a n b : ℚ}
 
-/-- The profit identity: `P·(S+vS) = b·L − D·(S − b + vS)`. -/
 theorem profit_mul (h0 : S + vS ≠ 0) (h2 : S + n + vS ≠ 0) :
     (b * ((T + D + a + vT) / (S + n + vS)) - b * ((T + vT) / (S + vS)) - D) * (S + vS) =
       b * (a - n * ((T + D + a + vT) / (S + n + vS))) - D * (S - b + vS) := by
   field_simp
   ring
 
-/-- The loss identity: `L·(S+n+vS) = a·(S+vS) − n·(T+D+vT)`. -/
 theorem loss_mul (h2 : S + n + vS ≠ 0) :
     (a - n * ((T + D + a + vT) / (S + n + vS))) * (S + n + vS) =
       a * (S + vS) - n * (T + D + vT) := by
   field_simp
   ring
 
-/-- With floor rounding (`n·(T+D+vT) ≤ a·(S+vS) < (n+1)·(T+D+vT)`) the victim's loss is
-non-negative and below one share at the post-donation price `(T+D+vT)/(S+vS)`. -/
 theorem loss_bounds (h0 : 0 < S + vS) (hn : 0 ≤ n)
     (hr1 : n * (T + D + vT) ≤ a * (S + vS)) (hr2 : a * (S + vS) < (n + 1) * (T + D + vT)) :
     0 ≤ a - n * ((T + D + a + vT) / (S + n + vS)) ∧
@@ -62,7 +47,6 @@ theorem loss_bounds (h0 : 0 < S + vS) (hn : 0 ≤ n)
       mul_neg_of_neg_of_pos hc h2
     linarith
   · rw [lt_div_iff₀ h0]
-    -- L·(S+vS) ≤ L·(S+n+vS) = a(S+vS) − n(T+D+vT) < T+D+vT
     set L := a - n * ((T + D + a + vT) / (S + n + vS))
     have hL : 0 ≤ L := by
       by_contra hc
@@ -71,9 +55,6 @@ theorem loss_bounds (h0 : 0 < S + vS) (hn : 0 ≤ n)
       linarith
     nlinarith
 
-/-- **OpenZeppelin bound.** With `vS = k ≥ 1`, `vT = 1` and the attacker holding `b ≤ S`
-shares, the attacker's profit satisfies `P·(S+k) ≤ T + 1 − (k−1)·D`: below the value of one
-pre-attack share, and negative as soon as `(k−1)·D > T + 1`. -/
 theorem oz_profit_bound {k : ℚ} (hk : 1 ≤ k) (hb0 : 0 ≤ b) (hbS : b ≤ S) (hn : 0 ≤ n)
     (hD : 0 ≤ D)
     (hr1 : n * (T + D + 1) ≤ a * (S + k)) (hr2 : a * (S + k) < (n + 1) * (T + D + 1)) :
@@ -84,16 +65,11 @@ theorem oz_profit_bound {k : ℚ} (hk : 1 ≤ k) (hb0 : 0 ≤ b) (hbS : b ≤ S)
   rw [profit_mul hS.ne' h2.ne']
   obtain ⟨hL0, hL1⟩ := loss_bounds (T := T) (D := D) (a := a) (vT := 1) hS hn hr1 hr2
   set L := a - n * ((T + D + a + 1) / (S + n + k))
-  -- b·L ≤ b·(T+D+1)/(S+k) ≤ T+D+1
   have h3 : b * L ≤ T + D + 1 := by
     have : L * (S + k) < T + D + 1 := by rwa [lt_div_iff₀ hS] at hL1
     nlinarith
   nlinarith
 
-/-- **OpenZeppelin cost.** To inflict a loss `L` on the victim the attacker must donate
-`D > L·(S+k) − (T+1)`; the share of the donation captured by the `k` virtual shares,
-`D·k/(S+k)`, then exceeds `k·L − k·(T+1)/(S+k)`. In an empty vault (`(T+1)/(S+k) = 1/k`)
-the attacker pays more than `k·L − 1` to make the victim lose `L`. -/
 theorem oz_cost_bound {k : ℚ} (hk : 1 ≤ k) (hn : 0 ≤ n) (hS0 : 0 ≤ S)
     (hr1 : n * (T + D + 1) ≤ a * (S + k)) (hr2 : a * (S + k) < (n + 1) * (T + D + 1)) :
     k * (a - n * ((T + D + a + 1) / (S + n + k))) - k * ((T + 1) / (S + k)) < D * k / (S + k) := by
@@ -109,8 +85,6 @@ theorem oz_cost_bound {k : ℚ} (hk : 1 ≤ k) (hn : 0 ≤ n) (hS0 : 0 ≤ S)
   apply div_pos _ hS
   apply mul_pos (by linarith); linarith
 
-/-- **Solmate.** With no virtual offsets and the attacker holding every share (`b = S`), the
-attacker's profit is exactly the victim's loss: the donation is fully recovered. -/
 theorem solmate_profit_eq_loss (hS : 0 < S) (hn : 0 ≤ n) :
     (S * ((T + D + a) / (S + n)) - S * (T / S) - D) =
       a - n * ((T + D + a) / (S + n)) := by
@@ -128,53 +102,23 @@ section
 /-!
 ## The donation ("inflation") attack on both vaults
 
-The attack: an attacker holding shares transfers `D` assets directly to the vault
-(`asset.transfer(vault, D)`), raising the price per share, so that a victim's subsequent
-`deposit(a)` rounds down to few or zero shares; the attacker's shares absorb the
-difference.
-
-**Solmate** (`solmate_*`):
-
-* `solmate_attack_setup` — on an empty vault the attacker `deposit(1)`s and donates `D`,
-  reaching `S = 1`, `T = D + 1` with the single share in hand;
-* `solmate_attack_victim_reverts` — every victim deposit `a ≤ D` then has
-  `previewDeposit(a) = 0`, and `deposit` reverts (`ZERO_SHARES`): denial of service;
-* `solmate_attack_victim_one_share` — every victim deposit `D < a ≤ 2D+1` mints exactly one
-  share; the victim's shares are worth `⌊(a+D+1)/2⌋` and the victim loses `⌊(a−D)/2⌋`
-  (≈ 25 % of the deposit at `a = 2D+1`); the attacker's share is worth the same
-  `⌊(a+D+1)/2⌋ ≥ D + 1 + ⌊(a−D−1)/2⌋`, i.e. at least its cost plus the victim's loss
-  rounded down;
-* `solmate_donation_attack` — in general (any `S > 0`), the attacker's profit is
-  `(b·L − D·(S−b))/S` and equals the victim's loss `L` exactly when the attacker holds every
-  share: donating costs nothing.
-
-**OpenZeppelin** with `k = 10^δ` virtual shares (`oz_donation_attack`): the profit is
-`(b·L − D·(S−b+k))/(S+k)`, bounded by `(T + 1 − (k−1)·D)/(S+k)` (less than one
-pre-attack share, negative once `(k−1)·D > T+1`), and the part of the donation lost to the
-virtual shares exceeds `k·L − k·(T+1)/(S+k)`: making the victim lose `L` costs about
-`k·L`.
-
-Value is measured at the vault's exchange rate (`price`), i.e. before the final
-redemption's own rounding.
+An attacker donates `D` assets to the vault so a victim's `deposit(a)` rounds down. On
+Solmate this is free when the attacker holds every share; OpenZeppelin's `k = 10^δ` virtual
+shares make inflicting a loss `L` cost about `k·L`. Value is measured at the vault's `price`.
 -/
 
 @[expose] public section
 
 namespace Defi.ERC4626
-open Defi.Math Defi.ERC20
-
-open Defi.ERC20.Token Finsupp
+open Defi.Math Defi.ERC20 Defi.ERC20.Token Finsupp
 
 variable {A : Type} [DecidableEq A]
 
 namespace Solmate
-open Defi.Math Defi.ERC20
 
 /-- What `x` shares are worth at the current exchange rate, `x·T/S`. -/
 def State.value (s : State A) (x : ℕ) : ℚ := x * s.price
 
-/-- A donation (`asset.transfer(vault, D)` by `att ≠ vault`) raises `T` by `D` and leaves
-the shares untouched. -/
 theorem donate_eq {s s₁ : State A} {att : A} {D : ℕ}
     (h : step s (.assetTransfer att s.self D) = some s₁) (hatt : att ≠ s.self) :
     s₁.totalAssets = s.totalAssets + D ∧ s₁.totalSupply = s.totalSupply ∧ s₁.self = s.self ∧
@@ -183,8 +127,8 @@ theorem donate_eq {s s₁ : State A} {att : A} {D : ℕ}
   obtain ⟨-, rfl⟩ := transfer_eq_some.1 ht
   exact ⟨move_apply_dst _ _ hatt, rfl, rfl, rfl⟩
 
-/-- **Setup of the attack on an empty vault.** The attacker deposits one asset and donates
-`D`: the vault then has one share, held by the attacker, and `D + 1` assets. -/
+/-- On an empty vault the attacker deposits `1` and donates `D`: it holds the single share
+of a vault with `D + 1` assets. -/
 theorem solmate_attack_setup {s₀ s₁ s₂ : State A} {att : A} {D n : ℕ} (hi : Inv s₀)
     (hS : s₀.totalSupply = 0) (hT : s₀.totalAssets = 0) (hatt : att ≠ s₀.self)
     (h₁ : deposit s₀ att 1 att = some (s₁, n))
@@ -204,8 +148,7 @@ theorem solmate_attack_setup {s₀ s₁ s₂ : State A} {att : A} {D n : ℕ} (h
   refine ⟨rfl, by rw [dS, eS, hS], by rw [dT, eT, hT]; ring, ?_⟩
   rw [dsh, hb, add_single_apply, h0]; simp
 
-/-- **Victim deposits up to `D` revert.** With `S = 1` and `T = D + 1`, `previewDeposit(a)`
-is `0` for every `a ≤ D` and `deposit(a)` reverts (`ZERO_SHARES`). -/
+/-- Then every victim `deposit(a)` with `a ≤ D` reverts (`ZERO_SHARES`). -/
 theorem solmate_attack_victim_reverts {s : State A} {v r : A} {D a : ℕ} (hi : Inv s)
     (hS : s.totalSupply = 1) (hT : s.totalAssets = D + 1) (ha : a ≤ D) :
     s.previewDeposit a = some 0 ∧ deposit s v a r = none := by
@@ -223,11 +166,8 @@ theorem solmate_attack_victim_reverts {s : State A} {v r : A} {D a : ℕ} (hi : 
     obtain ⟨hp', hn, -⟩ := deposit_eq_some hd
     rw [hp] at hp'; cases hp'; exact absurd rfl hn
 
-/-- **Victim deposits between `D+1` and `2D+1` lose up to a quarter.** With `S = 1` and
-`T = D + 1` (attacker holds the one share), a victim `deposit(a)` with `D < a ≤ 2D + 1`
-mints exactly one share; afterwards each of the two shares converts to `⌊(a+D+1)/2⌋`
-assets, so the victim's loss is `a − ⌊(a+D+1)/2⌋ = ⌊(a−D)/2⌋` and the attacker's share,
-which cost `D + 1`, is worth `D + 1 + ⌊(a−D−1)/2⌋`. -/
+/-- Then a victim `deposit(a)` with `D < a ≤ 2D + 1` mints one share worth `⌊(a+D+1)/2⌋`:
+the victim loses `⌊(a−D)/2⌋` (up to a quarter) and the attacker gains `⌊(a−D−1)/2⌋`. -/
 theorem solmate_attack_victim_one_share {s s' : State A} {v r : A} {D a n : ℕ} (hi : Inv s)
     (hS : s.totalSupply = 1) (hT : s.totalAssets = D + 1) (ha₁ : D < a) (ha₂ : a ≤ 2 * D + 1)
     (hvs : v ≠ s.self) (h : deposit s v a r = some (s', n)) :
@@ -249,12 +189,9 @@ theorem solmate_attack_victim_one_share {s s' : State A} {v r : A} {D a n : ℕ}
   rw [convertToAssets_eq_some]
   exact Or.inr ⟨by omega, by rw [e3] at hmax ⊢; omega, by rw [e2, e3, Nat.one_mul]⟩
 
-/-- **The general Solmate attack.** From any state with shares, a donation of `D` by an
-attacker holding `b` shares followed by a victim `deposit(a)` minting `n` shares gives
-
-* attacker's profit `P = value₂(b) − value₀(b) − D` with `P·S = b·L − D·(S − b)`,
-* victim's loss `L = a − value₂(n)` with `0 ≤ L < price₁` (less than one share at the
-  post-donation price). -/
+/-- From any state with shares, an attacker holding `b` shares donates `D` and a victim
+deposits `a` for `n` shares: profit `P = value₂(b) − value₀(b) − D` and loss
+`L = a − value₂(n)` satisfy `P·S = b·L − D·(S − b)` and `0 ≤ L < price₁`. -/
 theorem solmate_donation_attack {s s₁ s₂ : State A} {att v r : A} {D a n : ℕ} (b : ℕ)
     (hS : s.totalSupply ≠ 0) (hatt : att ≠ s.self) (hvs : v ≠ s.self)
     (hd : step s (.assetTransfer att s.self D) = some s₁)
@@ -288,8 +225,7 @@ theorem solmate_donation_attack {s s₁ s₂ : State A} {att v r : A} {D a n : �
   rw [v2, v2, v0, p1]
   exact ⟨hp, hb.1, hb.2⟩
 
-/-- **Solmate: the attacker gains exactly what the victim loses.** If the attacker holds
-every share, `P = L`. -/
+/-- If the attacker holds every share, its profit is exactly the victim's loss (`P = L`). -/
 theorem solmate_donation_attack_all_shares {s s₁ s₂ : State A} {att v r : A} {D a n : ℕ}
     (hS : s.totalSupply ≠ 0) (hatt : att ≠ s.self) (hvs : v ≠ s.self)
     (hd : step s (.assetTransfer att s.self D) = some s₁)
@@ -303,14 +239,12 @@ theorem solmate_donation_attack_all_shares {s s₁ s₂ : State A} {att v r : A}
 end Solmate
 
 namespace Oz
-open Defi.Math Defi.ERC20
 
 variable [Zero A] {δ : ℕ}
 
 /-- What `x` shares are worth at the current virtual exchange rate, `x·T̂/Ŝ`. -/
 def State.value (δ : ℕ) (s : State A) (x : ℕ) : ℚ := x * s.price δ
 
-/-- A donation raises `T` by `D` and leaves the shares untouched. -/
 theorem donate_eq {s s₁ : State A} {att : A} {D : ℕ}
     (h : step δ s (.assetTransfer att s.self D) = some s₁) (hatt : att ≠ s.self) :
     s₁.totalAssets = s.totalAssets + D ∧ s₁.totalSupply = s.totalSupply ∧ s₁.self = s.self := by
@@ -319,16 +253,10 @@ theorem donate_eq {s s₁ : State A} {att : A} {D : ℕ}
   refine ⟨?_, rfl, rfl⟩
   simp only [State.totalAssets, hb, move_apply_dst _ _ hatt]
 
-/-- **The attack on the OpenZeppelin vault** (`k = 10^δ`, attacker holds `b ≤ S` shares,
-donates `D`, victim deposits `a` and gets `n` shares). With `Ŝ = S + k`, profit
-`P = value₂(b) − value₀(b) − D` and victim loss `L = a − value₂(n)`:
-
-1. `P·Ŝ = b·L − D·(Ŝ − b)`;
-2. `0 ≤ L < price₁` (less than one share at the post-donation price);
-3. `P·Ŝ ≤ T + 1 − (k − 1)·D`: the attack yields less than one pre-attack share's worth,
-   and loses money once `(k−1)·D > T + 1`;
-4. `k·L − k·price₀ < D·k/Ŝ`: the donation the virtual shares capture exceeds `k` times
-   the victim's loss, minus `k·price₀` (`= 1` in an empty vault). -/
+/-- The attack on OpenZeppelin (`k = 10^δ`, `Ŝ = S + k`, attacker holds `b ≤ S`), with `P`, `L`
+as for Solmate: `P·Ŝ = b·L − D·(Ŝ − b)`; `0 ≤ L < price₁`; `P·Ŝ ≤ T + 1 − (k − 1)·D` (less
+than one pre-attack share, a loss once `(k−1)·D > T + 1`); and `k·L − k·price₀ < D·k/Ŝ`
+(the donation lost to virtual shares exceeds about `k·L`). -/
 theorem oz_donation_attack {s s₁ s₂ : State A} {att v r : A} {D a n b : ℕ}
     (hbS : b ≤ s.totalSupply) (hatt : att ≠ s.self) (hvs : v ≠ s.self)
     (hd : step δ s (.assetTransfer att s.self D) = some s₁)

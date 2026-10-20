@@ -11,34 +11,18 @@ lake exe difftest [--seed N] [--sequences N] [--length N] [--family solmate|oz|a
                   [--rpc URL | --port N] [--inject-bug] [--verbose]
 ```
 
-For each family (Solmate `MockERC20`/`MockERC4626`, OpenZeppelin `ERC20Mock`/`OzVault`):
-
-1. **Deployment.** Both contracts are deployed by running their creation code, in evm-lean
-   as a creation message through `Interpreter.processMessageCall` and in anvil as a creation
-   transaction, first from a non-canonical deployer (the runtime code must equal
-   `runtimeCodeFor` of the new addresses: immutables patched by position) and then from the
-   canonical deployer (the code must equal the committed `runtimeCode`). Outcomes and
-   storage are compared as below.
-2. **Random sequences.** `--sequences` sequences of `--length` calls (`Examples.Differential.Gen`) from
-   four actors, each starting from the deployed state (anvil `evm_snapshot`/`evm_revert`).
-   After every call the tester compares success, return/revert data, logs, receipt
-   `gasUsed`, and storage: every slot either side wrote or holds (see `Examples.Differential.Rpc`).
-   Before them, a fixed first-depositor inflation-attack scenario is run and compared.
-3. **Shrinking.** On a mismatch the sequence is cut after the failing call and calls are
-   removed greedily while the mismatch persists; the minimal sequence is printed with
-   calldata.
-
-`--inject-bug` corrupts evm-lean's result of every successful `deposit` (the vault's total
-supply is incremented) to check that mismatches are detected and shrunk. The exit code is 0
-iff no mismatch was found.
-
-Anvil (Foundry) must be in `PATH` unless `--rpc` points at a running Cancun anvil with chain
-id 1, `--auto-impersonate` and a zero base fee.
+Per family: deploy from a non-canonical and the canonical deployer (checking
+`runtimeCodeFor` and `runtimeCode`), run an inflation-attack scenario and random call
+sequences, comparing status, output, logs, `gasUsed` and storage after every call, and
+shrink any mismatch. `--inject-bug` self-tests the tester. Needs `anvil` in `PATH` unless
+`--rpc` is given; exit code 0 iff no mismatch.
 -/
 
 namespace Examples.Differential
 
-open EvmLean Examples.OpenZeppelin Examples.Solmate EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin.Contracts Examples.Solmate.Contracts Lean Conformance
+open Lean EvmLean EvmLogic EvmLogic.Solidity Conformance Examples.Deployment
+open Examples.OpenZeppelin Examples.OpenZeppelin.Contracts
+open Examples.Solmate Examples.Solmate.Contracts
 
 /-- Gas limit of every transaction. -/
 def gasLimit : Nat := 10_000_000
@@ -71,7 +55,6 @@ def natArg (s : String) : Except String Nat :=
   | some n => .ok n
   | none => .error s!"expected a number, got {s}"
 
-/-- Parse the command line. -/
 def parseArgs : Config → List String → Except String Config
   | c, [] => .ok c
   | c, "--seed" :: n :: rest => do parseArgs { c with seed := ← natArg n } rest
@@ -118,7 +101,6 @@ structure Session where
 
 /-! ## Comparison -/
 
-/-- Render a log. -/
 def showLog (l : Log) : String :=
   s!"\{address {hexOfAddress l.address}, topics {l.topics.toList.map hexOfWord}, " ++
     s!"data {hexOfBytes l.data}}"
@@ -219,7 +201,6 @@ def Session.restart (s : Session) : IO Unit := do
   s.rpc.revertTo (← s.snap.get)
   s.snap.set (← s.rpc.snapshot)
 
-/-- Record a call in the statistics. -/
 def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
   s.stats.modify fun st =>
     let (n, k) := st.byKind.getD c.kind (0, 0)
@@ -227,7 +208,6 @@ def Session.record (s : Session) (c : Call) (ok : Bool) : IO Unit :=
     { st with calls := st.calls + 1, successes := st.successes + inc
               byKind := st.byKind.insert c.kind (n + 1, k + inc) }
 
-/-- Run a call on both sides and compare. -/
 def Session.exec (s : Session) (w : World) (c : Call) : IO (World × Outcome × List String) := do
   let (w', o, obs, diffs) ← step s.cfg s.rpc s.fam w c.sender (some c.to) c.data c.kind
   s.record c (o.success && obs.success)
@@ -329,7 +309,6 @@ def inflationScenario (f : Family) : Array Call :=
     mkCall f v alice f.vault "redeem(uint256,address,address)" [num 1, addr alice, addr alice],
     mkCall f v bob f.vault "maxWithdraw(address)" [addr bob]]
 
-/-- Test one family. -/
 def testFamily (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) (famIdx : Nat) (fam : Family) :
     IO Unit := do
   IO.println s!"[{fam.name}]"

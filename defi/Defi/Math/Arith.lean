@@ -5,18 +5,8 @@ public import Mathlib
 /-!
 # uint256 arithmetic of the vault libraries
 
-The two `mulDiv` flavours used by the verification targets, as functions `ℕ → Option ℕ`
-(`none` = the EVM call reverts), written to mirror the Solidity source line by line:
-
-* Solmate `FixedPointMathLib.mulDivDown` / `mulDivUp` (assembly): revert iff
-  `denominator = 0` or `x * y` overflows 256 bits, the latter tested as
-  `y ≠ 0 ∧ x > MAX / y` exactly as in the source.
-* OpenZeppelin `Math.mulDiv(x, y, d, rounding)` (v5.x): full 512-bit precision, reverts iff
-  `d = 0` or the floor quotient does not fit, then adds the rounding bit with a *checked*
-  addition (`SafeCast.toUint` + Solidity `+`).
-
-The characterisation lemmas (`mulDivDown_eq_some`, `ceilDiv_mul_ge`, …) turn these into
-plain floor/ceiling statements for the proofs.
+Solmate's `mulDivDown`/`mulDivUp` and OpenZeppelin's `Math.mulDiv` as `ℕ → Option ℕ`
+(`none` = revert), mirroring the Solidity source, plus floor/ceiling characterisations.
 -/
 
 section
@@ -38,11 +28,11 @@ theorem MAX_add_one : MAX + 1 = U256 := by unfold MAX U256; omega
 /-- `x` fits in a `uint256`. -/
 def Fits (x : ℕ) : Prop := x ≤ MAX
 
-/-- Ceiling division as computed by Solmate's `mulDivUp`: the floor quotient plus one when
-the remainder is non-zero (`add(gt(mod(m, d), 0), div(m, d))`). -/
+/-- Ceiling division as Solmate computes it: `add(gt(mod(m, d), 0), div(m, d))`. -/
 def ceilDiv (m d : ℕ) : ℕ := (if 0 < m % d then 1 else 0) + m / d
 
-/-- Solmate `FixedPointMathLib.mulDivDown(x, y, denominator)`. -/
+/-- Solmate `FixedPointMathLib.mulDivDown`; the overflow test is the source's
+`y ≠ 0 ∧ x > MAX / y`. -/
 def mulDivDown (x y d : ℕ) : Option ℕ :=
   if d = 0 ∨ (y ≠ 0 ∧ MAX / y < x) then none else some (x * y / d)
 
@@ -50,8 +40,8 @@ def mulDivDown (x y d : ℕ) : Option ℕ :=
 def mulDivUp (x y d : ℕ) : Option ℕ :=
   if d = 0 ∨ (y ≠ 0 ∧ MAX / y < x) then none else some (ceilDiv (x * y) d)
 
-/-- OpenZeppelin `Math.mulDiv(x, y, denominator, rounding)`; `up = true` is
-`Rounding.Ceil`. -/
+/-- OpenZeppelin `Math.mulDiv(x, y, d, rounding)` (512-bit precision, checked rounding
+add); `up = true` is `Rounding.Ceil`. -/
 def ozMulDiv (x y d : ℕ) (up : Bool) : Option ℕ :=
   if d = 0 ∨ MAX < x * y / d then none
   else
@@ -63,7 +53,6 @@ def checkedAdd (a b : ℕ) : Option ℕ := if MAX < a + b then none else some (a
 
 /-! ## Characterisations -/
 
-/-- Solmate's overflow test is exactly "the product does not fit". -/
 theorem overflow_test_iff (x y : ℕ) : (y ≠ 0 ∧ MAX / y < x) ↔ MAX < x * y := by
   constructor
   · rintro ⟨hy, h⟩
@@ -104,10 +93,8 @@ theorem mulDivUp_eq_none {x y d : ℕ} :
   simp only [overflow_test_iff]
   split_ifs with h <;> simp_all
 
-/-- Floor division: `(m / d) * d ≤ m`. -/
 theorem div_mul_le' (m d : ℕ) : m / d * d ≤ m := Nat.div_mul_le_self m d
 
-/-- Floor division: `m < (m / d + 1) * d`. -/
 theorem lt_div_add_one_mul (m d : ℕ) (hd : 0 < d) : m < (m / d + 1) * d := by
   have := Nat.lt_div_mul_add (a := m) hd
   nlinarith
@@ -115,7 +102,6 @@ theorem lt_div_add_one_mul (m d : ℕ) (hd : 0 < d) : m < (m / d + 1) * d := by
 theorem ceilDiv_eq (m d : ℕ) : ceilDiv m d = m / d + (if 0 < m % d then 1 else 0) := by
   unfold ceilDiv; omega
 
-/-- Ceiling division rounds up: `m ≤ ceilDiv m d * d` (for `d > 0`). -/
 theorem le_ceilDiv_mul (m d : ℕ) (hd : 0 < d) : m ≤ ceilDiv m d * d := by
   have h := Nat.div_add_mod m d
   have h2 := Nat.mod_lt m hd
@@ -125,7 +111,6 @@ theorem le_ceilDiv_mul (m d : ℕ) (hd : 0 < d) : m ≤ ceilDiv m d * d := by
   · have : m % d = 0 := by omega
     rw [this] at h; nlinarith
 
-/-- Ceiling division is tight: `ceilDiv m d * d < m + d`. -/
 theorem ceilDiv_mul_lt (m d : ℕ) (hd : 0 < d) : ceilDiv m d * d < m + d := by
   have h := Nat.div_add_mod m d
   unfold ceilDiv
@@ -134,7 +119,6 @@ theorem ceilDiv_mul_lt (m d : ℕ) (hd : 0 < d) : ceilDiv m d * d < m + d := by
   · have : m % d = 0 := by omega
     rw [this] at h; simp only [zero_add]; nlinarith
 
-/-- `ceilDiv` is the least `z` with `m ≤ z * d`. -/
 theorem ceilDiv_le_iff (m d z : ℕ) (hd : 0 < d) : ceilDiv m d ≤ z ↔ m ≤ z * d := by
   constructor
   · intro h; exact (le_ceilDiv_mul m d hd).trans (Nat.mul_le_mul_right d h)
@@ -145,13 +129,11 @@ theorem ceilDiv_le_iff (m d z : ℕ) (hd : 0 < d) : ceilDiv m d ≤ z ↔ m ≤ 
     have : (z + 1) * d ≤ ceilDiv m d * d := Nat.mul_le_mul_right d hc
     nlinarith
 
-/-- `z ≤ ceilDiv m d` whenever `(z - 1) * d < m`, stated without subtraction. -/
 theorem lt_ceilDiv_iff (m d z : ℕ) (hd : 0 < d) : z < ceilDiv m d ↔ z * d < m := by
   rw [← not_le, ceilDiv_le_iff m d z hd, not_le]
 
 theorem ceilDiv_zero_left (d : ℕ) : ceilDiv 0 d = 0 := by simp [ceilDiv]
 
-/-- Floor characterisation: `z ≤ m / d ↔ z * d ≤ m`. -/
 theorem le_div_iff (m d z : ℕ) (hd : 0 < d) : z ≤ m / d ↔ z * d ≤ m :=
   Nat.le_div_iff_mul_le hd
 
@@ -173,20 +155,14 @@ section
 /-!
 ## The arithmetic behind the round-trip properties
 
-Four inequalities on `ℕ`, one per shape of round trip, phrased with the cross-multiplied
-rounding facts that the vault operations provide. `T, S` are total assets and supply
-before the first call; the first call moves `a` assets and `n` shares, the second
-returns `a'` assets or `n'` shares. Each one works for both Solmate (no virtual offsets)
-and OpenZeppelin (apply it to `T + 1` and `S + 10^δ`).
+One inequality per round-trip shape, over cross-multiplied rounding facts (`T, S` = assets
+and supply before; for OpenZeppelin apply to `T + 1`, `S + 10^δ`).
 -/
 
 @[expose] public section
 
 namespace Defi.Math
 
-/-- In, then out, measured in assets (`deposit→redeem`, `mint→redeem`): if the entry gave
-at most fair shares (`n·T ≤ a·S`) and the exit gave at most fair assets at the new price
-(`a'·(S+n) ≤ n·(T+a)`), then `a' ≤ a`. -/
 theorem rt_in_out_assets {T S a n a' : ℕ} (hpos : 0 < S + n) (h1 : n * T ≤ a * S)
     (h2 : a' * (S + n) ≤ n * (T + a)) : a' ≤ a := by
   by_contra hc
@@ -194,7 +170,6 @@ theorem rt_in_out_assets {T S a n a' : ℕ} (hpos : 0 < S + n) (h1 : n * T ≤ a
   have : (a + 1) * (S + n) ≤ a' * (S + n) := Nat.mul_le_mul_right _ hc
   nlinarith
 
-/-- In, then out, measured in shares (`deposit→withdraw`, `mint→withdraw`): `n ≤ n'`. -/
 theorem rt_in_out_shares {T S a n n' : ℕ} (hpos : 0 < T + a) (h1 : n * T ≤ a * S)
     (h2 : a * (S + n) ≤ n' * (T + a)) : n ≤ n' := by
   by_contra hc
@@ -202,10 +177,6 @@ theorem rt_in_out_shares {T S a n n' : ℕ} (hpos : 0 < T + a) (h1 : n * T ≤ a
   have : (n' + 1) * (T + a) ≤ n * (T + a) := Nat.mul_le_mul_right _ hc
   nlinarith
 
-/-- Out, then in, measured in shares (`redeem→deposit`, `withdraw→deposit`): with
-`T = a + T₁`, `S = n + S₁` (the state between the calls is `T₁, S₁`, `T₁ > 0`), if the
-exit gave at most fair assets (`a·S ≤ n·T`) and the re-entry at most fair shares
-(`n'·T₁ ≤ a·S₁`), then `n' ≤ n`. -/
 theorem rt_out_in_shares {T₁ S₁ a n n' : ℕ} (hpos : 0 < T₁) (h1 : a * (n + S₁) ≤ n * (a + T₁))
     (h2 : n' * T₁ ≤ a * S₁) : n' ≤ n := by
   by_contra hc
@@ -213,8 +184,6 @@ theorem rt_out_in_shares {T₁ S₁ a n n' : ℕ} (hpos : 0 < T₁) (h1 : a * (n
   have : (n + 1) * T₁ ≤ n' * T₁ := Nat.mul_le_mul_right _ hc
   nlinarith
 
-/-- Out, then in, measured in assets (`redeem→mint`, `withdraw→mint`): `a ≤ a'` when the
-state in between has `S₁ > 0` shares. -/
 theorem rt_out_in_assets {T₁ S₁ a n a' : ℕ} (hpos : 0 < S₁) (h1 : a * (n + S₁) ≤ n * (a + T₁))
     (h2 : n * T₁ ≤ a' * S₁) : a ≤ a' := by
   by_contra hc
