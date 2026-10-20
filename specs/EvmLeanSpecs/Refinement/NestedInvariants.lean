@@ -1,4 +1,4 @@
-import EvmLeanSpecs.Refinement.NestedViews
+import EvmLeanSpecs.Refinement.NestedPermit
 
 /-!
 # The invariants for arbitrary transactions
@@ -74,25 +74,39 @@ structure FundedCall (vault : Address) (minGas : Nat) (m : Machine) : Prop where
   size : m.frame.msg.data.size < 2 ^ 64
 
 /-- **The frames of the vault and the asset with a proved frame summary**: a call carrying
-value (it reverts), or a funded call executing a modelled function or a covered view. -/
+value (it reverts), or a funded call executing a modelled function, a covered view, or `permit`
+with the permit frame conditions (`PermitFrame`: covered domain-separator case, `0x01` not
+delegated, depth below 1024). -/
 def Covered (vault asset : Address) (minGas : Nat) (m : Machine) : Prop :=
   (m.frame.msg.value ≠ 0 ∧ 100 ≤ m.frame.gasLeft) ∨
-  (FundedCall vault minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m))
+  (FundedCall vault minGas m ∧ ((∃ c, Executes vault asset m c) ∨ ViewData vault asset m ∨
+    ((∃ c, PermitData vault asset m c) ∧ PermitFrame m)))
+
+/-- **The model calls a frame commits are admitted**: the modelled call it executes, and the
+approval a `permit` commits on success (`PermitData`: the owner's approval), whose owner's
+nonce slot must moreover be fresh (`NonceSlotOk`, relative to the actors). -/
+structure FrameAdmitted (crypto : Crypto) (vault asset : Address) (Act : List Address)
+    (K : VCall → Prop) (m : Machine) : Prop where
+  /-- The executed modelled call is admitted. -/
+  calls : ∀ c, Executes vault asset m c → Admitted Act K c
+  /-- The approval of a `permit` is admitted, with the owner's nonce slot fresh. -/
+  permits : ∀ c, PermitData vault asset m c → Admitted Act K c ∧ NonceSlotOk crypto Act c.caller
 
 /-- **A covered transaction**: every non-static frame of the vault's or the asset's code that
 unprotected code starts during the transaction (a frame reached while no frame of the vault or
-the asset is running non-statically below it) is covered, and the modelled calls they execute
-are admitted. The vault's own calls into the asset are part of the vault's frame summary. -/
+the asset is running non-statically below it) is covered, and the model calls they commit are
+admitted (`FrameAdmitted`, for the context's hash). The vault's own calls into the asset are
+part of the vault's frame summary. -/
 def TxOk (vault asset : Address) (minGas : Nat) (Act : List Address) (K : VCall → Prop)
     (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
   ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m →
     (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
-    Covered vault asset minGas m ∧ ∀ c, Executes vault asset m c → Admitted Act K c
+    Covered vault asset minGas m ∧ FrameAdmitted ctx.crypto vault asset Act K m
 
 /-- **The pending obligations**: frame summaries of the frames of the vault and the asset
-that are not covered (low gas, depth 1024, `permit`, `name`, `symbol`, `nonces`,
-`DOMAIN_SEPARATOR`, the remaining views, malformed calldata), from a deployed world with
-well-formed ledgers. -/
+that are not covered (low gas, the vault at depth 1024, `permit` / `DOMAIN_SEPARATOR()` on
+another chain with a name of 32 bytes or more or with `0x01` delegated, malformed calldata and
+unknown selectors), from a deployed world with well-formed ledgers. -/
 def PendingFrames (crypto : Crypto) (vault asset : Address) (minGas : Nat) (Act : List Address)
     (K : VCall → Prop) : Prop :=
   ∀ m, VaultStart vault asset m → Deployed m.world vault asset →
@@ -106,15 +120,16 @@ theorem frameOk_of_covered (hmin : 250000 ≤ minGas)
     (hs : SlotsOk crypto vault Act) {m : Machine} (hv : VaultStart vault asset m)
     (hdep : Deployed m.world vault asset) (hinv : Solmate.Inv (abs crypto m.world vault asset))
     (hcr : m.ctx.crypto = crypto) (hlt : m.frame.gasLeft < 2 ^ 64)
-    (hc : Covered vault asset minGas m) (hadm : ∀ c, Executes vault asset m c → Admitted Act K c) :
+    (hc : Covered vault asset minGas m) (hadm : FrameAdmitted crypto vault asset Act K m) :
     FrameOk crypto vault asset Act K m := by
   rcases hc with ⟨hval, hg⟩ | ⟨hf, hx⟩
   · exact frameOk_value hv hdep hval hg
   · have h : FrameHyp crypto vault asset Act minGas m :=
       ⟨hv, hdep, hinv, hcr, ⟨hf.value, hf.gas, hlt, hf.depth, hf.size⟩, hs⟩
-    rcases hx with ⟨c, hx⟩ | hx
-    · exact frameOk_of_executes hmin hk h hx (hadm c hx)
+    rcases hx with ⟨c, hx⟩ | hx | ⟨⟨c, hx⟩, hp⟩
+    · exact frameOk_of_executes hmin hk h hx (hadm.calls c hx)
     · exact frameOk_view (by omega) h hx
+    · exact frameOk_permit (by omega) h hp hx (hadm.permits c hx).1 (hadm.permits c hx).2
 
 /-- The gas of a dangerous frame is below `2⁶⁴` when the transaction's is. -/
 theorem DangerStart.gasLt {Good : World → Prop} {G : Nat} {m : Machine}
@@ -134,7 +149,7 @@ theorem txOk_direct {ctx : Context} {w : World} {tr : TransientStorage} {msg : M
     (hdel : delegatedAddress? msg.code = none) (hprot : Prot vault asset msg.currentTarget)
     (hstatic : msg.isStatic = false)
     (hcov : ∀ m : Machine, m.frame.msg = msg → m.frame.gasLeft = msg.gas →
-      Covered vault asset minGas m ∧ ∀ c, Executes vault asset m c → Admitted Act K c) :
+      Covered vault asset minGas m ∧ FrameAdmitted ctx.crypto vault asset Act K m) :
     TxOk vault asset minGas Act K ctx w tr msg := by
   intro m hm hv hp
   have hb := hm.bottom
@@ -174,7 +189,7 @@ theorem follows_tx_pending (hmin : 250000 ≤ minGas)
     (hmsg : TopOk (Prot vault asset) w msg) (hgas : msg.gas < 2 ^ 64)
     (hadm : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m →
       (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
-      ∀ c, Executes vault asset m c → Admitted Act K c)
+      FrameAdmitted ctx.crypto vault asset Act K m)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     Follows crypto vault asset Act K w₀ r.world := by
   refine processMessageCall_follows hs hinv hw hdeleg hmsg (le_refl _) (fun m hm hd hp => ?_) hr
@@ -183,7 +198,8 @@ theorem follows_tx_pending (hmin : 250000 ≤ minGas)
   have hcr' : m.ctx.crypto = crypto := by rw [hm.ctx]; exact hcr
   have hlt := DangerStart.gasLt hd hgas
   by_cases hc : Covered vault asset minGas m
-  · exact frameOk_of_covered hmin hk hs hv hwm.1 (hwm.inv hs hinv) hcr' hlt hc (hadm m hm hv hp)
+  · exact frameOk_of_covered hmin hk hs hv hwm.1 (hwm.inv hs hinv) hcr' hlt hc
+      (hcr ▸ hadm m hm hv hp)
   · exact hpend m hv hwm.1 (hwm.inv hs hinv) hcr' hlt hc
 
 /-- **One covered transaction keeps `Follows`.** -/
@@ -202,7 +218,7 @@ theorem follows_tx (hmin : 250000 ≤ minGas)
   have hwm : Follows crypto vault asset Act K w₀ m.world := goodOk.keep _ _ hd.snapshot hd.keep
   have hcr' : m.ctx.crypto = crypto := by rw [hm.ctx]; exact hcr
   exact frameOk_of_covered hmin hk hs hv hwm.1 (hwm.inv hs hinv) hcr' (DangerStart.gasLt hd hgas)
-    (hok m hm hv hp).1 (hok m hm hv hp).2
+    (hok m hm hv hp).1 (hcr ▸ (hok m hm hv hp).2)
 
 /-! ## Sequences of transactions -/
 
