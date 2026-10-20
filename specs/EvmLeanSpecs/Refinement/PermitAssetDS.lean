@@ -176,10 +176,10 @@ theorem asset_domainSeparator_halts {ia : SolmateAsset.Immutables} (m : Machine)
   simp only [dsOf]
   rcases hmem with ⟨h64, hs⟩ | ⟨h64, hs⟩
   · pwp_steps [h64, hs, permit_norm]
-    refine ⟨by first | trivial | rfl, by dsimp only [outputMachine], ?_⟩
+    refine ⟨trivial, by dsimp only [outputMachine], ?_⟩
     dsimp only [outputMachine]; evm_gas
   · pwp_steps [h64, hs, permit_norm]
-    refine ⟨by first | trivial | rfl, by dsimp only [outputMachine], ?_⟩
+    refine ⟨trivial, by dsimp only [outputMachine], ?_⟩
     dsimp only [outputMachine]; evm_gas
 
 end EvmLeanSpecs.Refinement.Permit
