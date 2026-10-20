@@ -3,23 +3,13 @@ import EvmLean
 /-!
 # Jump destinations of large bytecode, checked in the kernel
 
-`isValidJumpDest (validJumpDests code) d` is the side condition of every `JUMP`/`JUMPI`
-step lemma. For hand-written programs of a few dozen bytes `decide` settles it, but for
-compiled contracts (a 1.6 kB ERC-20) evaluating `validJumpDests` in the kernel takes
-minutes: the scan indexes a list-backed `ByteArray` and updates a list-backed bitmap at
-every position, which is quadratic with large constants.
-
-`jumpDestList fuel bytes pos` is the same scan written over a `List UInt8`, returning the
-positions of the valid `JUMPDEST`s; it walks the list once. `isValidJumpDest_of_mem` says
-that every position it returns is valid, so a jump destination is discharged by
-`decide +kernel` on `d ∈ jumpDestList (code.size + 1) code.data.toList 0` (about 0.1 s for
-the 1.6 kB ERC-20).
+Evaluating `validJumpDests` in the kernel is quadratic (list-backed arrays) and takes minutes
+on compiled contracts. `jumpDestList` is the same scan over a `List UInt8`;
+`isValidJumpDest_of_mem` lets `decide +kernel` discharge a jump destination in ~0.1 s.
 -/
 
 namespace EvmLogic.Solidity
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-- The valid `JUMPDEST` positions of `bytes` (a suffix of the code starting at position
 `pos`), scanning at most `fuel` instructions. Mirrors `jumpDestLoop` over a list. -/
@@ -32,7 +22,6 @@ def jumpDestList : Nat → List UInt8 → Nat → List Nat
       jumpDestList f (bs.drop (b.toNat - 0x5f)) (pos + 1 + (b.toNat - 0x5f))
     else jumpDestList f bs (pos + 1)
 
-/-- `setIfInBounds` keeps a `true` entry. -/
 private theorem getElem?_setIfInBounds_of_true {acc : Array Bool} {i j : Nat}
     (h : acc[i]? = some true) : (acc.setIfInBounds j true)[i]? = some true := by
   rw [Array.getElem?_setIfInBounds]
@@ -42,7 +31,6 @@ private theorem getElem?_setIfInBounds_of_true {acc : Array Bool} {i j : Nat}
     simp [h.1]
   · exact h
 
-/-- The scan never clears a mark. -/
 theorem jumpDestLoop_of_true (code : ByteArray) (fuel pc : Nat) (acc : Array Bool) (i : Nat)
     (h : acc[i]? = some true) : (jumpDestLoop code fuel pc acc)[i]? = some true := by
   induction fuel generalizing pc acc with
@@ -56,8 +44,6 @@ theorem jumpDestLoop_of_true (code : ByteArray) (fuel pc : Nat) (acc : Array Boo
       · split <;> exact ih _ _ h
     · exact h
 
-/-- Every position listed by `jumpDestList` on the suffix of `code` at `pc` is marked by the
-scan from `pc`, provided the bitmap covers the code. -/
 theorem jumpDestLoop_of_mem (code : ByteArray) (fuel pc : Nat) (acc : Array Bool)
     (hacc : acc.size = code.size) (d : Nat)
     (h : d ∈ jumpDestList fuel (code.data.toList.drop pc) pc) :

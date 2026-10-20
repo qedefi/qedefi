@@ -4,21 +4,14 @@ import EvmLogic.AbsInt.Effect
 /-!
 # The depth limit: a frame at depth 1024 behaves as one level up, or fails
 
-The only instructions that read a frame's message depth are the `CALL` and `CREATE` families
-(the depth-limit check of `generic_call` / `generic_create`). So a frame at the call-depth
-limit (`Gas.stackDepthLimit < depth + 1`: every call it makes fails at once with `0` pushed)
-runs in lockstep with the same frame one level up (`setDepth`) until the first call
-(`exec_setDepth`). In code satisfying the lockstep conditions (`CodeOk`: every call is a
-`CALL`/`STATICCALL` returning to a point where a failed call makes the frame fail), the first
-call makes the frame at the limit fail. Hence (`depth_lockstep`) the frame at the limit fails,
-or ends exactly as the frame one level up; and a frame summary of the top-level frame one
-level up transfers (`halts_world_of_depth`).
+Only the `CALL`/`CREATE` families read the message depth, and at the limit their calls fail at
+once. So under `CodeOk` (a failed call makes the frame fail) a frame at the limit fails or ends
+exactly as one level up (`depth_lockstep`), and a top-level frame summary transfers
+(`halts_world_of_depth`).
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The machine whose executing frame has message depth `d`. -/
 def setDepth (d : Nat) (m : Machine) : Machine :=
@@ -61,7 +54,6 @@ theorem exec_setDepth_wp (op : Opcode) (hop : readsDepthB op = false) (m : Machi
     memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
     setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
 
-/-- **Changing the depth**, as run equations. -/
 theorem exec_setDepth (op : Opcode) (hop : readsDepthB op = false) {m m' : Machine} {a : Action}
     (h : (exec op).run m = .ok (a, m')) (d : Nat) :
     (exec op).run (setDepth d m) = .ok (a, setDepth d m') := by
@@ -78,7 +70,6 @@ theorem setDepth_setDepth (d d' : Nat) (m : Machine) :
 
 theorem setDepth_self (m : Machine) : setDepth m.frame.msg.depth m = m := rfl
 
-/-- An instruction not reading the depth fails at every depth if it fails at one. -/
 theorem exec_setDepth_error (op : Opcode) (hop : readsDepthB op = false) {m : Machine}
     {e : ExceptionalHalt} (h : (exec op).run m = .error e) (d : Nat) :
     ∃ e', (exec op).run (setDepth d m) = .error e' := by
@@ -91,18 +82,15 @@ theorem exec_setDepth_error (op : Opcode) (hop : readsDepthB op = false) {m : Ma
     rw [this] at h
     cases h
 
-/-- Changing the depth keeps "same frame" (up to the depth). -/
 theorem sameFrame_setDepth {m m' : Machine} (h : SameFrame m m') (d : Nat) :
     SameFrame (setDepth d m) (setDepth d m') :=
   ⟨h.ctx, h.precompiles, h.originalWorld, h.parents, by simp [setDepth, h.msg], h.code,
     h.jumpDests, h.kind, h.snapshot⟩
 
-/-- Instructions not reading the depth request no child. -/
 theorem effOf_ne_call {op : Opcode} (hop : readsDepthB op = false) :
     (∀ p, AbsInt.effOf op ≠ .call p) ∧ ∀ p, AbsInt.effOf op ≠ .create p := by
   cases op <;> simp_all [readsDepthB, AbsInt.effOf]
 
-/-- The bytes of the instructions reading the depth. -/
 theorem isCallByte_of_readsDepth (fork : Fork) {b : UInt8}
     (h : readsDepthB (Opcode.decode fork b) = true) : IsCallByte b := by
   have hg : readsGasB (Opcode.decode fork b) = true := by
@@ -126,7 +114,6 @@ same outcome from the same machine (at its depth). -/
 def DepthPost (d : Nat) (mfh : Machine) (oh : Outcome) (mf : Machine) (o : Outcome) : Prop :=
   Failed o ∨ (o = oh ∧ mf = setDepth d mfh)
 
-/-- An instruction that fails ends the frame there. -/
 theorem exitOf_of_error {m : Machine} {b : UInt8} {e : ExceptionalHalt}
     (hcode : m.frame.code[m.frame.pc]? = some b)
     (hexec : (exec (Opcode.decode m.ctx.fork b)).run m = .error e) :

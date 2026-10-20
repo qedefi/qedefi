@@ -11,7 +11,6 @@ namespace EvmLean.Interpreter
 
 variable {m : Machine} {x : Word} {rest : List Word}
 
-/-- `ADDRESS`: the executing account. -/
 theorem step_address (hcode : m.frame.code[m.frame.pc]? = some 0x30)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -19,7 +18,6 @@ theorem step_address (hcode : m.frame.code[m.frame.pc]? = some 0x30)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `ORIGIN`: the transaction sender. -/
 theorem step_origin (hcode : m.frame.code[m.frame.pc]? = some 0x32)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -27,7 +25,6 @@ theorem step_origin (hcode : m.frame.code[m.frame.pc]? = some 0x32)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CALLER`: the message sender. -/
 theorem step_caller (hcode : m.frame.code[m.frame.pc]? = some 0x33)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -35,7 +32,6 @@ theorem step_caller (hcode : m.frame.code[m.frame.pc]? = some 0x33)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CALLVALUE`. -/
 theorem step_callvalue (hcode : m.frame.code[m.frame.pc]? = some 0x34)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -43,7 +39,6 @@ theorem step_callvalue (hcode : m.frame.code[m.frame.pc]? = some 0x34)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CALLDATASIZE`. -/
 theorem step_calldatasize (hcode : m.frame.code[m.frame.pc]? = some 0x36)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -51,7 +46,6 @@ theorem step_calldatasize (hcode : m.frame.code[m.frame.pc]? = some 0x36)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CODESIZE`. -/
 theorem step_codesize (hcode : m.frame.code[m.frame.pc]? = some 0x38)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -59,7 +53,6 @@ theorem step_codesize (hcode : m.frame.code[m.frame.pc]? = some 0x38)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `GASPRICE`. -/
 theorem step_gasprice (hcode : m.frame.code[m.frame.pc]? = some 0x3a)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -67,7 +60,6 @@ theorem step_gasprice (hcode : m.frame.code[m.frame.pc]? = some 0x3a)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `RETURNDATASIZE`. -/
 theorem step_returndatasize (hcode : m.frame.code[m.frame.pc]? = some 0x3d)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -75,7 +67,6 @@ theorem step_returndatasize (hcode : m.frame.code[m.frame.pc]? = some 0x3d)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `COINBASE`. -/
 theorem step_coinbase (hcode : m.frame.code[m.frame.pc]? = some 0x41)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -83,7 +74,6 @@ theorem step_coinbase (hcode : m.frame.code[m.frame.pc]? = some 0x41)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `TIMESTAMP`. -/
 theorem step_timestamp (hcode : m.frame.code[m.frame.pc]? = some 0x42)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -91,7 +81,6 @@ theorem step_timestamp (hcode : m.frame.code[m.frame.pc]? = some 0x42)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `NUMBER`. -/
 theorem step_number (hcode : m.frame.code[m.frame.pc]? = some 0x43)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -99,7 +88,6 @@ theorem step_number (hcode : m.frame.code[m.frame.pc]? = some 0x43)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `PREVRANDAO`. -/
 theorem step_prevrandao (hcode : m.frame.code[m.frame.pc]? = some 0x44)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -107,7 +95,6 @@ theorem step_prevrandao (hcode : m.frame.code[m.frame.pc]? = some 0x44)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `GASLIMIT`. -/
 theorem step_gaslimit (hcode : m.frame.code[m.frame.pc]? = some 0x45)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -115,7 +102,6 @@ theorem step_gaslimit (hcode : m.frame.code[m.frame.pc]? = some 0x45)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CHAINID`. -/
 theorem step_chainid (hcode : m.frame.code[m.frame.pc]? = some 0x46)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -123,7 +109,6 @@ theorem step_chainid (hcode : m.frame.code[m.frame.pc]? = some 0x46)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `SELFBALANCE`. -/
 theorem step_selfbalance (hcode : m.frame.code[m.frame.pc]? = some 0x47)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.fastStep ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -131,7 +116,6 @@ theorem step_selfbalance (hcode : m.frame.code[m.frame.pc]? = some 0x47)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `BASEFEE`. -/
 theorem step_basefee (hcode : m.frame.code[m.frame.pc]? = some 0x48)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -139,7 +123,6 @@ theorem step_basefee (hcode : m.frame.code[m.frame.pc]? = some 0x48)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `PC`: the address of this instruction. -/
 theorem step_pc (hcode : m.frame.code[m.frame.pc]? = some 0x58)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -147,7 +130,6 @@ theorem step_pc (hcode : m.frame.code[m.frame.pc]? = some 0x58)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `MSIZE`. -/
 theorem step_msize (hcode : m.frame.code[m.frame.pc]? = some 0x59)
     (hlen : m.frame.stack.length < 1024) (hgas : Gas.base ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -163,7 +145,6 @@ theorem step_gas (hcode : m.frame.code[m.frame.pc]? = some 0x5a)
       pc := m.frame.pc + 1 } } :=
   step_of_pushValue (fun fk => by cases fk <;> rfl) hcode hlen hgas
 
-/-- `CALLDATALOAD`: the 32 calldata bytes at offset `x`, zero-padded. -/
 theorem step_calldataload (hcode : m.frame.code[m.frame.pc]? = some 0x35)
     (hstk : m.frame.stack = x :: rest) (hlen : rest.length < 1024)
     (hgas : Gas.veryLow ≤ m.frame.gasLeft) :

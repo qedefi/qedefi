@@ -4,44 +4,22 @@ import EvmLogic.Tactic.WpStep
 import EvmLogic.Tactic.SolStep
 
 /-!
-# `psol_step`: symbolic execution of code with symbolic immutables
+# `psol_step` / `pwp_step`: symbolic execution of code with symbolic immutables
 
-`sol_step` (`EvmLogic.Tactic.SolStep`) needs the executed code to be a byte literal.
-The runtime code of a deployment with *arbitrary* immutables is `patchWords base ps`
-(`runtimeCodeWith i` for a symbolic `i`), which is not. `psol_step` is `sol_step` for such
-code; outside the patched windows it is exactly as fast:
-
-* the opcode byte at `pc` is read from the literal `base` (the head constants of the code are
-  unfolded until `Contracts.patchWords base ps` appears);
-* code-byte side goals `code[pc]? = some b` are reduced to `base[pc]? = some b` by
-  `getElem?_patchWords_of_offsets` and then checked by `decide +kernel`;
-* jump destinations use a hypothesis `JumpDestsAgree code base` from the local context
-  (proved once per contract, for all immutables, by `kernel_decide`) and the scan of `base`;
-* the simproc `reducePatchedRead` rewrites `readBytes code off n` (pushed immediates,
-  `CODECOPY`) to `readBytes base off n` when the range avoids every patch, after which
-  `reduceCodeImm` evaluates it. Reads *inside* a patch (an immutable being pushed) are left to
-  per-contract simp lemmas passed as `psol_steps [h, …]` (`readBytes_patchWords_last`).
-
-The patch offsets are computed at the meta level by unfolding `ps` (they are literals even when
-the patched words are symbolic); the equation `ps.map Prod.fst = offs` is left to the kernel
-(`mkExpectedPropHint`), and the disjointness of the range from `offs` is a closed `decide`.
-
-Otherwise `psol_step` is `sol_step`: the step lemmas (`Exec.stepTactics`) and normalisation are
-shared, with the discharger `sol_disch` replaced by `psol_disch` (which falls back to it).
-`psol_dispatch` is `sol_dispatch` with `psol_steps`.
+The runtime code of a deployment with arbitrary immutables is `patchWords base ps`, not a byte
+literal. `psol_step` (`run` goals) and `pwp_step` (`WP` goals) read bytes from the literal `base`
+when they lie outside every patch (offsets computed at the meta level, disjointness by a closed
+`decide`), and check jump destinations with a `JumpDestsAgree code base` hypothesis.
 -/
 
 section
 
 namespace EvmLogic.Tactic.Patched
-open EvmLean EvmLogic.Solidity
-
-open Lean Elab Tactic EvmLogic.Tactic Meta Simp
-open EvmLean.Interpreter EvmLogic.Solidity
+open EvmLean EvmLogic.Solidity Lean Elab Tactic EvmLogic.Tactic Meta Simp EvmLean.Interpreter
 
 /-! ## Recognising patched code -/
 
-/-- `(base, ps)` if `e` unfolds (through head constants) to `Contracts.patchWords base ps`. -/
+/-- `(base, ps)` if `e` unfolds (through head constants) to `patchWords base ps`. -/
 def patched? (e : Expr) : MetaM (Option (Expr × Expr)) := withTransparency .default do
   let mut e ← instantiateMVars e
   for _ in [0:16] do
@@ -53,8 +31,7 @@ def patched? (e : Expr) : MetaM (Option (Expr × Expr)) := withTransparency .def
     | none => return none
   return none
 
-/-- The offsets of a patch list (a list of pairs whose first components are numerals, after
-unfolding). -/
+/-- The (numeral) offsets of a patch list. -/
 def patchOffsets? (ps : Expr) : MetaM (Option (List Nat)) := do
   let mut cur := ps
   let mut out : Array Nat := #[]
@@ -73,7 +50,6 @@ def patchOffsets? (ps : Expr) : MetaM (Option (List Nat)) := do
     cur := tl
   return none
 
-/-- The literal list of offsets as an expression. -/
 def natListLit (l : List Nat) : Expr :=
   l.foldr (fun n acc => mkApp3 (mkConst ``List.cons [0]) (mkConst ``Nat) (mkNatLit n) acc)
     (mkApp (mkConst ``List.nil [0]) (mkConst ``Nat))
@@ -87,8 +63,8 @@ def offsetsProof (ps : Expr) (offs : List Nat) : MetaM Expr := do
 
 /-! ## Reads of code -/
 
-/-- `readBytes code off n` with `code = patchWords base ps` and literal `off`, `n` avoiding
-every patch: `readBytes base off n` (`readBytes_patchWords_of_offsets`). -/
+/-- Rewrite `readBytes (patchWords base ps) off n` to `readBytes base off n` when the literal
+range avoids every patch. -/
 simproc_decl reducePatchedRead (readBytes _ _ _) := fun e => do
   let_expr readBytes code off n := e | return .continue
   let some offN ← (evalNat off).run | return .continue
@@ -99,7 +75,8 @@ simproc_decl reducePatchedRead (readBytes _ _ _) := fun e => do
   let offsE := natListLit offs
   let hdisj ← mkDecideProof (← withLocalDeclD `o (mkConst ``Nat) fun o => do
     let mem ← mkAppM ``Membership.mem #[offsE, o]
-    let body ← mkAppM ``Or #[← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[mkNatLit offN, mkNatLit nN], o],
+    let body ← mkAppM ``Or
+      #[← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[mkNatLit offN, mkNatLit nN], o],
       ← mkAppM ``LE.le #[← mkAppM ``HAdd.hAdd #[o, mkNatLit 32], mkNatLit offN]]
     mkForallFVars #[o] (← mkArrow mem body))
   let pf := mkAppN (mkConst ``readBytes_patchWords_of_offsets)
@@ -110,8 +87,6 @@ simproc_decl reducePatchedRead (readBytes _ _ _) := fun e => do
 
 /-! ## Side conditions -/
 
-/-- Reduce `code[j]? = rhs` for patched `code` to `base[j]? = rhs` and close it in the kernel.
-Fails if the goal is not of this form or `j` lies in a patch. -/
 def dischCodeByte (g : MVarId) : TacticM Unit := g.withContext do
   let t ← instantiateMVars (← g.getType)
   let_expr Eq ty lhs rhs := t | throwError "psol_disch: not an equation"
@@ -138,8 +113,6 @@ def dischCodeByte (g : MVarId) : TacticM Unit := g.withContext do
   setGoals [gid]
   evalTactic (← `(tactic| decide +kernel))
 
-/-- Close `isValidJumpDest (validJumpDests code) d = true` with a hypothesis
-`JumpDestsAgree code base` from the context and the scan of the literal `base`. -/
 def dischJumpDest (g : MVarId) : TacticM Unit := g.withContext do
   let t ← instantiateMVars (← g.getType)
   let_expr Eq _ lhs _ := t | throwError "psol_disch: not an equation"
@@ -158,8 +131,7 @@ def dischJumpDest (g : MVarId) : TacticM Unit := g.withContext do
   setGoals gs
   evalTactic (← `(tactic| decide +kernel))
 
-/-- Side goals of step lemmas on patched code (code bytes, jump destinations); everything else
-by `sol_disch`. -/
+/-- `sol_disch` for patched code (code bytes, jump destinations). -/
 elab "psol_disch" : tactic => withMainContext do
   let s ← saveState
   try
@@ -176,14 +148,11 @@ elab "psol_disch" : tactic => withMainContext do
 
 /-! ## The step -/
 
-/-- Replace the discharger `sol_disch` in a step-lemma script by `psol_disch`. -/
 def swapDisch (t : TSyntax `tactic) : TacticM (TSyntax `tactic) := do
   let k := (← `(tactic| sol_disch)).raw.getKind
   let p ← `(tactic| psol_disch)
   return ⟨← t.raw.replaceM fun s => pure (if s.getKind == k then some p.raw else none)⟩
 
-/-- The opcode byte at the `pc` of the machine in the goal's `run n m`, read from the literal
-base code if the code is patched. -/
 def currentByte : TacticM Nat := withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let some m := SolStep.findRunMachine? t | throwError "psol_step: no `run _ m` in the goal"
@@ -199,7 +168,7 @@ def currentByte : TacticM Nat := withMainContext do
   let some b := bytes[pc]? | throwError "psol_step: pc {pc} past the end of the code"
   return b
 
-/-- `sol_step` for code `patchWords base ps` with symbolic patches (see the module doc). -/
+/-- `sol_step` for code `patchWords base ps` with symbolic patches. -/
 syntax "psol_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
@@ -238,8 +207,7 @@ macro_rules
   | `(tactic| psol_steps) => `(tactic| repeat psol_step)
   | `(tactic| psol_steps [$extra,*]) => `(tactic| repeat psol_step [$extra,*])
 
-/-- `sol_dispatch` for patched code: prove `Dispatch.Reaches code sel entry n cost` with a
-hypothesis `JumpDestsAgree code base` in the context. -/
+/-- `sol_dispatch` for patched code (needs `JumpDestsAgree code base` in the context). -/
 macro "psol_dispatch" : tactic => `(tactic| (
   intro m k hcode hjd hpc hstk hmem hval hsel hsz hsz' hgas
   obtain ⟨ctx, pre, w, tr, ow, ca,
@@ -261,62 +229,28 @@ end
 
 section
 
-/-!
-## `pwp_step`: the frame-local symbolic executor on code with symbolic immutables
-
-`wp_step` (`EvmLogic.Tactic.WpStep`) reads code bytes, pushed immediates and jump
-destinations from a literal code constant. The runtime code of a contract deployed with
-*arbitrary* immutables is `Contracts.patchWords base ps` with symbolic patched words (e.g.
-`SolmateVault.runtimeCodeWith i`), which is not a literal. `pwp_step` is `wp_step` for such
-code, using the patched-code lemmas of `EvmLogic.Solidity.Immutables` (as
-`psol_step` does for `run` goals):
-
-* the opcode byte at `pc` is read from the literal `base`; the fact `code[pc]? = some b` is
-  `getElem?_patchWords_of_offsets` (the byte lies outside every patch) composed with the
-  kernel-checked fact about `base`;
-* a `PUSHn` whose immediate avoids every patch pushes the value read from `base`
-  (`readBytes_patchWords_of_offsets`); a `PUSH32` of a patched word (an immutable) uses
-  `step_pushN`, leaving `Bytes.toWord (readBytes code off 32)` on the stack, which the caller
-  rewrites with a per-contract lemma passed as `pwp_steps [h, …]`
-  (`readBytes_patchWords_last`);
-* jump destinations: from hypotheses `JumpTable jd code` and `JumpDestsAgree code base` in the
-  local context (`isValidJumpDest_of_jumpTable_agree`, membership in the scan of `base` by
-  kernel evaluation);
-* on literal code everything falls back to `wp_step`'s facts, so `pwp_step` can be used
-  everywhere.
-
-`pcode_fact` proves `code[pc]? = some b` (for `WP.staticcall`'s `hcode`) and
-`pjumpdest_disch` jump destinations, both for literal and patched code.
--/
+/-! ## `pwp_step`: `wp_step` on literal or patched code -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean Lean Elab Tactic EvmLogic.Tactic Meta EvmLean.Interpreter EvmLogic.Solidity
 
-open Lean Elab Tactic EvmLogic.Tactic Meta
-open EvmLean.Interpreter EvmLogic.Solidity
-
-/-- A jump destination of patched code with the canonical scan. -/
 theorem isValidJumpDest_of_jumpTable_agree {jd : Array Bool} {code base : ByteArray} {d : Nat}
     (hjd : JumpTable jd code) (h : JumpDestsAgree code base)
     (hd : d ∈ Solidity.jumpDestList (base.size + 1) base.data.toList 0) :
     isValidJumpDest jd d = true := by
   rw [hjd]; exact isValidJumpDest_of_agree h hd
 
-/-- `(base, ps)` if `code` unfolds to `patchWords base ps`, with the patch offsets. -/
 def patchedCode? (code : Expr) : MetaM (Option (Expr × Expr × List Nat)) := do
   let some (base, ps) ← Tactic.Patched.patched? code | return none
   let some offs ← Tactic.Patched.patchOffsets? ps | return none
   return some (base, ps, offs)
 
-/-- A kernel-checked proof of `∀ o ∈ offs, P o` for a decidable closed `P`, built by
-`mkBody o`. -/
 def offsDisjProof (offs : List Nat) (mkBody : Expr → MetaM Expr) : MetaM Expr := do
   let offsE := Tactic.Patched.natListLit offs
   mkDecideProof (← withLocalDeclD `o (mkConst ``Nat) fun o => do
     let mem ← mkAppM ``Membership.mem #[offsE, o]
     mkForallFVars #[o] (← mkArrow mem (← mkBody o)))
 
-/-- The bytes of the code (of `base` if patched), and the patch data. -/
 def codeInfo? (code : Expr) : MetaM (Option (Array UInt8 × Option (Expr × Expr × List Nat))) := do
   match ← patchedCode? code with
   | some (base, ps, offs) =>
@@ -326,7 +260,6 @@ def codeInfo? (code : Expr) : MetaM (Option (Array UInt8 × Option (Expr × Expr
     let some bytes ← codeBytes? code | return none
     return some (bytes, none)
 
-/-- The fact `code[pc]? = some b`, for literal or patched code (`pc` outside the patches). -/
 def pcodeFact (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (pc : Nat) (b : UInt8) :
     MetaM Expr := do
   match pinfo with
@@ -342,8 +275,6 @@ def pcodeFact (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (pc : Na
         ← Tactic.Patched.offsetsProof ps offs, hdisj]
     mkEqTrans heq (← codeFact base pc b)
 
-/-- The fact `Bytes.toWord (readBytes code (pc + 1) n) = v` for a `PUSHn` whose immediate
-avoids the patches, or `none` if it does not. -/
 def ppushFact? (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (bytes : Array UInt8)
     (pc n : Nat) : MetaM (Option Expr) := do
   match pinfo with
@@ -360,8 +291,7 @@ def ppushFact? (code : Expr) (pinfo : Option (Expr × Expr × List Nat)) (bytes 
     let heq' ← mkCongrArg (mkConst ``Bytes.toWord) heq
     return some (← mkEqTrans heq' (← pushFact base bytes pc n))
 
-/-- Close `code[pc]? = some b` for literal or patched code (behind projections of a literal
-machine) and a numeral `pc`. -/
+/-- Close `code[pc]? = some b` for literal or patched code and a numeral `pc`. -/
 elab "pcode_fact" : tactic => withMainContext do
   let g ← getMainGoal
   let t ← instantiateMVars (← g.getType)
@@ -378,9 +308,8 @@ elab "pcode_fact" : tactic => withMainContext do
   g.assign (← mkExpectedTypeHint pf t)
   replaceMainGoal []
 
-/-- Close `isValidJumpDest jd d = true` for a numeral `d`, where `JumpTable jd code` is in the
-context: by `jumpdest_disch` for literal code, and with a `JumpDestsAgree code base`
-hypothesis for patched code. -/
+/-- Close `isValidJumpDest jd d = true` given `JumpTable jd code` (and `JumpDestsAgree code
+base` for patched code). -/
 elab "pjumpdest_disch" : tactic => withMainContext do
   let g ← getMainGoal
   let t ← instantiateMVars (← g.getType)
@@ -435,8 +364,8 @@ def pwpDisch : TacticM Unit := withMainContext do
 /-- `pwp_disch`: see `pwpDisch`. -/
 elab "pwp_disch" : tactic => pwpDisch
 
-/-- Advance a goal `WP m Q H` by one instruction, for literal or patched code. Returns
-`false` (leaving the goal unchanged) if no step lemma applies. -/
+/-- `wpStep` for literal or patched code. A `PUSH32` of a patched word uses `step_pushN`; the
+caller rewrites it with a per-contract lemma (`pwp_steps [h, …]`). -/
 def pwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool :=
   withMainContext do
   let g ← getMainGoal
@@ -532,8 +461,7 @@ elab_rules : tactic
     for _ in [0:limit] do
       unless ← pwpStep extra do return
 
-/-- `pwp_run_to pc₁, … [h₁, …]`: step until the pc is one of the `pcᵢ` (after at least one
-step), or no step lemma applies. -/
+/-- `wp_run_to` for literal or patched code. -/
 syntax "pwp_run_to " num,+ (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
@@ -553,31 +481,20 @@ end
 
 section
 
-/-!
-## `CODECOPY` in the frame-local logic
-
-`wp_step` (`EvmLogic.Tactic.WpStep`) has no lemma for `CODECOPY`, which solc uses to
-load 32-byte constants (event topics, revert strings) from the end of the code.
-`pwp_codecopy` performs one `CODECOPY` of a literal range of literal or patched code
-(`EvmLogic.Tactic.Patched`; the range must avoid the patches): it applies
-`step_codecopy`, then evaluates the copied bytes with `reducePatchedRead` and `reduceCodeImm`
-(kernel-checked evaluations, as `psol_step` does) and turns the copied word into an `MSTORE`
-(`Memory.write_ofWord`), so that later reads of it reduce.
--/
+/-! ## `CODECOPY` in the frame-local logic (solc loads 32-byte constants with it) -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean EvmLean.Interpreter
 
-open EvmLean.Interpreter
-
-/-- Execute a `CODECOPY` of a non-empty literal range in a `WP` goal (see the module
-docstring). -/
+/-- Execute a `CODECOPY` of a non-empty literal range (avoiding the patches) in a `WP` goal,
+turning the copied word into a `Memory.write_ofWord`. -/
 macro "pwp_codecopy" : tactic => `(tactic| (
   apply WP.of_step
   case h =>
     apply EvmLean.Interpreter.step_codecopy (by pcode_fact) rfl (by decide) (by evm_gas)
   case hs => same_frame
-  simp only [EvmLogic.Tactic.Patched.reducePatchedRead, EvmLogic.Tactic.SolStep.reduceCodeImm, Memory.write_ofWord, BitVec.reduceToNat,
+  simp only [EvmLogic.Tactic.Patched.reducePatchedRead, EvmLogic.Tactic.SolStep.reduceCodeImm,
+    Memory.write_ofWord, BitVec.reduceToNat,
     Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.reduceSub, memoryCost, Gas.extendMemory,
     List.foldl, Gas.ceil32, Gas.memoryCost, Gas.words, Gas.memoryPerWord, Memory.size_storeWord,
     Memory.size_expand, Memory.size_empty, Memory.wordsAfter, Memory.words, Nat.reduceLeDiff,

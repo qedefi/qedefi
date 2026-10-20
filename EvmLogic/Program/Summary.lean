@@ -5,34 +5,24 @@ import EvmLogic.Program.Logic
 /-!
 # Frames, messages and function summaries
 
-* `Fresh code m`: the executing frame of `m` has just started running `code` (it is
-  `Frame.init msg kind snapshot` with `msg.code = code`). This is the shape of the frame both
-  at the top level (`initMachine`) and after a `CALL*` pushed a child (`launchCall`), so a
-  theorem `Fresh code m → … → Halts m H` about a contract serves as its **summary** in both
-  roles: as a top-level transaction (`processMessageCall_of_halts`) and as a callee
-  (`EvmLogic.Program.Call`).
-* `FunctionSummary code`: an external function of a compiled contract, split as solc compiles
-  it: the dispatcher (from the frame start to the function's entry pc, `dispatch`) and the
-  body (from the entry pc to the end of the frame, `body`). `FunctionSummary.halts` glues them
-  into a frame summary, `FunctionSummary.processMessageCall` into a statement about a top-level
-  call.
-* `frameResult_success_call` etc. compute what a finished frame hands over.
+A theorem `Fresh code m → … → Halts m H` serves as a contract's **summary** both at the top
+level (`processMessageCall_of_halts`) and as a callee (`WP.call`). `FunctionSummary code`
+splits an external function into solc's dispatcher and the body; internal functions are `WP`
+summaries composed with `WP.bind_mono`.
 -/
 
 section
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-! ## Fresh frames -/
 
-/-- The executing frame of `m` has just started running `code`. -/
+/-- The executing frame of `m` has just started running `code` (top level or after a
+`CALL*`). -/
 def Fresh (code : ByteArray) (m : Machine) : Prop :=
   ∃ msg kind snapshot, m.frame = Frame.init msg kind snapshot ∧ msg.code = code
 
-/-- The fields of a fresh frame. -/
 theorem Fresh.frame {code : ByteArray} {m : Machine} (h : Fresh code m) :
     m.frame.code = code ∧ m.frame.jumpDests = validJumpDests code ∧ m.frame.pc = 0 ∧
       m.frame.stack = [] ∧ m.frame.memory = {} ∧ m.frame.gasLeft = m.frame.msg.gas ∧
@@ -41,7 +31,6 @@ theorem Fresh.frame {code : ByteArray} {m : Machine} (h : Fresh code m) :
   subst hc
   simp only [hf, Frame.init, and_self]
 
-/-- `Frame.init` is fresh. -/
 theorem fresh_init (m : Machine) (msg : Message) (kind : FrameKind)
     (snapshot : World × TransientStorage) (h : m.frame = Frame.init msg kind snapshot) :
     Fresh msg.code m :=
@@ -49,8 +38,6 @@ theorem fresh_init (m : Machine) (msg : Message) (kind : FrameKind)
 
 /-! ## What a finished frame hands over -/
 
-/-- A frame of a message call that ends successfully hands over its gas, output, substate,
-world and transient storage. -/
 theorem frameResult_success_call {mf : Machine} {out : ByteArray} {o s : Nat}
     (hk : mf.frame.kind = .call o s) :
     frameResult mf (.success out) =
@@ -59,16 +46,12 @@ theorem frameResult_success_call {mf : Machine} {out : ByteArray} {o s : Nat}
        mf.world, mf.transient) := by
   simp only [frameResult, hk]
 
-/-- A reverting frame hands over its gas and output; world and transient storage are rolled
-back to its snapshot. -/
 theorem frameResult_revert {mf : Machine} {out : ByteArray} :
     frameResult mf (.revert out) =
       ({ gasLeft := mf.frame.gasLeft, error := none, reverted := true, output := out,
          sub := mf.frame.sub, target := mf.frame.msg.currentTarget, kind := mf.frame.kind },
        mf.frame.snapshot.1, mf.frame.snapshot.2) := rfl
 
-/-- An exceptionally halting frame hands over no gas and no output; world and transient
-storage are rolled back. -/
 theorem frameResult_halt {mf : Machine} {e : ExceptionalHalt} :
     frameResult mf (.halt e) =
       ({ gasLeft := 0, error := some e, reverted := false, output := .empty,
@@ -89,15 +72,13 @@ def startMachine (ctx : Context) (w : World) (tr : TransientStorage) (msg : Mess
   frame := Frame.init msg (.call 0 0) (w, tr)
   parents := []
 
-/-- The start machine is fresh. -/
 theorem fresh_startMachine (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) :
     Fresh msg.code (startMachine ctx w tr msg) :=
   fresh_init _ msg _ _ rfl
 
-/-- **Top-level glue.** A frame summary of the code a top-level call runs gives the result of
-`processMessageCall` for all large enough fuel. The call is to the non-precompile `a` holding
-`msg.code` (not a delegation designator), at depth zero, without value, before Prague or
-without EIP-7702 authorizations. -/
+/-- **Top-level glue.** A frame summary gives the result of `processMessageCall` for all large
+enough fuel (call to a non-precompile, non-delegated `a`, depth zero, no value, no EIP-7702
+authorizations). -/
 theorem processMessageCall_of_halts {ctx : Context} {w : World} {tr : TransientStorage}
     {msg : Message} {a : Address} {H : Machine → Outcome → Prop}
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
@@ -114,7 +95,6 @@ theorem processMessageCall_of_halts {ctx : Context} {w : World} {tr : TransientS
     (initMachine_call (pre := PrecompileImpl.standard ctx) htarget hca hpre hval hdepth)]
   exact hrun fuel hle
 
-/-- The top-level result of a successful call frame. -/
 theorem topLevelResult_success_call {t : Option Address} {mf : Machine} {out : ByteArray}
     {o s : Nat} (hk : mf.frame.kind = .call o s) :
     let r := topLevelResult t (frameResult mf (.success out)).2.1
@@ -132,35 +112,21 @@ theorem topLevelResult_success_call {t : Option Address} {mf : Machine} {out : B
 (`shr(224, calldataload(0))`). -/
 def selectorOf (data : ByteArray) : Word := Word.shr (224#256) (Bytes.toWord (readBytes data 0 32))
 
-/-- A summary of an external function of the contract with runtime code `code`, in the
-shape solc compiles it: a dispatcher that reaches the function's `entry` pc, and a body from
-there to the end of the frame. Everything is stated for any machine whose frame is fresh, so
-for any parents: the same summary serves top-level calls and calls from other contracts.
-
-* `pre m`: the precondition on the start machine (calldata selecting the function, the
-  arguments, caller, value, storage, enough gas, …);
-* `atEntry m m'`: what the dispatcher leaves at the entry (typically the stack and the free
-  memory pointer), relating the start machine `m` to the machine `m'` at `entry`;
-* `post m mf o`: the postcondition, relating the start machine to the end of the frame
-  (outcome `o`, machine `mf` seen by `finishFrame`): return data, storage, logs, gas left. -/
+/-- A summary of an external function of `code` as solc compiles it: a dispatcher reaching
+`entry`, then a body to the end of the frame. Stated for any fresh frame, so it serves both
+top-level calls and calls from other contracts. -/
 structure FunctionSummary (code : ByteArray) where
-  /-- The pc of the function body after dispatch. -/
   entry : Nat
-  /-- Precondition on the start machine. -/
   pre : Machine → Prop
-  /-- The machine at `entry`, given the start machine. -/
+  /-- What the dispatcher leaves at `entry` (typically stack and free memory pointer). -/
   atEntry : Machine → Machine → Prop
-  /-- Postcondition: start machine, final machine, outcome. -/
   post : Machine → Machine → Outcome → Prop
-  /-- The dispatcher reaches `entry` (or ends the frame satisfying `post`). -/
   dispatch : ∀ m, Fresh code m → pre m →
     WP m (fun m' => m'.frame.pc = entry ∧ atEntry m m') (post m)
-  /-- The body ends the frame satisfying `post`. -/
   body : ∀ m m', Fresh code m → pre m → SameFrame m m' → m'.frame.pc = entry → atEntry m m' →
     Halts m' (post m)
 
 namespace FunctionSummary
-open EvmLean
 
 variable {code : ByteArray} (s : FunctionSummary code)
 
@@ -197,33 +163,20 @@ section
 /-!
 ## Composing internal-function summaries
 
-solc compiles an internal function as a code fragment entered by `JUMP` with the return
-address on the stack. A summary of such a fragment is a `WP` from its entry pc whose running
-postcondition is "back at the return address with the results on the stack", and whose
-halting postcondition says how it may end the frame (e.g. a `revert`).
-
-* `Machine.resumeAt m pc stack gas`: `m` with only pc, stack and gas changed — the shape of
-  the machine after a pure internal function (no memory, storage or return-data effects);
-  `Machine.resumeWith` also replaces memory, return data and substate (an internal function
-  that writes memory or makes a call).
-* `WP.bind_mono`: sequencing with a summary whose halting postcondition is weaker than the
-  caller's (the usual case: the caller's `H` mentions the whole call, the summary's only the
-  fragment).
-* `WP.of_false`: a summary that never halts (`H = False`) can be used under any `H`.
+An internal function is summarised by a `WP` from its entry pc (return address on the stack)
+whose running postcondition is "back at the return address with the results on the stack".
 -/
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-- `m` with pc, stack and gas replaced: where a pure internal function returns to. -/
 def _root_.EvmLean.Interpreter.Machine.resumeAt (m : Machine) (pc : Nat) (stack : List Word)
     (gas : Nat) : Machine :=
   { m with frame := { m.frame with pc := pc, stack := stack, gasLeft := gas } }
 
-/-- `m` with the mutable fields of its frame that an internal function with memory and call
-effects changes (pc, stack, memory, gas, return data, substate) replaced. -/
+/-- `m` with pc, stack, memory, gas, return data and substate replaced: where an internal
+function with memory or call effects returns to. -/
 def _root_.EvmLean.Interpreter.Machine.resumeWith (m : Machine) (pc : Nat) (stack : List Word)
     (mem : Memory) (gas : Nat) (rd : ByteArray) (sub : Substate) : Machine :=
   { m with
@@ -236,20 +189,16 @@ def _root_.EvmLean.Interpreter.Machine.resumeWith (m : Machine) (pc : Nat) (stac
         returnData := rd
         sub := sub } }
 
-/-- `resumeAt` is `resumeWith` with memory, return data and substate unchanged. -/
 theorem _root_.EvmLean.Interpreter.Machine.resumeAt_eq (m : Machine) (pc : Nat)
     (stack : List Word) (gas : Nat) :
     m.resumeAt pc stack gas =
       m.resumeWith pc stack m.frame.memory gas m.frame.returnData m.frame.sub := rfl
 
 namespace WP
-open EvmLean
 
 variable {m : Machine} {Q Q₁ : Machine → Prop} {H H₁ : Machine → Outcome → Prop}
 
-/-- **Sequencing with a summary.** Run the fragment summarised by `h` (reaching `Q₁` or ending
-the frame with `H₁`, which implies the caller's `H`), then continue from any machine
-satisfying `Q₁`. -/
+/-- **Sequencing with a summary** whose halting postcondition `H₁` implies the caller's `H`. -/
 theorem bind_mono (h : WP m Q₁ H₁) (hH : ∀ mf o, SameFrame m mf → H₁ mf o → H mf o)
     (k : ∀ m', SameFrame m m' → Q₁ m' → WP m' Q H) : WP m Q H :=
   (h.mono (fun _ _ h => h) hH).bind k

@@ -3,26 +3,10 @@ import Lean
 /-!
 # `kernel_rfl` and `kernel_decide`: evaluation by the kernel alone
 
-`decide +kernel` evaluates a closed proposition in the kernel, but refuses goals with free
-variables. `rfl` and `decide` accept free variables but check definitional equality in the
-elaborator (`Meta.isDefEq`), which is orders of magnitude slower than the kernel on
-interpreter code and does not finish on whole-program runs.
-
-`kernel_rfl` closes a goal `lhs = rhs` (possibly mentioning local variables) by adding the
-auxiliary theorem `∀ xs, lhs = rhs := fun xs => Eq.refl lhs` directly to the environment, so
-only the kernel checks `lhs ≡ rhs`. This is sound for the same reason `decide +kernel` is:
-the kernel is the arbiter; the elaborator is skipped. The resulting proof depends on no
-axioms beyond those of the definitions involved.
-
-`kernel_decide` does the same for a decidable goal `p`, with proof
-`of_decide_eq_true (Eq.refl true)`: the kernel evaluates `decide p` to `true`. Prefer it when
-both sides only agree after computing numbers (lazy unfolding in `kernel_rfl` can then hit the
-kernel's recursion limit).
-
-Use them when the free variables are *not inspected* by the computation, e.g. a run of
-bytecode that never hashes, stated for an arbitrary `Crypto`. When the computation branches
-on a free variable the kernel gets stuck and reports a type mismatch; use the step lemmas
-(`EvmLogic.Step*`) instead.
+Like `decide +kernel`, but the goal may mention local variables: the local context is abstracted
+into an auxiliary theorem checked only by the kernel. Plain `rfl`/`decide` use `Meta.isDefEq`,
+which does not finish on whole-program runs. If the computation inspects a free variable, the
+kernel gets stuck (type mismatch); use the step lemmas instead. See `docs/proving.md` §1.
 -/
 
 namespace EvmLogic.Tactic
@@ -47,11 +31,9 @@ def evalKernelRfl : Tactic := fun _ => withMainContext do
   g.assign (mkAppN (mkConst name (levels.map Level.param)) fvars)
   replaceMainGoal []
 
-/-- Close a decidable goal `p` by kernel evaluation of `decide p`, abstracting the local
-context: like `decide +kernel`, but the goal may mention local variables (which the
-evaluation must not inspect). Prefer it to `kernel_rfl` when the two sides are only equal
-after evaluating to literals (e.g. arithmetic on gas), since the kernel then compares
-values instead of unfolding both sides lazily. -/
+/-- Close a decidable goal by kernel evaluation of `decide p`, abstracting the local context.
+Prefer it to `kernel_rfl` when the sides only meet after evaluating to numbers (gas arithmetic):
+lazy unfolding can hit the kernel's recursion limit. -/
 syntax (name := kernelDecide) "kernel_decide" : tactic
 
 @[tactic kernelDecide, inherit_doc kernelDecide]

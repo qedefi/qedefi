@@ -4,33 +4,19 @@ import EvmLogic.GasMono.Interface
 /-!
 # Gas monotonicity: the first exit of a frame
 
-`Halts m H` (`Program/Logic.lean`) says that *some* number of steps from `m` reach
-`finishFrame mf o` with `SameFrame m mf` and `H mf o`. Such a witness need not be the frame's
-real end: after the frame has returned, its parent may come back to a machine that looks like
-a resumption after the same frame (`finishFrame` forgets much of `mf`). A simulation that
-relates the real end of a low-gas frame to the end of the same frame with more gas needs the
-**real** end, so this file defines it:
-
-* `exitOf m`: if the next step of `m` ends its frame, the machine `finishFrame` sees and the
-  outcome (`step m = finishFrame mf o`, `step_of_exitOf`), else `none`.
-* `Above m₀ m`: `m` still runs the frame of `m₀` (`SameFrame`) or a descendant of it: the
-  frame of `m₀` is suspended in `m.parents`, above `m₀.parents`, with its identity (`SameId`).
-* `Exit m n mf o`: the frame of `m` runs `n` steps without returning to its parent
-  (`Above`), and the next step ends it with `exitOf = some (mf, o)`. Unique (`Exit.unique`),
-  and it exists whenever the frame returns at all (`find_exit`, `exit_of_halts_top`).
-* `Exit.step`, `Exit.split`: the exit seen from the next machine of the frame, and from a
-  child call (the child exits first, then the frame continues from `resumeAfter`).
+A `Halts` witness need not be a frame's real end: after it returns, the parent may reach a
+machine that looks like the same frame's resumption. `Exit m n mf o` is the real end: the frame
+of `m` runs `n` steps without returning (`Above`), then ends with `exitOf = some (mf, o)`. It is
+unique (`Exit.unique`), exists at the top level (`exit_of_halts_top`), and splits around a child
+call (`Exit.split`).
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-! ## The step that ends a frame -/
 
-/-- If the next step of `m` ends its frame: the machine `finishFrame` sees and the outcome.
-Mirrors the `finishFrame` arms of `step`. -/
+/-- If the next step of `m` ends its frame: the machine `finishFrame` sees and the outcome. -/
 def exitOf (m : Machine) : Option (Machine × Outcome) :=
   if h : m.frame.pc < m.frame.code.size then
     match (exec (Opcode.decode m.ctx.fork m.frame.code[m.frame.pc])).run m with
@@ -42,7 +28,6 @@ def exitOf (m : Machine) : Option (Machine × Outcome) :=
     | .ok (.create _, _) => none
   else some (m, .success .empty)
 
-/-- An exit is a `finishFrame` step, from a machine the instruction reached. -/
 theorem step_of_exitOf {m mf : Machine} {o : Outcome} (h : exitOf m = some (mf, o)) :
     step m = finishFrame mf o ∧ InstrFrame m mf := by
   unfold exitOf at h
@@ -71,7 +56,6 @@ theorem step_of_exitOf {m mf : Machine} {o : Outcome} (h : exitOf m = some (mf, 
     cases h
     exact ⟨rfl, .refl m⟩
 
-/-- A step that does not end the frame stays in it, or starts a child. -/
 theorem step_of_exitOf_none {m : Machine} (h : exitOf m = none) :
     (∃ m', step m = .running m' ∧ InstrFrame m m') ∨
     (∃ m' req, step m = .running (launchCall m' req) ∧ InstrFrame m m') ∨
@@ -98,18 +82,12 @@ theorem step_of_exitOf_none {m : Machine} (h : exitOf m = none) :
 
 /-- The identity of a frame: the fields no instruction changes. -/
 structure SameId (f g : Frame) : Prop where
-  /-- Same message. -/
   msg : f.msg = g.msg
-  /-- Same code. -/
   code : f.code = g.code
-  /-- Same jump table. -/
   jumpDests : f.jumpDests = g.jumpDests
-  /-- Same kind. -/
   kind : f.kind = g.kind
-  /-- Same snapshot. -/
   snapshot : f.snapshot = g.snapshot
 
-/-- Symmetry of `SameFrame`. -/
 theorem _root_.EvmLogic.Program.SameFrame.symm {m m' : Machine} (h : SameFrame m m') : SameFrame m' m :=
   ⟨h.ctx.symm, h.precompiles.symm, h.originalWorld.symm, h.parents.symm, h.msg.symm,
    h.code.symm, h.jumpDests.symm, h.kind.symm, h.snapshot.symm⟩
@@ -122,11 +100,9 @@ def Above (m₀ m : Machine) : Prop :=
       ∃ fs f, m.parents = fs ++ f :: m₀.parents ∧ SameId f m₀.frame)
 
 namespace Above
-open EvmLean EvmLogic.Program
 
 variable {m₀ m₁ m : Machine}
 
-/-- `Above` only depends on the frame of `m₀`. -/
 theorem congr (h₀ : SameFrame m₀ m₁) (h : Above m₀ m) : Above m₁ m := by
   rcases h with h | ⟨hc, hp, ho, fs, f, hpar, hid⟩
   · exact .inl (h₀.symm.trans h)
@@ -136,22 +112,18 @@ theorem congr (h₀ : SameFrame m₀ m₁) (h : Above m₀ m) : Above m₁ m := 
       hid.jumpDests.trans h₀.jumpDests.symm, hid.kind.trans h₀.kind.symm,
       hid.snapshot.trans h₀.snapshot.symm⟩
 
-/-- A machine above `m₀` has at least as many parents. -/
 theorem length_le (h : Above m₀ m) : m₀.parents.length ≤ m.parents.length := by
   rcases h with h | ⟨_, _, _, fs, f, hpar, _⟩
   · rw [h.parents]; exact Nat.le_refl _
   · rw [hpar]; simp only [List.length_append, List.length_cons]; omega
 
-/-- A machine in the frame of `m₀` is above it. -/
 theorem of_same (h : SameFrame m₀ m) : Above m₀ m := .inl h
 
 end Above
 
-/-- `resume` keeps the resumed frame's identity. -/
 theorem sameId_resume (M : Machine) (r : ChildResult) : SameId (resume M r).frame M.frame :=
   ⟨rfl, rfl, rfl, rfl, rfl⟩
 
-/-- A machine after a pushed child is above the caller's machine. -/
 theorem above_push {m₀ m' : Machine} (hs : SameFrame m₀ m') (M : Machine)
     (hc : M.ctx = m'.ctx) (hp : M.precompiles = m'.precompiles)
     (ho : M.originalWorld = m'.originalWorld) (hpar : M.parents = m'.frame :: m'.parents) :
@@ -160,7 +132,6 @@ theorem above_push {m₀ m' : Machine} (hs : SameFrame m₀ m') (M : Machine)
     by rw [hpar, hs.parents]; rfl,
     ⟨hs.msg, hs.code, hs.jumpDests, hs.kind, hs.snapshot⟩⟩
 
-/-- A machine after a pushed child, below further frames, stays above. -/
 theorem above_push_deep {m₀ m' : Machine} {fs : List Frame} {f : Frame}
     (hc' : m'.ctx = m₀.ctx) (hp' : m'.precompiles = m₀.precompiles)
     (ho' : m'.originalWorld = m₀.originalWorld)
@@ -232,7 +203,6 @@ structure Exit (m : Machine) (n : Nat) (mf : Machine) (o : Outcome) : Prop where
   /-- Step `n` is in the frame of `m`, and its step ends the frame. -/
   last : ∃ m', stepN n m = .running m' ∧ SameFrame m m' ∧ exitOf m' = some (mf, o)
 
-/-- The machine after an exit: `finishFrame`. -/
 theorem Exit.finish {m mf : Machine} {n : Nat} {o : Outcome} (h : Exit m n mf o) :
     stepN (n + 1) m = finishFrame mf o ∧ SameFrame m mf := by
   obtain ⟨m', hn, hs, hx⟩ := h.last
@@ -240,12 +210,10 @@ theorem Exit.finish {m mf : Machine} {n : Nat} {o : Outcome} (h : Exit m n mf o)
   refine ⟨?_, hs.trans hf.same⟩
   rw [stepN_add_of_running hn 1, stepN_one, hst]
 
-/-- An exit is a `Halts` witness. -/
 theorem Exit.halts {m mf : Machine} {n : Nat} {o : Outcome} (h : Exit m n mf o) :
     Halts m (fun mf' o' => mf' = mf ∧ o' = o) :=
   ⟨n + 1, mf, o, h.finish.1, h.finish.2, rfl, rfl⟩
 
-/-- `finishFrame` leaves the frame: what it produces is not above. -/
 theorem not_above_finishFrame {m₀ mf m' : Machine} {o : Outcome}
     (hs : SameFrame m₀ mf) (h : finishFrame mf o = .running m') : ¬ Above m₀ m' := by
   intro ha
@@ -259,7 +227,6 @@ theorem not_above_finishFrame {m₀ mf m' : Machine} {o : Outcome}
     simp only [resumeAfter, resume_parents, this, List.length_cons] at hl
     omega
 
-/-- Before the exit, every step stays above (and is not `finishFrame` of the frame). -/
 theorem find_exit {m₀ : Machine} :
     ∀ n m, Above m₀ m → ¬ (∃ m', stepN n m = .running m' ∧ Above m₀ m') →
       ∃ k < n, (∀ j ≤ k, ∃ m', stepN j m = .running m' ∧ Above m₀ m') ∧
@@ -281,7 +248,6 @@ theorem find_exit {m₀ : Machine} :
     · exact ⟨0, by omega, fun j hj => by
         rw [Nat.le_zero.1 hj]; exact ⟨m, rfl, ha⟩, m, rfl, hs, mf, o, hx⟩
 
-/-- An exit exists as soon as the frame is left within `n` steps. -/
 theorem exit_of_leaves {m : Machine} {n : Nat}
     (h : ¬ (∃ m', stepN n m = .running m' ∧ Above m m')) :
     ∃ k < n, ∃ mf o, Exit m k mf o := by
@@ -310,7 +276,6 @@ theorem Exit.unique {m mf mf' : Machine} {n n' : Nat} {o o' : Outcome} (h : Exit
   cases hx₂
   exact ⟨rfl, rfl, rfl⟩
 
-/-- An exit seen from a later machine of the same frame. -/
 theorem Exit.shift {m m' mf : Machine} {n j : Nat} {o : Outcome} (h : Exit m n mf o)
     (hj : stepN j m = .running m') (hs : SameFrame m m') (hle : j ≤ n) :
     Exit m' (n - j) mf o := by
@@ -324,7 +289,6 @@ theorem Exit.shift {m m' mf : Machine} {n j : Nat} {o : Outcome} (h : Exit m n m
     rw [← stepN_add_of_running hj, show j + (n - j) = n by omega]
     exact hx
 
-/-- A step that stays in the frame comes before the exit. -/
 theorem Exit.next {m m' mf : Machine} {n : Nat} {o : Outcome} (h : Exit m n mf o)
     (hst : step m = .running m') (hs : SameFrame m m') : 1 ≤ n ∧ Exit m' (n - 1) mf o := by
   have hn : 1 ≤ n := by
@@ -351,7 +315,6 @@ theorem Exit.split {m mc mf : Machine} {p : Frame} {n : Nat} {o : Outcome} (h : 
       SameFrame m (resumeAfter p m.parents mfc oc) ∧
       Exit (resumeAfter p m.parents mfc oc) (n - (nc + 2)) mf o := by
   obtain ⟨x, hx, hsx, hxx⟩ := h.last
-  -- `n ≥ 1`: the first step does not end the frame.
   have hn : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with h0 | h0
     · subst h0
@@ -370,7 +333,6 @@ theorem Exit.split {m mc mf : Machine} {p : Frame} {n : Nat} {o : Outcome} (h : 
         simp only [List.length_cons] at h1
         omega
     · exact h0
-  -- The child leaves `Above mc` by step `n - 1`.
   have hleave : ¬ (∃ m', stepN (n - 1) mc = .running m' ∧ Above mc m') := by
     rintro ⟨y, hy, hay⟩
     have : stepN n m = stepN (n - 1) mc := by

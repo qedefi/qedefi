@@ -3,21 +3,11 @@ import EvmLogic.Solidity.Keccak
 /-!
 # ERC-20 storage abstraction
 
-The typed view of an ERC-20's storage (`Erc20.State`: `totalSupply`, `balanceOf`,
-`allowance`) read through its storage layout (`Erc20.Layout`: the slots of `totalSupply`,
-`balanceOf` and `allowance` from `--storage-layout`; `Layout.solmate` for Solmate's `ERC20`,
-whose `name`/`symbol` occupy slots 0–1).
-
-`Erc20.view crypto L w token` is total and needs no hypothesis: it just reads slots. What
-needs hypotheses is the *effect of writes*: `view_sstore_balanceSlot` says that `SSTORE` at
-the balance slot of `a` updates the abstract `balanceOf` pointwise at `a` and keeps
-`totalSupply`, provided `BalanceSlotOk` (the slot of `a` is fresh among all address-keyed
-entries of `balanceOf` and of the outer `allowance` mapping, and is not the `totalSupply`
-slot; plausible, see `EvmLogic.Solidity.Keccak`). Its effect on `allowance` is stated
-pointwise and without hypothesis: an entry changes only if its slot *is* the written slot.
-
-`Erc20.Model` is the abstract semantics of Solmate's functions (here `transfer`), the
-specification the compiled code is proved against in `Examples/Erc20Transfer`.
+`ERC20.view crypto L w token` reads `totalSupply`, `balanceOf` and `allowance` through a
+storage `Layout`; reading needs no hypothesis. Writes need `BalanceSlotOk` / `AllowanceSlotOk`
+(the written slot is fresh among address-keyed entries and is not the supply slot); effects on
+nested-mapping entries are stated pointwise (see `EvmLogic.Solidity.Keccak`). `Model` is
+Solmate's `transfer`/`approve`/`transferFrom`; `*World` are the compiled code's writes.
 -/
 
 section
@@ -29,15 +19,11 @@ open EvmLean
 
 /-- The storage slots of an ERC-20's state variables. -/
 structure Layout where
-  /-- Slot of `uint256 totalSupply`. -/
   totalSupply : Word
-  /-- Slot of `mapping(address => uint256) balanceOf`. -/
   balances : Word
-  /-- Slot of `mapping(address => mapping(address => uint256)) allowance`. -/
   allowances : Word
 
-/-- Solmate's `ERC20` (and the `Token` example): `totalSupply` at 2, `balanceOf` at 3,
-`allowance` at 4. -/
+/-- Solmate's `ERC20`: `totalSupply` at 2, `balanceOf` at 3, `allowance` at 4. -/
 def Layout.solmate : Layout := ⟨2, 3, 4⟩
 
 /-- The slot of `balanceOf[a]`. -/
@@ -52,14 +38,10 @@ def allowanceSlot (crypto : Crypto) (L : Layout) (o s : Address) : Word :=
 
 /-- The typed state of an ERC-20. -/
 structure State where
-  /-- `totalSupply`. -/
   totalSupply : Word
-  /-- `balanceOf`. -/
   balanceOf : Address → Word
-  /-- `allowance`. -/
   allowance : Address → Address → Word
 
-/-- Update one balance. -/
 def State.setBalance (s : State) (a : Address) (v : Word) : State :=
   { s with balanceOf := fun b => if b = a then v else s.balanceOf b }
 
@@ -71,27 +53,23 @@ def view (crypto : Crypto) (L : Layout) (w : World) (token : Address) : State wh
 
 /-! ## Non-collision hypotheses -/
 
-/-- The single-level address-keyed preimages of the layout: `pad(a) ‖ balances` and
-`pad(a) ‖ allowances` for every address `a` (`2¹⁶¹` preimages). -/
+/-- The single-level address-keyed preimages: `pad(a) ‖ balances`, `pad(a) ‖ allowances`. -/
 def level1 (L : Layout) : ByteArray → Prop := AddressKeyed [L.balances, L.allowances]
 
-/-- The balance slot of `a` is used by no other balance or allowance row (for any address)
-and is not the `totalSupply` slot. A plausible assumption on the hash (one target against
-`2¹⁶¹` candidates). -/
+/-- The balance slot of `a` is used by no other balance or allowance row and is not the
+`totalSupply` slot (plausible: one target against `2¹⁶¹` candidates). -/
 def BalanceSlotOk (crypto : Crypto) (L : Layout) (a : Address) : Prop :=
   KeccakFresh crypto (level1 L) (slotPreimage (Word.ofAddress a) L.balances) ∧
     balanceSlot crypto L a ≠ L.totalSupply
 
-/-- Under `BalanceSlotOk`, distinct addresses have distinct balance slots. -/
 theorem balanceSlot_ne {crypto : Crypto} {L : Layout} {a b : Address}
     (h : BalanceSlotOk crypto L a) (hne : b ≠ a) : balanceSlot crypto L b ≠ balanceSlot crypto L a :=
   mappingSlot_ne_of_fresh_addr h.1 (by simp) (.inl hne)
 
 /-! ## Reading after writing -/
 
-/-- `SSTORE` at the balance slot of `a`, seen through the abstraction: `totalSupply` is
-unchanged, `balanceOf` is updated at `a` only, and an allowance entry changes only if its slot
-is the written one. -/
+/-- `SSTORE` at `a`'s balance slot through the view: `balanceOf` updated at `a` only; an
+allowance entry changes only if its slot is the written one. -/
 theorem view_sstore_balanceSlot {crypto : Crypto} {L : Layout} {w : World} {token a : Address}
     (h : BalanceSlotOk crypto L a) (v : Word) :
     (view crypto L (w.sstore token (balanceSlot crypto L a) v) token).totalSupply =
@@ -116,7 +94,6 @@ theorem view_sstore_balanceSlot {crypto : Crypto} {L : Layout} {w : World} {toke
     · rename_i he; rw [he]; simp
     · rename_i he; exact World.sload_sstore_ne_key _ _ _ he
 
-/-- `SSTORE` to another account does not change the view. -/
 theorem view_sstore_ne {crypto : Crypto} {L : Layout} {w : World} {token b : Address}
     (hb : token ≠ b) (k v : Word) :
     view crypto L (w.sstore b k v) token = view crypto L w token := by
@@ -127,16 +104,14 @@ theorem view_sstore_ne {crypto : Crypto} {L : Layout} {w : World} {token b : Add
 namespace Model
 open EvmLean
 
-/-- Solmate's `transfer(to, amount)` from `caller`: revert (`none`) if the balance is
-insufficient (checked subtraction), otherwise subtract from the caller, then add to the
-recipient's *updated* balance (unchecked; a self-transfer changes nothing). -/
+/-- Solmate's `transfer` from `caller`: checked subtraction (`none` = revert), then an
+unchecked add to the recipient's *updated* balance. -/
 def transfer (s : State) (caller to : Address) (amount : Word) : Option State :=
   if amount.toNat ≤ (s.balanceOf caller).toNat then
     let s₁ := s.setBalance caller (s.balanceOf caller - amount)
     some (s₁.setBalance to (s₁.balanceOf to + amount))
   else none
 
-/-- `transfer` preserves `totalSupply`. -/
 theorem transfer_totalSupply {s s' : State} {caller to : Address} {amount : Word}
     (h : transfer s caller to amount = some s') : s'.totalSupply = s.totalSupply := by
   unfold transfer at h
@@ -144,7 +119,6 @@ theorem transfer_totalSupply {s s' : State} {caller to : Address} {amount : Word
   · cases h; rfl
   · cases h
 
-/-- `transfer` preserves allowances. -/
 theorem transfer_allowance {s s' : State} {caller to : Address} {amount : Word}
     (h : transfer s caller to amount = some s') : s'.allowance = s.allowance := by
   unfold transfer at h
@@ -152,8 +126,6 @@ theorem transfer_allowance {s s' : State} {caller to : Address} {amount : Word}
   · cases h; rfl
   · cases h
 
-/-- `transfer` between distinct accounts moves `amount` from `caller` to `to` and changes no
-other balance. -/
 theorem transfer_balanceOf {s s' : State} {caller to : Address} {amount : Word}
     (h : transfer s caller to amount = some s') (hne : to ≠ caller) (b : Address) :
     s'.balanceOf b = if b = caller then s.balanceOf caller - amount
@@ -173,8 +145,7 @@ end Model
 
 /-! ## The storage writes of `transfer` -/
 
-/-- The world after a successful `transfer`: `balanceOf[caller] -= amount`, then
-`balanceOf[to] += amount` (reading the updated storage), in the order the code does it. -/
+/-- The storage writes of a successful `transfer`, in the code's order. -/
 def transferWorld (crypto : Crypto) (w : World) (token caller to : Address) (amount : Word) :
     World :=
   let sc := balanceSlot crypto Layout.solmate caller
@@ -186,9 +157,8 @@ section
 
 variable {w : World} {token caller to : Address} {amount : Word}
 
-/-- `transferWorld` through the abstraction: exactly `Model.transfer`'s balances and total
-supply; allowances unchanged unless their slot is one of the two written slots; other
-accounts untouched. Needs `BalanceSlotOk` for `caller` and `to` only. -/
+/-- `transferWorld` through the view is `Model.transfer` (allowances pointwise, for entries
+whose slot is not written). Needs `BalanceSlotOk` for `caller` and `to` only. -/
 theorem view_transferWorld {crypto : Crypto} (hc : BalanceSlotOk crypto Layout.solmate caller)
     (ht : BalanceSlotOk crypto Layout.solmate to) {s' : State}
     (hm : Model.transfer (view crypto Layout.solmate w token) caller to amount = some s') :
@@ -206,7 +176,6 @@ theorem view_transferWorld {crypto : Crypto} (hc : BalanceSlotOk crypto Layout.s
   unfold Model.transfer at hm
   split at hm
   · cases hm
-    -- the two writes
     obtain ⟨h1t, h1b, h1a⟩ := view_sstore_balanceSlot (w := w) (token := token) hc
       (w.sload token (balanceSlot crypto Layout.solmate caller) - amount)
     obtain ⟨h2t, h2b, h2a⟩ := view_sstore_balanceSlot
@@ -253,81 +222,41 @@ end
 
 section
 
-/-!
-## Solmate `ERC20`: `approve` and `transferFrom` on the storage abstraction
-
-`EvmLogic.Solidity.ERC20` models Solmate's `transfer` on the word-level ERC-20 view
-(`Erc20.State`, `Erc20.view`). This file adds the other two state-changing functions, for
-every contract inheriting Solmate's `ERC20` (the vault's share token, the asset):
-
-```solidity
-function approve(address spender, uint256 amount) public returns (bool) {
-    allowance[msg.sender][spender] = amount; …
-}
-function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-    uint256 allowed = allowance[from][msg.sender];
-    if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
-    balanceOf[from] -= amount;
-    unchecked { balanceOf[to] += amount; } …
-}
-```
-
-* `Model.approve`, `Model.spend`, `Model.transferFrom`: the abstract semantics on
-  `Erc20.State` (`none` = revert: checked subtractions).
-* `approveWorld`, `spendWorld`, `transferFromWorld`: the storage writes the compiled code
-  performs, in its order (`transferFromWorld` is `spendWorld` followed by the `transfer`
-  writes, `Erc20.transferWorld`, shared with the asset's `transfer` proof).
-* `AllowanceSlotOk`: the non-collision hypothesis for one allowance entry (its slot is no
-  balance slot and not `totalSupply`), the analogue of `BalanceSlotOk`;
-  `view_sstore_allowanceSlot` is the effect of writing it.
-* `view_approveWorld`, `view_spendWorld`, `view_transferFromWorld`: the worlds seen through
-  the abstraction are the models' states (allowances pointwise, for entries whose slot is
-  not a written slot, as for `transfer`; see `EvmLogic.Solidity.Keccak` on why
-  nested-mapping frames cannot be stated for all pairs).
--/
+/-! ## Solmate `ERC20`: `approve` and `transferFrom` -/
 
 namespace EvmLogic.Solidity.ERC20
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 /-- `type(uint256).max`, the "infinite" allowance (`PUSH0 NOT` in the bytecode). -/
 def maxWord : Word := ~~~0#256
 
-/-- `EQ allowed (NOT 0)` (the `allowed != type(uint256).max` test) on a maximal allowance. -/
 theorem eq_maxWord_of_eq {a : Word} (h : a = maxWord) : Word.eq a (~~~0#256) = 1#256 := by
   subst h; simp [Word.eq, Word.ofBool, maxWord]
 
-/-- `EQ allowed (NOT 0)` on a non-maximal allowance. -/
 theorem eq_maxWord_of_ne {a : Word} (h : a ≠ maxWord) : Word.eq a (~~~0#256) = 0#256 := by
   have h' : (a == ~~~0#256) = false := beq_eq_false_iff_ne.mpr h
   rw [Word.eq, Word.ofBool, h']; rfl
 
-/-- Update one allowance. -/
 def State.setAllowance (s : State) (o sp : Address) (v : Word) : State :=
   { s with allowance := fun o' sp' => if o' = o ∧ sp' = sp then v else s.allowance o' sp' }
 
 /-! ## Non-collision for an allowance entry -/
 
-/-- The slot of `allowance[o][sp]` is no balance slot (for any address) and not the
-`totalSupply` slot. The first part is freshness of its preimage among the single-level
-address-keyed preimages (`2¹⁶¹` candidates, one target; plausible) plus the inner row slot
-`keccak(o ‖ allowances)` not being the `balanceOf` base slot. -/
+/-- The slot of `allowance[o][sp]` is no balance slot and not `totalSupply`: freshness among
+single-level address-keyed preimages (plausible), and the inner row slot is not `balances`. -/
 def AllowanceSlotOk (crypto : Crypto) (L : Layout) (o sp : Address) : Prop :=
   KeccakFresh crypto (level1 L)
       (slotPreimage (Word.ofAddress sp) (mappingSlot crypto (Word.ofAddress o) L.allowances)) ∧
     mappingSlot crypto (Word.ofAddress o) L.allowances ≠ L.balances ∧
     allowanceSlot crypto L o sp ≠ L.totalSupply
 
-/-- Under `AllowanceSlotOk`, no balance slot is the allowance slot. -/
 theorem balanceSlot_ne_allowanceSlot {crypto : Crypto} {L : Layout} {o sp : Address}
     (h : AllowanceSlotOk crypto L o sp) (a : Address) :
     balanceSlot crypto L a ≠ allowanceSlot crypto L o sp :=
   mappingSlot_ne_of_fresh h.1 ⟨a, L.balances, by simp, rfl⟩ (.inr h.2.1.symm)
 
-/-- `SSTORE` at the slot of `allowance[o][sp]`, seen through the abstraction: `totalSupply`
-and every balance are unchanged; an allowance entry changes only if its slot is the written
-one. -/
+/-- `SSTORE` at `allowance[o][sp]` through the view: balances and supply unchanged; an
+allowance entry changes only if its slot is the written one. -/
 theorem view_sstore_allowanceSlot {crypto : Crypto} {L : Layout} {w : World} {token o sp : Address}
     (h : AllowanceSlotOk crypto L o sp) (v : Word) :
     (view crypto L (w.sstore token (allowanceSlot crypto L o sp) v) token).totalSupply =
@@ -359,8 +288,8 @@ open EvmLean
 def approve (s : State) (owner spender : Address) (amount : Word) : State :=
   s.setAllowance owner spender amount
 
-/-- The allowance step of Solmate's `transferFrom` (`spender` spends `owner`'s allowance):
-nothing if the allowance is `type(uint256).max`, otherwise a checked subtraction. -/
+/-- The allowance step of `transferFrom`: nothing on an infinite allowance, otherwise a
+checked subtraction. -/
 def spend (s : State) (owner spender : Address) (amount : Word) : Option State :=
   if s.allowance owner spender = maxWord then some s
   else if amount.toNat ≤ (s.allowance owner spender).toNat then
@@ -380,8 +309,7 @@ def approveWorld (crypto : Crypto) (w : World) (token owner spender : Address) (
     World :=
   w.sstore token (allowanceSlot crypto Layout.solmate owner spender) amount
 
-/-- The storage effect of the allowance step of `transferFrom`: unless the allowance is
-`type(uint256).max`, `allowance[owner][spender] -= amount`. -/
+/-- The storage effect of the allowance step of `transferFrom`. -/
 def spendWorld (crypto : Crypto) (w : World) (token owner spender : Address) (amount : Word) :
     World :=
   let a := w.sload token (allowanceSlot crypto Layout.solmate owner spender)
@@ -397,9 +325,8 @@ def transferFromWorld (crypto : Crypto) (w : World) (token spender src dst : Add
 
 variable {crypto : Crypto} {w : World} {token : Address}
 
-/-- `approveWorld` through the abstraction: `Model.approve`'s balances and total supply;
-allowances of `Model.approve` for every entry that is the written one or has another slot;
-other accounts untouched. Needs `AllowanceSlotOk` for the written entry only. -/
+/-- `approveWorld` through the view is `Model.approve` (allowances pointwise). Needs
+`AllowanceSlotOk` for the written entry only. -/
 theorem view_approveWorld {owner spender : Address} {amount : Word}
     (h : AllowanceSlotOk crypto Layout.solmate owner spender) :
     let s := view crypto Layout.solmate w token
@@ -423,9 +350,7 @@ theorem view_approveWorld {owner spender : Address} {amount : Word}
   · intro b k hb
     exact World.sload_sstore_ne_addr _ _ _ _ hb
 
-/-- `spendWorld` through the abstraction, when `Model.spend` succeeds: its balances, total
-supply and allowances (for the spent entry and every entry with another slot); other accounts
-untouched. -/
+/-- `spendWorld` through the view is `Model.spend` (allowances pointwise). -/
 theorem view_spendWorld {owner spender : Address} {amount : Word} {s₁ : State}
     (h : AllowanceSlotOk crypto Layout.solmate owner spender)
     (hm : Model.spend (view crypto Layout.solmate w token) owner spender amount = some s₁) :
@@ -463,11 +388,8 @@ theorem view_spendWorld {owner spender : Address} {amount : Word} {s₁ : State}
         exact World.sload_sstore_ne_addr _ _ _ _ hb
     · cases hm
 
-/-- `transferFromWorld` through the abstraction, when `Model.transferFrom` succeeds with
-`s'`: exactly its `totalSupply` and `balanceOf`; its allowance for every entry whose slot is
-neither balance slot written and that is the spent entry or has another slot than it; other
-accounts untouched. Needs `BalanceSlotOk` for `src` and `dst` and `AllowanceSlotOk` for the
-spent entry `allowance[src][spender]`. -/
+/-- `transferFromWorld` through the view is `Model.transferFrom` (allowances pointwise).
+Needs `BalanceSlotOk` for `src`, `dst` and `AllowanceSlotOk` for `allowance[src][spender]`. -/
 theorem view_transferFromWorld {spender src dst : Address} {amount : Word} {s' : State}
     (hs : BalanceSlotOk crypto Layout.solmate src) (hd : BalanceSlotOk crypto Layout.solmate dst)
     (ha : AllowanceSlotOk crypto Layout.solmate src spender)
@@ -487,7 +409,6 @@ theorem view_transferFromWorld {spender src dst : Address} {amount : Word} {s' :
   unfold Model.transferFrom at hm
   obtain ⟨s₁, hs₁, ht⟩ := Option.bind_eq_some_iff.1 hm
   obtain ⟨e1, e2, e3, e4⟩ := view_spendWorld (w := w) (token := token) ha hs₁
-  -- `Model.transfer` from the view of the intermediate world
   have ht' : Model.transfer (view crypto Layout.solmate
       (spendWorld crypto w token src spender amount) token) src dst amount =
       some { s' with allowance :=

@@ -5,28 +5,14 @@ import EvmLogic.Bytes
 /-!
 # Abstract interpretation: values, stacks and the instruction scan
 
-* `AVal`: an abstract word: unknown (`top`), a constant (`const n`, the word with `toNat = n`),
-  or a **symbolic immutable** (`sym k`: the address `ρ k` zero-extended, for a valuation
-  `ρ : Nat → Address` of the code's address immutables). Symbolic values make one certificate
-  valid for every choice of immutables (the vault's `asset`).
-* `AStack := List AVal`, related to a concrete stack of the **same length** pointwise
-  (`StackOk`: the abstract interpreter tracks the exact stack depth).
-* `ashl`, `asub`, `aand`: the folded operations (constants for `SHL`/`SUB`/`AND`, and
-  `AND` with a mask whose low 160 bits are set keeps a symbolic address: solc masks addresses
-  with `(1 << 160) - 1`, built by `SHL` and `SUB`).
-* `ascan code syms`: the instruction scan of `code` (one structural pass over
-  `code.data.toList`, as `GasMono.insns`) decorated with each instruction's shape (`byteEff`)
-  and its abstract immediate: a constant for `PUSH0`–`PUSH31`, and for `PUSH32` the symbolic
-  immutable `sym k` if its position is listed in `syms`, else `top`. `PUSH32` immediates are
-  never read, so patching immutables leaves the scan unchanged. `ascan_ok`: every entry is
-  right (`InsOk`) for every valuation under which the listed `PUSH32`s push the immutables
-  (`SymOk`).
+`AVal` is `top`, a constant, or a symbolic address immutable `sym k` (one certificate for every
+choice of immutables); `AStack` relates to a concrete stack of the same length (`StackOk`).
+`ascan` decorates each instruction with its shape and abstract immediate; `PUSH32` immediates
+listed in `syms` become `sym k`, so patching immutables leaves the scan unchanged (`ascan_ok`).
 -/
 
 namespace EvmLogic.AbsInt
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLogic.Program EvmLean.Interpreter
 
 /-! ## Abstract values -/
 
@@ -49,7 +35,6 @@ def Holds (ρ : Nat → Address) : AVal → Word → Prop
   | .const n, w => w.toNat = n
   | .sym k, w => w = Word.ofAddress (ρ k)
 
-/-- Equality test (structural, for kernel evaluation). -/
 def beq : AVal → AVal → Bool
   | .top, .top => true
   | .const a, .const b => Nat.beq a b
@@ -61,7 +46,6 @@ theorem eq_of_beq {a b : AVal} (h : a.beq b = true) : a = b := by
 
 end AVal
 
-/-- An abstract stack (head = top). -/
 abbrev AStack := List AVal
 
 /-- A concrete stack described by an abstract one: same length, pointwise. -/
@@ -70,7 +54,6 @@ def StackOk (ρ : Nat → Address) : AStack → List Word → Prop
   | a :: s, w :: st => a.Holds ρ w ∧ StackOk ρ s st
   | _, _ => False
 
-/-- Equality test of abstract stacks (structural). -/
 def stackBeq : AStack → AStack → Bool
   | [], [] => true
   | a :: s, b :: t => a.beq b && stackBeq s t
@@ -84,7 +67,6 @@ theorem eq_of_stackBeq : ∀ {s t : AStack}, stackBeq s t = true → s = t
   | [], _ :: _, h => by simp [stackBeq] at h
   | _ :: _, [], h => by simp [stackBeq] at h
 
-/-- Membership test of an abstract stack in a list (structural). -/
 def memS (s : AStack) : List AStack → Bool
   | [] => false
   | t :: ts => stackBeq s t || memS s ts
@@ -99,17 +81,14 @@ theorem mem_of_memS {s : AStack} : ∀ {ss : List AStack}, memS s ss = true → 
 
 /-! ## Folded operations -/
 
-/-- Abstract `SHL` (shift on top). -/
 def ashl : AVal → AVal → AVal
   | .const x, .const y => .const (if x < 256 then (y <<< x) % 2 ^ 256 else 0)
   | _, _ => .top
 
-/-- Abstract `SUB`. -/
 def asub : AVal → AVal → AVal
   | .const x, .const y => .const ((x + (2 ^ 256 - y)) % 2 ^ 256)
   | _, _ => .top
 
-/-- Does `c` have its low 160 bits set (an address mask)? -/
 def isAddrMask (c : Nat) : Bool := c % 2 ^ 160 == 2 ^ 160 - 1
 
 /-- Abstract `AND`: constants, and an address mask keeps a symbolic address. -/
@@ -134,7 +113,6 @@ theorem asub_holds {a b : AVal} {x y : Word} (ha : a.Holds ρ x) (hb : b.Holds �
   subst ha hb
   rw [BitVec.toNat_sub, Nat.add_comm]
 
-/-- An address mask keeps an address. -/
 theorem land_of_addrMask {c w : Nat} (hc : isAddrMask c = true) (hw : w < 2 ^ 160) :
     c &&& w = w := by
   simp only [isAddrMask, beq_iff_eq] at hc
@@ -180,18 +158,15 @@ theorem aand_holds {a b : AVal} {x y : Word} (ha : a.Holds ρ x) (hb : b.Holds �
 
 /-! ## The scan -/
 
-/-- The big-endian value of the first `n` bytes of a list, zero-padded, after `acc`. -/
 def beTake : Nat → List UInt8 → Nat → Nat
   | 0, _, acc => acc
   | n + 1, [], acc => beTake n [] (acc * 256)
   | n + 1, b :: bs, acc => beTake n bs (acc * 256 + b.toNat)
 
-/-- The immutable number of the `PUSH32` at `q`, if listed. -/
 def symAt (q : Nat) : List (Nat × Nat) → Option Nat
   | [] => none
   | (p, k) :: ps => if q == p then some k else symAt q ps
 
-/-- The abstract immediate of the instruction `b` at `p`, followed by the bytes `bs`. -/
 def immOf (syms : List (Nat × Nat)) (p : Nat) (b : UInt8) (bs : List UInt8) : AVal :=
   if GasMono.immSize b = 32 then
     match symAt p syms with
@@ -199,8 +174,6 @@ def immOf (syms : List (Nat × Nat)) (p : Nat) (b : UInt8) (bs : List UInt8) : A
     | none => .top
   else .const (beTake (GasMono.immSize b) bs 0)
 
-/-- The decorated scan from position `p` of a suffix `bytes` of the code (structural fuel):
-`(q, shape, abstract immediate)` per instruction boundary `q`. -/
 def ascanFrom (syms : List (Nat × Nat)) : (fuel : Nat) → List UInt8 → Nat →
     List (Nat × Eff × AVal)
   | 0, _, _ => []
@@ -224,7 +197,6 @@ def InsOk (ρ : Nat → Address) (code : ByteArray) (q : Nat) (e : Eff) (imm : A
   ∃ b, code[q]? = some b ∧ e = byteEff b ∧
     imm.Holds ρ (Bytes.toWord (readBytes code (q + 1) (GasMono.immSize b)))
 
-/-- `beTake` as a fold over the padded bytes. -/
 theorem beTake_eq (n : Nat) : ∀ (bs : List UInt8) (acc : Nat),
     beTake n bs acc =
       (List.ofFn fun j : Fin n => (bs[j.val]?).getD 0).foldl (fun a x => a * 256 + x.toNat) acc := by
@@ -240,7 +212,6 @@ theorem beTake_eq (n : Nat) : ∀ (bs : List UInt8) (acc : Nat),
       rw [beTake, ih, List.ofFn_succ, List.foldl_cons]
       simp
 
-/-- A bound on `beTake`. -/
 theorem beTake_lt (n : Nat) : ∀ (bs : List UInt8) (acc : Nat),
     beTake n bs acc < (acc + 1) * 256 ^ n := by
   induction n with
@@ -259,7 +230,6 @@ theorem beTake_lt (n : Nat) : ∀ (bs : List UInt8) (acc : Nat),
     | nil => simpa [beTake] using key 0 (by omega)
     | cons b bs => simpa [beTake] using key b.toNat b.toNat_lt
 
-/-- The bytes of a padded read. -/
 theorem data_readPadded (code : ByteArray) (off n : Nat) :
     (Bytes.readPadded code off n).data.toList =
       List.ofFn fun j : Fin n => (code.data.toList.drop off)[j.val]?.getD 0 := by
@@ -273,7 +243,6 @@ theorem data_readPadded (code : ByteArray) (off n : Nat) :
     rw [List.getElem?_eq_getElem h₁, Option.getD_some] at hg
     rw [hg, List.getElem_ofFn, List.getElem?_drop]
 
-/-- The value of a `PUSHn` immediate, `n ≤ 31`, by the scan. -/
 theorem toNat_toWord_readBytes (code : ByteArray) (off n : Nat) (hn : n ≤ 31) :
     (Bytes.toWord (readBytes code off n)).toNat = beTake n (code.data.toList.drop off) 0 := by
   rw [readBytes_eq_readPadded, Bytes.toWord, BitVec.toNat_ofNat, Bytes.toNat_eq_foldl,
@@ -285,11 +254,9 @@ theorem toNat_toWord_readBytes (code : ByteArray) (off n : Nat) (hn : n ≤ 31) 
   have h3 : (256 : Nat) ^ 31 < 2 ^ 256 := by decide
   omega
 
-/-- Immediates have at most 32 bytes. -/
 theorem immSize_le (b : UInt8) : GasMono.immSize b ≤ 32 := by
   unfold GasMono.immSize; split <;> omega
 
-/-- The byte at the head of a suffix of the code. -/
 theorem getElem?_of_drop {code : ByteArray} {p : Nat} {b : UInt8} {bs : List UInt8}
     (h : code.data.toList.drop p = b :: bs) : code[p]? = some b := by
   have h1 : (code.data.toList.drop p)[0]? = some b := by rw [h]; rfl
@@ -300,8 +267,6 @@ theorem getElem?_of_drop {code : ByteArray} {p : Nat} {b : UInt8} {bs : List UIn
   refine ⟨by simpa using hlt, ?_⟩
   rw [ByteArray.getElem_eq_getElem_data, ← Array.getElem_toList, hb]
 
-/-- **The scan is right**, for every valuation of the immutables under which the listed
-`PUSH32`s push them. -/
 theorem ascanFrom_ok {ρ : Nat → Address} {code : ByteArray} {syms : List (Nat × Nat)}
     (hs : SymOk ρ code syms) (fuel : Nat) :
     ∀ p, ∀ x ∈ ascanFrom syms fuel (code.data.toList.drop p) p, InsOk ρ code x.1 x.2.1 x.2.2 := by

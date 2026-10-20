@@ -3,30 +3,16 @@ import EvmLean
 /-!
 # Byte-level lemmas
 
-Facts about the big-endian byte helpers of `EvmLean.Prelude.Bytes`, EVM memory and
-calldata reads, proved for all inputs (not by evaluation).
-
-* `Bytes.toNat_eq_foldl`: the 64-bit-chunked `Bytes.toNat` agrees with the specification
-  "fold the bytes big-endian" claimed in its docstring.
-* `Bytes.toNat_ofNatBE`, `Bytes.toWord_ofWord`: encoding then decoding is the identity
-  (modulo the encoding width).
-* `Memory.loadWord_storeWord`, `Memory.loadWord_storeWord_of_disjoint`,
-  `Memory.size_storeWord`: `MSTORE`/`MLOAD` read-over-write for every memory and offset.
-* `Interpreter.readBytes_append_left`/`_right`: calldata slicing of concatenated arguments,
-  e.g. decoding two ABI-encoded words.
-
-Proof strategy: everything about byte arrays is reduced to `Bytes.getD` (byte `j`, or zero
-past the end) plus a size equation, and closed by the extensionality lemma `Bytes.ext_getD`.
-This avoids dependent array-index proofs. `bv_decide` is deliberately not used: it adds a
-`native` axiom, which the trust rules forbid.
+Big-endian decoding (`Bytes.toNat_eq_foldl`, `toWord_ofWord`), `MSTORE`/`MLOAD` read-over-write
+and calldata slicing, for all inputs. Everything is reduced to `Bytes.getD` (zero past the end)
+plus a size equation and closed by `Bytes.ext_getD`, avoiding dependent array indices.
+`bv_decide` is not used: it adds an axiom.
 -/
 
 namespace EvmLean.Bytes
 
 /-! ## `ByteArray.foldl` as a list fold -/
 
-/-- The loop of `ByteArray.foldlM` (in `Id`, over the whole array) is a list fold over the
-bytes from `j`, cut off after `i` steps. -/
 private theorem foldlM_loop_eq {β : Type _} (f : β → UInt8 → β) (as : ByteArray)
     (h : as.size ≤ as.size) :
     ∀ (i j : Nat) (acc : β),
@@ -52,7 +38,6 @@ private theorem foldlM_loop_eq {β : Type _} (f : β → UInt8 → β) (as : Byt
       rw [List.drop_eq_nil_of_le hj']
       rfl
 
-/-- `ByteArray.foldl` over the whole array is `List.foldl` over its bytes. -/
 theorem foldl_eq_foldl_data_toList {β : Type _} (f : β → UInt8 → β) (init : β)
     (as : ByteArray) : as.foldl f init = as.data.toList.foldl f init := by
   unfold ByteArray.foldl ByteArray.foldlM
@@ -64,17 +49,14 @@ theorem foldl_eq_foldl_data_toList {β : Type _} (f : β → UInt8 → β) (init
 
 /-! ## `chunk64` is the big-endian value of eight bytes -/
 
-/-- Appending a byte below a shifted accumulator is multiply-and-add. -/
 private theorem shiftLeft_eight_or (a : Nat) (x : UInt8) :
     a <<< 8 ||| x.toNat = a * 256 + x.toNat := by
   rw [← Nat.shiftLeft_add_eq_or_of_lt (UInt8.toNat_lt x), Nat.shiftLeft_eq]
 
-/-- Two adjacent shifted bytes merge into one shifted pair. -/
 private theorem shiftLeft_or_shiftLeft (a b k : Nat) :
     a <<< (k + 8) ||| b <<< k = (a <<< 8 ||| b) <<< k := by
   rw [Nat.shiftLeft_or_distrib, Nat.add_comm k 8, Nat.shiftLeft_add]
 
-/-- A byte shifted by at most 56 bits fits in 64 bits. -/
 private theorem toNat_shiftLeft_lt (x : UInt8) (k : Nat) (hk : k ≤ 56) :
     x.toNat <<< k < 2 ^ 64 := by
   rw [Nat.shiftLeft_eq]
@@ -85,7 +67,6 @@ private theorem toNat_shiftLeft_lt (x : UInt8) (k : Nat) (hk : k ≤ 56) :
       (Nat.mul_le_mul_left _ h2)
   simpa using h3
 
-/-- The `UInt64` assembled by `chunk64` from eight bytes is their big-endian value. -/
 private theorem toNat_or_shiftLeft (x0 x1 x2 x3 x4 x5 x6 x7 : UInt8) :
     (x0.toUInt64 <<< 56 ||| x1.toUInt64 <<< 48 ||| x2.toUInt64 <<< 40 |||
       x3.toUInt64 <<< 32 ||| x4.toUInt64 <<< 24 ||| x5.toUInt64 <<< 16 |||
@@ -105,7 +86,6 @@ private theorem toNat_or_shiftLeft (x0 x1 x2 x3 x4 x5 x6 x7 : UInt8) :
     shiftLeft_or_shiftLeft _ _ 16, shiftLeft_or_shiftLeft _ _ 8]
   simp only [shiftLeft_eight_or, List.foldl_cons, List.foldl_nil, Nat.zero_mul, Nat.zero_add]
 
-/-- `chunk64 b i` is the big-endian value of the eight bytes at `i` (zero past the end). -/
 theorem toNat_chunk64 (b : ByteArray) (i : Nat) :
     (chunk64 b i).toNat =
       [getD b i, getD b (i + 1), getD b (i + 2), getD b (i + 3), getD b (i + 4),
@@ -115,7 +95,6 @@ theorem toNat_chunk64 (b : ByteArray) (i : Nat) :
 
 /-! ## `toNat` is the big-endian fold -/
 
-/-- Folding one more byte of a prefix. -/
 private theorem foldl_take_add_one (b : ByteArray) (i : Nat) (h : i < b.size) (a : Nat) :
     (b.data.toList.take (i + 1)).foldl (fun acc x => acc * 256 + x.toNat) a =
       (b.data.toList.take i).foldl (fun acc x => acc * 256 + x.toNat) a * 256 +
@@ -125,7 +104,6 @@ private theorem foldl_take_add_one (b : ByteArray) (i : Nat) (h : i < b.size) (a
   simp only [Option.toList_some, List.foldl_cons, List.foldl_nil, getD, h, ↓reduceDIte,
     Array.getElem_toList, ByteArray.getElem_eq_getElem_data]
 
-/-- Folding eight more bytes of a prefix is one step of `toNatChunks`. -/
 private theorem foldl_take_add_eight (b : ByteArray) (i : Nat) (h : i + 8 ≤ b.size) :
     (b.data.toList.take (i + 8)).foldl (fun acc x => acc * 256 + x.toNat) 0 =
       ((b.data.toList.take i).foldl (fun acc x => acc * 256 + x.toNat) 0 <<< 64) |||
@@ -139,7 +117,6 @@ private theorem foldl_take_add_eight (b : ByteArray) (i : Nat) (h : i + 8 ≤ b.
   simp only [List.foldl_cons, List.foldl_nil, Nat.reducePow]
   omega
 
-/-- `toNatChunks`, started on the fold of the first `i` bytes, folds `8 * k` more bytes. -/
 private theorem toNatChunks_foldl_take (b : ByteArray) :
     ∀ (k i : Nat), i + 8 * k ≤ b.size →
       toNatChunks b ((b.data.toList.take i).foldl (fun acc x => acc * 256 + x.toNat) 0) i k =
@@ -164,7 +141,6 @@ theorem toNat_eq_foldl (b : ByteArray) :
 
 /-! ## Encoding then decoding -/
 
-/-- The bytes of `ofNatBE len n`, folded big-endian, give `n` modulo `2^(8 * len)`. -/
 private theorem foldl_ofFn_shiftRight (len n : Nat) :
     (List.ofFn (n := len) fun i => (n >>> (8 * (len - 1 - i.val))).toUInt8).foldl
       (fun acc x => acc * 256 + x.toNat) 0 = n % 2 ^ (8 * len) := by
@@ -196,55 +172,44 @@ theorem toNat_ofNatBE (len n : Nat) :
   simp only [ofNatBE, Array.toList_ofFn]
   exact foldl_ofFn_shiftRight len n
 
-/-- `ofNatBE len n` has exactly `len` bytes. -/
 theorem size_ofNatBE (len n : Nat) : (ofNatBE len n).size = len := by
   simp only [ofNatBE, ByteArray.size, Array.size_ofFn]
 
-/-- A word encodes to 32 bytes. -/
 theorem size_ofWord (w : Word) : (ofWord w).size = 32 := size_ofNatBE 32 w.toNat
 
-/-- An address encodes to 20 bytes. -/
 theorem size_ofAddress (a : Address) : (ofAddress a).size = 20 := size_ofNatBE 20 a.toNat
 
-/-- Decoding an encoded word gives its value. -/
 theorem toNat_ofWord (w : Word) : toNat (ofWord w) = w.toNat := by
   rw [ofWord, toNat_ofNatBE]
   exact Nat.mod_eq_of_lt w.isLt
 
-/-- Decoding an encoded word gives the word back. -/
 theorem toWord_ofWord (w : Word) : toWord (ofWord w) = w := by
   apply BitVec.eq_of_toNat_eq
   rw [toWord, toNat_ofWord, BitVec.toNat_ofNat]
   exact Nat.mod_eq_of_lt w.isLt
 
-/-- Decoding an encoded address gives its value. -/
 theorem toNat_ofAddress (a : Address) : toNat (ofAddress a) = a.toNat := by
   rw [ofAddress, toNat_ofNatBE]
   exact Nat.mod_eq_of_lt a.isLt
 
-/-- Decoding 20 address bytes as a word zero-extends the address. -/
 theorem toWord_ofAddress (a : Address) : toWord (ofAddress a) = Word.ofAddress a := by
   apply BitVec.eq_of_toNat_eq
   rw [toWord, toNat_ofAddress, BitVec.toNat_ofNat, Word.ofAddress, BitVec.toNat_setWidth]
 
 /-! ## Byte access via `getD` -/
 
-/-- `zeros n` has `n` bytes. -/
 theorem size_zeros (n : Nat) : (zeros n).size = n := by
   simp only [zeros, ByteArray.size, Array.size_replicate]
 
-/-- Every byte of `zeros n` is zero. -/
 theorem getD_zeros (n j : Nat) : getD (zeros n) j = 0 := by
   unfold getD
   split
   · simp only [zeros, ByteArray.getElem_eq_getElem_data, Array.getElem_replicate]
   · rfl
 
-/-- Bytes past the end read as zero. -/
 theorem getD_of_size_le {b : ByteArray} {j : Nat} (h : b.size ≤ j) : getD b j = 0 := by
   simp only [getD, Nat.not_lt.mpr h, ↓reduceDIte]
 
-/-- Byte `j` of a concatenation. -/
 theorem getD_append (x y : ByteArray) (j : Nat) :
     getD (x ++ y) j = if j < x.size then getD x j else getD y (j - x.size) := by
   split
@@ -259,7 +224,6 @@ theorem getD_append (x y : ByteArray) (j : Nat) :
     · have h'' : ¬ j - x.size < y.size := by rw [ByteArray.size_append] at h'; omega
       simp only [h', h'', ↓reduceDIte]
 
-/-- Byte `j` of a slice. -/
 theorem getD_extract (b : ByteArray) (s e j : Nat) :
     getD (b.extract s e) j = if s + j < e then getD b (s + j) else 0 := by
   unfold getD
@@ -284,7 +248,6 @@ theorem ext_getD {a b : ByteArray} (h : a.size = b.size)
 
 /-! ## `readPadded` and `write` -/
 
-/-- A padded read of `len` bytes has `len` bytes. -/
 theorem size_readPadded (b : ByteArray) (off len : Nat) :
     (readPadded b off len).size = len := by
   unfold readPadded
@@ -293,7 +256,6 @@ theorem size_readPadded (b : ByteArray) (off len : Nat) :
     omega
   · exact size_zeros len
 
-/-- Byte `j` of a padded read is byte `off + j` of the source (zero past its end). -/
 theorem getD_readPadded (b : ByteArray) (off len j : Nat) :
     getD (readPadded b off len) j = if j < len then getD b (off + j) else 0 := by
   unfold readPadded
@@ -313,7 +275,6 @@ theorem getD_readPadded (b : ByteArray) (off len j : Nat) :
     · exact (getD_of_size_le (by omega)).symm
     · rfl
 
-/-- An in-bounds (or empty) `write` preserves the size. -/
 theorem size_write {dst src : ByteArray} {off : Nat}
     (h : off + src.size ≤ dst.size ∨ src.size = 0) :
     (write dst off src).size = dst.size := by
@@ -340,14 +301,12 @@ theorem getD_write {dst src : ByteArray} {off : Nat} (h : off ≤ dst.size ∨ s
     | exact (getD_of_size_le (by omega)).symm
     | exact getD_of_size_le (by omega)
 
-/-- Reading the first part of a concatenation gives it back. -/
 theorem readPadded_append_left (x y : ByteArray) : readPadded (x ++ y) 0 x.size = x := by
   apply ext_getD (size_readPadded _ _ _)
   intro j hj
   rw [size_readPadded] at hj
   simp only [getD_readPadded, hj, ↓reduceIte, Nat.zero_add, getD_append]
 
-/-- Reading the second part of a concatenation gives it back. -/
 theorem readPadded_append_right (x y : ByteArray) :
     readPadded (x ++ y) x.size y.size = y := by
   apply ext_getD (size_readPadded _ _ _)
@@ -356,7 +315,6 @@ theorem readPadded_append_right (x y : ByteArray) :
   have h : ¬ x.size + j < x.size := by omega
   simp only [getD_readPadded, hj, ↓reduceIte, getD_append, h, Nat.add_sub_cancel_left]
 
-/-- Reading all of a byte array gives it back. -/
 theorem readPadded_zero_size (x : ByteArray) : readPadded x 0 x.size = x := by
   have h := readPadded_append_left x ByteArray.empty
   rwa [ByteArray.append_empty] at h
@@ -367,7 +325,6 @@ namespace EvmLean.Memory
 
 open EvmLean.Bytes
 
-/-- Memory size after `expand`: the old size, or the covering whole words if larger. -/
 theorem size_expand (m : Memory) (off len : Nat) :
     (m.expand off len).size = max m.size (32 * wordsAfter m.words off len) := by
   simp only [expand]
@@ -376,7 +333,6 @@ theorem size_expand (m : Memory) (off len : Nat) :
   · simp only [size, ByteArray.size_append, size_zeros]
     omega
 
-/-- Expansion only appends zeros: every byte reads the same. -/
 theorem getD_bytes_expand (m : Memory) (off len j : Nat) :
     getD (m.expand off len).bytes j = getD m.bytes j := by
   simp only [expand]
@@ -388,20 +344,17 @@ theorem getD_bytes_expand (m : Memory) (off len j : Nat) :
     · rw [getD_zeros]
       exact (getD_of_size_le (by omega)).symm
 
-/-- After `expand off len` with `len ≠ 0`, the range `[off, off + len)` is in bounds. -/
 theorem add_le_size_expand (m : Memory) (off len : Nat) (h : len ≠ 0) :
     off + len ≤ (m.expand off len).size := by
   rw [size_expand, wordsAfter, ite_eq_right h]
   omega
 
-/-- After `expand off len`, the range `[off, off + len)` is in bounds or empty. -/
 private theorem add_le_size_expand_or (m : Memory) (off len : Nat) :
     off + len ≤ (m.expand off len).size ∨ len = 0 := by
   by_cases h : len = 0
   · exact Or.inr h
   · exact Or.inl (add_le_size_expand m off len h)
 
-/-- `write` has the size of the expanded memory. -/
 theorem size_write (m : Memory) (off : Nat) (data : ByteArray) :
     (m.write off data).size = (m.expand off data.size).size :=
   Bytes.size_write (add_le_size_expand_or m off data.size)
@@ -418,7 +371,6 @@ theorem getD_bytes_write (m : Memory) (off : Nat) (data : ByteArray) (j : Nat) :
     omega
   rw [Bytes.getD_write h, getD_bytes_expand]
 
-/-- Reading back what was written gives the data. -/
 theorem read_write (m : Memory) (off : Nat) (data : ByteArray) :
     (m.write off data).read off data.size = data := by
   apply ext_getD (by rw [read, size_readPadded])
@@ -428,7 +380,6 @@ theorem read_write (m : Memory) (off : Nat) (data : ByteArray) :
   simp only [read, getD_readPadded, hj, ↓reduceIte, getD_bytes_write, h, and_self,
     Nat.add_sub_cancel_left]
 
-/-- A write does not affect reads of a disjoint range. -/
 theorem read_write_of_disjoint (m : Memory) (off off' len : Nat) (data : ByteArray)
     (h : off' + len ≤ off ∨ off + data.size ≤ off') :
     (m.write off data).read off' len = m.read off' len := by
@@ -438,30 +389,25 @@ theorem read_write_of_disjoint (m : Memory) (off off' len : Nat) (data : ByteArr
   have h' : ¬ (off ≤ off' + j ∧ off' + j < off + data.size) := by omega
   simp only [read, getD_readPadded, hj, ↓reduceIte, getD_bytes_write, h']
 
-/-- `MSTORE` grows memory to cover the stored word, rounded up to whole words. -/
 theorem size_storeWord (m : Memory) (off : Nat) (w : Word) :
     (m.storeWord off w).size = max m.size (32 * ((off + 32 + 31) / 32)) := by
   rw [storeWord, size_write, size_expand, size_ofWord, wordsAfter, ite_eq_right (by decide), words]
   omega
 
-/-- Reading 32 bytes where a word was stored gives its encoding. -/
 theorem read_storeWord (m : Memory) (off : Nat) (w : Word) :
     (m.storeWord off w).read off 32 = ofWord w := by
   have h := read_write m off (ofWord w)
   rwa [size_ofWord] at h
 
-/-- `MLOAD` after `MSTORE` at the same offset returns the stored word. -/
 theorem loadWord_storeWord (m : Memory) (off : Nat) (w : Word) :
     (m.storeWord off w).loadWord off = w := by
   rw [loadWord, read_storeWord, toWord_ofWord]
 
-/-- `MSTORE` does not affect reads of a disjoint range. -/
 theorem read_storeWord_of_disjoint (m : Memory) (off off' len : Nat) (w : Word)
     (h : off' + len ≤ off ∨ off + 32 ≤ off') :
     (m.storeWord off w).read off' len = m.read off' len :=
   read_write_of_disjoint m off off' len (ofWord w) (by rw [size_ofWord]; exact h)
 
-/-- `MLOAD` of a word disjoint from an `MSTORE` is unaffected by it. -/
 theorem loadWord_storeWord_of_disjoint (m : Memory) (off off' : Nat) (w : Word)
     (h : off' + 32 ≤ off ∨ off + 32 ≤ off') :
     (m.storeWord off w).loadWord off' = m.loadWord off' := by
@@ -473,7 +419,6 @@ namespace EvmLean.Interpreter
 
 open EvmLean.Bytes
 
-/-- `readBytes` is `Bytes.readPadded`: its out-of-range guard returns the same zeros. -/
 theorem readBytes_eq_readPadded (b : ByteArray) (off len : Nat) :
     readBytes b off len = readPadded b off len := by
   unfold readBytes readPadded
@@ -481,37 +426,30 @@ theorem readBytes_eq_readPadded (b : ByteArray) (off len : Nat) :
   · rw [ite_eq_right (by omega)]
   · rfl
 
-/-- Reading the first argument of concatenated calldata. -/
 theorem readBytes_append_left (x y : ByteArray) : readBytes (x ++ y) 0 x.size = x := by
   rw [readBytes_eq_readPadded, readPadded_append_left]
 
-/-- Reading the second argument of concatenated calldata. -/
 theorem readBytes_append_right (x y : ByteArray) :
     readBytes (x ++ y) x.size y.size = y := by
   rw [readBytes_eq_readPadded, readPadded_append_right]
 
-/-- Reading all of a byte array gives it back. -/
 theorem readBytes_zero_size (x : ByteArray) : readBytes x 0 x.size = x := by
   rw [readBytes_eq_readPadded, readPadded_zero_size]
 
-/-- The first word of two ABI-encoded words. -/
 theorem readBytes_ofWord_append_left (a b : Word) :
     readBytes (ofWord a ++ ofWord b) 0 32 = ofWord a := by
   have h := readBytes_append_left (ofWord a) (ofWord b)
   rwa [size_ofWord] at h
 
-/-- The second word of two ABI-encoded words. -/
 theorem readBytes_ofWord_append_right (a b : Word) :
     readBytes (ofWord a ++ ofWord b) 32 32 = ofWord b := by
   have h := readBytes_append_right (ofWord a) (ofWord b)
   rwa [size_ofWord, size_ofWord] at h
 
-/-- Decoding the first word of two ABI-encoded words. -/
 theorem toWord_readBytes_ofWord_append_left (a b : Word) :
     toWord (readBytes (ofWord a ++ ofWord b) 0 32) = a := by
   rw [readBytes_ofWord_append_left, toWord_ofWord]
 
-/-- Decoding the second word of two ABI-encoded words. -/
 theorem toWord_readBytes_ofWord_append_right (a b : Word) :
     toWord (readBytes (ofWord a ++ ofWord b) 32 32) = b := by
   rw [readBytes_ofWord_append_right, toWord_ofWord]

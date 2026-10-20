@@ -7,48 +7,30 @@ import EvmLogic.Tactic.EvmStep
 /-!
 # Memory as solc uses it
 
-solc's memory discipline: the free-memory pointer at `0x40` is initialised to `0x80` by the
-first three instructions of every contract (`PUSH1 0x80 PUSH1 0x40 MSTORE`); the scratch
-space `[0x00, 0x40)` holds the two words hashed by mapping lookups (`key ‖ slot`, then
-`KECCAK256(0x00, 0x40)`); event data and return values are written at the free pointer.
-
-During symbolic execution memory is a growing term of `expand`s and `storeWord`s. The lemmas
-here evaluate *reads* of such terms, by pushing a read through every store it does not
-overlap (`Memory.read_storeWord_of_disjoint`, whose side condition simp decides on numerals)
-until it hits the store that wrote it (`Memory.read_storeWord`):
-
-* `Memory.read_expand`: expansion appends zeros, which reads already return;
-* `Memory.read_64`: a 64-byte read (the mapping-slot preimage) is two word reads;
-* `Memory.write_ofWord`: a 32-byte `CODECOPY` of a word constant is an `MSTORE`;
-* `Memory.loadWord_eq`: `MLOAD` is a read.
-
-They are tagged `@[sol_norm]`, together with the core read-over-write lemmas.
+During symbolic execution memory is a term of `expand`s and `storeWord`s. The `@[sol_norm]`
+lemmas here evaluate reads of such terms by pushing them through non-overlapping stores
+(side conditions decided on numerals) to the store that wrote them; `initMemory` is the
+memory after solc's prologue `PUSH1 0x80 PUSH1 0x40 MSTORE`.
 -/
 
 section
 
 namespace EvmLean.Memory
-open EvmLogic
-
-open EvmLean.Bytes
+open EvmLogic EvmLean.Bytes
 
 attribute [sol_norm] read_expand
 
-/-- Reads split at any point. -/
 theorem read_add (m : Memory) (off a b : Nat) :
     m.read off (a + b) = m.read off a ++ m.read (off + a) b := by
   simp only [read, Solidity.readPadded_add]
 
-/-- A 64-byte read is two word reads. -/
 @[sol_norm] theorem read_64 (m : Memory) (off : Nat) :
     m.read off 64 = m.read off 32 ++ m.read (off + 32) 32 :=
   read_add m off 32 32
 
-/-- Writing the encoding of a word is `MSTORE`. -/
 @[sol_norm] theorem write_ofWord (m : Memory) (off : Nat) (w : Word) :
     m.write off (Bytes.ofWord w) = m.storeWord off w := rfl
 
-/-- `MLOAD` is the word of a 32-byte read. -/
 @[sol_norm] theorem loadWord_eq (m : Memory) (off : Nat) :
     m.loadWord off = Bytes.toWord (m.read off 32) := rfl
 
@@ -65,11 +47,9 @@ def initMemory : Memory := (({} : Memory).expand 64 32).storeWord 64 0x80
 
 attribute [sol_norm] initMemory
 
-/-- The free-memory pointer of `initMemory`. -/
 theorem loadWord_initMemory : initMemory.loadWord 64 = 0x80 :=
   Memory.loadWord_storeWord _ _ _
 
-/-- `initMemory` has three words. -/
 theorem size_initMemory : initMemory.size = 96 := by
   simp [initMemory, Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]
 
@@ -79,22 +59,12 @@ end
 
 section
 
-/-!
-## Calldata assembled in memory
-
-When a compiled contract calls another one, the callee's calldata is a window of the caller's
-memory (`Memory.read off len`, as `childMsg` builds it), and the callee's ABI decoder reads
-sub-windows of it (`readBytes data i n`). `readBytes_read` collapses the two reads, so that the
-callee's view of its calldata is computed by the usual read-over-write memory lemmas.
--/
+/-! ## Calldata assembled in memory (the calldata of a child call is a memory window) -/
 
 namespace EvmLean.Memory
-open EvmLogic
+open EvmLogic EvmLean.Bytes EvmLean.Interpreter
 
-open EvmLean.Bytes EvmLean.Interpreter
-
-/-- A read within a read is a read: `readBytes (mem.read off len) i n = mem.read (off + i) n`
-when the inner window lies inside the outer one. -/
+/-- A read within a read is a read (the callee decoding calldata from the caller's memory). -/
 theorem readBytes_read (mem : Memory) (off len i n : Nat) (h : i + n ≤ len) :
     readBytes (mem.read off len) i n = mem.read (off + i) n := by
   rw [readBytes_eq_readPadded]
@@ -112,50 +82,38 @@ section
 /-!
 ## Multi-word memory reads
 
-The EIP-712 code of Solmate's `permit` and `DOMAIN_SEPARATOR` hashes several consecutive words
-of memory (`abi.encode` of 5 or 6 words) and a packed `"\x19\x01" ‖ separator ‖ structHash`
-(66 bytes, at unaligned offsets), and passes four words to `ECRECOVER`. These lemmas split
-such reads into the word reads that the read-over-write lemmas evaluate
-(`Memory.read_storeWord`, `Memory.read_storeWord_of_disjoint`, `Memory.read_storeWord_prefix`).
-They are not `simp` lemmas by default: they are passed to the symbolic executor where needed.
+Split multi-word reads (EIP-712 hashing in `permit`) into word reads. Not `simp` lemmas by
+default: passed to the symbolic executor where needed.
 -/
 
 namespace EvmLean.Memory
-open EvmLogic
+open EvmLogic EvmLean.Bytes
 
-open EvmLean.Bytes
-
-/-- A read of `32 + n` bytes is a word read followed by the rest. -/
 theorem read_word_add (m : Memory) (off n : Nat) :
     m.read off (32 + n) = m.read off 32 ++ m.read (off + 32) n :=
   read_add m off 32 n
 
-/-- A 96-byte read is three word reads. -/
 theorem read_96 (m : Memory) (off : Nat) :
     m.read off 96 = m.read off 32 ++ (m.read (off + 32) 32 ++ m.read (off + 64) 32) := by
   rw [show (96 : Nat) = 32 + 64 from rfl, read_word_add, read_64, Nat.add_assoc]
 
-/-- A 128-byte read is four word reads. -/
 theorem read_128 (m : Memory) (off : Nat) :
     m.read off 128 = m.read off 32 ++ (m.read (off + 32) 32 ++ (m.read (off + 64) 32 ++
       m.read (off + 96) 32)) := by
   rw [show (128 : Nat) = 32 + 96 from rfl, read_word_add, read_96, Nat.add_assoc, Nat.add_assoc]
 
-/-- A 160-byte read is five word reads. -/
 theorem read_160 (m : Memory) (off : Nat) :
     m.read off 160 = m.read off 32 ++ (m.read (off + 32) 32 ++ (m.read (off + 64) 32 ++
       (m.read (off + 96) 32 ++ m.read (off + 128) 32))) := by
   rw [show (160 : Nat) = 32 + 128 from rfl, read_word_add, read_128, Nat.add_assoc, Nat.add_assoc,
     Nat.add_assoc]
 
-/-- A 192-byte read is six word reads. -/
 theorem read_192 (m : Memory) (off : Nat) :
     m.read off 192 = m.read off 32 ++ (m.read (off + 32) 32 ++ (m.read (off + 64) 32 ++
       (m.read (off + 96) 32 ++ (m.read (off + 128) 32 ++ m.read (off + 160) 32)))) := by
   rw [show (192 : Nat) = 32 + 160 from rfl, read_word_add, read_160, Nat.add_assoc, Nat.add_assoc,
     Nat.add_assoc, Nat.add_assoc]
 
-/-- The 66-byte read of `"\x19\x01" ‖ word ‖ word`: two bytes and two (unaligned) words. -/
 theorem read_66 (m : Memory) (off : Nat) :
     m.read off 66 = m.read off 2 ++ (m.read (off + 2) 32 ++ m.read (off + 34) 32) := by
   rw [show (66 : Nat) = 2 + 64 from rfl, read_add, read_64, Nat.add_assoc]
@@ -165,8 +123,6 @@ end EvmLean.Memory
 namespace EvmLean.Memory
 open EvmLogic
 
-/-- The first two bytes of a stored word (the `"\x19\x01"` prefix of an EIP-712 digest,
-stored as `shl(240, 0x1901)`). -/
 theorem read_storeWord_two (m : Memory) (off : Nat) (w : Word) :
     (m.storeWord off w).read off 2 = (Bytes.ofWord w).extract 0 2 :=
   read_storeWord_prefix m off 2 w (by decide)
@@ -185,7 +141,6 @@ attribute [permit_norm] Nat.reduceEqDiff Nat.reduceLeDiff Nat.reduceAdd Nat.redu
 namespace EvmLean.Memory
 open EvmLogic
 
-/-- An access inside a word-aligned memory does not expand it (also for a symbolic length). -/
 theorem expand_eq_self_of_le {m : Memory} {off len : Nat} (h : off + len ≤ m.size) (h32 : m.size % 32 = 0) :
     m.expand off len = m := by
   unfold expand
@@ -201,8 +156,6 @@ end EvmLean.Memory
 namespace EvmLean.Gas
 open EvmLogic
 
-/-- An access inside a word-aligned memory costs no expansion gas (also for a symbolic
-length). -/
 theorem extendMemory_one_of_le {size off len : Nat} (h : off + len ≤ size) (h32 : size % 32 = 0) :
     extendMemory size [(off, len)] = { cost := 0, newSize := size } := by
   unfold extendMemory

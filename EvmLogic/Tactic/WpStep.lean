@@ -6,48 +6,26 @@ import EvmLogic.Word
 import EvmLogic.Step.Memory
 
 /-!
-# Symbolic execution in the frame-local logic
+# Symbolic execution in the frame-local logic: `wp_step`
 
-The tactics of `EvmLogic.Tactic.EvmStep` advance goals of the form `run (n + 1) m = …`. Here the
-same step lemmas advance goals `WP m Q H` (`EvmLogic.Program.Logic`), where `m` is a
-machine whose code, pc and stack shape are literal (values may be symbolic):
-
-* `wp_step [h₁, …]` applies `WP.of_step` with the step lemma for the next instruction (found
-  by `evm_step_core`, side conditions by `evm_disch`), proves `SameFrame` by `rfl`, and
-  normalizes the new machine with `evm_norm [h₁, …]`. On a halting instruction (`STOP`,
-  `RETURN`, `REVERT`, `INVALID`) it applies `WP.halt_of_step` with the frame-generic step lemma
-  instead (any parents, not only top level), leaving the goal `H mf o`.
-* `wp_steps [h₁, …]` repeats `wp_step`; `wp_steps n [h₁, …]` does at most `n` steps.
-* `wp_run_to pc₁, pc₂, … [h₁, …]` steps until the pc of the machine is one of the given
-  values (the starting pc does not count, so it can run around a loop back to its head), or
-  until `wp_step` fails (e.g. at a `JUMPI` with a symbolic condition).
-* `wp_intro m` destructures a machine variable `m` into its fields and substitutes the
-  equations about them (code, pc, stack, …) from the context, so that the step lemmas apply.
-* `same_frame` proves `SameFrame m m'` when `m'` is `m` with only mutable fields changed.
-
-Jump destinations are checked by `decide` (as in `evm_step`) unless a hypothesis
-`isValidJumpDest jd d = true` is in the context: `evm_disch` is extended here to try
-`assumption` first, so precomputed facts about large code are used before evaluation.
+The step lemmas of `evm_step`, applied to goals `WP m Q H` (`EvmLogic.Program.Logic`) through
+`WP.of_step` / `WP.halt_of_step`, with `SameFrame` by `same_frame`. Code bytes and pushed
+immediates are kernel-checked facts read from the literal code. See `docs/proving.md` §3.
 -/
 
 section
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean Lean Elab Tactic EvmLogic.Tactic Meta EvmLean.Interpreter
 
-open Lean Elab Tactic EvmLogic.Tactic Meta
-open EvmLean.Interpreter
-
-/-- Prove `SameFrame m m'` when `m'` only changes mutable fields of `m`. Each field is closed
-by `dsimp only` (projections of structure instances), which unlike `rfl` never asks the
-unifier to compare whole machines (that can unfold the code and the jump table). -/
+/-- Prove `SameFrame m m'` field by field with `dsimp only`, which unlike `rfl` never compares
+whole machines (that can unfold the code and the jump table). -/
 macro "same_frame" : tactic =>
   `(tactic| (constructor <;> first | (dsimp only [outputMachine]; done) | exact rfl))
 
 initialize registerTraceClass `EvmLean.wp
 
-/-- The step lemmas to try for an opcode byte, and whether the instruction halts the frame.
-`PUSHn` is handled separately (`step_push_val` with a `pushFact`). -/
+/-- The step lemmas to try for an opcode byte, and whether it halts the frame (not `PUSHn`). -/
 def stepLemmasFor (b : Nat) : List Name × Bool :=
   let arith : List (Nat × Name) := [
     (0x01, ``step_add), (0x02, ``step_mul), (0x03, ``step_sub), (0x04, ``step_div),
@@ -83,20 +61,16 @@ def stepLemmasFor (b : Nat) : List Name × Bool :=
   else if 0x90 ≤ b ∧ b < 0xa0 then ((swaps[b - 0x90]?).toList, false)
   else ((arith.lookup b).toList ++ (extraStepLemmas.lookup b).toList, false)
 where
-  /-- Step lemmas of `EvmLogic.Program` for opcodes the base library does not cover. -/
   extraStepLemmas : List (Nat × Name) := []
 
-/-- Run `tac`, turning any failure (including runtime exceptions such as the recursion limit)
-into `false` with the state restored. -/
+/-- Run `tac`; any failure, including runtime exceptions (recursion limit), gives `false`. -/
 def tryTac (tac : TacticM Unit) : TacticM Bool := do
   let saved ← saveState
   tryCatchRuntimeEx (do withoutRecover tac; return true)
     (fun _ => do saved.restore; return false)
 
-/-- Discharge a side condition of a step lemma. Order matters for speed and robustness:
-inequalities (gas, stack bounds) go to `evm_gas` (`omega`) before `decide`; equalities
-(stack shapes, opcode immediates) to `exact rfl`; jump destinations to `jumpdest_disch`;
-`assumption` last. -/
+/-- Discharge a step-lemma side condition. Order matters for speed: inequalities go to
+`evm_gas` before `decide`, equalities to `exact rfl`, `assumption` last. -/
 def wpDisch : TacticM Unit := withMainContext do
   let t ← whnfR (← instantiateMVars (← getMainTarget))
   let isIneq := t.isAppOf ``LE.le || t.isAppOf ``LT.lt
@@ -115,8 +89,7 @@ def wpDisch : TacticM Unit := withMainContext do
 /-- `wp_disch`: see `wpDisch`. -/
 elab "wp_disch" : tactic => wpDisch
 
-/-- Close a goal `code[pc]? = some b` for literal code (behind projections of a literal
-machine) and a numeral `pc`, by a kernel-checked fact (`codeFact`). -/
+/-- Close `code[pc]? = some b` for literal code and a numeral `pc` (kernel-checked). -/
 elab "code_fact" : tactic => withMainContext do
   let g ← getMainGoal
   let t ← instantiateMVars (← g.getType)
@@ -138,8 +111,7 @@ def wpGoalMachine? (g : MVarId) : MetaM (Option Expr) := do
   let_expr WP m _ _ := t | return none
   return some m
 
-/-- Advance a goal `WP m Q H` by one instruction. Returns `false` (leaving the goal unchanged)
-if no step lemma applies. -/
+/-- Advance `WP m Q H` by one instruction; `false` (goal unchanged) if no step lemma applies. -/
 def wpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool :=
   withMainContext do
   let g ← getMainGoal
@@ -204,7 +176,7 @@ def wpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Boo
       return true
   return false
 
-/-- Advance a goal `WP m Q H` by one instruction (see the module docstring). -/
+/-- Advance a goal `WP m Q H` by one instruction. -/
 syntax "wp_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
@@ -230,8 +202,6 @@ def wpGoalPc? (g : MVarId) : MetaM (Option Nat) := g.withContext do
   let pc ← whnfD (mkApp (mkConst ``Frame.pc) (mkApp (mkConst ``Machine.frame) m))
   (evalNat (← instantiateMVars pc)).run
 
-/-- Step a `WP` goal until its pc is one of `pcs` (after at least one step), or no step
-lemma applies, or `limit` steps were taken. -/
 def wpRunTo (pcs : List Nat) (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma))
     (limit : Nat := 1000000) : TacticM Unit := do
   for i in [0:limit] do
@@ -241,8 +211,8 @@ def wpRunTo (pcs : List Nat) (extra : Array (TSyntax `Lean.Parser.Tactic.simpLem
         if pcs.contains pc then return
     unless ← wpStep extra do return
 
-/-- `wp_run_to pc₁, … [h₁, …]`: step until the pc is one of the `pcᵢ` (see the module
-docstring). -/
+/-- `wp_run_to pc₁, … [h₁, …]`: step until the pc is one of the `pcᵢ` (after at least one
+step, so it can loop back to its head) or no step lemma applies. -/
 syntax "wp_run_to " num,+ (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
@@ -250,13 +220,11 @@ elab_rules : tactic
     let extra := (extra.map (·.getElems)).getD #[]
     wpRunTo (pcs.getElems.toList.map (·.getNat)) extra
 
-/-- Destructure the machine variable `m` into its fields `m_ctx`, `m_world`, `m_msg`,
-`m_gasLeft`, `m_sub`, … and substitute equations about them from the context (except the
-jump table, kept as a `JumpTable` hypothesis). -/
+/-- Destructure the machine `m` into fields `m_ctx`, `m_world`, … and substitute equations
+about them (the jump table is kept as a `JumpTable` hypothesis). -/
 syntax "wp_intro " ident : tactic
 
-/-- Turn every hypothesis `x = validJumpDests c` into `JumpTable x c` (so that `subst` keeps
-it; see `JumpTable`). -/
+/-- Turn every hypothesis `x = validJumpDests c` into `JumpTable x c` (so `subst` keeps it). -/
 elab "wp_hide_jump_tables" : tactic => withMainContext do
   let mut g ← getMainGoal
   for decl in ← getLCtx do
@@ -289,27 +257,14 @@ section
 /-!
 ## Gas side conditions over symbolic memory
 
-`evm_gas` normalizes the memory-expansion cost of an access and calls `omega`. When the
-memory of the machine is a variable `M` (as in summaries of internal functions that are called
-at different memory states), the cost is an `if` on `M.size`, which `omega` cannot see
-through, even with a hypothesis `M.size = n` in context.
-
-* `wp_generalize_gas g h` replaces the gas expression of a `WP` goal's machine by a variable.
-* `rw_mem_sizes` rewrites the goal and hypotheses with every hypothesis of the form `Memory.size M = n`.
-* An alternative expansion of `evm_gas` (tried before the original one) normalizes, runs
-  `rw_mem_sizes` (sizes of `storeWord`/`expand` terms over `M` only appear after the first
-  normalization) and normalizes again, so that the expansion cost evaluates. When it fails,
-  the original `evm_gas` runs.
+With memory a variable `M`, expansion costs are `if`s on `M.size` that `omega` cannot see
+through; `evm_gas` is extended to rewrite with hypotheses `Memory.size M = n` (`rw_mem_sizes`).
 -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean Lean Elab Tactic EvmLogic.Tactic Meta EvmLean.Interpreter
 
-open Lean Elab Tactic EvmLogic.Tactic Meta
-open EvmLean.Interpreter
-
-/-- Rewrite the goal, and every other hypothesis mentioning `Memory.size`, with each hypothesis
-`Memory.size M = n` (no-op if there is none). -/
+/-- Rewrite the goal and other hypotheses with each hypothesis `Memory.size M = n`. -/
 elab "rw_mem_sizes" : tactic => withMainContext do
   let lctx ← getLCtx
   let mut sizeHyps : Array LocalDecl := #[]
@@ -330,10 +285,8 @@ elab "rw_mem_sizes" : tactic => withMainContext do
       let n := mkIdent decl.userName
       try evalTactic (← `(tactic| simp only [$hS:term] at $n:ident)) catch _ => pure ()
 
-/-- `wp_generalize_gas g h`: in a goal `WP m Q H` whose machine is a structure literal,
-replace the frame's gas expression by a new variable `g` (with `h : expr = g`). After a call
-the gas left is a large expression (EIP-150 forwarding, the callee's refund); proving a bound
-on `g` once and generalizing keeps the gas side conditions of the following steps cheap. -/
+/-- `wp_generalize_gas g h`: replace the gas of a `WP` goal's machine by a variable `g`
+(`h : expr = g`); keeps side conditions cheap after a call's large gas expression. -/
 elab "wp_generalize_gas " g:ident h:ident : tactic => withMainContext do
   let some m ← wpGoalMachine? (← getMainGoal) | throwError "wp_generalize_gas: not a WP goal"
   let fr ← whnfR (mkApp (mkConst ``Machine.frame) m)

@@ -12,7 +12,6 @@ namespace EvmLean.Interpreter
 
 variable {m : Machine} {x y : Word} {rest : List Word}
 
-/-- `popN` pops the listed words. -/
 theorem run_popN (topics rest : List Word) (m : Machine)
     (hstk : m.frame.stack = topics ++ rest) :
     (popN topics.length).run m =
@@ -58,7 +57,6 @@ theorem step_log (n : Fin 5) (topics : List Word) (htop : topics.length = n.val)
     htop]
   rfl
 
-/-- `LOG0`. -/
 theorem step_log0 (hcode : m.frame.code[m.frame.pc]? = some 0xa0)
     (hstk : m.frame.stack = x :: y :: ([] ++ rest)) (hstatic : m.frame.msg.isStatic = false)
     (hgas : Gas.logCost y.toNat 0 + (Gas.extendMemory m.frame.memory.size
@@ -72,7 +70,6 @@ theorem step_log0 (hcode : m.frame.code[m.frame.pc]? = some 0xa0)
       pc := m.frame.pc + 1 } } :=
   step_log 0 [] rfl hcode hstk hstatic hgas
 
-/-- `LOG1`. -/
 theorem step_log1 {t0 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa1)
     (hstk : m.frame.stack = x :: y :: ([t0] ++ rest)) (hstatic : m.frame.msg.isStatic = false)
     (hgas : Gas.logCost y.toNat 1 + (Gas.extendMemory m.frame.memory.size
@@ -86,7 +83,6 @@ theorem step_log1 {t0 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa1)
       pc := m.frame.pc + 1 } } :=
   step_log 1 [t0] rfl hcode hstk hstatic hgas
 
-/-- `LOG2`. -/
 theorem step_log2 {t0 t1 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa2)
     (hstk : m.frame.stack = x :: y :: ([t0, t1] ++ rest)) (hstatic : m.frame.msg.isStatic = false)
     (hgas : Gas.logCost y.toNat 2 + (Gas.extendMemory m.frame.memory.size
@@ -100,7 +96,6 @@ theorem step_log2 {t0 t1 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa2)
       pc := m.frame.pc + 1 } } :=
   step_log 2 [t0, t1] rfl hcode hstk hstatic hgas
 
-/-- `LOG3`. -/
 theorem step_log3 {t0 t1 t2 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa3)
     (hstk : m.frame.stack = x :: y :: ([t0, t1, t2] ++ rest)) (hstatic : m.frame.msg.isStatic = false)
     (hgas : Gas.logCost y.toNat 3 + (Gas.extendMemory m.frame.memory.size
@@ -114,7 +109,6 @@ theorem step_log3 {t0 t1 t2 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0x
       pc := m.frame.pc + 1 } } :=
   step_log 3 [t0, t1, t2] rfl hcode hstk hstatic hgas
 
-/-- `LOG4`. -/
 theorem step_log4 {t0 t1 t2 t3 : Word} (hcode : m.frame.code[m.frame.pc]? = some 0xa4)
     (hstk : m.frame.stack = x :: y :: ([t0, t1, t2, t3] ++ rest)) (hstatic : m.frame.msg.isStatic = false)
     (hgas : Gas.logCost y.toNat 4 + (Gas.extendMemory m.frame.memory.size

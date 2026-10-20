@@ -3,27 +3,16 @@ import EvmLogic.Program.Nested.Frame
 /-!
 # Gas monotonicity of a single instruction
 
-`exec_bump`: every instruction except `GAS`, the `CALL` family and the `CREATE` family
-**commutes with adding gas**: if it succeeds from a machine `m`, it succeeds with the same action
-from `bump d x ps m` (the executing frame with `d` more gas, any message gas, any parents), ending
-in `bump d x ps m'`. The excluded instructions read the gas (`GAS` pushes it, calls forward all
-but 1/64 of it, creations all but 1/64): they are the only places where the amount of gas,
-rather than its sufficiency, influences an execution.
-
-This is the per-instruction part of the low-gas argument (a successful low-gas frame runs in
-lockstep with the same frame given more gas until a `GAS`/`CALL`; see `INVARIANTS.md`, §6.5).
-
-`Twp` (a total weakest precondition: the computation succeeds and the postcondition holds) has
-simp lemmas mirroring `Wp`'s; `exec_bump_wp` is `Wp (exec op) (fun a m' => Twp (exec op) …)`,
-proved for all opcodes by one simp call per case.
+`exec_bump`: every instruction except `GAS`, `CALL*` and `CREATE*` (the only ones whose result
+depends on the amount of gas, not just its sufficiency) commutes with adding gas: if it succeeds
+from `m`, it succeeds with the same action from `bump d x ps m`, ending in `bump d x ps m'`.
+This is the per-instruction part of the low-gas argument (`docs/proving.md` §6).
 -/
 
 namespace EvmLogic.Program.Nested
-open EvmLean
+open EvmLean EvmLean.Interpreter
 
-open EvmLean.Interpreter
-
-/-- Total weakest precondition. -/
+/-- Total weakest precondition: `x` succeeds from `m` and its result satisfies `Q`. -/
 def Twp {α : Type} (x : M α) (Q : α → Machine → Prop) (m : Machine) : Prop :=
   match x.run m with
   | .ok (a, m') => Q a m'
@@ -142,7 +131,6 @@ def ReadsGas : Opcode → Prop
   | _ => False
 
 set_option maxHeartbeats 8000000 in
-/-- **Every instruction not reading the gas commutes with adding gas.** -/
 theorem exec_bump_wp (op : Opcode) (hop : ¬ ReadsGas op) (m : Machine) (d x : Nat)
     (ps : List Frame) :
     Wp (exec op) (fun a m' => Twp (exec op)

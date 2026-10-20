@@ -5,35 +5,21 @@ import EvmLogic.Step.Memory
 /-!
 # Calls to precompiles
 
-A `CALL*` whose target is a precompile does not push a frame: `launchCall` runs the
-precompile to completion within the same `step` (`runPrecompile`) and resumes the caller at
-once. This file states that step for `STATICCALL`, for **any** precompile implementation
-`m.precompiles` (in particular `PrecompileImpl.standard ctx`, i.e. `Precompile.run ctx.crypto
-ctx.fork` for an arbitrary `Crypto`):
-
-* `precompileResult pre a msg kind`: the `ChildResult` the caller sees (the precompile's
-  `Precompile.Result`, with the substate of a fresh child; all gas consumed on failure);
-* `step_staticcall_precompile`: one `step` from a `STATICCALL` to a precompile charges the
-  caller exactly as `step_staticcall` does (`callCost`) and resumes it with
-  `precompileResult` (world and transient storage unchanged);
-* `resume_precompile_success` / `resume_precompile_failure`: the resumed caller frame, spelled
-  out: success flag pushed, unused gas returned, output copied to the output window and kept
-  as return data (`returnMemory`), the child's substate merged (`mergeSub`);
-* `WP.staticcall_precompile`: the rule for the frame-local logic;
-* `isPrecompile_one`, `run_one`: address `0x01` is `ECRECOVER` in every fork.
+A `CALL*` to a precompile pushes no frame: the precompile runs within the same `step` and
+the caller resumes at once with `precompileResult`. `WP.staticcall_precompile` states this for
+any `m.precompiles`; `WP.staticcall_ecrecover` specialises it to solc's `ecrecover` call, for
+an arbitrary `Crypto`.
 -/
 
 section
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Interpreter
+open EvmLean EvmLean.Interpreter
 
 variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
 
-/-- What a caller sees after the precompile at `a` ran on `msg` (`runPrecompile`'s child
-result): on success its gas left and output, on failure no gas and no output. -/
+/-- The `ChildResult` a caller sees after the precompile at `a` ran on `msg` (no gas and no
+output on failure). -/
 def precompileResult (pre : PrecompileImpl) (a : Address) (msg : Message) (kind : FrameKind) :
     ChildResult :=
   if (pre.run a msg.data msg.gas).success then
@@ -44,17 +30,14 @@ def precompileResult (pre : PrecompileImpl) (a : Address) (msg : Message) (kind 
     { gasLeft := 0, error := some .precompileFailure, reverted := false, output := .empty,
       sub := Substate.ofMessage msg, target := msg.currentTarget, kind }
 
-/-- `runPrecompile` for a call without value: the world and transient storage stay as they
-are (the snapshot is the current state). -/
 theorem runPrecompile_eq (pre : PrecompileImpl) (a : Address) (msg : Message) (kind : FrameKind)
     (w : World) (t : TransientStorage) :
     runPrecompile pre a msg kind w t (w, t) = (precompileResult pre a msg kind, w, t) := by
   unfold runPrecompile precompileResult
   cases h : (pre.run a msg.data msg.gas).success <;> simp only [h] <;> rfl
 
-/-- **`STATICCALL` to a precompile** runs it within the step and resumes the caller. The
-charges are those of `step_staticcall` (`callCost`); the precompile receives the input window
-as data and `(callGas …).subCall` gas. -/
+/-- **`STATICCALL` to a precompile** runs it within the step and resumes the caller, with the
+charges of `step_staticcall`. -/
 theorem step_staticcall_precompile (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
     (hstk : m.frame.stack = gas :: toW :: inOff :: inSize :: outOff :: outSize :: rest)
     (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress toW)) = none)
@@ -91,9 +74,7 @@ theorem step_staticcall_precompile (hcode : m.frame.code[m.frame.pc]? = some 0xf
   rw [runPrecompile_eq]
   rfl
 
-/-- The caller resumed after a **successful** precompile call: `1` pushed, unused gas returned,
-the output copied into the output window and kept as return data, the child's (fresh)
-substate merged, the pc advanced. -/
+/-- The caller resumed after a **successful** precompile call. -/
 theorem resume_precompile_success {M : Machine} {pre : PrecompileImpl} {a : Address}
     {msg : Message} {o s : Nat} (h : (pre.run a msg.data msg.gas).success = true) :
     resume M (precompileResult pre a msg (.call o s)) =
@@ -108,8 +89,7 @@ theorem resume_precompile_success {M : Machine} {pre : PrecompileImpl} {a : Addr
     Bool.not_false, Bool.and_self]
   rfl
 
-/-- The caller resumed after a **failed** precompile call (out of gas or invalid input with
-exceptional failure): `0` pushed, no gas returned, empty return data, memory unchanged. -/
+/-- The caller resumed after a **failed** precompile call. -/
 theorem resume_precompile_failure {M : Machine} {pre : PrecompileImpl} {a : Address}
     {msg : Message} {o s : Nat} (h : (pre.run a msg.data msg.gas).success = false) :
     resume M (precompileResult pre a msg (.call o s)) =
@@ -123,8 +103,8 @@ theorem resume_precompile_failure {M : Machine} {pre : PrecompileImpl} {a : Addr
   have : (ByteArray.empty.extract 0 (min s ByteArray.empty.size)).size = 0 := by simp
   simp only [this, ite_true]
 
-/-- **Precompile-call rule** for the frame-local logic: a `STATICCALL` to a precompile is one
-step in the same frame, to the caller resumed with `precompileResult`. -/
+/-- **Precompile-call rule**: one step in the same frame, to the caller resumed with
+`precompileResult`. -/
 theorem WP.staticcall_precompile {Q : Machine → Prop} {H : Machine → Outcome → Prop}
     (hcode : m.frame.code[m.frame.pc]? = some 0xfa)
     (hstk : m.frame.stack = gas :: toW :: inOff :: inSize :: outOff :: outSize :: rest)
@@ -146,17 +126,13 @@ theorem WP.staticcall_precompile {Q : Machine → Prop} {H : Machine → Outcome
 
 /-! ## `ECRECOVER` at `0x01` -/
 
-/-- Address `0x01` is a precompile in every fork. -/
 theorem isPrecompile_one (fork : Fork) : Precompile.isPrecompile fork 1 = true := by
   cases fork <;> rfl
 
-/-- Address `0x01` runs `ECRECOVER` in every fork. -/
 theorem run_one (crypto : Crypto) (fork : Fork) (input : ByteArray) (gas : Nat) :
     Precompile.run crypto fork 1 input gas = Precompile.ecrecover crypto input gas := by
   cases fork <;> rfl
 
-/-- `ECRECOVER` with enough gas always succeeds (an invalid signature gives empty output) and
-costs exactly 3000 gas. -/
 theorem ecrecover_success (crypto : Crypto) (input : ByteArray) {gas : Nat} (h : 3000 ≤ gas) :
     (Precompile.ecrecover crypto input gas).success = true ∧
       (Precompile.ecrecover crypto input gas).gasLeft = gas - 3000 := by
@@ -175,25 +151,13 @@ end
 section
 
 /-!
-## `ECRECOVER` on a four-word input
-
-solc calls `ecrecover(hash, v, r, s)` by `STATICCALL`ing address `0x01` with the four words
-`hash ‖ v ‖ r ‖ s` as input. For such an input, and any `Crypto`, the precompile
-(`Precompile.ecrecover`) is described by `ecrecoverAddress?`:
-
-* `ecrecoverAddress? crypto hash v r s`: the recovered signer, as the precompile computes it
-  (`v ∈ {27, 28}`, `0 < r, s < n`, then `crypto.ecrecover` and the low 20 bytes of the Keccak
-  of the public key), or `none` for an invalid signature;
-* `ecrecover_words`: with at least 3000 gas the call succeeds, costs 3000 gas, and returns the
-  signer as one ABI word, or empty output (`none`).
+## `ECRECOVER` on a four-word input `hash ‖ v ‖ r ‖ s`
 
 Nothing here is a cryptographic claim: `crypto.ecrecover` is an arbitrary function.
 -/
 
 namespace EvmLogic.Program
-open EvmLean
-
-open EvmLean.Bytes
+open EvmLean EvmLean.Bytes
 
 /-- The signer `ECRECOVER` recovers from `(hash, v, r, s)` (see `Precompile.ecrecover`), or
 `none` for an invalid signature. -/
@@ -203,7 +167,6 @@ def ecrecoverAddress? (crypto : Crypto) (hash v r s : Word) : Option Address :=
   else (crypto.ecrecover (Bytes.ofWord hash) (v.toNat - 27) r.toNat s.toNat).map
     fun pub => Word.toAddress (crypto.keccak256 pub)
 
-/-- Byte `j` of a big-endian encoding. -/
 theorem getD_ofNatBE (len n j : Nat) :
     getD (ofNatBE len n) j = if j < len then (n >>> (8 * (len - 1 - j))).toUInt8 else 0 := by
   unfold getD
@@ -215,8 +178,6 @@ theorem getD_ofNatBE (len n j : Nat) :
     have h' : ¬ j < len := by rw [size_ofNatBE] at h; exact h
     simp only [h', ↓reduceIte]
 
-/-- The precompile's output encoding of an address: the low 20 bytes of a word, left-padded
-to 32 bytes, are the ABI word of the address. -/
 theorem leftPad32_extract_ofWord (k : Word) :
     Precompile.leftPad32 ((ofWord k).extract 12 32) = ofWord (Word.ofAddress (Word.toAddress k)) := by
   have hsz : ((ofWord k).extract 12 32).size = 20 := by
@@ -252,7 +213,6 @@ theorem leftPad32_extract_ofWord (k : Word) :
     rw [ht, Nat.pow_add, Nat.pow_add, Nat.mul_assoc, Nat.mod_mul_right_div_self,
       Nat.mod_mul_right_mod]
 
-/-- The four-word input of `ECRECOVER`, as reads of it see it. -/
 theorem readPadded_words (a b c d : Word) :
     readPadded (ofWord a ++ (ofWord b ++ (ofWord c ++ ofWord d))) 0 32 = ofWord a ∧
     readPadded (ofWord a ++ (ofWord b ++ (ofWord c ++ ofWord d))) 32 32 = ofWord b ∧
@@ -278,8 +238,7 @@ theorem readPadded_words (a b c d : Word) :
       ← s d, readPadded_zero_size]
 
 /-- **`ECRECOVER` on `hash ‖ v ‖ r ‖ s`**: with at least 3000 gas it succeeds, costs 3000, and
-returns the recovered signer as an ABI word, or nothing for an invalid signature. Holds for
-every `Crypto`. -/
+returns the signer's ABI word, or nothing for an invalid signature. -/
 theorem ecrecover_words (crypto : Crypto) (hash v r s : Word) {gas : Nat} (h : 3000 ≤ gas) :
     Precompile.ecrecover crypto (ofWord hash ++ (ofWord v ++ (ofWord r ++ ofWord s))) gas =
       { success := true, gasLeft := gas - 3000,
@@ -311,7 +270,6 @@ theorem ecrecover_words (crypto : Crypto) (hash v r s : Word) {gas : Nat} (h : 3
 
 open EvmLean.Interpreter
 
-/-- The calldata of a child message is the input window of the caller's memory. -/
 theorem childMsg_data (m : Machine) (caller to codeAddress : Address) (value : Word) (gas : Nat)
     (stv st : Bool) (inOff inSize outOff outSize : Word) :
     (childMsg m caller to codeAddress value gas stv st inOff inSize outOff outSize).data =
@@ -324,8 +282,6 @@ def ecrecoverOutput (crypto : Crypto) (hash v r s : Word) : ByteArray :=
   | some a => ofWord (Word.ofAddress a)
   | none => .empty
 
-/-- The caller's memory after `ECRECOVER` returned into a one-word output window: the signer's
-word stored there, or unchanged. -/
 theorem returnMemory_ecrecoverOutput (mem : Memory) (off : Nat) (crypto : Crypto)
     (hash v r s : Word) :
     returnMemory mem off 32 (ecrecoverOutput crypto hash v r s) =
@@ -342,12 +298,9 @@ theorem returnMemory_ecrecoverOutput (mem : Memory) (off : Nat) (crypto : Crypto
 
 variable {m : Machine} {gas inOff outOff : Word} {rest : List Word}
 
-/-- **`ecrecover(hash, v, r, s)` as solc calls it**: `STATICCALL(gas, 0x01, inOff, 128, outOff,
-32)` with the four words at `inOff`, under the standard precompiles of the machine's context
-(any `Crypto`). If the forwarded gas covers the precompile's 3000, the caller continues with
-`1` pushed, `3000` gas spent beyond the call's own charges, the signer's word written at
-`outOff` (or memory unchanged for an invalid signature, `returnMemory_ecrecoverOutput`) and
-kept as return data. -/
+/-- **`ecrecover(hash, v, r, s)` as solc calls it** (`STATICCALL(gas, 0x01, inOff, 128, outOff,
+32)`, standard precompiles, any `Crypto`): if the forwarded gas covers 3000, the caller continues
+with `1` pushed and the signer's word (`ecrecoverOutput`) written at `outOff`. -/
 theorem WP.staticcall_ecrecover {Q : Machine → Prop} {H : Machine → Outcome → Prop}
     {hash v r s : Word}
     (hcode : m.frame.code[m.frame.pc]? = some 0xfa)

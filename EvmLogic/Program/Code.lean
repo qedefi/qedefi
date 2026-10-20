@@ -5,28 +5,16 @@ import EvmLogic.Program.JumpDest
 /-!
 # Facts about concrete code, without unfolding it in the elaborator
 
-Symbolic execution needs, at every step, the byte at `pc` (`code[pc]? = some b`), and for
-`PUSHn` the pushed value. `evm_step` gets them by `rfl` in the elaborator, which is fine for a
-few dozen bytes but not for real contracts: a solc runtime of a few KB is a list literal that
-Lean elaborates into nested `have` chunks, and the elaborator's `whnf` on it exceeds the
-recursion limit.
-
-Here the bytes are read once at the meta level (`codeBytes?`, which unfolds the code constant,
-zeta-reduces the chunks and walks the list), and each fact is produced as `Eq.refl` with the
-fact as its type (`codeFact`, `pushFact`). The elaborator never evaluates the code; the kernel
-checks each fact by evaluation when the theorem is added (linear in the code size).
-
-`step_push_val` is the `PUSHn` lemma (any `n`) taking the pushed value as a hypothesis, so
-that a `pushFact` supplies it.
+Code bytes and `PUSHn` immediates of a real contract cannot be obtained by `rfl` in the
+elaborator (its `whnf` on a KB-sized list literal exceeds the recursion limit). Here the bytes
+are read once at the meta level (`codeBytes?`) and each fact (`codeFact`, `pushFact`) is
+produced as `Eq.refl` with the fact as its type, so only the kernel evaluates it.
 -/
 
 namespace EvmLogic.Program
-open EvmLean
+open EvmLean Lean Meta EvmLean.Interpreter
 
-open Lean Meta
-open EvmLean.Interpreter
-
-/-- `PUSHn` (`0 ≤ n ≤ 32`) with the pushed value given by a hypothesis. -/
+/-- `PUSHn` (`0 ≤ n ≤ 32`) with the pushed value given by a hypothesis (a `pushFact`). -/
 theorem step_push_val {m : Machine} {v : Word} (n : Nat) (hn : n < 33)
     (hcode : m.frame.code[m.frame.pc]? = some (0x5f + n).toUInt8)
     (hval : Bytes.toWord (readBytes m.frame.code (m.frame.pc + 1) n) = v)
@@ -40,7 +28,6 @@ theorem step_push_val {m : Machine} {v : Word} (n : Nat) (hn : n < 33)
   simp only at h
   rw [h, hval]
 
-/-- The byte denoted by a `UInt8` expression, if it is a literal. -/
 def uint8Lit? (e : Expr) : MetaM (Option Nat) := do
   let e := e.consumeMData
   if let some n := e.rawNatLit? then return some n
@@ -50,8 +37,7 @@ def uint8Lit? (e : Expr) : MetaM (Option Nat) := do
     let v ← whnfD (mkApp (mkConst ``UInt8.toNat) e)
     (evalNat v).run
 
-/-- The bytes of a code expression: a constant (unfolded), `ByteArray.mk` of `List.toArray`
-or `Array.mk` of a list literal, possibly chunked with `have`/`let`. -/
+/-- The bytes of a literal code expression (unfolding constants and `have`/`let` chunks). -/
 def codeBytes? (code : Expr) : MetaM (Option (Array UInt8)) := do
   let mut e ← instantiateMVars code
   for _ in [0:32] do
@@ -91,7 +77,6 @@ def codeFact (code : Expr) (pc : Nat) (b : UInt8) : MetaM Expr := do
   let rhs ← mkAppM ``Option.some #[← mkNumeral (mkConst ``UInt8) b.toNat]
   kernelFact (← mkEq lhs rhs) rhs
 
-/-- The big-endian value of `n` bytes of `bytes` from `off`, zero-padded. -/
 def immValue (bytes : Array UInt8) (off n : Nat) : Nat := Id.run do
   let mut v := 0
   for i in [0:n] do
@@ -105,9 +90,8 @@ def pushFact (code : Expr) (bytes : Array UInt8) (pc n : Nat) : MetaM Expr := do
   let rhs := mkApp2 (mkConst ``BitVec.ofNat) (mkNatLit 256) (mkNatLit (immValue bytes (pc + 1) n))
   kernelFact (← mkEq lhs rhs) rhs
 
-/-- Evaluate a closed word-valued term that is not yet a literal (e.g. `Word.shl 224 x` for a
-literal `x`, or the masks solc builds with `NOT`/`AND`) to `BitVec.ofNat 256 n`. The result is
-definitionally equal; the kernel re-checks it. Terms with free variables are left alone. -/
+/-- Evaluate a closed word-valued term that is not yet a literal (e.g. solc's `NOT`/`AND`
+masks) to `BitVec.ofNat 256 n`; the kernel re-checks it. -/
 dsimproc_decl reduceClosedWord (_) := fun e => do
   unless e.isApp do return .continue
   if e.hasFVar || e.hasMVar || e.hasLooseBVars then return .continue
@@ -126,8 +110,6 @@ dsimproc_decl reduceClosedWord (_) := fun e => do
   let some n := r | return .continue
   return .done (mkApp2 (mkConst ``BitVec.ofNat) (mkNatLit 256) (mkNatLit n))
 
-/-- The valid jump destinations of a byte array, computed at the meta level (the same scan as
-`validJumpDests`). -/
 def jumpDestsOf (bytes : Array UInt8) : Std.HashSet Nat := Id.run do
   let mut s : Std.HashSet Nat := {}
   let mut pc := 0
@@ -141,19 +123,16 @@ def jumpDestsOf (bytes : Array UInt8) : Std.HashSet Nat := Id.run do
       else pc := pc + 1
   return s
 
-/-- `jd` is the jump table of `code`. A wrapper around the equation so that `subst` leaves it
-alone (substituting `validJumpDests code` for a large `code` exceeds the recursion limit);
-`wp_intro` turns frame hypotheses `jd = validJumpDests code` into this form. -/
+/-- `jd = validJumpDests code`, wrapped so that `subst` leaves it alone (substituting
+`validJumpDests code` for a large `code` exceeds the recursion limit). -/
 def JumpTable (jd : Array Bool) (code : ByteArray) : Prop := jd = validJumpDests code
 
-/-- A jump-destination fact for a jump table known through `JumpTable`. -/
 theorem isValidJumpDest_of_jumpTable {jd : Array Bool} {code : ByteArray} {d : Nat}
     (hjd : JumpTable jd code) (h : jdCheck code d = true) : isValidJumpDest jd d = true := by
   rw [hjd]; exact isValidJumpDest_of_jdCheck h
 
-/-- Close a goal `isValidJumpDest jd d = true` where `jd` reduces to `validJumpDests code` for
-literal code and `d` to a numeral: the fact is checked at the meta level and proved by
-`isValidJumpDest_of_jdCheck` with a kernel-evaluated `jdCheck`. -/
+/-- Close `isValidJumpDest jd d = true` for literal code and numeral `d`, by a
+kernel-evaluated `jdCheck`. -/
 elab "jumpdest_disch" : tactic => Elab.Tactic.withMainContext do
   let g ← Elab.Tactic.getMainGoal
   let t ← instantiateMVars (← g.getType)

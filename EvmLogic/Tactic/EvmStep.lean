@@ -13,40 +13,17 @@ import EvmLogic.Step.Storage
 /-!
 # Symbolic execution: `evm_step`
 
-`evm_step` advances a goal containing `run (n + 1) m` by one instruction, where `m` is a
-machine whose code, pc and stack shape are known (concrete bytecode, symbolic values):
-
-1. it rewrites with `run_succ_of_running ?h` (or `run_succ_of_done ?h` for a halting
-   instruction), leaving the side goal `?h : step m = .running ?m'`;
-2. it solves `?h` by trying the step lemmas of `EvmLogic.Step*` one after another
-   (`evm_step_core`), discharging each lemma's hypotheses with `evm_disch`:
-   * `rfl` for the opcode byte (`code[pc]? = some b`), the stack shape
-     (`stack = ?x :: ?y :: ?rest`, which *assigns* the operands), immediates and
-     `parents = []`;
-   * `decide` for stack bounds and jump-destination validity;
-   * `evm_gas` for gas: unfolds the `Gas` constants, adds the bounds `sstoreCost_le` and
-     `sloadCost_le` for every symbolic cost in the goal, and calls `omega`;
-   * `assumption` (e.g. `isStatic = false` from a hypothesis);
-3. it normalizes the new machine with `dsimp only` plus `reduceByteArrayGetElem` (which
-   evaluates `code[i]` for literal bytecode, so `PUSH` immediates become numerals).
-
-`evm_steps` repeats `evm_step` as long as it succeeds. Branches (`JUMPI` on a symbolic
-condition) are not taken automatically: split on the condition first, then
-`step_jumpi_of_ne_zero` / `step_jumpi_of_eq_zero` apply.
-
-New step lemmas can be added to the search with
-`macro_rules | `(tactic| evm_step_core) => `(tactic| apply my_step_lemma; all_goals evm_disch)`.
+`evm_step` rewrites `run (n + 1) m` with `run_succ_of_running` / `run_succ_of_done`, proves the
+`step` equation with the first step lemma (`evm_step_core`, extensible by `macro_rules`) whose
+side conditions `evm_disch` closes, and normalizes the new machine with `evm_norm`. `evm_steps`
+repeats it; split a symbolic `JUMPI` condition by hand. See `docs/proving.md` §2.
 -/
 
 namespace EvmLogic.Tactic
-open EvmLean
-
-open Lean Elab Tactic EvmLogic.Tactic Meta Simp
-open EvmLean.Interpreter
+open EvmLean Lean Elab Tactic EvmLogic.Tactic Meta Simp EvmLean.Interpreter
 
 /-! ## Evaluating bytes of literal bytecode -/
 
-/-- The elements of a literal byte array `⟨#[b₀, b₁, …]⟩` (after unfolding definitions). -/
 def byteArrayLit? (c : Expr) : MetaM (Option (List Expr)) := do
   let c ← whnfD c
   let_expr ByteArray.mk arr := c | return none
@@ -127,14 +104,12 @@ macro_rules
 
 /-! ## Step lemma search -/
 
-/-- Apply a step lemma whose first hypothesis is the opcode byte (`code[pc]? = some b`):
-check that hypothesis by `rfl` first (cheap, and fails fast for the wrong opcode), then
-discharge the rest with `evm_disch`. -/
+/-- Apply a step lemma: check its opcode-byte hypothesis by `rfl` first (fails fast for the wrong
+opcode), then discharge the rest with `evm_disch`. -/
 macro "evm_apply " l:ident : tactic =>
   `(tactic| (apply $l; exact rfl; all_goals evm_disch))
 
-/-- Prove `step m = r` for the next instruction of `m` using a step lemma. Extensible with
-`macro_rules`. -/
+/-- Prove `step m = r` for the next instruction of `m`. Extensible with `macro_rules`. -/
 syntax "evm_step_core" : tactic
 
 macro_rules | `(tactic| evm_step_core) => `(tactic| first
@@ -210,8 +185,7 @@ macro_rules | `(tactic| evm_halt_core) => `(tactic| first
 
 /-! ## The driver -/
 
-/-- Normalize the machine after a step: evaluate bytes of literal code, numerals, gas
-constants, and costs of zero-length memory accesses. -/
+/-- Normalize the machine after a step (literal code bytes, numerals, gas constants). -/
 syntax "evm_norm" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 macro_rules
@@ -229,9 +203,8 @@ macro_rules
     Nat.max_def, ↓reduceIte, Memory.expand_storeWord_self, readBytes_bytes, $extra,*])
 
 
-/-- Advance `run (n + 1) m` in the goal by one instruction (see the module docstring).
-`evm_step [h₁, …]` adds simp lemmas to the normalization of the new machine (e.g. facts about
-calldata). -/
+/-- Advance `run (n + 1) m` by one instruction; `evm_step [h₁, …]` adds simp lemmas to the
+normalization (e.g. calldata facts). -/
 syntax "evm_step" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 macro_rules

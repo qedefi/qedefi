@@ -4,27 +4,15 @@ import EvmLogic.Program.Nested.Gas
 /-!
 # Gas monotonicity: frames with more gas
 
-The lockstep simulation relates a low-gas machine `m` to the high-gas machine
-`bump d x ps m` (`EvmLogic.Program.Nested.Gas`): the executing frame has `d` more gas, its message records
-gas `x`, and the suspended parents `ps` are arbitrary; **every other field is equal**. This file
-proves that the relation survives the transitions around a call:
-
-* `pushCall_bump`: a child started with more gas (`c ≤ c'`) is the bump of the low child,
-  with the high caller's frame as parent.
-* `resumeAfter_bump`: resuming a bumped caller after a bumped child of a message call (same
-  outcome) is a bump of the low resumption: the gas returned by the child only adds up.
-* `PreMono`, `preMono_standard`: **every standard precompile is gas-monotone**: if it succeeds
-  with gas `g`, it succeeds with any `g' ≥ g`, with the same output and `g' - g` more gas left
-  (each precompile charges a gas-independent cost, then computes a gas-independent result).
-* `launchCall_precompile_bump`: hence a precompile call that succeeds with the low gas runs
-  identically with the high gas.
-* `exec_gas_bump`: `GAS` from a bumped machine pushes the bumped gas (the only difference).
+The relation `bump d x ps m` (`EvmLogic.Program.Nested.Gas`: `d` more frame gas, message gas
+`x`, parents `ps`, all else equal) survives starting a child (`pushCall_bump`), resuming after it
+(`resumeAfter_bump`), a precompile call that succeeds with the low gas
+(`launchCall_precompile_bump`; every standard precompile is gas-monotone, `preMono_standard`),
+and `GAS` (`exec_gas_bump`).
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter EvmLogic.Program.Nested
+open EvmLean EvmLogic.Program EvmLean.Interpreter EvmLogic.Program.Nested
 
 /-- The frame with `d` more gas and message gas `x`. -/
 def bumpF (d x : Nat) (f : Frame) : Frame :=
@@ -39,10 +27,8 @@ theorem bump_eq (d x : Nat) (ps : List Frame) (m : Machine) :
 @[simp] theorem bump_parents (d x : Nat) (ps : List Frame) (m : Machine) :
     (bump d x ps m).parents = ps := rfl
 
-/-- Zero extra gas and the same message gas and parents: no change. -/
 theorem bump_zero (m : Machine) : bump 0 m.frame.msg.gas m.parents m = m := rfl
 
-/-- A bump of a bump. -/
 theorem bump_trans (d₁ x₁ : Nat) (ps₁ : List Frame) (d₂ x₂ : Nat) (ps₂ : List Frame)
     (m : Machine) : bump d₂ x₂ ps₂ (bump d₁ x₁ ps₁ m) = bump (d₁ + d₂) x₂ ps₂ m := by
   simp only [bump, Nat.add_assoc]
@@ -53,11 +39,9 @@ theorem bump_trans (d₁ x₁ : Nat) (ps₁ : List Frame) (d₂ x₂ : Nat) (ps�
 def _root_.EvmLean.Interpreter.CallRequest.withGas (req : CallRequest) (c : Nat) : CallRequest :=
   { req with msg := { req.msg with gas := c } }
 
-/-- The value transfer does not depend on the message gas. -/
 theorem transferValue_withGas (w : World) (msg : Message) (c : Nat) :
     transferValue w { msg with gas := c } = transferValue w msg := rfl
 
-/-- The precompile check does not depend on the message gas. -/
 theorem precompileOf_withGas (pre : PrecompileImpl) (msg : Message) (c : Nat) :
     precompileOf pre { msg with gas := c } = precompileOf pre msg := rfl
 
@@ -105,7 +89,6 @@ def PreMonoFn (run : ByteArray → Nat → Precompile.Result) : Prop :=
 def PreMono (pre : PrecompileImpl) : Prop := ∀ a, PreMonoFn (pre.run a)
 
 set_option maxHeartbeats 2000000 in
-/-- **Every standard precompile is gas-monotone.** -/
 theorem runKind_mono (c : Crypto) (fork : Fork) (k : Precompile.Kind) :
     PreMonoFn (Precompile.runKind c fork k) := by
   intro input g g' hle hs
@@ -128,11 +111,9 @@ theorem preMono_standard (ctx : Context) : PreMono (PrecompileImpl.standard ctx)
     rw [hk] at hs
     simp [Precompile.fail] at hs
 
-/-- `ECRECOVER` in particular. -/
 theorem ecrecover_mono (c : Crypto) : PreMonoFn (Precompile.ecrecover c) :=
   runKind_mono c .cancun .ecrecover
 
-/-- A precompile call from `m` (precompile `a`). -/
 theorem launchCall_precompile {m : Machine} {req : CallRequest} {a : Address}
     (h : precompileOf m.precompiles req.msg = some a) :
     launchCall m req =
@@ -161,7 +142,6 @@ theorem launchCall_precompile_bump {m : Machine} {req : CallRequest} {a : Addres
     Machine.mk.injEq, Frame.mk.injEq, true_and, and_true, hg]
   omega
 
-/-- A failed precompile call: the caller resumes with `0` pushed and the pc advanced. -/
 theorem launchCall_precompile_fail {m : Machine} {req : CallRequest} {a : Address}
     (h : precompileOf m.precompiles req.msg = some a)
     (hs : (m.precompiles.run a req.msg.data req.msg.gas).success = false) :
@@ -180,7 +160,6 @@ theorem launchCall_precompile_fail {m : Machine} {req : CallRequest} {a : Addres
 def withTop (b : Word) (m : Machine) : Machine :=
   { m with frame := { m.frame with stack := b :: m.frame.stack.tail } }
 
-/-- `GAS` from a bumped machine, as a weakest precondition. -/
 theorem exec_gas_bump_wp (m : Machine) (d x : Nat) (ps : List Frame) :
     Wp (exec .gas) (fun a m' => a = .next ∧
       m'.frame.stack = BitVec.ofNat 256 (m.frame.gasLeft - Gas.base) :: m.frame.stack ∧

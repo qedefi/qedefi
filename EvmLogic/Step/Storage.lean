@@ -4,13 +4,9 @@ import EvmLogic.State
 /-!
 # Step lemmas: storage
 
-`SLOAD` and `SSTORE` (EIP-2929 warm/cold accounting, EIP-2200/3529 costs and refunds), and
-`TLOAD`/`TSTORE` (EIP-1153).
-
-The accessed key is always added to the warm set (`addStorageKey`); adding a key that is
-already warm changes nothing (`addStorageKey_of_warm`), so the lemmas need no case split
-on warmness. The gas charged is stated exactly; `Gas.sstoreCostRefund` is at most
-`2100 + 20000` (`sstoreCost_le`).
+`SLOAD` and `SSTORE` (EIP-2929 warm/cold accounting, EIP-2200/3529 costs and refunds), with
+exact gas. The accessed key is always added to the warm set, and re-adding a warm key changes
+nothing (`addStorageKey_of_warm`), so the lemmas need no case split on warmness.
 -/
 
 namespace EvmLean.Interpreter
@@ -25,26 +21,21 @@ def Substate.warmKey (sub : Substate) (a : Address) (k : Word) : Substate :=
 def Substate.addRefund (sub : Substate) (r : Int) : Substate :=
   { sub with refundCounter := sub.refundCounter + r }
 
-/-- Marking a key warm twice is marking it once. -/
 @[simp] theorem Substate.warmKey_warmKey (sub : Substate) (a : Address) (k : Word) :
     (sub.warmKey a k).warmKey a k = sub.warmKey a k := by
   simp only [Substate.warmKey]
   rw [addStorageKey_of_warm (storageKeyWarm_addStorageKey_self _ _ _)]
 
-/-- The warm keys after `warmKey`. -/
 @[simp] theorem Substate.accessedStorageKeys_warmKey (sub : Substate) (a : Address) (k : Word) :
     (sub.warmKey a k).accessedStorageKeys = addStorageKey sub.accessedStorageKeys a k := rfl
 
-/-- The warm keys after `addRefund`. -/
 @[simp] theorem Substate.accessedStorageKeys_addRefund (sub : Substate) (r : Int) :
     (sub.addRefund r).accessedStorageKeys = sub.accessedStorageKeys := rfl
 
-/-- The original value of a slot of an account not created in this transaction. -/
 @[simp] theorem getStorageOriginal_empty (o : World) (a : Address) (k : Word) :
     getStorageOriginal o ∅ a k = o.sload a k := by
   simp [getStorageOriginal]
 
-/-- `accessStorageKey` marks the key warm and reports whether it already was. -/
 theorem run_accessStorageKey (k : Word) :
     (accessStorageKey k).run m = pure
       (storageKeyWarm m.frame.sub.accessedStorageKeys m.frame.msg.currentTarget k,
@@ -61,11 +52,9 @@ theorem run_accessStorageKey (k : Word) :
 /-- The EIP-2929 cost of `SLOAD`. -/
 def sloadCost (warm : Bool) : Nat := if warm then Gas.warmAccess else Gas.coldStorageAccess
 
-/-- `SLOAD` costs at most 2100. -/
 theorem sloadCost_le (warm : Bool) : sloadCost warm ≤ 2100 := by
   cases warm <;> decide
 
-/-- `SLOAD` of slot `x` of the executing account. -/
 theorem step_sload (hcode : m.frame.code[m.frame.pc]? = some 0x54)
     (hstk : m.frame.stack = x :: rest) (hlen : rest.length < 1024)
     (hgas : sloadCost (storageKeyWarm m.frame.sub.accessedStorageKeys
@@ -93,19 +82,16 @@ def sstoreCostRefund (m : Machine) (x y : Word) : Nat × Int :=
     (m.world.sload self x).toNat y.toNat
     (storageKeyWarm m.frame.sub.accessedStorageKeys self x)
 
-/-- `SSTORE` costs at most `2100 + 20000`. -/
 theorem _root_.EvmLean.Gas.sstoreCostRefund_fst_le (o c n : Nat) (warm : Bool) :
     (Gas.sstoreCostRefund o c n warm).1 ≤ 22100 := by
   simp only [Gas.sstoreCostRefund]
   split <;> split <;> (try split) <;> simp [Gas.coldStorageAccess, Gas.storageSet,
     Gas.coldStorageWrite, Gas.warmAccess]
 
-/-- `SSTORE` costs at most `2100 + 20000`. -/
 theorem sstoreCost_le (m : Machine) (x y : Word) : (sstoreCostRefund m x y).1 ≤ 22100 :=
   Gas.sstoreCostRefund_fst_le _ _ _ _
 
-/-- `SSTORE` of `y` to slot `x` of the executing account (non-static frame, more than the
-2300-gas stipend left, enough gas for the cost). -/
+/-- `SSTORE` needs a non-static frame and more than the 2300-gas stipend left (EIP-2200). -/
 theorem step_sstore (hcode : m.frame.code[m.frame.pc]? = some 0x55)
     (hstk : m.frame.stack = x :: y :: rest) (hstatic : m.frame.msg.isStatic = false)
     (hstipend : Gas.callStipend < m.frame.gasLeft)

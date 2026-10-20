@@ -5,36 +5,17 @@ import EvmLogic.Tactic.Patched
 /-!
 # Gas monotonicity: failure paths, for any gas, memory and stack below
 
-`FailureReverts code p` (`GasMono.Interface`) asks that *every* machine at `pc = p` with `0` on
-top of the stack (a failed call's success flag) ends its frame without success: for symbolic
-gas, memory, return data, world, jump table and stack below the top. Splitting every step of
-the general calculus on "enough gas or not" is slow, because the out-of-gas branch is computed
-from scratch each time.
-
-Here the out-of-gas branches are proved **once per instruction shape**. The judgement is
-
-`Fails code pc s`: every machine running `code` at `pc` with stack exactly `s` ends its frame
-without success (`NoSuccess`).
-
-It mentions neither gas nor memory: each rule (`Fails.unOp`, `Fails.mstore`, …) reduces `Fails`
-at `pc` to `Fails` at the next pc with the next stack, and absorbs inside its proof every way
-the instruction can halt exceptionally (out of gas, stack overflow, invalid jump destination,
-return data out of bounds): those are not successes either. Values that depend on the parts of
-the machine we do not track (`MLOAD`, `RETURNDATASIZE`, …) become universally quantified words.
-`REVERT` and `INVALID` close the goal (`Fails.revert`, `Fails.invalid`).
-
-`fails_step` applies the rule for the opcode at `pc` (reading the byte, and `PUSHn` immediates,
-with the kernel-checked facts of `EvmLogic.Tactic.Patched`, so the code may carry
-symbolic immutables), and `fails_steps` repeats it. A `FailureReverts` proof is then
-`failureReverts_of_fails` followed by `fails_steps`.
+`Fails code pc s`: every machine running `code` at `pc` with stack `s` ends its frame without
+success. Each rule (`Fails.unOp`, `Fails.mstore`, …) reduces it to the next pc and absorbs every
+exceptional halt of the instruction, so out-of-gas branches are proved once per instruction
+shape, not once per step. A `FailureReverts` proof is `failureReverts_of_fails` followed by
+`fails_steps`, which drives the rules over (possibly patched) code.
 -/
 
 section
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
-
-open EvmLean.Interpreter
+open EvmLean EvmLogic.Program EvmLean.Interpreter
 
 /-! ## Not succeeding -/
 
@@ -42,26 +23,20 @@ open EvmLean.Interpreter
 def NoSuccess (m : Machine) : Prop := Halts m fun _ o => ∀ out, o ≠ .success out
 
 namespace NoSuccess
-open EvmLean EvmLogic.Program
 
 variable {m m' : Machine}
 
-/-- An exceptional halt is not a success. -/
 theorem of_halt {e : ExceptionalHalt} (h : step m = finishFrame m (.halt e)) : NoSuccess m :=
   Halts.of_step h (.refl m) (fun _ h => Outcome.noConfusion h)
 
-/-- An instruction that halts exceptionally. -/
 theorem of_error {b : UInt8} {e : ExceptionalHalt} (hcode : m.frame.code[m.frame.pc]? = some b)
     (h : (exec (Opcode.decode m.ctx.fork b)).run m = .error e) : NoSuccess m :=
   of_halt (step_of_exec_error hcode h)
 
-/-- A step in the frame. -/
 theorem of_running (h : step m = .running m') (hs : SameFrame m m') (k : NoSuccess m') :
     NoSuccess m :=
   Halts.of_steps (Steps.of_step h hs) k
 
-/-- An instruction that either halts exceptionally or continues (`.next`) to a machine in the
-same frame that does not succeed. -/
 theorem of_exec_next {b : UInt8} (hcode : m.frame.code[m.frame.pc]? = some b)
     (h : ∀ r, (exec (Opcode.decode m.ctx.fork b)).run m = .ok r →
       r.1 = .next ∧ SameFrame m r.2 ∧ NoSuccess r.2) : NoSuccess m := by
@@ -96,16 +71,13 @@ theorem failureReverts_of_fails {code : ByteArray} {p : Nat}
     exact h rest m hc hpc hs
 
 namespace Fails
-open EvmLean EvmLogic.Program
 
 variable {code : ByteArray} {pc : Nat} {b : UInt8} {x y z : Word} {rest s : List Word}
 
-/-- The byte at the machine's pc. -/
 private theorem hcode_of {m : Machine} (hc : m.frame.code = code) (hpc : m.frame.pc = pc)
     (hb : code[pc]? = some b) : m.frame.code[m.frame.pc]? = some b := by
   rw [hc, hpc]; exact hb
 
-/-- Instructions of shape `unOp cost f`. -/
 theorem unOp {cost : Nat} {f : Word → Word}
     (hop : ∀ fk, exec (Opcode.decode fk b) = Interpreter.unOp cost f) (hb : code[pc]? = some b)
     (h : Fails code (pc + 1) (f x :: rest)) : Fails code pc (x :: rest) := by
@@ -131,7 +103,6 @@ theorem unOp {cost : Nat} {f : Word → Word}
       ite_true]
     rfl
 
-/-- Instructions of shape `binOp cost f`. -/
 theorem binOp {cost : Nat} {f : Word → Word → Word}
     (hop : ∀ fk, exec (Opcode.decode fk b) = Interpreter.binOp cost f) (hb : code[pc]? = some b)
     (h : Fails code (pc + 1) (f x y :: rest)) : Fails code pc (x :: y :: rest) := by
@@ -157,7 +128,6 @@ theorem binOp {cost : Nat} {f : Word → Word → Word}
       ite_true]
     rfl
 
-/-- Instructions of shape `pushValue cost v`: the pushed value is arbitrary. -/
 theorem pushValue {cost : Nat} {v : Machine → Word}
     (hop : ∀ fk, exec (Opcode.decode fk b) = Interpreter.pushValue cost v)
     (hb : code[pc]? = some b) (h : ∀ w, Fails code (pc + 1) (w :: s)) : Fails code pc s := by
@@ -184,7 +154,6 @@ theorem pushValue {cost : Nat} {v : Machine → Word}
       ite_true]
     rfl
 
-/-- `PUSHn` (`n ≤ 32`) of the value `v` read from the code. -/
 theorem push {v : Word} (n : Nat) (hn : n < 33) (hb : code[pc]? = some (0x5f + n).toUInt8)
     (hval : Bytes.toWord (readBytes code (pc + 1) n) = v)
     (h : Fails code (pc + (1 + n)) (v :: s)) : Fails code pc s := by
@@ -212,7 +181,6 @@ theorem push {v : Word} (n : Nat) (hn : n < 33) (hb : code[pc]? = some (0x5f + n
       StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `DUP(n+1)`. -/
 theorem dup (n : Fin 16) (hb : code[pc]? = some (0x80 + n.val).toUInt8)
     (hget : s[n.val]? = some x) (h : Fails code (pc + 1) (x :: s)) : Fails code pc s := by
   intro m hc hpc hs
@@ -237,7 +205,6 @@ theorem dup (n : Fin 16) (hb : code[pc]? = some (0x80 + n.val).toUInt8)
       StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `SWAP(n+1)`. -/
 theorem swap (n : Fin 16) (hb : code[pc]? = some (0x90 + n.val).toUInt8)
     (hget : (y :: rest)[n.val + 1]? = some x)
     (h : Fails code (pc + 1) (((y :: rest).set 0 x).set (n.val + 1) y)) :
@@ -275,7 +242,6 @@ theorem swap_underflow (n : Fin 16) (hb : code[pc]? = some (0x90 + n.val).toUInt
       StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `POP`. -/
 theorem pop (hb : code[pc]? = some 0x50) (h : Fails code (pc + 1) rest) :
     Fails code pc (x :: rest) := by
   intro m hc hpc hs
@@ -289,7 +255,6 @@ theorem pop (hb : code[pc]? = some 0x50) (h : Fails code (pc + 1) rest) :
       hs, hg', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `JUMPDEST`. -/
 theorem jumpdest (hb : code[pc]? = some 0x5b) (h : Fails code (pc + 1) s) : Fails code pc s := by
   intro m hc hpc hs
   have hcode := hcode_of hc hpc hb
@@ -326,7 +291,6 @@ theorem jump (hb : code[pc]? = some 0x56) (h : Fails code x.toNat rest) :
       hg', hs, StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `JUMPI` with a zero condition: fall through. -/
 theorem jumpi_zero (hb : code[pc]? = some 0x57) (hy : y = 0) (h : Fails code (pc + 1) rest) :
     Fails code pc (x :: y :: rest) := by
   subst hy
@@ -342,7 +306,6 @@ theorem jumpi_zero (hb : code[pc]? = some 0x57) (hy : y = 0) (h : Fails code (pc
       hg', hs, StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `JUMPI` with a non-zero condition: jump to `x` (or halt on an invalid destination). -/
 theorem jumpi_ne_zero (hb : code[pc]? = some 0x57) (hy : y ≠ 0) (h : Fails code x.toNat rest) :
     Fails code pc (x :: y :: rest) := by
   intro m hc hpc hs
@@ -367,7 +330,6 @@ theorem jumpi_ne_zero (hb : code[pc]? = some 0x57) (hy : y ≠ 0) (h : Fails cod
       hg', hs, StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
-/-- `MLOAD`: the loaded word is arbitrary. -/
 theorem mload (hb : code[pc]? = some 0x51) (h : ∀ w, Fails code (pc + 1) (w :: rest)) :
     Fails code pc (x :: rest) := by
   intro m hc hpc hs
@@ -396,7 +358,6 @@ theorem mload (hb : code[pc]? = some 0x51) (h : ∀ w, Fails code (pc + 1) (w ::
       pure_bind, ite_true, memoryExpansion, expandMemory, List.foldl]
     rfl
 
-/-- `MSTORE`. -/
 theorem mstore (hb : code[pc]? = some 0x52) (h : Fails code (pc + 1) rest) :
     Fails code pc (x :: y :: rest) := by
   intro m hc hpc hs
@@ -412,7 +373,6 @@ theorem mstore (hb : code[pc]? = some 0x52) (h : Fails code (pc + 1) rest) :
       ite_true, memoryExpansion, expandMemory, List.foldl]
     rfl
 
-/-- `RETURNDATACOPY`. -/
 theorem returndatacopy (hb : code[pc]? = some 0x3e) (h : Fails code (pc + 1) rest) :
     Fails code pc (x :: y :: z :: rest) := by
   intro m hc hpc hs
@@ -459,7 +419,6 @@ theorem revert (hb : code[pc]? = some 0xfd) : Fails code pc (x :: y :: rest) := 
       ite_true, memoryExpansion, expandMemory, readMemory, List.foldl]
     rfl
 
-/-- `INVALID`. -/
 theorem invalid (hb : code[pc]? = some 0xfe) : Fails code pc s := by
   intro m hc hpc _
   exact .of_halt (step_invalid (hcode_of hc hpc hb))
@@ -475,79 +434,50 @@ section
 /-!
 ## `fails_step`: driving the `Fails` rules over compiled code
 
-A goal `Fails code pc s` (`GasMono.CodeFails`) with literal `pc`, `code` a literal or patched
-(symbolic immutables) code constant, and `s` a list whose relevant prefix is explicit, is
-advanced by `fails_step`:
-
-* the opcode byte at `pc` is read at the meta level, and the fact `code[pc]? = some b` is a
-  kernel-checked `pcode_fact` (`EvmLogic.Tactic.Patched`);
-* the `Fails` rule for that opcode is applied (`hop_*` below identify the instruction shapes
-  `unOp`, `binOp`, `pushValue`); `PUSHn` immediates come from `ppushFact?`, `JUMPI` conditions
-  are decided by `fails_cond`, values the rules quantify over are introduced;
-* the new goal is normalized (pc arithmetic, `toNat` of pushed jump targets, `List.set`).
-
-`fails_steps` repeats `fails_step` until the goal is closed (`REVERT`, `INVALID`) or no rule
-applies.
+The opcode byte at `pc` is read at the meta level and justified by a kernel-checked `pcode_fact`
+(`EvmLogic.Tactic.Patched`), so the code may carry symbolic immutables; `PUSHn` immediates come
+from `ppushFact?`, and `JUMPI` conditions are decided by `fails_cond`.
 -/
 
 namespace EvmLogic.GasMono
-open EvmLean EvmLogic.Program
+open EvmLean EvmLogic.Program EvmLean.Interpreter
 
-open EvmLean.Interpreter
+/-! ## Instruction shapes: `unOp`, `binOp`, `pushValue` -/
 
-/-! ## Instruction shapes -/
-
-/-- `ADD` is a `binOp`. -/
 theorem hop_add : ∀ fk, exec (Opcode.decode fk 0x01) = binOp Gas.veryLow (· + ·) := by
   intro fk; cases fk <;> rfl
-/-- `MUL` is a `binOp`. -/
 theorem hop_mul : ∀ fk, exec (Opcode.decode fk 0x02) = binOp Gas.low (· * ·) := by
   intro fk; cases fk <;> rfl
-/-- `SUB` is a `binOp`. -/
 theorem hop_sub : ∀ fk, exec (Opcode.decode fk 0x03) = binOp Gas.veryLow (· - ·) := by
   intro fk; cases fk <;> rfl
-/-- `DIV` is a `binOp`. -/
 theorem hop_div : ∀ fk, exec (Opcode.decode fk 0x04) = binOp Gas.low Word.div := by
   intro fk; cases fk <;> rfl
-/-- `LT` is a `binOp`. -/
 theorem hop_lt : ∀ fk, exec (Opcode.decode fk 0x10) = binOp Gas.veryLow Word.lt := by
   intro fk; cases fk <;> rfl
-/-- `GT` is a `binOp`. -/
 theorem hop_gt : ∀ fk, exec (Opcode.decode fk 0x11) = binOp Gas.veryLow Word.gt := by
   intro fk; cases fk <;> rfl
-/-- `EQ` is a `binOp`. -/
 theorem hop_eq : ∀ fk, exec (Opcode.decode fk 0x14) = binOp Gas.veryLow Word.eq := by
   intro fk; cases fk <;> rfl
-/-- `AND` is a `binOp`. -/
 theorem hop_and : ∀ fk, exec (Opcode.decode fk 0x16) = binOp Gas.veryLow (· &&& ·) := by
   intro fk; cases fk <;> rfl
-/-- `OR` is a `binOp`. -/
 theorem hop_or : ∀ fk, exec (Opcode.decode fk 0x17) = binOp Gas.veryLow (· ||| ·) := by
   intro fk; cases fk <;> rfl
-/-- `XOR` is a `binOp`. -/
 theorem hop_xor : ∀ fk, exec (Opcode.decode fk 0x18) = binOp Gas.veryLow (· ^^^ ·) := by
   intro fk; cases fk <;> rfl
-/-- `SHL` is a `binOp`. -/
 theorem hop_shl : ∀ fk, exec (Opcode.decode fk 0x1b) = binOp Gas.veryLow Word.shl := by
   intro fk; cases fk <;> rfl
-/-- `SHR` is a `binOp`. -/
 theorem hop_shr : ∀ fk, exec (Opcode.decode fk 0x1c) = binOp Gas.veryLow Word.shr := by
   intro fk; cases fk <;> rfl
-/-- `ISZERO` is a `unOp`. -/
 theorem hop_iszero : ∀ fk, exec (Opcode.decode fk 0x15) = unOp Gas.veryLow Word.iszero := by
   intro fk; cases fk <;> rfl
-/-- `NOT` is a `unOp`. -/
 theorem hop_not : ∀ fk, exec (Opcode.decode fk 0x19) = unOp Gas.veryLow (~~~ ·) := by
   intro fk; cases fk <;> rfl
-/-- `RETURNDATASIZE` is a `pushValue`. -/
 theorem hop_returndatasize : ∀ fk, exec (Opcode.decode fk 0x3d) =
     pushValue Gas.base fun m => ofNat m.frame.returnData.size := by
   intro fk; cases fk <;> rfl
-/-- `CALLER` is a `pushValue`. -/
 theorem hop_caller : ∀ fk, exec (Opcode.decode fk 0x33) =
     pushValue Gas.base fun m => Word.ofAddress m.frame.msg.caller := by
   intro fk; cases fk <;> rfl
-/-- `ADDRESS` is a `pushValue`. -/
 theorem hop_address : ∀ fk, exec (Opcode.decode fk 0x30) =
     pushValue Gas.base fun m => Word.ofAddress m.frame.msg.currentTarget := by
   intro fk; cases fk <;> rfl
@@ -573,7 +503,6 @@ def shapeRule (b : Nat) : Option (Name × Name) :=
 /-- `x AND 0 = 0` (a failed call's flag masks any other condition). -/
 theorem word_and_zero (x : Word) : x &&& 0 = 0 := BitVec.and_zero
 
-/-- `0 AND x = 0`. -/
 theorem word_zero_and (x : Word) : 0 &&& x = 0 := BitVec.zero_and
 
 /-- Decide a `JUMPI` condition `y = 0` or `y ≠ 0`, simplifying `x &&& 0` first. -/
@@ -643,7 +572,7 @@ def failsStep : TacticM Bool := withMainContext do
       return true
   return false
 
-/-- Advance a goal `Fails code pc s` by one instruction (see the module docstring). -/
+/-- Advance a goal `Fails code pc s` by one instruction. -/
 elab "fails_step" : tactic => do
   unless ← failsStep do throwError "fails_step: no rule applies to the next instruction"
 

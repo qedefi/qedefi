@@ -3,13 +3,9 @@ import EvmLogic.Step.Basic
 /-!
 # Step lemmas: control flow and halting
 
-`JUMP`, `JUMPI` (taken and not taken), `JUMPDEST`, `STOP`, `RETURN`, `REVERT`, `INVALID`,
-and how a finished top-level call frame becomes the `MessageResult` (`finishFrame_*`,
-`topLevelResult_*`).
-
-Halting instructions are stated as `step m = finishFrame m' outcome`; for a top-level call
-frame (`m.parents = []`, `m.frame.kind = .call _ _`) the `finishFrame_*_top` lemmas turn that
-into `.done (topLevelResult …)`, whose fields the `topLevelResult_*` lemmas read off.
+Jumps, `STOP`, `RETURN`, `REVERT`, `INVALID`. Halting instructions are stated as
+`step m = finishFrame m' outcome`; for a top-level call frame the `*_top` lemmas turn that into
+`.done (topLevelResult …)`, whose fields the `topLevelResult_*` simp lemmas read off.
 -/
 
 namespace EvmLean.Interpreter
@@ -18,7 +14,6 @@ variable {m : Machine} {x y : Word} {rest : List Word}
 
 /-! ## Jumps -/
 
-/-- `JUMPDEST`. -/
 theorem step_jumpdest (hcode : m.frame.code[m.frame.pc]? = some 0x5b)
     (hgas : Gas.jumpdest ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -30,7 +25,6 @@ theorem step_jumpdest (hcode : m.frame.code[m.frame.pc]? = some 0x5b)
     StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_false]
   rfl
 
-/-- `JUMP` to a valid destination `x`. -/
 theorem step_jump (hcode : m.frame.code[m.frame.pc]? = some 0x56)
     (hstk : m.frame.stack = x :: rest) (hdest : isValidJumpDest m.frame.jumpDests x.toNat = true)
     (hgas : Gas.mid ≤ m.frame.gasLeft) :
@@ -44,7 +38,6 @@ theorem step_jump (hcode : m.frame.code[m.frame.pc]? = some 0x56)
     Bool.not_true, Bool.false_eq_true]
   rfl
 
-/-- `JUMPI` with a non-zero condition `y`: jump to the valid destination `x`. -/
 theorem step_jumpi_of_ne_zero (hcode : m.frame.code[m.frame.pc]? = some 0x57)
     (hstk : m.frame.stack = x :: y :: rest) (hcond : y ≠ 0)
     (hdest : isValidJumpDest m.frame.jumpDests x.toNat = true)
@@ -59,7 +52,6 @@ theorem step_jumpi_of_ne_zero (hcode : m.frame.code[m.frame.pc]? = some 0x57)
     Bool.not_true, Bool.false_eq_true]
   rfl
 
-/-- `JUMPI` with a zero condition: fall through. -/
 theorem step_jumpi_of_eq_zero (hcode : m.frame.code[m.frame.pc]? = some 0x57)
     (hstk : m.frame.stack = x :: 0 :: rest) (hgas : Gas.high ≤ m.frame.gasLeft) :
     step m = .running { m with frame := { m.frame with
@@ -86,14 +78,12 @@ theorem step_jumpi (hcode : m.frame.code[m.frame.pc]? = some 0x57)
 
 /-! ## Halting -/
 
-/-- `STOP`. -/
 theorem step_stop (hcode : m.frame.code[m.frame.pc]? = some 0x00) :
     step m = finishFrame m (.success .empty) := by
   rw [step_eq_of_code hcode, show Opcode.decode m.ctx.fork 0x00 = .stop by
     cases m.ctx.fork <;> rfl]
   rfl
 
-/-- `INVALID` (`0xfe`) halts exceptionally. -/
 theorem step_invalid (hcode : m.frame.code[m.frame.pc]? = some 0xfe) :
     step m = finishFrame m (.halt .invalidOpcode) := by
   rw [step_eq_of_code hcode, show Opcode.decode m.ctx.fork 0xfe = .invalid by
@@ -114,7 +104,6 @@ def outputMachine (m : Machine) (off size : Word) (rest : List Word) : Machine :
 def outputData (m : Machine) (off size : Word) : ByteArray :=
   readBytes (m.frame.memory.expand off.toNat size.toNat).bytes off.toNat size.toNat
 
-/-- `readOutput` for `RETURN` and `REVERT`. -/
 theorem run_readOutput (hstk : m.frame.stack = x :: y :: rest)
     (hgas : outputCost m x y ≤ m.frame.gasLeft) :
     readOutput.run m = .ok (outputData m x y, outputMachine m x y rest) := by
@@ -125,7 +114,6 @@ theorem run_readOutput (hstk : m.frame.stack = x :: y :: rest)
     memoryExpansion, expandMemory, readMemory, List.foldl]
   rfl
 
-/-- `RETURN` with output `[x, x + y)` of memory. -/
 theorem step_return (hcode : m.frame.code[m.frame.pc]? = some 0xf3)
     (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft) :
     step m = finishFrame (outputMachine m x y rest) (.success (outputData m x y)) := by
@@ -134,7 +122,6 @@ theorem step_return (hcode : m.frame.code[m.frame.pc]? = some 0xf3)
   simp only [exec, StateT.run_bind, run_readOutput hstk hgas]
   rfl
 
-/-- `REVERT` with output `[x, x + y)` of memory. -/
 theorem step_revert (hcode : m.frame.code[m.frame.pc]? = some 0xfd)
     (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft) :
     step m = finishFrame (outputMachine m x y rest) (.revert (outputData m x y)) := by
@@ -143,24 +130,20 @@ theorem step_revert (hcode : m.frame.code[m.frame.pc]? = some 0xfd)
   simp only [exec, StateT.run_bind, run_readOutput hstk hgas]
   rfl
 
-/-- Reading zero bytes costs nothing. -/
 theorem outputCost_zero (m : Machine) (off : Word) : outputCost m off 0 = 0 := by
   simp [outputCost, Gas.extendMemory]
 
-/-- Reading zero bytes leaves memory alone. -/
 theorem outputMachine_zero (m : Machine) (off : Word) (rest : List Word) :
     outputMachine m off 0 rest = { m with frame := { m.frame with stack := rest } } := by
   simp only [outputMachine, outputCost_zero, Nat.sub_zero]
   rw [show (0 : Word).toNat = 0 from rfl, Memory.expand_zero]
 
-/-- Reading zero bytes gives empty output. -/
 theorem outputData_zero (m : Machine) (off : Word) : outputData m off 0 = .empty := by
   simp only [outputData]
   rw [show (0 : Word).toNat = 0 from rfl, readBytes_zero]
 
 /-! ## Finishing the top-level frame -/
 
-/-- The result of a successful top-level call frame. -/
 theorem finishFrame_success_top {out : ByteArray} {o s : Nat} (hp : m.parents = [])
     (hk : m.frame.kind = .call o s) :
     finishFrame m (.success out) = .done (topLevelResult m.frame.msg.target m.world m.transient
@@ -168,7 +151,6 @@ theorem finishFrame_success_top {out : ByteArray} {o s : Nat} (hp : m.parents = 
         sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
   simp only [finishFrame, hk, hp]
 
-/-- The result of a reverted top-level frame: the world is rolled back to the snapshot. -/
 theorem finishFrame_revert_top {out : ByteArray} (hp : m.parents = []) :
     finishFrame m (.revert out) = .done (topLevelResult m.frame.msg.target m.frame.snapshot.1
       m.frame.snapshot.2
@@ -176,7 +158,6 @@ theorem finishFrame_revert_top {out : ByteArray} (hp : m.parents = []) :
         sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
   simp only [finishFrame, hp]
 
-/-- The result of an exceptionally halted top-level frame: no gas left, world rolled back. -/
 theorem finishFrame_halt_top {e : ExceptionalHalt} (hp : m.parents = []) :
     finishFrame m (.halt e) = .done (topLevelResult m.frame.msg.target m.frame.snapshot.1
       m.frame.snapshot.2
@@ -184,7 +165,6 @@ theorem finishFrame_halt_top {e : ExceptionalHalt} (hp : m.parents = []) :
         sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
   simp only [finishFrame, hp]
 
-/-- `STOP` in a top-level call frame. -/
 theorem step_stop_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0x00)
     (hp : m.parents = []) (hk : m.frame.kind = .call o s) :
     step m = .done (topLevelResult m.frame.msg.target m.world m.transient
@@ -192,7 +172,6 @@ theorem step_stop_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0x00
         sub := m.frame.sub, target := m.frame.msg.currentTarget, kind := m.frame.kind }) := by
   rw [step_stop hcode, finishFrame_success_top hp hk]
 
-/-- `RETURN` in a top-level call frame. -/
 theorem step_return_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0xf3)
     (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft)
     (hp : m.parents = []) (hk : m.frame.kind = .call o s) :
@@ -203,7 +182,6 @@ theorem step_return_top {o s : Nat} (hcode : m.frame.code[m.frame.pc]? = some 0x
   rw [step_return hcode hstk hgas, finishFrame_success_top (m := outputMachine m x y rest) hp hk]
   rfl
 
-/-- `REVERT` in a top-level frame: the world and transient storage are rolled back. -/
 theorem step_revert_top (hcode : m.frame.code[m.frame.pc]? = some 0xfd)
     (hstk : m.frame.stack = x :: y :: rest) (hgas : outputCost m x y ≤ m.frame.gasLeft)
     (hp : m.parents = []) :
@@ -214,34 +192,28 @@ theorem step_revert_top (hcode : m.frame.code[m.frame.pc]? = some 0xfd)
   rw [step_revert hcode hstk hgas, finishFrame_revert_top (m := outputMachine m x y rest) hp]
   rfl
 
-/-- The final world is the one passed to `topLevelResult`. -/
 @[simp] theorem topLevelResult_world (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).world = w := by
   unfold topLevelResult; split <;> rfl
 
-/-- The top-level result succeeds iff the frame did. -/
 @[simp] theorem topLevelResult_success (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).success = r.success := by
   unfold topLevelResult; split <;> simp_all [MessageResult.success, ChildResult.success]
 
-/-- The top-level result reverted iff the frame did. -/
 @[simp] theorem topLevelResult_reverted (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).reverted = r.reverted := by
   unfold topLevelResult; split
   · simp_all [ChildResult.success]
   · rfl
 
-/-- The top-level result's gas left is the frame's. -/
 @[simp] theorem topLevelResult_gasLeft (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).gasLeft = r.gasLeft := by
   unfold topLevelResult; split <;> rfl
 
-/-- The top-level result's output is the frame's. -/
 @[simp] theorem topLevelResult_output (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).output = r.output := by
   unfold topLevelResult; split <;> rfl
 
-/-- The top-level result's error is the frame's. -/
 @[simp] theorem topLevelResult_error (t : Option Address) (w : World) (tr : TransientStorage)
     (r : ChildResult) : (topLevelResult t w tr r).error = r.error := by
   unfold topLevelResult; split
