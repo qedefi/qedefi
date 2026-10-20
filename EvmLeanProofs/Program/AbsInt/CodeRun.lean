@@ -191,6 +191,43 @@ theorem reaches_allWorlds (hP : CodeProp P) {ctx : Context} {w : World} {tr : Tr
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
       subst hf; exact hw
 
+/-- Top-level delegation keeps the message's gas. -/
+theorem applyTopLevelDelegation_gas (ctx : Context) (isPre : Address → Bool) (w : World)
+    (msg : Message) : (applyTopLevelDelegation ctx isPre w msg).2.1.gas = msg.gas := by
+  unfold applyTopLevelDelegation
+  split
+  · rfl
+  · split
+    · rfl
+    · rfl
+    · dsimp only
+      split <;> split <;> rfl
+
+/-- **The frames a top-level message call reaches hold at most its gas.** -/
+theorem Reaches.gas_le {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    {m : Machine} (hm : Reaches ctx w tr msg m) : m.frame.gasLeft ≤ msg.gas := by
+  obtain ⟨m₀, n, hs, hn⟩ := hm
+  have h0 : m₀.precompiles = PrecompileImpl.standard ctx ∧
+      gasSum m₀ = (applyTopLevelDelegation ctx (PrecompileImpl.standard ctx).isPrecompile w
+        msg).2.1.gas := by
+    unfold StartsAt initMachine at hs
+    dsimp only at hs
+    split at hs
+    · cases hs
+    split at hs
+    · cases hs
+    split at hs
+    · split at hs
+      · cases hs
+      · cases hs; exact ⟨rfl, by simp [gasSum, Frame.init]⟩
+    · split at hs
+      · cases hs
+      · cases hs; exact ⟨rfl, by simp [gasSum, Frame.init]⟩
+  have hg := stepN_gas (m := m₀) (by rw [h0.1]; exact precompilesOk_standard _) n
+  rw [hn, h0.2, applyTopLevelDelegation_gas] at hg
+  simp only [resultGas, gasSum] at hg
+  omega
+
 /-! ## No designator -/
 
 /-- A designator starts with `0xEF`. -/

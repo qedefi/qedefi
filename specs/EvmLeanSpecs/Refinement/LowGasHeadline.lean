@@ -1,4 +1,5 @@
 import EvmLeanSpecs.Refinement.LowGasTargets
+import EvmLeanProofs.Program.AbsInt.CodeRun
 
 /-!
 # The invariants for arbitrary transactions, at any gas
@@ -157,25 +158,29 @@ theorem txOkAnyGas_of_txOk {minGas : Nat} (hmin : 250000 ≤ minGas) {ctx : Cont
     TxOkAnyGas vault asset Act K ctx w tr msg := fun m hm hv hp =>
   ⟨.inl (Covered.mono hmin (h m hm hv hp).1), (h m hm hv hp).2⟩
 
-/-- **A transaction is covered at any gas** when every frame of the vault or the asset that
-other code starts satisfies the gas-free conditions of `coveredAnyGas_of`, and the model calls
-it commits are admitted. -/
+/-- **A transaction is covered at any gas** when `0x01` holds no EIP-7702 designator before it
+(always true before Prague; no step of the transaction can create one, `reaches_allWorlds`),
+and every frame of the vault or the asset that other code starts satisfies the gas-free
+conditions of `coveredAnyGas_of`, with the model calls it commits admitted. -/
 theorem txOkAnyGas_of {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
+    (h1 : AbsInt.NoDesignator ctx.fork 1 w) (hgas : msg.gas < 2 ^ 64)
     (h : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset →
       (∀ f ∈ m.parents, ¬ Danger (Prot vault asset) f) →
-      EcrecoverOk m ∧
       (m.frame.msg.value ≠ 0 ∨
         (m.frame.msg.value = 0 ∧
           (m.frame.msg.currentTarget = vault → m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit) ∧
           m.frame.msg.data.size < 2 ^ 64 ∧ CoverOkAnyGas m)) ∧
       FrameAdmitted ctx.crypto vault asset Act K m)
-    (hdep : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset)
-    (hlt : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → m.frame.gasLeft < 2 ^ 64) :
+    (hdep : ∀ m, Reaches ctx w tr msg m → VaultStart vault asset m → Deployed m.world vault asset) :
     TxOkAnyGas vault asset Act K ctx w tr msg := by
   intro m hm hv hp
   have hd := hdep m hm hv
-  obtain ⟨hnd, hc, hadm⟩ := h m hm hv hd hp
-  exact ⟨coveredAnyGas_of hv hd (hlt m hm hv) hnd hc, hadm⟩
+  obtain ⟨hc, hadm⟩ := h m hm hv hd hp
+  have hnd : EcrecoverOk m := by
+    have := (AbsInt.reaches_allWorlds (AbsInt.noDesignator ctx.fork 1) hdeleg h1 hm).1
+    unfold EcrecoverOk; rw [hm.ctx]; exact this
+  exact ⟨coveredAnyGas_of hv hd (Nat.lt_of_le_of_lt (AbsInt.Reaches.gas_le hm) hgas) hnd hc, hadm⟩
 
 /-! ## One transaction -/
 
