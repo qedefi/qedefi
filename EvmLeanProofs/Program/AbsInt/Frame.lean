@@ -106,10 +106,12 @@ theorem resume_frame (M : Machine) (r : ChildResult) :
 /-- **Induction along a frame up to its exit.** -/
 theorem exit_frame_ind (Q : Machine → Prop)
     (hnext : ∀ m b a m' m₁, Q m → m.frame.code[m.frame.pc]? = some b →
-      (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m') → Within m' a m₁ → Q m₁)
+      (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m') → Within m' a m₁ →
+      SameFrame m m₁ → Q m₁)
     (hchild : ∀ m b a m' mc nc mfc oc, Q m → m.frame.code[m.frame.pc]? = some b →
       (exec (Opcode.decode m.ctx.fork b)).run m = .ok (a, m') → Pushed m' a mc →
-      Exit mc nc mfc oc → Q (resumeAfter m'.frame m.parents mfc oc)) :
+      Exit mc nc mfc oc → SameFrame m (resumeAfter m'.frame m.parents mfc oc) →
+      Q (resumeAfter m'.frame m.parents mfc oc)) :
     ∀ n m₀ mf o, Exit m₀ n mf o → Q m₀ →
       ∀ k ≤ n, ∀ m, stepN k m₀ = .running m → SameFrame m₀ m → Q m := by
   intro n
@@ -138,7 +140,7 @@ theorem exit_frame_ind (Q : Machine → Prop)
     -- A step staying in the frame.
     have within : Within m' a m₁ → SameFrame m₀ m₁ → Q m := by
       intro hw hs₁
-      have hQ₁ := hnext m₀ b a m' m₁ hQ hb he hw
+      have hQ₁ := hnext m₀ b a m' m₁ hQ hb he hw hs₁
       obtain ⟨hn1, hex'⟩ := hex.next hst hs₁
       exact ih (n - 1) (by omega) m₁ mf o hex' hQ₁ (k - 1) (by omega) m hm₁ (hs₁.symm.trans hs)
     -- A pushed child.
@@ -149,7 +151,7 @@ theorem exit_frame_ind (Q : Machine → Prop)
       have hid : SameId m'.frame m₀.frame :=
         ⟨hif.same.msg, hif.same.code, hif.same.jumpDests, hif.same.kind, hif.same.snapshot⟩
       obtain ⟨nc, mfc, oc, hexc, hle, hres, hsame, hexR⟩ := hex.split hstc hpar hid hc hpre ho
-      have hQR := hchild m₀ b a m' mc nc mfc oc hQ hb he hp hexc
+      have hQR := hchild m₀ b a m' mc nc mfc oc hQ hb he hp hexc hsame
       have hm₁c : m₁ = mc := by rw [hst] at hstc; cases hstc; rfl
       subst hm₁c
       by_cases hkk : nc + 2 ≤ k
@@ -298,9 +300,9 @@ theorem absint_frame (hc : Cert ρ allowed code init t) {mh mf : Machine} {N : N
   intro k hk m hm hs
   refine (exit_frame_ind (fun m => m.frame.code = code ∧ InCert ρ t m) ?_ ?_ N mh mf o hex
     ⟨hcode, h0⟩ k hk m hm hs).2
-  · intro m b a m' m₁ ⟨hcm, hQ⟩ hb he hw
+  · intro m b a m' m₁ ⟨hcm, hQ⟩ hb he hw _
     exact inCert_within hc hcm hQ hb he hw
-  · intro m b a m' mc nc mfc oc ⟨hcm, hQ⟩ hb he hp _
+  · intro m b a m' mc nc mfc oc ⟨hcm, hQ⟩ hb he hp _ _
     exact inCert_pushed hc hcm hQ hb he hp mfc oc
 
 /-- **The calls of a certified frame** go to allowed targets, running the target's code

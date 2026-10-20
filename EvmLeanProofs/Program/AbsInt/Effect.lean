@@ -51,6 +51,7 @@ inductive Eff where
   | call (pops : Nat)
   /-- A member of the `CREATE` family, popping `pops` arguments. -/
   | create (pops : Nat)
+  deriving DecidableEq
 
 /-- The shape of an opcode. -/
 def effOf : Opcode → Eff
