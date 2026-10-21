@@ -240,8 +240,9 @@ abbrev ExecPost (m : Machine) (a : Action) (m' : Machine) : Prop :=
   InstrFrame m m' ∧ ActionOk m m' a
 
 set_option maxHeartbeats 1000000 in
-theorem execCall_frame (k : CallKind) (m : Machine) : Wp (execCall k) (ExecPost m) m := by
-  cases k <;> simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
+/-- `execCall_frame` for `call` (split for parallel elaboration). -/
+theorem execCall_frame_call (m : Machine) : Wp (execCall .call) (ExecPost m) m := by
+  simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
     setReturnData, genericCall] <;>
   repeat' (first | (intro _) | apply And.intro)
   all_goals (first
@@ -251,6 +252,56 @@ theorem execCall_frame (k : CallKind) (m : Machine) : Wp (execCall k) (ExecPost 
         | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
         | (intro h; simp at h)
         | (intro h; simp_all)))
+
+set_option maxHeartbeats 1000000 in
+/-- `execCall_frame` for `callcode` (split for parallel elaboration). -/
+theorem execCall_frame_callcode (m : Machine) : Wp (execCall .callcode) (ExecPost m) m := by
+  simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
+    setReturnData, genericCall] <;>
+  repeat' (first | (intro _) | apply And.intro)
+  all_goals (first
+    | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+    | (constructor <;> simp only <;> first
+        | rfl | assumption
+        | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+        | (intro h; simp at h)
+        | (intro h; simp_all)))
+
+set_option maxHeartbeats 1000000 in
+/-- `execCall_frame` for `delegatecall` (split for parallel elaboration). -/
+theorem execCall_frame_delegatecall (m : Machine) : Wp (execCall .delegatecall) (ExecPost m) m := by
+  simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
+    setReturnData, genericCall] <;>
+  repeat' (first | (intro _) | apply And.intro)
+  all_goals (first
+    | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+    | (constructor <;> simp only <;> first
+        | rfl | assumption
+        | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+        | (intro h; simp at h)
+        | (intro h; simp_all)))
+
+set_option maxHeartbeats 1000000 in
+/-- `execCall_frame` for `staticcall` (split for parallel elaboration). -/
+theorem execCall_frame_staticcall (m : Machine) : Wp (execCall .staticcall) (ExecPost m) m := by
+  simp [ExecPost, execCall, instrFrame_iff, ActionOk, memoryExpansion, expandMemory, readMemory,
+    setReturnData, genericCall] <;>
+  repeat' (first | (intro _) | apply And.intro)
+  all_goals (first
+    | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+    | (constructor <;> simp only <;> first
+        | rfl | assumption
+        | (apply refund_le <;> first | assumption | (left; rfl) | apply stipend_side)
+        | (intro h; simp at h)
+        | (intro h; simp_all)))
+
+set_option maxHeartbeats 1000000 in
+theorem execCall_frame (k : CallKind) (m : Machine) : Wp (execCall k) (ExecPost m) m := by
+  cases k
+  · exact execCall_frame_call m
+  · exact execCall_frame_callcode m
+  · exact execCall_frame_delegatecall m
+  · exact execCall_frame_staticcall m
 
 set_option maxHeartbeats 1000000 in
 theorem execCreate_frame (b : Bool) (m : Machine) : Wp (execCreate b) (ExecPost m) m := by
@@ -288,6 +339,118 @@ theorem execSelfdestruct_frame (m : Machine) : Wp execSelfdestruct (ExecPost m) 
   · exact hk p hp
 
 set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[0, 1, 2, 3, 4, 5, 6, 7, 8]` (split for parallel elaboration). -/
+theorem exec_frame_0 (op : Opcode) (hk : op.ctorIdx ∈ [0, 1, 2, 3, 4, 5, 6, 7, 8]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[9, 10, 11, 12, 13, 14, 15, 16, 17, 18]` (split for parallel elaboration). -/
+theorem exec_frame_1 (op : Opcode) (hk : op.ctorIdx ∈ [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[19, 20, 21, 22, 23, 24, 25, 26, 27]` (split for parallel elaboration). -/
+theorem exec_frame_2 (op : Opcode) (hk : op.ctorIdx ∈ [19, 20, 21, 22, 23, 24, 25, 26, 27]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[28, 29, 30, 31, 32, 33, 34, 35, 36, 37]` (split for parallel elaboration). -/
+theorem exec_frame_3 (op : Opcode) (hk : op.ctorIdx ∈ [28, 29, 30, 31, 32, 33, 34, 35, 36, 37]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[38, 39, 40, 41, 42, 43, 44, 45, 46]` (split for parallel elaboration). -/
+theorem exec_frame_4 (op : Opcode) (hk : op.ctorIdx ∈ [38, 39, 40, 41, 42, 43, 44, 45, 46]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[47, 48, 49, 50, 51, 52, 53, 54, 55, 56]` (split for parallel elaboration). -/
+theorem exec_frame_5 (op : Opcode) (hk : op.ctorIdx ∈ [47, 48, 49, 50, 51, 52, 53, 54, 55, 56]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[57, 58, 59, 61, 62, 63, 64, 65, 66]` (split for parallel elaboration). -/
+theorem exec_frame_6 (op : Opcode) (hk : op.ctorIdx ∈ [57, 58, 59, 61, 62, 63, 64, 65, 66]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_frame` for the opcodes of constructor index in `[67, 68, 69, 70, 71, 72, 73, 77, 81, 82]` (split for parallel elaboration). -/
+theorem exec_frame_7 (op : Opcode) (hk : op.ctorIdx ∈ [67, 68, 69, 70, 71, 72, 73, 77, 81, 82]) (m : Machine) : Wp (exec op) (ExecPost m) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    instrFrame_iff, ActionOk]
+  try case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
+  try case log =>
+    intro _ _ _ _ _ _
+    exact wp_popN_of _ (fun _ _ => by simp)
+
+set_option maxHeartbeats 4000000 in
 /-- **The frame condition of every instruction.** -/
 theorem exec_frame (op : Opcode) (m : Machine) : Wp (exec op) (ExecPost m) m := by
   cases op
@@ -299,13 +462,15 @@ theorem exec_frame (op : Opcode) (m : Machine) : Wp (exec op) (ExecPost m) m := 
   case callcode => exact execCall_frame .callcode m
   case delegatecall => exact execCall_frame .delegatecall m
   case staticcall => exact execCall_frame .staticcall m
-  all_goals simp [ExecPost, exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput, execLog,
-    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
-    instrFrame_iff, ActionOk]
-  case dup => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
-  case swap => intro _; split <;> simp [ExecPost, instrFrame_iff, ActionOk]
-  case log =>
-    intro _ _ _ _ _ _
-    exact wp_popN_of _ (fun _ _ => by simp)
+  all_goals first
+    | exact exec_frame_0 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_1 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_2 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_3 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_4 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_5 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_6 _ (by dsimp only [Opcode.ctorIdx]; decide) m |
+      exact exec_frame_7 _ (by dsimp only [Opcode.ctorIdx]; decide) m
+    | fail "exec_frame: no group"
 
 end EvmLogic.Program.Nested
