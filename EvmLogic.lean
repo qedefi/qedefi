@@ -31,6 +31,7 @@ import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Call
 import EvmLogic.Solidity.Dispatch
 import EvmLogic.Solidity.ERC20
+import EvmLogic.Solidity.ERC20Oz
 import EvmLogic.Solidity.Events
 import EvmLogic.Solidity.Immutables
 import EvmLogic.Solidity.JumpDest

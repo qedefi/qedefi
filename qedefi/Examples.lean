@@ -20,6 +20,13 @@ import Examples.OpenZeppelin.Contracts.OzVault
 import Examples.OpenZeppelin.Contracts.OzVaultData
 import Examples.OpenZeppelin.Contracts.OzVaultOffset
 import Examples.OpenZeppelin.Contracts.OzVaultOffsetData
+import Examples.OpenZeppelin.ERC20.Approve
+import Examples.OpenZeppelin.ERC20.Basic
+import Examples.OpenZeppelin.ERC20.MintBurn
+import Examples.OpenZeppelin.ERC20.Spec
+import Examples.OpenZeppelin.ERC20.Transfer
+import Examples.OpenZeppelin.ERC20.TransferFrom
+import Examples.OpenZeppelin.ERC20.Views
 import Examples.Solady.Contracts.SoladyToken
 import Examples.Solady.Contracts.SoladyTokenData
 import Examples.Solmate.Contracts.Deploy
@@ -108,7 +115,8 @@ import Examples.WeirdERC20.ZRX.Contracts.ZRX
 # Examples
 
 Worked examples: small demos (`Examples.Basic`), the Solmate vault and asset verified
-end to end (`Examples.Solmate`), the OpenZeppelin contracts (`Examples.OpenZeppelin`),
+end to end (`Examples.Solmate`), the OpenZeppelin contracts and the bytecode refinement of OpenZeppelin's `ERC20`
+(`Examples.OpenZeppelin`),
 and differential testing against anvil (`Examples.Differential`). The `#guard` tests of the
 contract constants are in the separate `QEDefiTest` library (`lake test`).
 -/

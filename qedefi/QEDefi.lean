@@ -1,5 +1,6 @@
 import QEDefi.ERC20.Permit
 import QEDefi.ERC20.Rep
+import QEDefi.ERC20.RepOz
 import QEDefi.ERC20.Token
 import QEDefi.ERC20.Variant
 import QEDefi.ERC20.VariantDeprecation

@@ -3,8 +3,9 @@
 Preparation for verifying further tokens, one at a time, each as `qedefi/Examples/<Project>/`
 with pinned sources, artifacts, differential tests, a refinement against the `QEDefi.ERC20`
 model and invariants, the way Solmate's ERC-4626 vault is verified
-([erc4626](erc4626/README.md)). Nothing here is proved on the bytecode yet; this file records what
-each target is, exactly, and what should be proved about it. The model-level results (the
+([erc4626](erc4626/README.md)). Besides Solmate, only OpenZeppelin's `ERC20` is proved on the
+bytecode so far (below); this file records what each target is, exactly, and what should be
+proved about it. The model-level results (the
 `QEDefi.ERC20.Variant` model and its integration with the vault models) are in the last section.
 
 | Target | Kind | Artifact | Lean module | `difftest` family |
@@ -96,6 +97,29 @@ Artifact `OzAsset`: 1,900 B runtime, no immutables, no constructor arguments (`n
   `bal[to] += v` and `supply −= v`, justified by `Σ balances = supply`;
 - the order of checks in `transferFrom` (allowance before addresses) shows up in revert data;
 - no `permit`/`nonces`/`DOMAIN_SEPARATOR` in `ERC20Mock`.
+
+**Proved on the bytecode** (`qedefi/Examples/OpenZeppelin/ERC20/`, top-level calls with zero
+value): property 2 without logs and revert data, the storage part of 3, and the
+`totalSupply`/`balanceOf`/`allowance`/`decimals` part of 5 (1 is `Token.WF_oz*`):
+
+- `EvmLogic.Solidity.ERC20Oz`: `Layout.oz = ⟨2, 0, 1⟩`, the word-level model `Model.ozTransfer`,
+  `ozApprove`, `ozSpend`, `ozTransferFrom`, `ozMint`, `ozBurn` (Solmate's `Model` operations
+  behind the zero-address checks, plus `_update`'s mint/burn), the code's `SSTORE` sequences
+  (`moveWorld`, `allowanceWorld`, `ozSpendWorld`, `ozTransferFromWorld`, `mintWorld`,
+  `burnWorld`, for any layout) and their `view_*World` theorems. Writing the supply slot needs
+  `SupplySlotOk` (no balance row hashes to slot 2).
+- `Transfer`, `Approve`, `TransferFrom`, `MintBurn`: success and each revert path (every
+  zero-address check, insufficient balance/allowance, supply overflow; infinite vs. finite
+  allowance), and `*_spec`: `processMessageCall` refines `Model.oz*` through `ERC20.view`
+  (revert ⇒ world unchanged; success ⇒ supply, balances, allowances in unwritten slots, other
+  accounts unchanged). `Views`: the four views return the view's words, world unchanged.
+- `QEDefi.ERC20.RepOz` (`Model.oz*` and `Token.oz*` succeed together, related results on
+  `Token.WF` ledgers) and `Spec` (`*_refines`): the bytecode against `Token.ozTransfer` etc.
+  directly, hence `Variant.oz` by `Variant.oz_transfer`/….
+
+Not yet: events (`Transfer`, `Approval` logs), revert data, calls with value, `name`/`symbol`,
+callee summaries in arbitrary frames (needed for the OZ vaults), malformed calldata, nested
+callers (7).
 
 ## OpenZeppelin `ERC4626` with decimals offset δ = 3 (`OzVaultOffset`)
 
