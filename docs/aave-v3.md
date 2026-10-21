@@ -2,8 +2,9 @@
 
 The deployed bytecode of Aave V3's Core market on Ethereum mainnet, pinned as mainnet targets
 (`contracts/mainnet/<Name>/`, generated modules `qedefi/Examples/AaveV3/Contracts/<Name>.lean`,
-namespace `Examples.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. Nothing
-is proved yet; this file records what the targets are, exactly. Fetch and build workflow:
+namespace `Examples.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. This file
+records what the targets are, exactly, and what is proved about them
+([Proved on the bytecode](#proved-on-the-bytecode)). Fetch and build workflow:
 [contracts/README.md](../contracts/README.md#mainnet-targets).
 
 ## Deployment (read on chain at block 26,243,038–26,243,102, 2026-10-21)
@@ -167,6 +168,37 @@ packed slot per reserve (`uint16 optimalUsageRatio`, `uint32 baseVariableBorrowR
 
 There is no `handleRepayment` in this version (removed upstream). All 35 selectors, the events
 and the custom errors are in the generated module (`selectors`, `events`, `errors`).
+
+## Proved on the bytecode
+
+`qedefi/Examples/AaveV3/AToken/` (namespace `Examples.AaveV3.AToken`), about the deployed AToken
+implementation `AToken.runtimeCode` (immutables concrete in the code; `pool` = the Pool proxy).
+Every theorem is a `Halts` statement for an arbitrary frame `m` with `Fresh AToken.runtimeCode m`:
+any executing address (on mainnet the aToken proxy, reaching the implementation by
+`DELEGATECALL`, so storage is the proxy's), any caller, world, `Crypto` and depth. It is a
+top-level fact and a callee summary at once. `Code.lean` adds the kernel code table
+(`code_table runtimeCode`, about 6 s).
+
+Postconditions (`Basic.lean`): `Unchanged m mf` (world, transient storage, created accounts and
+logs as in `m`); `RevertsWith out g m` (`REVERT` with data `out`, `Unchanged`, at most `g` gas);
+`NoEffect g m` (`REVERT` with some data, `Unchanged`, at most `g` gas). `callerMustBePool` is the
+revert data `0x54b39ce2` of `CallerMustBePool()`.
+
+**Access control** (`Guard/<Function>.lean`, `Guard.lean`). solc runs the ABI decoder before the
+`onlyPool` modifier, and every AToken function is non-payable.
+
+| Theorem | Statement (hypotheses beyond `Fresh`, gas ≥ 3000, calldata size < 2^64) |
+|---|---|
+| `mint_reverts_of_not_pool` | selector `0xb3f1c93d`, ≥ 132 bytes, both address words clean, no value, caller ≠ `pool` → `RevertsWith callerMustBePool 3000` |
+| `burn_reverts_of_not_pool` | the same for `0xb18d6afd`, ≥ 164 bytes, two address words |
+| `mintToTreasury_reverts_of_not_pool` | the same for `0x7df5bd3b`, ≥ 68 bytes |
+| `transferOnLiquidation_reverts_of_not_pool` | the same for `0x353b7b9a`, ≥ 164 bytes, two address words |
+| `transferUnderlyingTo_reverts_of_not_pool` | the same for `0x4efecaa5`, ≥ 68 bytes, one address word |
+| `<f>_noEffect_of_not_pool` (each of the five) | selector of `f`, any further calldata, any value, caller ≠ `pool` → `NoEffect 3000` (short calldata, dirty address words and value revert with empty data) |
+| `poolOnly_noEffect` | selector ∈ `poolOnlySelectors` (the five), caller ≠ `pool` → `NoEffect 3000` |
+| `poolOnly_sload_unchanged` | the same → revert, and every slot of the executing account (`_totalSupply` 54, `_userState` rows) unchanged |
+
+`poolOnlySelectors_abi` ties the five selectors to the verified ABI.
 
 ## Reproducibility
 
