@@ -42,6 +42,7 @@ import Examples.Reentrancy.Contracts.GuardedBank
 import Examples.Reentrancy.Contracts.GuardedBankData
 import Examples.Reentrancy.Contracts.VulnerableBank
 import Examples.Reentrancy.Contracts.VulnerableBankData
+import Examples.Reentrancy.Defended
 import Examples.Reentrancy.Exploit
 import Examples.Solady.Contracts.SoladyToken
 import Examples.Solady.Contracts.SoladyTokenData

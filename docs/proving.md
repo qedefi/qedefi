@@ -197,6 +197,13 @@ nor a value transfer (`SSTORE` sentry, `CALL` value cost 9000, `CREATE` 32000, `
 `SELFDESTRUCT` of the executing non-static account, and requested value transfers are
 affordable and leave static frames only to themselves.
 
+**World-safe tails for any gas** (`NoWrite.lean`, `Certified.lean`). `WorldSafe b`: the byte is
+not `SSTORE`/`CREATE*`/`CALL*`/`SELFDESTRUCT`; `exec_worldSafe` shows such an instruction keeps
+the world and starts no child. `noWrite_halts`: a frame whose reachable instructions — localised
+by an AbsInt certificate (§6) — are all world-safe halts with its world unchanged for **any
+gas**, no gas bound. This is the tail of a checks-effects-interactions function after its single
+external call.
+
 **The havoc theorem** (`Halts.lean`). `Covers P Good G`: every dangerous frame start with at most
 `G` gas, *with any parents* (callbacks have dangerous ancestors), halts in a `Good` world.
 `halts_inv`: under `Covers`, any non-dangerous frame (`Inv`: `Good` world and snapshot) halts in a
@@ -228,7 +235,10 @@ changes of `exec_world`; `DStart` records the value transfer that started a dang
 **Demonstrators** (`qedefi/Examples/Reentrancy/`, sources `contracts/src/reentrancy/Banks.sol`).
 `Exploit.lean`: `VulnerableBank` (send before debit) and an `Attacker` contract, both compiled;
 the attack transaction is evaluated by the kernel with the real Keccak (`exploit_run`) and leaves
-the bank owing the victim 2 ether while holding none (`exploit_insolvent`).
+the bank owing the victim 2 ether while holding none (`exploit_insolvent`). `Defended.lean`: the
+same attack replayed against `CEIBank` (debit before the call) and `GuardedBank` (OpenZeppelin
+`ReentrancyGuard`) reverts and leaves the bank solvent (`cei_exploit_fails`,
+`guarded_exploit_fails`), also kernel-evaluated on bytecode.
 
 ## Pitfalls
 

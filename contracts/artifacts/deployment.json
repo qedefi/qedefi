@@ -83,6 +83,10 @@
     "attacker": {
       "contract": "Attacker",
       "address": "0x7720Db4a71b388FF07453C5aE2998F5615FB34Ec"
+    },
+    "onceAttacker": {
+      "contract": "OnceAttacker",
+      "address": "0xfAd7D8969dc36C7a29Db1e588f1DBEB4c5a8e082"
     }
   },
   "mainnetNote": "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",

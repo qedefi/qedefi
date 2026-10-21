@@ -62,6 +62,7 @@ declare -A SRC=(
   [CEIBank]="out/Banks.sol/CEIBank.json"
   [GuardedBank]="out/Banks.sol/GuardedBank.json"
   [Attacker]="out/Banks.sol/Attacker.json"
+  [OnceAttacker]="out/Banks.sol/OnceAttacker.json"
 )
 declare -A SOLNAME=(
   [SolmateAsset]="lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20"
@@ -74,10 +75,11 @@ declare -A SOLNAME=(
   [CEIBank]="src/reentrancy/Banks.sol:CEIBank"
   [GuardedBank]="src/reentrancy/Banks.sol:GuardedBank"
   [Attacker]="src/reentrancy/Banks.sol:Attacker"
+  [OnceAttacker]="src/reentrancy/Banks.sol:OnceAttacker"
 )
 TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken
-  VulnerableBank CEIBank GuardedBank Attacker)
-REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker)
+  VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
+REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
 declare -A LEANNS=(
@@ -91,6 +93,7 @@ declare -A LEANNS=(
   [CEIBank]="Examples.Reentrancy.Contracts"
   [GuardedBank]="Examples.Reentrancy.Contracts"
   [Attacker]="Examples.Reentrancy.Contracts"
+  [OnceAttacker]="Examples.Reentrancy.Contracts"
 )
 declare -A LEANDIR=(
   [SolmateAsset]="$ROOT/qedefi/Examples/Solmate/Contracts"
@@ -103,6 +106,7 @@ declare -A LEANDIR=(
   [CEIBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [GuardedBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [Attacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
+  [OnceAttacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
 )
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
@@ -556,7 +560,7 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
   --arg saArgs "${ARGS[SolmateAsset]}" --arg svArgs "${ARGS[SolmateVault]}" --arg ovArgs "${ARGS[OzVault]}" \
   --arg o3 "${ADDR[OzVaultOffset]}" --arg o3Args "${ARGS[OzVaultOffset]}" --arg sl "${ADDR[SoladyToken]}" \
   --arg vb "${ADDR[VulnerableBank]}" --arg cb "${ADDR[CEIBank]}" --arg gb "${ADDR[GuardedBank]}" \
-  --arg at "${ADDR[Attacker]}" \
+  --arg at "${ADDR[Attacker]}" --arg oa2 "${ADDR[OnceAttacker]}" \
   --argjson mainnet "$(for t in "${MAINNET[@]}"; do jq -c --arg t "$t" '{($t): {address, block, codeHash, codeSize}}' "$C/mainnet/$t/meta.json"; done | jq -s 'add // {}')" \
   '{chainId: $chainId, deployer: $deployer, evmVersion: "cancun", solc: "0.8.28+commit.7893614a",
     note: "Each family is deployed on its own fresh chain: the asset at deployer nonce 0, the vault at nonce 1.",
@@ -571,7 +575,8 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
                  vulnerableBank: {contract: "VulnerableBank", address: $vb},
                  ceiBank: {contract: "CEIBank", address: $cb},
                  guardedBank: {contract: "GuardedBank", address: $gb},
-                 attacker: {contract: "Attacker", address: $at}},
+                 attacker: {contract: "Attacker", address: $at},
+                 onceAttacker: {contract: "OnceAttacker", address: $oa2}},
     mainnetNote: "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
     mainnet: $mainnet}' \
   > "$ART/deployment.json"
