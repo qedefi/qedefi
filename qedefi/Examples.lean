@@ -111,6 +111,8 @@ import Examples.Time.Solmate
 import Examples.Time.VestingWallet.Arith
 import Examples.Time.VestingWallet.Basic
 import Examples.Time.VestingWallet.Release
+import Examples.Time.VestingWallet.Spec
+import Examples.Time.VestingWallet.System
 import Examples.Time.VestingWallet.Vested
 import Examples.Time.VestingWallet.Views
 import Examples.WETH9.Contracts.WETH9
