@@ -36,6 +36,12 @@ dependencies.
   files, checks that only comments, whitespace and `open` lines changed.
 - `scripts/build-contracts.sh --check` if you touched `contracts/` or the generated
   `Contracts` modules.
+- `scripts/dump-statements.sh OUT.tsv` before and after a refactor, then
+  `scripts/compare-statements.py BEFORE.tsv AFTER.tsv`: no theorem missing, no statement or
+  axiom changed.
+- AI agents: use the `lean-evm` skill (`.claude/skills/lean-evm/SKILL.md`) and the `lean-lsp`
+  MCP server configured in `.mcp.json` (goals, per-file diagnostics, name search without
+  builds).
 - Commit early and often on a branch; imperative summary line, body explaining why.
 
 ## Organisation
