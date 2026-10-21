@@ -28,8 +28,8 @@ stipend. Proved on the deployed bytecode, for **any gas** and **any recipient co
   `weth9.withdraw s caller wad true` (the recipient accepted), for any abstract state `s`
   matching the world before.
 
-The any-transaction ether backing of WETH9 (`Σ balanceOf ≤ ether`, which needs every function,
-including `transferFrom`/`approve` and their nested-mapping slots) is not proved here.
+The any-transaction ether backing of WETH9 (`Σ balanceOf ≤ ether`, every function) is
+`Examples.Reentrancy.Solvency.WETH9Backed`.
 -/
 
 namespace Examples.Reentrancy.Solvency.WETH

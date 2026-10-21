@@ -50,6 +50,7 @@ import Examples.Reentrancy.Solvency.Deps
 import Examples.Reentrancy.Solvency.Guarded
 import Examples.Reentrancy.Solvency.Model
 import Examples.Reentrancy.Solvency.WETH9
+import Examples.Reentrancy.Solvency.WETH9Backed
 import Examples.Solady.Contracts.SoladyToken
 import Examples.Solady.Contracts.SoladyTokenData
 import Examples.Solmate.Contracts.Deploy

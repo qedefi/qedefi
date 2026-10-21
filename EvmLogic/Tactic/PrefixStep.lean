@@ -227,15 +227,27 @@ elab_rules : tactic
     let some new ← apwpStep extra | throwError "apwp_step: no prefix rule applies"
     setGoals (new ++ gs.drop 1)
 
-/-- Step every goal until it stops (at most `fuel` steps in all). -/
-def apwpSteps (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) (fuel : Nat) :
-    TacticM Unit := do
+/-- The pc of the machine of a goal `WP m Q H`, if it is a numeral. -/
+def goalPc? (g : MVarId) : MetaM (Option Nat) := g.withContext do
+  let some m ← wpGoalMachine? g | return none
+  let fr ← whnfR (mkApp (mkConst ``Machine.frame) m)
+  let pcE ← whnfR (mkApp (mkConst ``Frame.pc) fr)
+  (evalNat (← instantiateMVars pcE)).run
+
+/-- Step every goal until it stops (at most `fuel` steps in all); a goal whose pc is in `stops`
+is left as it is. -/
+def apwpSteps (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) (fuel : Nat)
+    (stops : List Nat := []) : TacticM Unit := do
   let mut todo ← getGoals
   let mut stopped : List MVarId := []
   for _ in [0:fuel] do
     match todo with
     | [] => break
     | g :: rest =>
+      if !stops.isEmpty then
+        if let some pc ← goalPc? g then
+          if stops.contains pc then
+            stopped := stopped ++ [g]; todo := rest; continue
       setGoals [g]
       match ← apwpStep extra with
       | none => stopped := stopped ++ [g]; todo := rest
@@ -243,12 +255,16 @@ def apwpSteps (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) (fuel : Na
   setGoals (stopped ++ todo)
 
 /-- `apwp_steps [h₁, …]`: step every goal until each stops at `STOP`, `RETURN`, `CALL` or an
-instruction without a rule (see the module docstring). -/
-syntax "apwp_steps" (ppSpace num)? (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+instruction without a rule (see the module docstring). `apwp_steps stop_at [q₁, …]` also stops
+a goal on reaching one of the pcs `qᵢ` (e.g. a function whose loops are left to a certified
+tail). -/
+syntax "apwp_steps" (ppSpace num)? (" stop_at " "[" num,* "]")?
+  (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
 elab_rules : tactic
-  | `(tactic| apwp_steps $[$n]? $[[$extra,*]]?) => do
+  | `(tactic| apwp_steps $[$n]? $[stop_at [$stops,*]]? $[[$extra,*]]?) => do
     let extra := (extra.map (·.getElems)).getD #[]
-    apwpSteps extra ((n.map (·.getNat)).getD 100000)
+    let stops := ((stops.map (·.getElems)).getD #[]).toList.map (·.getNat)
+    apwpSteps extra ((n.map (·.getNat)).getD 100000) stops
 
 end EvmLogic.Tactic.PrefixStep

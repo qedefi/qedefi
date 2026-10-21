@@ -217,7 +217,8 @@ must be `Good`). They mirror `GasMono.CodeFails` with a forward goal, so no gas 
 **`apwp_steps [h₁, …]`** (`Tactic/PrefixStep.lean`) drives them over literal code from a
 `Machine.mk … (Frame.mk …)` goal: it splits `JUMPI` on symbolic conditions (closing branches the
 normalization decides), closes reverts, generalizes gas and substate after each step (keeping a
-bound `g ≤ B`), and stops at `STOP`/`RETURN`/`CALL`/`LOG`. A dispatcher and all paths of a
+bound `g ≤ B`), and stops at `STOP`/`RETURN`/`CALL`/`LOG` (and, with `stop_at [q₁, …]`, on
+reaching one of the pcs `qᵢ`, e.g. a loop left to a certified tail). A dispatcher and all paths of a
 function run in seconds (`CEIBank`: 8 s for the whole contract).
 
 **The untrusted call of a prefix** (`PrefixCall.lean`). `pwp_call_v`: a `CALL` to an unprotected
@@ -294,9 +295,24 @@ reads (`locked_covers`, no induction), so the call of `withdraw()` is `pwp_call_
 assumes the ERC-7201 status slot is not a balance slot. `WETH9.lean` (mainnet bytecode):
 `withdraw_frame`/**`withdraw_halts_refines`**: `withdraw(wad)` debits, sends with the stipend
 (`pwp_call_stipend`), and ends in the world it started from or in the checked withdrawal, which
-refines `Variant.weth9.withdraw … true` (any gas, any depth, any recipient). The any-transaction
-ether backing of WETH9 is not proved (it needs every function, and `approve`/`transferFrom`
-write nested-mapping slots that would have to avoid all balance slots).
+refines `Variant.weth9.withdraw … true` (any gas, any depth, any recipient).
+`WETH9Backed.lean`: **`weth9_solvent`**/**`weth9_backed`**, the any-transaction ether backing of
+mainnet WETH9 (`Σₐ balanceOf[a] ≤ address(weth).balance`, the sum below `2²⁵⁶`, over all
+addresses under slot injectivity). `weth_frame` runs the whole dispatcher with one
+`apwp_steps`: deposit (and the fallback), `transfer`, `transferFrom` (every allowance branch),
+`approve` and the word views end at their `LOG`/`STOP`/`RETURN` (`pwp_safe`, then the
+continuation), `withdraw` at its stipend `CALL`; the string views (storage-copy loops) and
+`decimals`/`totalSupply` (`EXP`, `BALANCE`, which have no prefix rule) are stopped at their
+entries with **`apwp_steps stop_at [q₁, …]`** and closed by certified world-safe tails
+(`view_wp`). solc 0.4's unchecked `+=` is safe because a credit is backed by the ether, which
+fits a word (`solvent_credit_unchecked`); `transferFrom` is `solvent_move` (debit, then credit).
+The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots crypto 3)`: no
+`allowance[a][b]` slot is a `balanceOf` slot (two finite families, not Keccak injectivity).
+`weth_covers` needs no induction: the stipend call cannot reach WETH9 again.
+Pitfalls met there: compare literal slots as `3#256` (the simp normal form) so `with_reducible`
+matching works; look up branch hypotheses with `with_reducible assumption` (at default
+transparency a failed match unfolds Keccak slots); close a long list of goals with one bullet
+each, not `first | …` over all goals (failed alternatives on deep terms are slow).
 
 ## Time and multiple blocks
 
