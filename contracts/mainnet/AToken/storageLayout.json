@@ -1,0 +1,207 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (ATokenInstance \u2192 AToken is VersionedInitializable, ScaledBalanceTokenBase, EIP712Base, IAToken): VersionedInitializable 0\u201351 (incl. uint256[50] ______gap), IncentivizedERC20 52\u201357, EIP712Base 58\u201359, AToken 60\u201361; equal to solc 0.8.27's storageLayout output for the verified standard-JSON input (AST ids dropped) and checked against the aEthWETH proxy's storage (layout-check.txt). The layout applies to the proxy's storage (ATokenProxy). POOL, REWARDS_CONTROLLER, TREASURY, _addressesProvider and _chainId are immutables (in the code, not in storage). UserState packs balance (uint120, the scaled balance), delegationMode (uint8 enum) and additionalData (uint128, the user's last index) in one slot.",
+  "storage": [
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "initializing",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_bool",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "______gap",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "_userState",
+      "slot": "52",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_struct(UserState))",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_allowances",
+      "slot": "53",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "54",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_name",
+      "slot": "55",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_symbol",
+      "slot": "56",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_decimals",
+      "slot": "57",
+      "offset": 0,
+      "type": "t_uint8",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "__deprecated_incentivesController",
+      "slot": "57",
+      "offset": 1,
+      "type": "t_contract(IAaveIncentivesController)",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_nonces",
+      "slot": "58",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "EIP712Base"
+    },
+    {
+      "label": "_domainSeparator",
+      "slot": "59",
+      "offset": 0,
+      "type": "t_bytes32",
+      "contract": "EIP712Base"
+    },
+    {
+      "label": "_deprecated_treasury",
+      "slot": "60",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "AToken"
+    },
+    {
+      "label": "_underlyingAsset",
+      "slot": "61",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "AToken"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_array(t_uint256)50_storage": {
+      "encoding": "inplace",
+      "label": "uint256[50]",
+      "numberOfBytes": "1600",
+      "base": "t_uint256"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_contract(IAaveIncentivesController)": {
+      "encoding": "inplace",
+      "label": "contract IAaveIncentivesController",
+      "numberOfBytes": "20"
+    },
+    "t_enum(DelegationMode)": {
+      "encoding": "inplace",
+      "label": "enum DelegationMode",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_struct(UserState))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct IncentivizedERC20.UserState)",
+      "numberOfBytes": "32",
+      "value": "t_struct(UserState)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_struct(UserState)": {
+      "encoding": "inplace",
+      "label": "struct IncentivizedERC20.UserState",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "balance",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint120"
+        },
+        {
+          "label": "delegationMode",
+          "slot": "0",
+          "offset": 15,
+          "type": "t_enum(DelegationMode)"
+        },
+        {
+          "label": "additionalData",
+          "slot": "0",
+          "offset": 16,
+          "type": "t_uint128"
+        }
+      ]
+    },
+    "t_uint120": {
+      "encoding": "inplace",
+      "label": "uint120",
+      "numberOfBytes": "15"
+    },
+    "t_uint128": {
+      "encoding": "inplace",
+      "label": "uint128",
+      "numberOfBytes": "16"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint8": {
+      "encoding": "inplace",
+      "label": "uint8",
+      "numberOfBytes": "1"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "AToken",
+  "address": "0xadC45Df3cf1584624C97338BEF33363BF5b97AdA",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0x3bd38f9cd664b4169375c69f362dc585ed97adf6da6f8b6d5569ecb8690d9eb5",
+  "codeSize": 10477,
+  "contractName": "ATokenInstance",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

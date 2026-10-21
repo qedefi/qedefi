@@ -137,5 +137,6 @@ of the theorems that need them, about the finitely many values involved.
 | [docs/erc4626/README.md](docs/erc4626/README.md) | the ERC-4626 case study: theorems, hypotheses, findings |
 | [docs/erc4626/properties.md](docs/erc4626/properties.md) | ERC-4626 property catalogue with Lean names |
 | [docs/erc4626/details.md](docs/erc4626/details.md) | technical notes per component of the verification |
+| [docs/aave-v3.md](docs/aave-v3.md) | Aave V3 (Ethereum Core) mainnet targets: addresses, libraries, immutables, storage |
 | [docs/renames.md](docs/renames.md) | old → new module and declaration names |
 | [contracts/README.md](contracts/README.md) | pinned targets, build, deployment, difftest |

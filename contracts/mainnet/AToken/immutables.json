@@ -1,0 +1,22 @@
+[
+  {
+    "id": "4860",
+    "name": "TREASURY"
+  },
+  {
+    "id": "5608",
+    "name": "_chainId"
+  },
+  {
+    "id": "5807",
+    "name": "_addressesProvider"
+  },
+  {
+    "id": "5810",
+    "name": "POOL"
+  },
+  {
+    "id": "5814",
+    "name": "REWARDS_CONTROLLER"
+  }
+]

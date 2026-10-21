@@ -1,0 +1,9 @@
+# Layout validation of PoolProxy (InitializableImmutableAdminUpgradeabilityProxy) (own storage; getters called from the admin) at 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2, block 26243102 (0xe693119359426ae5d99800942599b05bedaa70e2419b934885764735301cb623)
+# slot values via eth_getStorageAt, getter values via eth_call, both at that block;
+# value = the 32-byte slot, decoded = the field at [offset, offset+size) from the low-order end
+# mapping slots: m[k] at keccak256(pad32(k) ++ pad32(slot)); nested: keccak256(pad32(k2) ++ m[k1])
+
+OK   implementation (EIP-1967 slot) [off 0, 20 B] slot=0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc  value=0x000000000000000000000000728a138a4823392c2efa55e028d434f526fe03cf  decoded=0x728a138a4823392c2efa55e028d434f526fe03cf  getter implementation() from admin=0x728a138a4823392c2efa55e028d434f526fe03cf
+OK   _admin (immutable, not in storage)           slot=-  value=-  decoded=0x2f39d218133afab8f2b819b1066c7e434ad94e9e  getter admin() from admin=0x2f39d218133afab8f2b819b1066c7e434ad94e9e
+
+# 2 OK, 0 CMP (no getter: checked by hand), 0 FAIL

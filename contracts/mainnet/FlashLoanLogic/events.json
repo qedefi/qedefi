@@ -1,0 +1,4 @@
+{
+  "FlashLoan(address,address,address,uint256,uint8,uint256,uint16)": "0xefefaba5e921573100900a3ad9cf29f222d995fb3b6045797eaea7521bd8d6f0",
+  "ReserveDataUpdated(address,uint256,uint256,uint256,uint256,uint256)": "0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a"
+}

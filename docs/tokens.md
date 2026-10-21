@@ -23,6 +23,7 @@ proved about it. The model-level results (the
 | YAMv2 (24 decimals) | **mainnet** `0xAba8…aD8A` | `contracts/mainnet/YAMV2/` | `Examples.WeirdERC20.YAMV2.Contracts.YAMV2` | `yamv2` |
 | LEND (zero-value transfers revert; approve guard; ICO) | **mainnet** `0x80fB…ab03` | `contracts/mainnet/LEND/` | `Examples.WeirdERC20.LEND.Contracts.LEND` | `lend`, `lendico` |
 | ZRX (returns `false` instead of reverting) | **mainnet** `0xE41d…F498` | `contracts/mainnet/ZRX/` | `Examples.WeirdERC20.ZRX.Contracts.ZRX` | `zrx` |
+| Aave V3 aEthWETH (`AToken` rev. 5 behind its proxy; also the debt token, Pool, strategy, libraries) | **mainnet** `0x4d5F…14E8` / `0xadC4…7AdA` | `contracts/mainnet/{ATokenProxy,AToken,…}/` | `Examples.AaveV3.Contracts.*` ([aave-v3.md](aave-v3.md)) | none yet |
 
 *Compiled* targets are built from vendored sources by `scripts/build-contracts.sh` (solc
 0.8.28, optimizer 200, Cancun, no metadata) and deployed through their creation code.

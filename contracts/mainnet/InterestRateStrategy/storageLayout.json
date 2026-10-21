@@ -1,0 +1,67 @@
+{
+  "note": "Hand-derived from source/ (DefaultReserveInterestRateStrategyV2: one mapping, struct packed in one slot); equal to solc 0.8.20's storageLayout output for the verified standard-JSON input and checked against mainnet (layout-check.txt). ADDRESSES_PROVIDER is an immutable.",
+  "storage": [
+    {
+      "label": "_interestRateData",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_struct(InterestRateData))",
+      "contract": "DefaultReserveInterestRateStrategyV2"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_mapping(t_address,t_struct(InterestRateData))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct IDefaultInterestRateStrategyV2.InterestRateData)",
+      "numberOfBytes": "32",
+      "value": "t_struct(InterestRateData)"
+    },
+    "t_struct(InterestRateData)": {
+      "encoding": "inplace",
+      "label": "struct IDefaultInterestRateStrategyV2.InterestRateData",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "optimalUsageRatio",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint16"
+        },
+        {
+          "label": "baseVariableBorrowRate",
+          "slot": "0",
+          "offset": 2,
+          "type": "t_uint32"
+        },
+        {
+          "label": "variableRateSlope1",
+          "slot": "0",
+          "offset": 6,
+          "type": "t_uint32"
+        },
+        {
+          "label": "variableRateSlope2",
+          "slot": "0",
+          "offset": 10,
+          "type": "t_uint32"
+        }
+      ]
+    },
+    "t_uint16": {
+      "encoding": "inplace",
+      "label": "uint16",
+      "numberOfBytes": "2"
+    },
+    "t_uint32": {
+      "encoding": "inplace",
+      "label": "uint32",
+      "numberOfBytes": "4"
+    }
+  }
+}

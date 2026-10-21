@@ -1,0 +1,5 @@
+{
+  "note": "InitializableImmutableAdminUpgradeabilityProxy (Aave, solc 0.8.10) declares no state variables: the implementation is in the EIP-1967 slot keccak256('eip1967.proxy.implementation') - 1 = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc and the admin is an immutable (_admin, in the code). All other state is the implementation's layout (Pool/storageLayout.json) in the proxy's storage.",
+  "storage": [],
+  "types": {}
+}

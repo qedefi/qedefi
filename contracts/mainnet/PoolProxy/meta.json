@@ -1,0 +1,20 @@
+{
+  "name": "PoolProxy",
+  "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0x96107dc4006b4c7fecd1827cfb275ffeef31e6194cd50466f85f8eb24ccf2679",
+  "codeSize": 2400,
+  "contractName": "InitializableImmutableAdminUpgradeabilityProxy",
+  "compiler": "0.8.10+commit.fc410830",
+  "optimizer": {
+    "runs": 100000,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "exact_match",
+    "runtimeMatch": "exact_match",
+    "creationMatch": "exact_match"
+  }
+}

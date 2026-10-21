@@ -1,0 +1,9 @@
+{
+  "FlashloanDisabled()": "580f2f14",
+  "InconsistentFlashloanParams()": "039ebb30",
+  "InvalidAmount()": "2c5211c6",
+  "InvalidFlashloanExecutorReturn()": "fb37391e",
+  "ReserveInactive()": "90cd6f24",
+  "ReservePaused()": "d37f5f1c",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650"
+}

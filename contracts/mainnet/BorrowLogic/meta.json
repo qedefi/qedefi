@@ -1,0 +1,19 @@
+{
+  "name": "BorrowLogic",
+  "address": "0x52Da0ce88202D1542543598D1e1e27F0d344726A",
+  "chainId": 1,
+  "block": 26243058,
+  "blockHash": "0x60a9790be7c1c95dfe8b9ae9a2f2b079ecd6f59669cb051c6c1a92c37d20037b",
+  "codeHash": "0xdb9bb1c68eae0ef32f1653dc1bbb7b7ac50636d2e090a5d8d8056c62367a18d2",
+  "codeSize": 9587,
+  "contractName": "BorrowLogic",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  },
+  "blockscout": {
+    "fullyVerified": false,
+    "partiallyVerified": true
+  }
+}

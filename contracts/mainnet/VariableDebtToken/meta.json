@@ -1,0 +1,20 @@
+{
+  "name": "VariableDebtToken",
+  "address": "0xb27C52c7f84819e3157993489741cB60786aE330",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0xb17b28c6f03e856dc7dd8ffbfc05a1643797cf20343ca511b4e6064236f38033",
+  "codeSize": 7198,
+  "contractName": "VariableDebtTokenInstance",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

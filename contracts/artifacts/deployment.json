@@ -139,6 +139,78 @@
       "block": 26236997,
       "codeHash": "0x44d31e602fd21d6ca2e92923b0a6626c47c1986a92e1abc87bea9ae71e553229",
       "codeSize": 2946
+    },
+    "AToken": {
+      "address": "0xadC45Df3cf1584624C97338BEF33363BF5b97AdA",
+      "block": 26243038,
+      "codeHash": "0x3bd38f9cd664b4169375c69f362dc585ed97adf6da6f8b6d5569ecb8690d9eb5",
+      "codeSize": 10477
+    },
+    "ATokenProxy": {
+      "address": "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8",
+      "block": 26243038,
+      "codeHash": "0x82c6d153799b3226525e3b7ec27b843ef44c5f6bca21fcf8b3c80db61ba64881",
+      "codeSize": 2400
+    },
+    "VariableDebtToken": {
+      "address": "0xb27C52c7f84819e3157993489741cB60786aE330",
+      "block": 26243038,
+      "codeHash": "0xb17b28c6f03e856dc7dd8ffbfc05a1643797cf20343ca511b4e6064236f38033",
+      "codeSize": 7198
+    },
+    "VariableDebtTokenProxy": {
+      "address": "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE",
+      "block": 26243038,
+      "codeHash": "0x82c6d153799b3226525e3b7ec27b843ef44c5f6bca21fcf8b3c80db61ba64881",
+      "codeSize": 2400
+    },
+    "Pool": {
+      "address": "0x728a138A4823392C2EFA55e028d434F526fE03CF",
+      "block": 26243038,
+      "codeHash": "0x530cdbba5eb9487cd5d041bb74b7a1936ad3230bf9e361893ecd025373c7fbe5",
+      "codeSize": 21146
+    },
+    "PoolProxy": {
+      "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "block": 26243038,
+      "codeHash": "0x96107dc4006b4c7fecd1827cfb275ffeef31e6194cd50466f85f8eb24ccf2679",
+      "codeSize": 2400
+    },
+    "InterestRateStrategy": {
+      "address": "0x9ec6F08190DeA04A54f8Afc53Db96134e5E3FdFB",
+      "block": 26243038,
+      "codeHash": "0x1dc68bd8ed7951a5b2b72ebc76e0dea1878e6aca2dec51213ace96ca615d53b4",
+      "codeSize": 4038
+    },
+    "PoolLogic": {
+      "address": "0xD70593841C57cbaA04957cc3EAcE95708e48853b",
+      "block": 26243038,
+      "codeHash": "0x0fe8b38a44e9cb253e9e8c1abb79beb4ac2aae00dedaf4207a3215eeab678cee",
+      "codeSize": 7311
+    },
+    "SupplyLogic": {
+      "address": "0x584C7d8c4cb05304FE5Ac7fbc97f20A10Fb07564",
+      "block": 26243038,
+      "codeHash": "0xd7a886e7fff585881ef03af514c58a96b9c188f9502bc0d0a49fb472cd2eee6e",
+      "codeSize": 10302
+    },
+    "BorrowLogic": {
+      "address": "0x52Da0ce88202D1542543598D1e1e27F0d344726A",
+      "block": 26243058,
+      "codeHash": "0xdb9bb1c68eae0ef32f1653dc1bbb7b7ac50636d2e090a5d8d8056c62367a18d2",
+      "codeSize": 9587
+    },
+    "FlashLoanLogic": {
+      "address": "0x6D414cd0d5eAf8C43200ac0c325A7E2Ad83B8be6",
+      "block": 26243059,
+      "codeHash": "0x1edf7521bf3ca547c4f0efdee102d98b23adc7618467417d4fa1a02a20990adb",
+      "codeSize": 8227
+    },
+    "LiquidationLogic": {
+      "address": "0x96D5686812e33Ab509ECCDb38C89d15607B2a413",
+      "block": 26243039,
+      "codeHash": "0xef11fa2346ecdfa4640a056724ccd69dbd709dfda916a60afb5e669c345ae0c4",
+      "codeSize": 12101
     }
   }
 }

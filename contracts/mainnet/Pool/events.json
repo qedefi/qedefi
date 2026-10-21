@@ -1,0 +1,17 @@
+{
+  "Borrow(address,address,address,uint256,uint8,uint256,uint16)": "0xb3d084820fb1a9decffb176436bd02558d15fac9b0ddfed8c465bc7359d7dce0",
+  "DeficitCovered(address,address,uint256)": "0x84b203e49f1a4b553088061534231969a68ad1c81be192205e96d23a206cb26a",
+  "DeficitCreated(address,address,uint256)": "0x2bccfb3fad376d59d7accf970515eb77b2f27b082c90ed0fb15583dd5a942699",
+  "FlashLoan(address,address,address,uint256,uint8,uint256,uint16)": "0xefefaba5e921573100900a3ad9cf29f222d995fb3b6045797eaea7521bd8d6f0",
+  "LiquidationCall(address,address,address,uint256,uint256,address,bool)": "0xe413a321e8681d831f4dbccbca790d2952b56f977908e45be37335533e005286",
+  "MintedToTreasury(address,uint256)": "0xbfa21aa5d5f9a1f0120a95e7c0749f389863cbdbfff531aa7339077a5bc919de",
+  "PositionManagerApproved(address,address)": "0x540e692f36c2fa13e7583c4deeffd91ce6bc04f91e7d84f295d9d858372875fc",
+  "PositionManagerRevoked(address,address)": "0x08c92c3870d10c79e9673fecea8f4ff261f8e6b661067d9ca63fd777882bff15",
+  "Repay(address,address,address,uint256,bool)": "0xa534c8dbe71f871f9f3530e97a74601fea17b426cae02e1c5aee42c96c784051",
+  "ReserveDataUpdated(address,uint256,uint256,uint256,uint256,uint256)": "0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a",
+  "ReserveUsedAsCollateralDisabled(address,address)": "0x44c58d81365b66dd4b1a7f36c25aa97b8c71c361ee4937adc1a00000227db5dd",
+  "ReserveUsedAsCollateralEnabled(address,address)": "0x00058a56ea94653cdf4f152d227ace22d4c00ad99e2a43f58cb7d9e3feb295f2",
+  "Supply(address,address,address,uint256,uint16)": "0x2b627736bca15cd5381dcf80b0bf11fd197d01a037c52b927a881a10fb73ba61",
+  "UserEModeSet(address,uint8)": "0xd728da875fc88944cbf17638bcbe4af0eedaef63becd1d1c57cc097eb4608d84",
+  "Withdraw(address,address,address,uint256)": "0x3115d1449a7b732c986cba18244e897a450f61e1bb8d589cd2e69e6c8924f9f7"
+}

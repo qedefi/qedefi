@@ -1,0 +1,20 @@
+{
+  "name": "VariableDebtTokenProxy",
+  "address": "0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0x82c6d153799b3226525e3b7ec27b843ef44c5f6bca21fcf8b3c80db61ba64881",
+  "codeSize": 2400,
+  "contractName": "InitializableImmutableAdminUpgradeabilityProxy",
+  "compiler": "0.8.10+commit.fc410830",
+  "optimizer": {
+    "runs": 100000,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "exact_match",
+    "runtimeMatch": "exact_match",
+    "creationMatch": "exact_match"
+  }
+}

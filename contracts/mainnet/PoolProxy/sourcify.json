@@ -1,0 +1,88 @@
+{
+  "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+  "chainId": "1",
+  "match": "exact_match",
+  "runtimeMatch": "exact_match",
+  "creationMatch": "exact_match",
+  "verifiedAt": "2025-05-18T11:51:24Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.8.10+commit.fc410830",
+    "compilerSettings": {
+      "metadata": {
+        "bytecodeHash": "ipfs",
+        "useLiteralContent": true
+      },
+      "libraries": {},
+      "optimizer": {
+        "runs": 100000,
+        "enabled": true
+      },
+      "evmVersion": "berlin",
+      "remappings": []
+    },
+    "name": "InitializableImmutableAdminUpgradeabilityProxy",
+    "fullyQualifiedName": "@aave/core-v3/contracts/protocol/libraries/aave-upgradeability/InitializableImmutableAdminUpgradeabilityProxy.sol:InitializableImmutableAdminUpgradeabilityProxy"
+  },
+  "deployment": {
+    "transactionHash": "0xf2089a3c2a24f512214691c5a51dd57d1a5545758486360f3a1e24547723525d",
+    "blockNumber": "16291127",
+    "transactionIndex": "157",
+    "deployer": "0xb90594ea5128a8178e132286DC2B7fBaC7d7266c"
+  },
+  "proxyResolution": {
+    "isProxy": true,
+    "proxyType": "EIP1967Proxy",
+    "implementations": [
+      {
+        "address": "0x728a138A4823392C2EFA55e028d434F526fE03CF",
+        "name": "PoolInstance"
+      }
+    ]
+  },
+  "runtimeTransformations": [
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 335,
+      "reason": "immutable"
+    },
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 417,
+      "reason": "immutable"
+    },
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 628,
+      "reason": "immutable"
+    },
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 1041,
+      "reason": "immutable"
+    },
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 1082,
+      "reason": "immutable"
+    },
+    {
+      "id": "244",
+      "type": "replace",
+      "offset": 1451,
+      "reason": "immutable"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa2646970667358221220f1a1ebca2f78efacc19ba2648500988371e4d1b4f18add3683f91f74a0e968a464736f6c634300080a0033",
+      "offset": 2347
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "Pool",
+  "address": "0x728a138A4823392C2EFA55e028d434F526fE03CF",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0x530cdbba5eb9487cd5d041bb74b7a1936ad3230bf9e361893ecd025373c7fbe5",
+  "codeSize": 21146,
+  "contractName": "PoolInstance",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

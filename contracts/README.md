@@ -96,7 +96,8 @@ constructor. Byte offsets of the values in the runtime code:
 | OzVaultOffset | `_asset` | 556, 896, 2775, 2927 | asset address |
 | | `_underlyingDecimals` | 1277 | 18 (`asset.decimals()`) |
 
-`SoladyToken`, `OzAsset` and the mainnet targets have no immutables.
+`SoladyToken` and `OzAsset` have no immutables. Mainnet code carries its immutables as
+deployed; the Aave V3 targets record their names, offsets and values ([Aave V3](#aave-v3)).
 
 The runtime code of other deployments is obtained either by running the creation code
 (`creationCode ++ constructorArgs`; `difftest` does this in evm-lean and anvil) or by
@@ -114,13 +115,21 @@ writes `mainnet/<Name>/`: `source/` (the verified sources as Sourcify serves the
 `sourcify.json` (compiler, settings, deployment, match status, bytecode transformations),
 `abi.json`, `runtime.hex` (`eth_getCode` at the RPC's latest block; free endpoints serve no
 archive state) and `meta.json` (address, block number and hash, code hash and size), and
-checks the code against Sourcify's on-chain bytecode. Hand-written: `storageLayout.json`
+checks the code against Sourcify's on-chain bytecode. A contract Sourcify does not have is taken
+from Blockscout (`eth.blockscout.com`): `blockscout.json` instead of `sourcify.json`, checked
+against Blockscout's deployed bytecode. Hand-written: `storageLayout.json`
 (solc's format; derived from the source by C3 linearization and checked against mainnet
 storage) and `genesis.json` (the storage the tests install with the code: the constructor's
 state with test parameters; entries are a literal `slot` or a `mapping` slot with `keys`).
 `scripts/build-contracts.sh` is offline for these: it checks `keccak(runtime.hex)` against
 `meta.json`, derives `methodIdentifiers.json`, `events.json`, `errors.json` from the ABI,
 checks that every selector is pushed by the dispatcher, and generates the Lean module.
+Optional hand-written inputs: `immutables.json` (AST id → name of each immutable; offsets come
+from Sourcify's transformations, values from the code: `immutableRefs`, `immutableValues`),
+`links.json` (linked libraries when Sourcify's transformations are missing; otherwise taken from
+them: `linkedLibraries`) and `librarySelectors.json` (selectors of library functions with
+storage-pointer parameters, which are not in the ABI; copied from solc's `methodIdentifiers`
+and merged into `methodIdentifiers.json`).
 
 | Name | Address | Code hash | Size | Read at block | Compiler (mainnet) |
 |---|---|---|---|---|---|
@@ -178,6 +187,36 @@ reproduced exactly from the published source by any compiler; up to the trailer 
 with solc 0.4.19 (not installed here; the installed 0.4.26 gives different code). The check
 is therefore the code hash plus Sourcify's verification, not a local recompilation. Mainnet
 slots 0–2 (`name`, `symbol`, `decimals`) equal `genesis.json`.
+
+## Aave V3
+
+Aave V3's Ethereum Core market (WETH reserve), as deployed; facts, immutables, libraries and
+storage in [docs/aave-v3.md](../docs/aave-v3.md). Modules
+`Examples.AaveV3.Contracts.<Name>` (`qedefi/Examples/AaveV3/Contracts/`).
+
+| Name | Address | Code hash | Size | Read at block | Compiler (mainnet) | Verification |
+|---|---|---|---|---|---|---|
+| AToken (`ATokenInstance`, rev. 5) | `0xadC45Df3cf1584624C97338BEF33363BF5b97AdA` | `0x3bd38f9cd664b4169375c69f362dc585ed97adf6da6f8b6d5569ecb8690d9eb5` | 10,477 B | 26,243,038 | 0.8.27+commit.40a35a09, optimizer 200 (cancun) | Sourcify `match` |
+| ATokenProxy (aEthWETH) | `0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8` | `0x82c6d153799b3226525e3b7ec27b843ef44c5f6bca21fcf8b3c80db61ba64881` | 2,400 B | 26,243,038 | 0.8.10+commit.fc410830, optimizer 100,000 (berlin) | Sourcify `exact_match` |
+| VariableDebtToken (`VariableDebtTokenInstance`, rev. 5) | `0xb27C52c7f84819e3157993489741cB60786aE330` | `0xb17b28c6f03e856dc7dd8ffbfc05a1643797cf20343ca511b4e6064236f38033` | 7,198 B | 26,243,038 | 0.8.27+commit.40a35a09, optimizer 200 (cancun) | Sourcify `match` |
+| VariableDebtTokenProxy (variableDebtEthWETH) | `0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE` | `0x82c6d153799b3226525e3b7ec27b843ef44c5f6bca21fcf8b3c80db61ba64881` | 2,400 B | 26,243,038 | 0.8.10+commit.fc410830, optimizer 100,000 (berlin) | Sourcify `exact_match` |
+| Pool (`PoolInstance`, rev. 11) | `0x728a138A4823392C2EFA55e028d434F526fE03CF` | `0x530cdbba5eb9487cd5d041bb74b7a1936ad3230bf9e361893ecd025373c7fbe5` | 21,146 B | 26,243,038 | 0.8.27+commit.40a35a09, optimizer 200 (cancun) | Sourcify `match` |
+| PoolProxy | `0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2` | `0x96107dc4006b4c7fecd1827cfb275ffeef31e6194cd50466f85f8eb24ccf2679` | 2,400 B | 26,243,038 | 0.8.10+commit.fc410830, optimizer 100,000 (berlin) | Sourcify `exact_match` |
+| InterestRateStrategy (`DefaultReserveInterestRateStrategyV2`) | `0x9ec6F08190DeA04A54f8Afc53Db96134e5E3FdFB` | `0x1dc68bd8ed7951a5b2b72ebc76e0dea1878e6aca2dec51213ace96ca615d53b4` | 4,038 B | 26,243,038 | 0.8.20+commit.a1b79de6, optimizer 200 (shanghai) | Sourcify `exact_match` |
+| PoolLogic (library) | `0xD70593841C57cbaA04957cc3EAcE95708e48853b` | `0x0fe8b38a44e9cb253e9e8c1abb79beb4ac2aae00dedaf4207a3215eeab678cee` | 7,311 B | 26,243,038 | 0.8.27+commit.40a35a09, optimizer 200 (shanghai) | Sourcify `match` |
+| SupplyLogic (library) | `0x584C7d8c4cb05304FE5Ac7fbc97f20A10Fb07564` | `0xd7a886e7fff585881ef03af514c58a96b9c188f9502bc0d0a49fb472cd2eee6e` | 10,302 B | 26,243,038 | 0.8.27+commit.40a35a09, optimizer 200 (shanghai) | Sourcify `match` |
+| BorrowLogic (library) | `0x52Da0ce88202D1542543598D1e1e27F0d344726A` | `0xdb9bb1c68eae0ef32f1653dc1bbb7b7ac50636d2e090a5d8d8056c62367a18d2` | 9,587 B | 26,243,058 | 0.8.27+commit.40a35a09, optimizer 200 (shanghai) | Blockscout (partial; not on Sourcify) |
+| FlashLoanLogic (library) | `0x6D414cd0d5eAf8C43200ac0c325A7E2Ad83B8be6` | `0x1edf7521bf3ca547c4f0efdee102d98b23adc7618467417d4fa1a02a20990adb` | 8,227 B | 26,243,059 | 0.8.27+commit.40a35a09, optimizer 200 (shanghai) | Blockscout (partial; not on Sourcify) |
+| LiquidationLogic (library) | `0x96D5686812e33Ab509ECCDb38C89d15607B2a413` | `0xef11fa2346ecdfa4640a056724ccd69dbd709dfda916a60afb5e669c345ae0c4` | 12,101 B | 26,243,039 | 0.8.27+commit.40a35a09, optimizer 200 (shanghai) | Sourcify `match` |
+
+All are below the 24,576-byte limit. Despite Sourcify's partial `match`, every target is
+reproduced byte for byte by recompiling the verified standard-JSON input locally (up to
+immutables, library links and call protection, which then equal the deployed bytes; checked
+once, not part of the build). `layout-check.txt` (AToken, VariableDebtToken and Pool against
+the state of their proxies, the strategy, the three proxies) at block 26,243,102: 0 failures.
+The token and Pool states live in the proxies' storage; `genesis.json` of `ATokenProxy`,
+`VariableDebtTokenProxy` and `PoolProxy` set the EIP-1967 implementation slot and the
+initialized state (test balances for the aToken; no Pool reserves).
 
 ## Lean API
 

@@ -1,0 +1,16 @@
+{
+  "CollateralCannotBeLiquidated()": "979b5ce8",
+  "HealthFactorNotBelowThreshold()": "930bb771",
+  "InvalidAmount()": "2c5211c6",
+  "InvalidReserveIndex()": "85e98beb",
+  "LiquidationGraceSentinelCheckFailed()": "9e3e6060",
+  "MustNotLeaveDust()": "b629b0e4",
+  "NotEnoughAvailableUserBalance()": "47bc4b2c",
+  "ReserveInactive()": "90cd6f24",
+  "ReserveNotInDeficit()": "94468f03",
+  "ReservePaused()": "d37f5f1c",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650",
+  "SelfLiquidation()": "44511af1",
+  "SpecifiedCurrencyNotBorrowedByUser()": "3653732b",
+  "UserCannotHaveDebt()": "16f1ef81"
+}

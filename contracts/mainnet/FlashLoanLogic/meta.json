@@ -1,0 +1,19 @@
+{
+  "name": "FlashLoanLogic",
+  "address": "0x6D414cd0d5eAf8C43200ac0c325A7E2Ad83B8be6",
+  "chainId": 1,
+  "block": 26243059,
+  "blockHash": "0xa4fcfb84fa6f78dbab9f77c8750de498311c3abb1e5ce7ece536752fe6fe0ac6",
+  "codeHash": "0x1edf7521bf3ca547c4f0efdee102d98b23adc7618467417d4fa1a02a20990adb",
+  "codeSize": 8227,
+  "contractName": "FlashLoanLogic",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  },
+  "blockscout": {
+    "fullyVerified": false,
+    "partiallyVerified": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "ADDRESSES_PROVIDER()": "0542975c",
+  "MAX_BORROW_RATE()": "7a0c5ebf",
+  "MAX_OPTIMAL_POINT()": "7a24bd7e",
+  "MIN_OPTIMAL_POINT()": "f7e0fe67",
+  "calculateInterestRates((uint256,uint256,uint256,uint256,uint256,address,bool,uint256))": "b90db31b",
+  "getBaseVariableBorrowRate(address)": "cca22ea1",
+  "getInterestRateData(address)": "131e889c",
+  "getInterestRateDataBps(address)": "c79ce42e",
+  "getMaxVariableBorrowRate(address)": "6a00178e",
+  "getOptimalUsageRatio(address)": "aa33f063",
+  "getVariableRateSlope1(address)": "5b651bae",
+  "getVariableRateSlope2(address)": "8f4b0d5d",
+  "setInterestRateParams(address,(uint16,uint32,uint32,uint32))": "fd81bb12",
+  "setInterestRateParams(address,bytes)": "a8d9e56f"
+}
