@@ -1,0 +1,20 @@
+{
+  "name": "LiquidationLogic",
+  "address": "0x96D5686812e33Ab509ECCDb38C89d15607B2a413",
+  "chainId": 1,
+  "block": 26243039,
+  "blockHash": "0xd2fcf00a5bdd8d0278877a07425dcb0804c13485f6bdd1f13a984d14f9583763",
+  "codeHash": "0xef11fa2346ecdfa4640a056724ccd69dbd709dfda916a60afb5e669c345ae0c4",
+  "codeSize": 12101,
+  "contractName": "LiquidationLogic",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": null
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "BorrowCapExceeded()": "77a6a896",
+  "BorrowingNotEnabled()": "53587745",
+  "CollateralCannotCoverNewBorrow()": "911ceb81",
+  "HealthFactorLowerThanLiquidationThreshold()": "6679996d",
+  "InvalidAmount()": "2c5211c6",
+  "InvalidInterestRateModeSelected()": "17c5a78e",
+  "InvalidReserveIndex()": "85e98beb",
+  "LtvValidationFailed()": "5b263df7",
+  "NoDebtOfSelectedType()": "f0788fb2",
+  "NoExplicitAmountToRepayOnBehalf()": "cd3779c3",
+  "NotBorrowableInEMode()": "57db5bba",
+  "ReserveFrozen()": "6d305815",
+  "ReserveInactive()": "90cd6f24",
+  "ReservePaused()": "d37f5f1c",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650"
+}

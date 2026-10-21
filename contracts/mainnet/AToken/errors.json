@@ -1,0 +1,16 @@
+{
+  "CallerMustBePool()": "54b39ce2",
+  "CallerNotPoolAdmin()": "cdd36a97",
+  "ECDSAInvalidSignature()": "f645eedf",
+  "ECDSAInvalidSignatureLength(uint256)": "fce698f7",
+  "ECDSAInvalidSignatureS(bytes32)": "d78bce0c",
+  "ERC20InsufficientAllowance(address,uint256,uint256)": "fb8f41b2",
+  "InvalidBurnAmount()": "2075cc10",
+  "InvalidExpiration()": "fb2a6752",
+  "InvalidMintAmount()": "ccfad018",
+  "InvalidSignature()": "8baa579f",
+  "PoolAddressesDoNotMatch()": "4c2b89eb",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650",
+  "UnderlyingCannotBeRescued()": "bf9cb8bb",
+  "ZeroAddressNotValid()": "3bf95ba7"
+}

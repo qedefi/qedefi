@@ -1,0 +1,20 @@
+{
+  "name": "PoolLogic",
+  "address": "0xD70593841C57cbaA04957cc3EAcE95708e48853b",
+  "chainId": 1,
+  "block": 26243038,
+  "blockHash": "0xb44e7fa1bd8d4d0b2e1da98f0f16d679e4f8ea7a07f3893154e67d2652b6384e",
+  "codeHash": "0x0fe8b38a44e9cb253e9e8c1abb79beb4ac2aae00dedaf4207a3215eeab678cee",
+  "codeSize": 7311,
+  "contractName": "PoolLogic",
+  "compiler": "0.8.27+commit.40a35a09",
+  "optimizer": {
+    "runs": 200,
+    "enabled": true
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": null
+  }
+}

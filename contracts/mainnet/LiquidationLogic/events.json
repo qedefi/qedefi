@@ -1,0 +1,8 @@
+{
+  "DeficitCovered(address,address,uint256)": "0x84b203e49f1a4b553088061534231969a68ad1c81be192205e96d23a206cb26a",
+  "DeficitCreated(address,address,uint256)": "0x2bccfb3fad376d59d7accf970515eb77b2f27b082c90ed0fb15583dd5a942699",
+  "LiquidationCall(address,address,address,uint256,uint256,address,bool)": "0xe413a321e8681d831f4dbccbca790d2952b56f977908e45be37335533e005286",
+  "ReserveDataUpdated(address,uint256,uint256,uint256,uint256,uint256)": "0x804c9b842b2748a22bb64b345453a3de7ca54a6ca45ce00d415894979e22897a",
+  "ReserveUsedAsCollateralDisabled(address,address)": "0x44c58d81365b66dd4b1a7f36c25aa97b8c71c361ee4937adc1a00000227db5dd",
+  "ReserveUsedAsCollateralEnabled(address,address)": "0x00058a56ea94653cdf4f152d227ace22d4c00ad99e2a43f58cb7d9e3feb295f2"
+}

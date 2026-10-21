@@ -1,0 +1,63 @@
+{
+  "address": "0x96D5686812e33Ab509ECCDb38C89d15607B2a413",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": null,
+  "verifiedAt": "2026-06-30T08:33:56Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.8.27+commit.40a35a09",
+    "compilerSettings": {
+      "viaIR": false,
+      "metadata": {
+        "appendCBOR": true,
+        "bytecodeHash": "none",
+        "useLiteralContent": false
+      },
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "evmVersion": "shanghai",
+      "remappings": [
+        "solidity-utils/=lib/solidity-utils/src/",
+        "forge-std/=lib/forge-std/src/",
+        "ds-test/=lib/forge-std/lib/ds-test/src/",
+        "openzeppelin-contracts-upgradeable/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/",
+        "openzeppelin-contracts/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/",
+        "@openzeppelin/contracts-upgradeable/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/contracts/",
+        "@openzeppelin/contracts/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+        "erc4626-tests/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/erc4626-tests/",
+        "halmos-cheatcodes/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/halmos-cheatcodes/src/"
+      ]
+    },
+    "name": "LiquidationLogic",
+    "fullyQualifiedName": "src/contracts/protocol/libraries/logic/LiquidationLogic.sol:LiquidationLogic"
+  },
+  "deployment": {
+    "transactionHash": null,
+    "blockNumber": null,
+    "transactionIndex": null,
+    "deployer": null
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "type": "replace",
+      "offset": 1,
+      "reason": "callProtection"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa164736f6c634300081b000a",
+      "offset": 12089
+    }
+  }
+}

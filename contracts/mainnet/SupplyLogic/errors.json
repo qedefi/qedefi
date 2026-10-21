@@ -1,0 +1,19 @@
+{
+  "HealthFactorLowerThanLiquidationThreshold()": "6679996d",
+  "InconsistentEModeCategory()": "c1d88872",
+  "InvalidAmount()": "2c5211c6",
+  "InvalidCollateralInEmode(address,uint256)": "d2f93f12",
+  "InvalidDebtInEmode(address,uint256)": "2c906631",
+  "InvalidReserveIndex()": "85e98beb",
+  "LtvValidationFailed()": "5b263df7",
+  "NotEnoughAvailableUserBalance()": "47bc4b2c",
+  "ReserveFrozen()": "6d305815",
+  "ReserveInactive()": "90cd6f24",
+  "ReservePaused()": "d37f5f1c",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650",
+  "SupplyCapExceeded()": "f58f733a",
+  "SupplyToAToken()": "18d2badf",
+  "UnderlyingBalanceZero()": "5fe10377",
+  "UserHasAssetWithZeroLtv()": "21e5c4ae",
+  "WithdrawToAToken()": "dbc4273c"
+}

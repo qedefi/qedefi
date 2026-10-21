@@ -1,0 +1,15 @@
+{
+  "note": "Storage of the Pool proxy (InitializableImmutableAdminUpgradeabilityProxy, admin immutable = the PoolAddressesProvider 0x2f39d218\u20264E9e): EIP-1967 implementation slot -> the mainnet PoolInstance (0x728a138A\u202603CF) and lastInitializedRevision = 11 (Pool/storageLayout.json). No reserves, users or e-mode categories: a test that needs the WETH reserve must add _reserves[WETH] (10 slots, see Pool/layout-check.txt for the mainnet values) and _reservesList/_reservesCount.",
+  "storage": [
+    {
+      "label": "implementation (EIP-1967 slot)",
+      "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "value": "0x728a138a4823392c2efa55e028d434f526fe03cf"
+    },
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0x0",
+      "value": "0xb"
+    }
+  ]
+}

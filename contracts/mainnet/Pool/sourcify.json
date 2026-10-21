@@ -1,0 +1,440 @@
+{
+  "address": "0x728a138A4823392C2EFA55e028d434F526fE03CF",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2026-05-29T09:33:00Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.8.27+commit.40a35a09",
+    "compilerSettings": {
+      "viaIR": false,
+      "metadata": {
+        "appendCBOR": true,
+        "bytecodeHash": "none",
+        "useLiteralContent": false
+      },
+      "libraries": {
+        "lib/aave-v3-origin-private/src/contracts/instances/PoolInstance.sol": {
+          "PoolLogic": "0xd70593841c57cbaa04957cc3eace95708e48853b",
+          "BorrowLogic": "0x52da0ce88202d1542543598d1e1e27f0d344726a",
+          "SupplyLogic": "0x584c7d8c4cb05304fe5ac7fbc97f20a10fb07564",
+          "FlashLoanLogic": "0x6d414cd0d5eaf8c43200ac0c325a7e2ad83b8be6",
+          "LiquidationLogic": "0x96d5686812e33ab509eccdb38c89d15607b2a413"
+        }
+      },
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "evmVersion": "cancun",
+      "remappings": [
+        "aave-address-book/=lib/aave-helpers/lib/aave-address-book/src/",
+        "aave-helpers/=lib/aave-helpers/",
+        "aave-v3-origin-tests/=lib/aave-v3-origin-private/tests/",
+        "aave-v3-origin/=lib/aave-v3-origin-private/src/",
+        "erc4626-tests/=lib/aave-helpers/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/erc4626-tests/",
+        "forge-std/=lib/aave-helpers/lib/forge-std/src/",
+        "openzeppelin-contracts-upgradeable/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/",
+        "openzeppelin-contracts/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/",
+        "solidity-utils/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/src/",
+        "lib/aave-helpers/:aave-address-book/=lib/aave-helpers/lib/aave-address-book/src/",
+        "lib/aave-helpers/:solidity-utils/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/src/",
+        "@openzeppelin/contracts-upgradeable/=lib/aave-v3-origin-private/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/contracts/",
+        "@openzeppelin/contracts/=lib/aave-v3-origin-private/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+        "aave-v3-origin-private/=lib/aave-v3-origin-private/",
+        "ds-test/=lib/aave-v3-origin-private/lib/forge-std/lib/ds-test/src/",
+        "halmos-cheatcodes/=lib/aave-v3-origin-private/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/halmos-cheatcodes/src/"
+      ]
+    },
+    "name": "PoolInstance",
+    "fullyQualifiedName": "lib/aave-v3-origin-private/src/contracts/instances/PoolInstance.sol:PoolInstance"
+  },
+  "deployment": {
+    "transactionHash": "0xa4927f8b315d1280bc8175b884d3b00d37b388c8c82c2dcaa2fdbb7bfee88a16",
+    "blockNumber": "24776283",
+    "transactionIndex": "374",
+    "deployer": "0x076d6da60aAAC6c97A8a0fE8057f9564203Ee545"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 1089,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 3293,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 4272,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 4810,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 5254,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 5932,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 6511,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 6956,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 7296,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 8377,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 9417,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 9899,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 10537,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 11206,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 12507,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 13017,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 13747,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 14522,
+      "reason": "immutable"
+    },
+    {
+      "id": "13176",
+      "type": "replace",
+      "offset": 14964,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 1287,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 3462,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 3800,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 5137,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 5820,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 6162,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 6840,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 7644,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 8309,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 9676,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 10091,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 10425,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 11051,
+      "reason": "immutable"
+    },
+    {
+      "id": "13178",
+      "type": "replace",
+      "offset": 13631,
+      "reason": "immutable"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "type": "replace",
+      "offset": 1374,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "type": "replace",
+      "offset": 5022,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "type": "replace",
+      "offset": 6725,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "type": "replace",
+      "offset": 10295,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "type": "replace",
+      "offset": 13943,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/FlashLoanLogic.sol:FlashLoanLogic",
+      "type": "replace",
+      "offset": 1419,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/FlashLoanLogic.sol:FlashLoanLogic",
+      "type": "replace",
+      "offset": 6336,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/FlashLoanLogic.sol:FlashLoanLogic",
+      "type": "replace",
+      "offset": 11508,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/LiquidationLogic.sol:LiquidationLogic",
+      "type": "replace",
+      "offset": 2086,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/LiquidationLogic.sol:LiquidationLogic",
+      "type": "replace",
+      "offset": 3167,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/LiquidationLogic.sol:LiquidationLogic",
+      "type": "replace",
+      "offset": 10200,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 2895,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 8977,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 9717,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 9808,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 10795,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 12124,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 12389,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/PoolLogic.sol:PoolLogic",
+      "type": "replace",
+      "offset": 13171,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 2014,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 3688,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 4170,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 4747,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 6441,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 7233,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 7532,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 8195,
+      "reason": "library"
+    },
+    {
+      "id": "lib/aave-v3-origin-private/src/contracts/protocol/libraries/logic/SupplyLogic.sol:SupplyLogic",
+      "type": "replace",
+      "offset": 9347,
+      "reason": "library"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa164736f6c634300081b000a",
+      "offset": 21134
+    }
+  }
+}

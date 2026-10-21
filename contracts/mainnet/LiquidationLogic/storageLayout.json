@@ -1,0 +1,5 @@
+{
+  "note": "LiquidationLogic is a Solidity library with external functions, called by DELEGATECALL from the Pool: it has no storage of its own and works on the Pool's storage (Pool/storageLayout.json) through storage-pointer arguments. Its runtime code starts with PUSH20 <its own address> (call protection: non-view functions revert unless reached by DELEGATECALL).",
+  "storage": [],
+  "types": {}
+}

@@ -1,0 +1,8 @@
+{
+  "InvalidReserveIndex()": "85e98beb",
+  "NoMoreReservesAllowed()": "923a9466",
+  "NotContract()": "6f7c43f1",
+  "ReserveAlreadyAdded()": "aecc2085",
+  "ReserveAlreadyInitialized()": "d71b1fd1",
+  "SafeCastOverflowedUintDowncast(uint8,uint256)": "6dfcc650"
+}
