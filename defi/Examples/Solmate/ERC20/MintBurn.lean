@@ -1,4 +1,4 @@
-import Examples.Solmate.ERC20.Approve
+import Examples.Solmate.ERC20.SpecView
 
 /-!
 # The asset's `mint` and `burn`

@@ -10,7 +10,6 @@ import Defi.ERC4626.MoreProps
 import Defi.ERC4626.Events
 import EvmLean
 import Examples.Solmate.ERC4626.Views
-import Examples.Solmate.ERC20.TransferFrom
 import EvmLogic.Solidity.Call
 import Defi.ERC20.Rep
 

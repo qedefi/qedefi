@@ -24,6 +24,7 @@ import Examples.Solmate.ERC20.Malformed
 import Examples.Solmate.ERC20.MintBurn
 import Examples.Solmate.ERC20.Permit
 import Examples.Solmate.ERC20.Spec
+import Examples.Solmate.ERC20.SpecView
 import Examples.Solmate.ERC20.Strings
 import Examples.Solmate.ERC20.StringsCode
 import Examples.Solmate.ERC20.StringsVault
@@ -53,6 +54,7 @@ import Examples.Solmate.ERC4626.Malformed
 import Examples.Solmate.ERC4626.MulDiv
 import Examples.Solmate.ERC4626.Nested.Calls
 import Examples.Solmate.ERC4626.Nested.Coverage
+import Examples.Solmate.ERC4626.Nested.Domain
 import Examples.Solmate.ERC4626.Nested.Invariants
 import Examples.Solmate.ERC4626.Nested.Permit
 import Examples.Solmate.ERC4626.Nested.System

@@ -1,5 +1,4 @@
 import Examples.Solmate.ERC4626.LowGas.Code
-import Examples.Solmate.ERC4626.Nested.Coverage
 import Examples.Solmate.ERC4626.Nested.Invariants
 
 /-!

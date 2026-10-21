@@ -281,7 +281,7 @@ def literalFields? (m : Expr) : Option (Array Expr × Array Expr) := do
   let m := m.consumeMData
   guard (m.isAppOfArity ``Machine.mk 8)
   let ms := m.getAppArgs
-  let f := ms[6]!.consumeMData
+  let f := (ms.getD 6 default).consumeMData
   guard (f.isAppOfArity ``Frame.mk 11)
   return (ms, f.getAppArgs)
 
@@ -299,10 +299,10 @@ def congrApp (f : Expr) (olds : Array Expr) (pfs : Array (Option Expr)) :
     MetaM (Option Expr) := do
   let mut acc : Option Expr := none
   for i in [0:olds.size] do
-    match acc, pfs[i]! with
+    match acc, (pfs.getD i default) with
     | none, none => pure ()
     | none, some p => acc := some (← mkCongrArg (mkAppN f (olds.extract 0 i)) p)
-    | some q, none => acc := some (← mkCongrFun q olds[i]!)
+    | some q, none => acc := some (← mkCongrFun q (olds.getD i default))
     | some q, some p => acc := some (← mkCongr q p)
   return acc
 
@@ -339,22 +339,22 @@ def splitRhs (rhs : Expr) (ms fs : Array Expr) :
   let mut mOut : Array (Expr × Bool) := #[]
   for i in [0:8] do
     if i == 6 then
-      mOut := mOut.push (ra[i]!, true)
+      mOut := mOut.push ((ra.getD i default), true)
       continue
-    match ← projOf? ra[i]! with
-    | some r => if r == ms[i]! then mOut := mOut.push (ms[i]!, false)
-                else mOut := mOut.push (ra[i]!, true)
-    | none => mOut := mOut.push (ra[i]!, ra[i]! != ms[i]!)
+    match ← projOf? (ra.getD i default) with
+    | some r => if r == (ms.getD i default) then mOut := mOut.push ((ms.getD i default), false)
+                else mOut := mOut.push ((ra.getD i default), true)
+    | none => mOut := mOut.push ((ra.getD i default), (ra.getD i default) != (ms.getD i default))
   -- the frame: `have __src := m.frame; Frame.mk …` or `Frame.mk …`
-  let fr ← whnfCore ra[6]!.consumeMData
+  let fr ← whnfCore (ra.getD 6 default).consumeMData
   unless fr.isAppOfArity ``Frame.mk 11 do return none
   let fa := fr.getAppArgs
   let mut fOut : Array (Expr × Bool) := #[]
   for i in [0:11] do
-    match ← projOf? fa[i]! with
-    | some r => if r == fs[i]! then fOut := fOut.push (fs[i]!, false)
-                else fOut := fOut.push (fa[i]!, true)
-    | none => fOut := fOut.push (fa[i]!, fa[i]! != fs[i]!)
+    match ← projOf? (fa.getD i default) with
+    | some r => if r == (fs.getD i default) then fOut := fOut.push ((fs.getD i default), false)
+                else fOut := fOut.push ((fa.getD i default), true)
+    | none => fOut := fOut.push ((fa.getD i default), (fa.getD i default) != (fs.getD i default))
   return some (mOut, fOut)
 
 /-! ## The step -/
@@ -459,12 +459,12 @@ def dischHyps (cfg : Cfg) (m code : Expr) (pc : Nat) (b : UInt8) (stack gas : Ex
     let some (_, lhs, rhs) := ty.eq? | rest := rest.push x; continue
     if lhs.isAppOf ``GetElem?.getElem? then
       let args := lhs.getAppArgs
-      let coll := args[5]!
+      let coll := (args.getD 5 default)
       if coll.isAppOf ``Frame.code then
         x.mvarId!.assign (← cfg.codeFact code pc b)
         continue
       if coll.isAppOf ``Frame.stack then
-        let some k ← (evalNat args[6]!).run | do trace[EvmLean.wp] "fast step: hyp check 1 failed: {ty}"; return false
+        let some k ← (evalNat (args.getD 6 default)).run | do trace[EvmLean.wp] "fast step: hyp check 1 failed: {ty}"; return false
         let some v := listNth? k stack | do trace[EvmLean.wp] "fast step: hyp check 2 failed: {ty}"; return false
         let_expr Option.some _ rv := rhs | do trace[EvmLean.wp] "fast step: hyp check 3 failed: {ty}"; return false
         unless ← isDefEq rv v do
@@ -661,8 +661,8 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
     TacticM (Option (Expr × Expr)) := do
   unless fastStep.enable.get (← getOptions) do return none
   let some (ms, fs) := literalFields? m | do trace[EvmLean.wp] "fast step: core check 1"; return none
-  let code := fs[1]!
-  let some pc ← (evalNat fs[3]!).run | do trace[EvmLean.wp] "fast step: core check 2"; return none
+  let code := (fs.getD 1 default)
+  let some pc ← (evalNat (fs.getD 3 default)).run | do trace[EvmLean.wp] "fast step: core check 2"; return none
   let some bytes ← cfg.bytes code | do trace[EvmLean.wp] "fast step: core check 3"; return none
   let some b := bytes[pc]? | do trace[EvmLean.wp] "fast step: core check 4"; return none
   let bn := b.toNat
@@ -683,7 +683,7 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
         -- `step_push_val (n : Nat) (hn : n < 33)`
         let some xn ← xs.findM? (fun x => return (← inferType x).isConstOf ``Nat) | do trace[EvmLean.wp] "fast step: core check 7"; return none
         xn.mvarId!.assign (mkNatLit n)
-      unless ← dischHyps cfg m code pc b fs[4]! fs[6]! xs do return none
+      unless ← dischHyps cfg m code pc b (fs.getD 4 default) (fs.getD 6 default) xs do return none
       let_expr StepResult.running rhs := rhs | do trace[EvmLean.wp] "fast step: core check 8"; return none
       let rhs ← instantiateMVars rhs
       if rhs.hasExprMVar then
@@ -692,10 +692,10 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
       let pfStep := mkAppN lem (← xs.mapM instantiateMVars)
       let some (mOut, fOut) ← splitRhs rhs ms fs | do trace[EvmLean.wp] "fast step: core check 9"; return none
       -- only the fields `SameFrame.of_update` may change
-      if [0, 1, 4, 7].any (fun i => (mOut[i]!).2) then
+      if [0, 1, 4, 7].any (fun i => ((mOut.getD i default)).2) then
         trace[EvmLean.wp] "fast step: machine fields changed {mOut.map (·.2)}"
         return none
-      if [0, 1, 2, 9, 10].any (fun i => (fOut[i]!).2) then
+      if [0, 1, 2, 9, 10].any (fun i => ((fOut.getD i default)).2) then
         trace[EvmLean.wp] "fast step: frame fields changed {fOut.map (·.2)}"
         return none
       -- normalize the changed fields
@@ -709,8 +709,8 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
             let (v', p) ← normField cfg m v; pure (v, v', p)
           else if !changed then pure (v, v, none)
           else if fi == 3 then normPc m v
-          else if fi == 4 then normStack cfg m fs[4]! v
-          else if fi == 6 then normGas cfg m fs[6]! v
+          else if fi == 4 then normStack cfg m (fs.getD 4 default) v
+          else if fi == 6 then normGas cfg m (fs.getD 6 default) v
           else do let (v', p) ← normField cfg m v; pure (v, v', p)
         fRaw := fRaw.push raw; fNew := fNew.push v'; fPf := fPf.push p
         fi := fi + 1
@@ -721,7 +721,7 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
       let mut mRaw : Array Expr := #[]
       let mut mPf : Array (Option Expr) := #[]
       for i in [0:8] do
-        let (v, changed) := mOut[i]!
+        let (v, changed) := (mOut.getD i default)
         if i == 6 then
           mRaw := mRaw.push frRaw; mNew := mNew.push frNew; mPf := mPf.push frPf
         else if changed || (normAll && [2, 3, 5].contains i) then
@@ -765,7 +765,9 @@ def fastWpStep (cfg : Cfg) (normAll : Bool := false) : TacticM Bool := withMainC
   let some (m', hstep) ← stepCore cfg m normAll | return false
   let some (mNew, fNew) := literalFields? m' | return false
   let hsame := mkAppN (mkConst ``SameFrame.of_update)
-    #[m, mNew[2]!, mNew[3]!, mNew[5]!, fNew[3]!, fNew[4]!, fNew[5]!, fNew[6]!, fNew[7]!, fNew[8]!]
+    #[m, mNew.getD 2 default, mNew.getD 3 default, mNew.getD 5 default, fNew.getD 3 default,
+      fNew.getD 4 default, fNew.getD 5 default, fNew.getD 6 default, fNew.getD 7 default,
+      fNew.getD 8 default]
   let hsame ← mkExpectedTypeHint hsame (mkApp2 (mkConst ``SameFrame) m m')
   if fastStep.check.get (← getOptions) then
     try check hsame catch e => throwError "fast step: hsame ill-typed: {e.toMessageData}"

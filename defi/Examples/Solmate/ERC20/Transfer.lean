@@ -196,25 +196,6 @@ open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmL
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
 
-/-- Calldata of a function taking two static words `x`, `y`, with selector `sel`. -/
-structure TwoWordCall (data : ByteArray) (sel : Nat) (x y : Word) : Prop where
-  selector : Abi.selectorOf data = sel
-  size : 68 ≤ data.size
-  arg0 : Bytes.toWord (readBytes data 4 32) = x
-  arg1 : Bytes.toWord (readBytes data 36 32) = y
-
-/-- A successful asset `transfer`: ABI `true`, world `transferWorld`, ≤ 55000 gas. -/
-def TransferOk (to : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
-  o = .success (Bytes.ofWord 1) ∧
-  mf.world = transferWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
-    to amount ∧
-  mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
-  m.frame.gasLeft ≤ mf.frame.gasLeft + 55000
-
-/-- What a reverting call ends with: a `REVERT` (some data), at most `g` gas used. -/
-def Reverts (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
-  (∃ out, o = .revert out) ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + g
-
 set_option maxHeartbeats 0 in
 /-- **The asset's `transfer`, success**, in any non-static frame, when the balance covers it. -/
 theorem transfer_halts_ok {ia : SolmateAsset.Immutables} (m : Machine)
