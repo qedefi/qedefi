@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC4626.Permit
 import Examples.Solmate.ERC4626.Abstraction
 import Examples.Solmate.ERC4626.Events
+import QEDefi.ERC20.Permit
 
 /-!
 # `permit`, `DOMAIN_SEPARATOR()`, `nonces(owner)`: top level, refinement, events

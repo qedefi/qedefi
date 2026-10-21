@@ -1,4 +1,3 @@
-import QEDefi.ERC20.Permit
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Solidity.ERC20
 import Examples.Solmate.ERC20.BalanceOf
@@ -11,6 +10,7 @@ import EvmLogic.Solidity.Word
 import EvmLogic.Solidity.Events
 import QEDefi.ERC4626.Logs
 import Examples.MathlibDeps
+import QEDefi.Math.Arith
 
 /-!
 # EIP-2612 as the bytecode computes it

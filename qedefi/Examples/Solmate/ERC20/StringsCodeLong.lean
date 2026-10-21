@@ -1,8 +1,9 @@
 import Examples.Solmate.ERC4626.StringsCommon
 import Examples.Solmate.ERC20.BalanceOf
 import EvmLogic.Solidity.Strings
-import Examples.Solmate.ERC4626.Abstraction
 import Examples.MathlibDeps
+import Examples.Solmate.ERC4626.MulDiv
+import QEDefi.Math.Arith
 
 /-!
 # Long strings of `Examples.Solmate.ERC20.StringsCode`

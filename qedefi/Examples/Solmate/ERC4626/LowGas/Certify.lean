@@ -1,8 +1,8 @@
 import Examples.Solmate.Contracts.SolmateVault
-import Examples.Solmate.Contracts.SolmateAsset
 import EvmLogic.AbsInt.Check
 import EvmLogic.AbsInt.Domain
 import EvmLogic.Tactic.KernelRfl
+import Examples.Solmate.Contracts.SolmateAssetData
 
 /-!
 # Low gas: certificates of the abstract interpreter for the vault and asset

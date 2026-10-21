@@ -1,5 +1,6 @@
 import Examples.Solmate.ERC20.Spec
 import EvmLogic.Program.Call
+import Examples.Solmate.ERC4626.Abstraction
 
 /-!
 # The vault's `safeTransferFrom` into the asset
@@ -16,11 +17,6 @@ open Examples.Solmate.ERC20 QEDefi.ERC4626
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open QEDefi.Math QEDefi.ERC20 Examples.Solmate.ERC4626.Shares
-
-/-- Memory after `safeTransferFrom`: free pointer unchanged (`0x80` or `0xa0`), the call's input
-window `[fmp, fmp + 100)` allocated. -/
-def FmpAfterTransfer (mem : Memory) : Prop :=
-  (mem.loadWord 64 = 128#256 ∧ mem.size = 256) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 288)
 
 theorem assetTransferFrom_halts {ia : SolmateAsset.Immutables} (m : Machine)
     (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (hval : m.frame.msg.value = 0)

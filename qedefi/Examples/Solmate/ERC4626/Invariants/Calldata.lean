@@ -1,5 +1,8 @@
-import Examples.Solmate.ERC20.Spec
+import Examples.Solmate.ERC20.TransferFrom
+import EvmLogic.Program.Call
+import Examples.MathlibDeps
 import QEDefi.Trace.Lift
+import QEDefi.ERC4626.Solmate
 
 /-!
 # Calldata of two- and three-word calls

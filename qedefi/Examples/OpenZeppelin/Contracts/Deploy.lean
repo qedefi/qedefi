@@ -1,6 +1,6 @@
-import Examples.OpenZeppelin.Contracts.OzAsset
-import Examples.OpenZeppelin.Contracts.OzVault
-import Examples.OpenZeppelin.Contracts.OzVaultOffset
+import Examples.OpenZeppelin.Contracts.OzAssetData
+import Examples.OpenZeppelin.Contracts.OzVaultData
+import Examples.OpenZeppelin.Contracts.OzVaultOffsetData
 
 /-!
 # Runtime code of the OpenZeppelin contracts for arbitrary deployment parameters

@@ -1,6 +1,10 @@
-import Examples.Solmate.ERC4626.Abstraction
 import EvmLogic.Tactic.Mcopy
 import EvmLogic.Solidity.Strings
+import EvmLogic.Program.Call
+import EvmLogic.Solidity.ERC20
+import Examples.MathlibDeps
+import Examples.Solmate.ERC20.BalanceOf
+import QEDefi.ERC4626.Events
 
 /-!
 # String getters: shared definitions

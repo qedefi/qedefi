@@ -81,6 +81,12 @@ theorem balanceOf_halts {ia : SolmateAsset.Immutables} (m : Machine)
   dsimp only [outputMachine]
   evm_gas
 
+theorem allowanceSlot_solmate (crypto : Crypto) (owner spender : Address) :
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender =
+      crypto.keccak256 (Bytes.ofWord (Word.ofAddress spender) ++
+        Bytes.ofWord (crypto.keccak256 (Bytes.ofWord (Word.ofAddress owner) ++ Bytes.ofWord 4#256))) :=
+  rfl
+
 end Examples.Solmate.ERC20
 
 section

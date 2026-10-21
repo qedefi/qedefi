@@ -1,4 +1,8 @@
-import Examples.Solmate.ERC4626.ViewsSpec
+import Examples.Solmate.ERC20.BalanceOf
+import Examples.Solmate.ERC4626.SharesBase
+import EvmLogic.Program.Call
+import Examples.MathlibDeps
+import QEDefi.ERC4626.Events
 
 /-!
 # Unknown selectors and short calldata revert

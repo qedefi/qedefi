@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC4626.Abstraction
 import Examples.Solmate.ERC4626.SharesBase
 import Examples.Solmate.ERC20.BalanceOf
+import Examples.Solmate.ERC4626.Views
 
 /-!
 # The vault's views refine the model

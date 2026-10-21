@@ -1,8 +1,7 @@
-import Examples.Solmate.ERC20.Approve
 import QEDefi.ERC4626.Logs
 import Examples.Solmate.ERC20.TransferFrom
-import Examples.Solmate.ERC4626.Invariants.Calldata
-import Examples.Solmate.ERC4626.Events
+import Examples.Solmate.ERC20.SpecView
+import QEDefi.Trace.Lift
 
 /-!
 # Logs of the asset's `transfer`, `approve` and `transferFrom`

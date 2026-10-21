@@ -13,6 +13,8 @@ Summaries, for any immutables, of the internal `totalAssets()` (`0x047b`: `STATI
 asset, plugged in through its callee summary `balanceOf_halts`) and of the four internal
 conversions (`convertToShares`, `convertToAssets`, `previewMint`, `previewWithdraw`), each
 returning the `Nat`-level specification (`convertToSharesN` …) at `supplyOf`/`assetsOf`.
+Also `sharesOf` (a share balance word) and `FmpAfterTransfer`, used by modules that do not
+need the views or `safeTransferFrom`.
 -/
 
 section
@@ -22,6 +24,10 @@ open Examples.Solmate.ERC20
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
+
+/-- The share balance word of `a` (`balanceOf[a]` of the executing account). -/
+def sharesOf (m : Machine) (a : Address) : Word :=
+  m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
 
 /-- A frame executing the vault (immutables `i`): its code and jump table, the asset's code at
 `i.asset` (not a precompile), and room for one more call frame. -/
@@ -70,6 +76,11 @@ def FmpInit (mem : Memory) : Prop := mem.loadWord 64 = 128#256 ∧ mem.size = 96
 
 /-- Memory after one external call through the free pointer: free pointer `0xa0`, six words. -/
 def FmpAfterCall (mem : Memory) : Prop := mem.loadWord 64 = 160#256 ∧ mem.size = 192
+
+/-- Memory after `safeTransferFrom`: free pointer unchanged (`0x80` or `0xa0`), the call's input
+window `[fmp, fmp + 100)` allocated. -/
+def FmpAfterTransfer (mem : Memory) : Prop :=
+  (mem.loadWord 64 = 128#256 ∧ mem.size = 256) ∨ (mem.loadWord 64 = 160#256 ∧ mem.size = 288)
 
 set_option maxHeartbeats 0 in
 /-- **`totalAssets()` (internal, entry `0x047b`, stack `r :: rest`)**: returns to `r` with

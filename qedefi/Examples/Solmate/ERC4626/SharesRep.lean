@@ -1,5 +1,6 @@
 import QEDefi.ERC20.Rep
-import Examples.Solmate.ERC4626.SharesBase
+import EvmLogic.Tactic.Patched
+import Examples.Solmate.Contracts.SolmateVaultData
 
 /-!
 # The vault's share token: storage frames and the allowance step

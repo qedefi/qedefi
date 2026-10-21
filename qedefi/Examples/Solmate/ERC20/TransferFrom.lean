@@ -26,11 +26,12 @@ structure ThreeWordCall (data : ByteArray) (sel : Nat) (x y z : Word) : Prop whe
   arg1 : Bytes.toWord (readBytes data 36 32) = y
   arg2 : Bytes.toWord (readBytes data 68 32) = z
 
-theorem allowanceSlot_solmate (crypto : Crypto) (owner spender : Address) :
-    ERC20.allowanceSlot crypto ERC20.Layout.solmate owner spender =
-      crypto.keccak256 (Bytes.ofWord (Word.ofAddress spender) ++
-        Bytes.ofWord (crypto.keccak256 (Bytes.ofWord (Word.ofAddress owner) ++ Bytes.ofWord 4#256))) :=
-  rfl
+/-- Allowance entries represented after `transfer`: those in neither written balance slot. -/
+def TransferAllowances (crypto : Crypto) (src dst : Address) (o sp : Address) : Prop :=
+  ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.balanceSlot crypto ERC20.Layout.solmate src ∧
+    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
+      ERC20.balanceSlot crypto ERC20.Layout.solmate dst
 
 theorem maxWord_eq_MAXW : ERC20.maxWord = MAXW := by decide
 

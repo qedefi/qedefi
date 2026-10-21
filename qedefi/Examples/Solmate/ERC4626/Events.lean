@@ -1,8 +1,10 @@
 import QEDefi.ERC4626.Events
-import Examples.Solmate.ERC4626.Abstraction
 import QEDefi.ERC4626.Logs
 import EvmLogic.Solidity.Word
 import Examples.MathlibDeps
+import EvmLogic.Solidity.ERC20
+import EvmLogic.Tactic.Patched
+import Examples.Solmate.ERC20.BalanceOf
 
 /-!
 # Events as EVM logs

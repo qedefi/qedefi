@@ -4,7 +4,6 @@ import EvmLogic.Solidity.Word
 import Examples.Solmate.ERC4626.WithdrawInternal
 import Examples.Solmate.ERC4626.ConvertGas
 import Examples.Solmate.ERC4626.ViewsSpec
-import Examples.Solmate.ERC4626.Withdraw
 import Examples.Solmate.ERC4626.DepositInternal
 
 /-!

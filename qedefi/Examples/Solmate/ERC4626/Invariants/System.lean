@@ -1,10 +1,10 @@
 import QEDefi.ERC4626.Agree
 import Examples.Solmate.ERC20.Spec
-import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC20.Approve
 import Examples.Solmate.ERC20.MintBurn
 import Examples.Solmate.ERC4626.Invariants.Calldata
 import Examples.Solmate.ERC4626.Shares
+import Examples.Solmate.ERC4626.Abstraction
 
 /-!
 # The concrete system: deployed vault and asset under arbitrary call sequences

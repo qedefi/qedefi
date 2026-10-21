@@ -1,7 +1,6 @@
 import Examples.Solmate.ERC4626.WithdrawInternal
 import Examples.Solmate.ERC4626.ConvertGas
 import Examples.Solmate.ERC4626.Views
-import Examples.Solmate.ERC4626.ViewsSpec
 
 /-!
 # `withdraw` and `redeem` of the compiled vault
@@ -443,17 +442,6 @@ def OutResult (crypto : Crypto) (w : World) (vault asset caller receiver owner :
 
 variable {ctx : Context} {w : World} {tr : TransientStorage} {vault asset caller : Address}
   {data : ByteArray} {gas : Nat} {wa : AddressSet} {wk : StorageKeySet}
-
-theorem Deployed.asset_ne {w : World} {vault asset : Address} (h : Deployed w vault asset) :
-    asset ≠ vault := by
-  rintro rfl
-  obtain ⟨i, -, hi⟩ := h.vaultCode
-  obtain ⟨ia, hia⟩ := h.assetCode
-  have := congrArg ByteArray.size (hi.symm.trans hia)
-  rw [SolmateAsset.runtimeCodeWith, size_patchWords, SolmateAsset.size_runtimeCode] at this
-  have h2 := Shares.size_code i
-  simp only [Shares.code] at h2
-  omega
 
 theorem outPre_start {i : SolmateVault.Immutables} (hdep : Deployed w vault i.asset)
     (hgas : 200000 ≤ gas) (hgas' : gas < 2 ^ 64) (hsize : data.size < 2 ^ 64) :

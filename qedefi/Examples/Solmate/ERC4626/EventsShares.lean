@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC4626.EventsSharesCode
 import Examples.Solmate.ERC4626.Events
-import Examples.Solmate.ERC4626.Shares
+import Examples.Solmate.ERC4626.Abstraction
+import Examples.Solmate.ERC4626.SharesRep
 
 /-!
 # Events of the vault's share-token functions against the model

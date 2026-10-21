@@ -1,7 +1,8 @@
-import Examples.Solmate.ERC4626.SafeTransferFrom
+import Examples.Solmate.ERC20.Spec
+import EvmLogic.Program.Call
+import Examples.Solmate.ERC4626.Abstraction
 import Examples.Solmate.ERC20.MintBurn
 import EvmLogic.Solidity.Word
-import Examples.Solmate.ERC4626.WithdrawInternal
 
 /-!
 # `deposit`/`mint`: the internal `_mint` and `afterDeposit`

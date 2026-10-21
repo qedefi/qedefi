@@ -1,4 +1,5 @@
 import Examples.Solmate.ERC20.SpecView
+import Examples.Solmate.ERC4626.SharesRep
 
 /-!
 # The asset's `mint` and `burn`

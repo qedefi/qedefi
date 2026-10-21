@@ -1,5 +1,6 @@
 import Examples.Solmate.ERC20.StringsCodeShort
 import Examples.Solmate.ERC20.StringsCodeLong
+import Examples.Solmate.ERC4626.Views
 
 /-!
 # `name()` / `symbol()` of the compiled asset

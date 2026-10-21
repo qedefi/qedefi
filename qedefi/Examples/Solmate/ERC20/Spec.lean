@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC20.SpecView
 import Examples.Solmate.ERC20.Transfer
 import Examples.Solmate.ERC20.TransferFrom
+import Examples.Solmate.ERC4626.SharesRep
 
 /-!
 # The asset's functions refine the model's `Token` operations, in any frame
@@ -19,13 +20,6 @@ open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmL
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
 open QEDefi.Math QEDefi.ERC20 Examples.Solmate.ERC4626.Shares
-
-/-- Allowance entries represented after `transfer`: those in neither written balance slot. -/
-def TransferAllowances (crypto : Crypto) (src dst : Address) (o sp : Address) : Prop :=
-  ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
-      ERC20.balanceSlot crypto ERC20.Layout.solmate src ∧
-    ERC20.allowanceSlot crypto ERC20.Layout.solmate o sp ≠
-      ERC20.balanceSlot crypto ERC20.Layout.solmate dst
 
 /-- **The asset's `transfer` refines `Token.transfer`**, in any non-static frame. -/
 theorem assetTransfer_refines {ia : SolmateAsset.Immutables} (m : Machine)

@@ -1,4 +1,4 @@
-import Examples.Solmate.ERC20.Spec
+import Examples.Solmate.ERC20.SpecView
 
 /-!
 # The asset's `approve`
@@ -14,15 +14,6 @@ open Examples.Solmate.ERC4626 QEDefi.ERC4626
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open QEDefi.Math QEDefi.ERC20 Examples.Solmate.ERC4626.Shares
-
-/-- A successful asset `approve`: returns ABI `true`, the world is `ERC20.approveWorld`, at most
-40000 gas used. -/
-def ApproveOk (spender : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
-  o = .success (Bytes.ofWord 1) ∧
-  mf.world = ERC20.approveWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
-    spender amount ∧
-  mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
-  m.frame.gasLeft ≤ mf.frame.gasLeft + 40000
 
 set_option maxHeartbeats 0 in
 /-- **`approve(spender, amount)` of the asset**, in any non-static frame: always succeeds. -/

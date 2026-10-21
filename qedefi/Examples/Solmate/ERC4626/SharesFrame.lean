@@ -2,6 +2,7 @@ import Examples.Solmate.ERC20.TransferFrom
 import Examples.Solmate.ERC20.Approve
 import Examples.Solmate.ERC4626.SharesBase
 import Examples.Solmate.ERC4626.Views
+import Examples.Solmate.ERC20.Spec
 
 /-!
 # The vault's share-token functions in any frame

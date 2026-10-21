@@ -1,6 +1,6 @@
 import Examples.Solmate.ERC20.Permit
-import Examples.Solmate.Contracts.SolmateVault
 import Examples.Solmate.Contracts.SolmateAsset
+import Examples.Solmate.Contracts.SolmateVaultData
 
 /-!
 # The `DOMAIN_SEPARATOR()`/`permit` frame condition

@@ -1,18 +1,11 @@
 import QEDefi.Math.Arith
 import QEDefi.ERC20.Token
 import QEDefi.ERC4626.Solmate
-import QEDefi.ERC4626.SolmateProps
-import QEDefi.ERC4626.Oz
-import QEDefi.ERC4626.OzProps
-import QEDefi.ERC4626.Inflation
-import QEDefi.ERC4626.Witnesses
-import QEDefi.ERC4626.MoreProps
-import QEDefi.ERC4626.Events
 import EvmLean
-import Examples.Solmate.ERC4626.Views
 import EvmLogic.Solidity.Call
 import QEDefi.ERC20.Rep
 import Examples.MathlibDeps
+import Examples.Solmate.ERC4626.Convert
 
 /-!
 # Abstraction: deployed bytecode ↔ the Solmate vault model
@@ -64,6 +57,17 @@ theorem deployed_canonical {w : World}
   assetCode := ⟨SolmateAsset.deployment, ha.trans SolmateAsset.runtimeCodeWith_deployment.symm⟩
   vaultNotPrecompile fork := by cases fork <;> decide
   assetNotPrecompile fork := by cases fork <;> decide
+
+theorem Deployed.asset_ne {w : World} {vault asset : Address} (h : Deployed w vault asset) :
+    asset ≠ vault := by
+  rintro rfl
+  obtain ⟨i, -, hi⟩ := h.vaultCode
+  obtain ⟨ia, hia⟩ := h.assetCode
+  have := congrArg ByteArray.size (hi.symm.trans hia)
+  rw [SolmateAsset.runtimeCodeWith, size_patchWords, SolmateAsset.size_runtimeCode] at this
+  have h2 := Shares.size_code i
+  simp only [Shares.code] at h2
+  omega
 
 /-! ## The abstraction -/
 

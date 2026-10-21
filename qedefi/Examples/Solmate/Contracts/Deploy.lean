@@ -1,5 +1,5 @@
-import Examples.Solmate.Contracts.SolmateAsset
-import Examples.Solmate.Contracts.SolmateVault
+import Examples.Solmate.Contracts.SolmateAssetData
+import Examples.Solmate.Contracts.SolmateVaultData
 
 /-!
 # Runtime code for arbitrary deployment parameters

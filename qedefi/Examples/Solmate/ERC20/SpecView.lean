@@ -1,11 +1,15 @@
-import Examples.Solmate.ERC4626.Abstraction
+import Examples.Solmate.ERC20.BalanceOf
+import QEDefi.ERC20.Rep
+import EvmLogic.Program.Call
 import Examples.Solmate.ERC4626.SharesRep
+import QEDefi.ERC4626.Solmate
 
 /-!
 # The asset's storage view and `balanceOf` against the model
 
-`assetView` (the asset's ERC-20 storage view in a frame) and `assetBalanceOf_refines`, split off
-`Spec` so that `MintBurn` does not wait for the `transfer`/`transferFrom` proofs.
+`assetView` (the asset's ERC-20 storage view in a frame), `ApproveOk` and
+`assetBalanceOf_refines`, split off `Spec` so that `MintBurn` does not wait for the
+`transfer`/`transferFrom` proofs, and `Approve`/`EventsTransfer` do not wait for the vault.
 -/
 
 namespace Examples.Solmate.ERC20
@@ -19,6 +23,15 @@ open QEDefi.Math QEDefi.ERC20 Examples.Solmate.ERC4626.Shares
 /-- The asset's storage view in the frame `m` (the asset is the executing account). -/
 abbrev assetView (m : Machine) : ERC20.State :=
   ERC20.view m.ctx.crypto ERC20.Layout.solmate m.world m.frame.msg.currentTarget
+
+/-- A successful asset `approve`: returns ABI `true`, the world is `ERC20.approveWorld`, at most
+40000 gas used. -/
+def ApproveOk (spender : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
+  o = .success (Bytes.ofWord 1) ∧
+  mf.world = ERC20.approveWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
+    spender amount ∧
+  mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
+  m.frame.gasLeft ≤ mf.frame.gasLeft + 40000
 
 /-- **`balanceOf(a)` of the asset** returns the represented balance, in any frame. -/
 theorem assetBalanceOf_refines {ia : SolmateAsset.Immutables} (m : Machine)

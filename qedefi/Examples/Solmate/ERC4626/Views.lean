@@ -45,10 +45,6 @@ structure WordCall (data : ByteArray) (sel : Nat) (x : Word) : Prop where
   size : 36 ≤ data.size
   arg : Bytes.toWord (readBytes data 4 32) = x
 
-/-- The share balance word of `a` (`balanceOf[a]` of the executing account). -/
-def sharesOf (m : Machine) (a : Address) : Word :=
-  m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
-
 /-- Calldata of a function without arguments, with selector `sel`. -/
 structure NoArgCall (data : ByteArray) (sel : Nat) : Prop where
   selector : Abi.selectorOf data = sel
