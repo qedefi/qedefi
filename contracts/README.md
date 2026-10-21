@@ -17,6 +17,10 @@ targets in [docs/tokens.md](../docs/tokens.md).
 | `SoladyToken` | compiled | `src/SoladyToken.sol`: Solady `ERC20` with constant metadata, unrestricted `mint`/`burn` |
 | `WETH9` | mainnet bytecode | `mainnet/WETH9/` (see [Mainnet targets](#mainnet-targets)) |
 
+| Time target | Source |
+|---|---|
+| `VestingWallet` | OpenZeppelin `finance/VestingWallet.sol` (vendored, unmodified): linear vesting of ETH and ERC-20 balances by `block.timestamp` ([proofs](../qedefi/Examples/Time/)) |
+
 `src/Targets.sol` is the compilation root.
 
 ## Pinned versions
@@ -34,7 +38,7 @@ targets in [docs/tokens.md](../docs/tokens.md).
 Vendored files in `lib/` are byte-for-byte copies at their upstream paths, licence headers
 and `LICENSE` files kept (Solmate AGPL-3.0-only, OpenZeppelin MIT, Solady MIT): Solmate's
 `ERC20`, `ERC4626`, `FixedPointMathLib`, `SafeTransferLib`, `MockERC20`, `MockERC4626`; the
-import closure of OpenZeppelin's `ERC4626` and `ERC20Mock`; Solady's `ERC20` (no imports).
+import closure of OpenZeppelin's `ERC4626`, `ERC20Mock` and `VestingWallet`; Solady's `ERC20` (no imports).
 Adding sources to the compilation shifts the AST ids recorded in `immutableReferences.json`
 (`astId`); the bytecode does not change.
 
@@ -64,13 +68,16 @@ code equals the template outside the immutable positions, and generates the Lean
 | `OzVault` | 4,408 B | 5,098 B |
 | `OzVaultOffset` | 4,411 B | 5,105 B |
 | `SoladyToken` | 2,278 B | 2,306 B |
+| `VestingWallet` | 2,264 B | 2,608 B |
 
 ## Canonical deployment
 
 Each family is deployed on its own fresh chain (chain id 1, Cancun) by
 `0x1000000000000000000000000000000000000000`: asset at nonce 0, vault at nonce 1; the OZ
 δ = 3 family likewise (`OzVaultOffset` at the vault address), `SoladyToken` alone at nonce 0
-(the asset address).
+(the asset address), `VestingWallet` alone at nonce 0 (the asset address) with beneficiary
+`0x2000000000000000000000000000000000000000`, start `1700000000`, duration `31536000` (one
+year).
 
 | | Address | Constructor arguments |
 |---|---|---|
@@ -95,6 +102,8 @@ constructor. Byte offsets of the values in the runtime code:
 | | `_underlyingDecimals` | 1276 | 18 (`asset.decimals()`) |
 | OzVaultOffset | `_asset` | 556, 896, 2775, 2927 | asset address |
 | | `_underlyingDecimals` | 1277 | 18 (`asset.decimals()`) |
+| VestingWallet | `_start` | 1198 | 1700000000 |
+| | `_duration` | 295, 1236, 1458 | 31536000 |
 
 `SoladyToken`, `OzAsset` and the mainnet targets have no immutables.
 

@@ -66,6 +66,18 @@
       "argsHex": ""
     }
   },
+  "time": {
+    "vestingWallet": {
+      "contract": "VestingWallet",
+      "address": "0x13136008B64FF592819B2FA6d43F2835C452020e",
+      "args": [
+        "0x2000000000000000000000000000000000000000",
+        1700000000,
+        31536000
+      ],
+      "argsHex": "0000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006553f1000000000000000000000000000000000000000000000000000000000001e13380"
+    }
+  },
   "mainnetNote": "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
   "mainnet": {
     "WETH9": {

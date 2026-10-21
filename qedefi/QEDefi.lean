@@ -22,6 +22,7 @@ import QEDefi.ERC4626.SolmateProps
 import QEDefi.ERC4626.Witnesses
 import QEDefi.Math.Arith
 import QEDefi.Trace.Lift
+import QEDefi.Trace.Time
 
 /-!
 # QEDefi

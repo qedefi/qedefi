@@ -27,6 +27,7 @@ import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Program.Run
 import EvmLogic.Program.Summary
+import EvmLogic.Program.Time
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Call
 import EvmLogic.Solidity.Dispatch
