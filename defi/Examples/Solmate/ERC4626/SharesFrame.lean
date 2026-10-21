@@ -1,6 +1,6 @@
 import Examples.Solmate.ERC20.TransferFrom
 import Examples.Solmate.ERC20.Approve
-import Examples.Solmate.ERC4626.SharesCode
+import Examples.Solmate.ERC4626.SharesBase
 import Examples.Solmate.ERC4626.Views
 
 /-!
@@ -380,10 +380,6 @@ open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
-
-/-- A view returning the word `v` and changing nothing. -/
-def SharesViewPost (v : Word) (m mf : Machine) (o : Outcome) : Prop :=
-  o = .success (Bytes.ofWord v) ∧ mf.world = m.world
 
 set_option maxHeartbeats 0 in
 /-- **`totalSupply()` of the vault's shares**, in any frame. -/

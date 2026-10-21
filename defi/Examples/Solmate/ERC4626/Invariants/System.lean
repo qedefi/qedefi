@@ -3,6 +3,8 @@ import Examples.Solmate.ERC20.Spec
 import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC20.Approve
 import Examples.Solmate.ERC20.MintBurn
+import Examples.Solmate.ERC4626.Invariants.Calldata
+import Examples.Solmate.ERC4626.Shares
 
 /-!
 # The concrete system: deployed vault and asset under arbitrary call sequences
@@ -391,18 +393,6 @@ theorem call_of_halts {ctx : Context} {w : World} {tr : TransientStorage} {code 
   · subst ho
     have hsnap : mf.frame.snapshot.1 = w := by rw [hs.snapshot]; rfl
     simp only [frameResult_revert, topLevelResult_world, hsnap]
-
-theorem twoWordCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (x y : Word) :
-    TwoWordCall (Abi.encodeCall sel [x, y]) sel x y :=
-  ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
-   by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _,
-   Abi.calldataload_encodeCall_1 _ _ _ _⟩
-
-theorem threeWordCall_encodeCall {sel : Nat} (hsel : sel < 2 ^ 32) (x y z : Word) :
-    ThreeWordCall (Abi.encodeCall sel [x, y, z]) sel x y z :=
-  ⟨by rw [Abi.selectorOf_encodeCall, Nat.mod_eq_of_lt hsel],
-   by rw [Abi.size_encodeCall]; simp, Abi.calldataload_encodeCall_0 _ _ _,
-   Abi.calldataload_encodeCall_1 _ _ _ _, Abi.calldataload_encodeCall_2 _ _ _ _ _⟩
 
 theorem terminates_unique {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     {r r' : MessageResult} {n fuel : Nat} (hn : ∀ fuel, n ≤ fuel → processMessageCall fuel ctx w tr msg = .ok r)

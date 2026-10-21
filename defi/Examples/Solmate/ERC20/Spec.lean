@@ -1,5 +1,5 @@
 import Examples.Solmate.ERC4626.Abstraction
-import Examples.Solmate.ERC4626.Shares
+import Examples.Solmate.ERC4626.SharesRep
 
 /-!
 # The asset's functions refine the model's `Token` operations, in any frame

@@ -2,7 +2,7 @@ import Examples.Solmate.ERC20.Approve
 import Defi.ERC4626.Logs
 import Examples.Solmate.ERC20.TransferFrom
 import Examples.Solmate.ERC20.MintBurn
-import Examples.Solmate.ERC4626.Invariants.System
+import Examples.Solmate.ERC4626.Invariants.Calldata
 import Examples.Solmate.ERC4626.Events
 
 /-!

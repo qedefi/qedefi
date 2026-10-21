@@ -38,6 +38,7 @@ import Examples.Solmate.ERC4626.EventsEntry
 import Examples.Solmate.ERC4626.EventsInternal
 import Examples.Solmate.ERC4626.EventsShares
 import Examples.Solmate.ERC4626.EventsSharesCode
+import Examples.Solmate.ERC4626.Invariants.Calldata
 import Examples.Solmate.ERC4626.Invariants.Deployed
 import Examples.Solmate.ERC4626.Invariants.Events
 import Examples.Solmate.ERC4626.Invariants.System
@@ -59,6 +60,8 @@ import Examples.Solmate.ERC4626.PermitSpec
 import Examples.Solmate.ERC4626.SafeTransfer
 import Examples.Solmate.ERC4626.SafeTransferFrom
 import Examples.Solmate.ERC4626.Shares
+import Examples.Solmate.ERC4626.SharesBase
+import Examples.Solmate.ERC4626.SharesRep
 import Examples.Solmate.ERC4626.SharesCode
 import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.Strings
