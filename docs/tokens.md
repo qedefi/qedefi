@@ -443,7 +443,8 @@ is final). The `lendico` family reopens the ICO (state ICORunning, transfers dis
 `buyTokens`/the payable fallback mint `msg.value · price` (price tiers 27,500 / 26,250 /
 25,000 per ether by `icoSoldTokens`; the genesis puts the first tier boundary 1,000 tokens
 away), `withdrawEther` sends the whole ether balance to the escrow with `send` (2,300
-stipend), `setState` by the token manager (out-of-range enum values fail), and transfers
+stipend), `setState` by the token manager (out-of-range enum values halt
+exceptionally: all gas consumed), and transfers
 unlock at ICOFinished. **Model variant**: `zeroValueReverts` (strict-increase check, so also
 for self-transfers), `approveGuard`, a global `paused` (= `¬enableTransfers`) that also
 covers `approve`, and a sale entry point minting against ether.
@@ -457,9 +458,9 @@ constructor and the public getter use slot 3; slot 2 is 0 on mainnet), 3 `totalS
 insufficient balance or allowance makes `transfer`/`transferFrom` **return `false`** with
 status success, no event and no state change (an integration that ignores the return value
 proceeds as if paid); an allowance of exactly `2²⁵⁶ − 1` is not spent; no zero-address checks
-(transfers to `0` keep the supply); zero transfers and self-transfers succeed. Pre-Byzantium
-failures (value sent to a non-payable function, short calldata in the dispatcher) consume all
-gas. **Model variant**: failure convention `returnFalse` (already in `Defi.ERC20.Variant`, so
+(transfers to `0` keep the supply); zero transfers and self-transfers succeed. Unknown
+selectors fail by `throw` and consume all gas (204 of 276 malformed calls in campaign pass
+A; arguments cut short are read as zeros, so the others succeed). **Model variant**: failure convention `returnFalse` (already in `Defi.ERC20.Variant`, so
 `unchecked_call_returnFalse` and `unchecked_returnFalse_deposit` apply to ZRX as is),
 `infiniteAllowance = MAX`.
 
@@ -596,6 +597,82 @@ WETH9 189 deposits, 77 fallback deposits, 115 withdrawals; BNB 63 phantom/fallba
 earlier run (`--seed 2026 --family oz3,tokens --sequences 40 --length 40`, before the
 mainnet weird tokens): 6,445 transactions, 0 mismatches. No evm-lean discrepancy was found.
 
+## Differential campaign
+
+Run on 2026-10-21 (commits `da1fd70`…`e29730d`), every family in its own `difftest` process,
+one at a time, at `nice -n 19` on a shared 12-core machine: pass A with the standard
+generators, pass B edge-case-heavy. Seeds are per family (`--seed` below, one process per
+family, so the family index is 0 and the generator state of sequence `k` is
+`seed · 1,000,003 + k`); every run is reproducible from `lake exe difftest --seed S --family F`
+with the options shown. "Fail" counts calls that failed on both sides (reverts, `INVALID`,
+out of gas: any status mismatch would be a mismatch); "exceptional halts" are failures that
+consumed the whole gas limit (out of gas, `INVALID`, invalid jumps); "low-gas calls" are
+those whose limit `--low-gas` lowered, with how many of them halted. The special paths count
+successful calls of each quirk (ZRX: calls that returned `false`).
+
+**Totals: 240,460 transactions, 144,245 successful on both sides, 7,486 exceptional halts,
+19,842 low-gas calls (3,065 out of gas or halted), 0 mismatches** (9,075 s of niced runtime).
+Every fixed scenario, getter check and storage-layout check agreed.
+
+**Pass A** (`--sequences 200 --length 50 --low-gas 5`):
+
+| Family | Seed | Transactions | Both succeed | Fail | Exceptional halts | Low-gas calls (halted) | Mismatches | Time | Special paths (successes unless noted) |
+|---|---|---|---|---|---|---|---|---|---|
+| `solmate` | 2026102100 | 10,015 | 5,347 | 4,668 | 89 | 466 (89) | 0 | 361 s | 111 deposits, 45 redeems, 400 withdrawals, 157 invalid permits |
+| `oz` | 2026102101 | 10,015 | 5,693 | 4,322 | 90 | 490 (90) | 0 | 363 s | 367 deposits, 369 redeems, 412 withdrawals |
+| `oz3` | 2026102102 | 10,015 | 5,741 | 4,274 | 57 | 492 (57) | 0 | 360 s | 384 deposits, 384 redeems, 400 withdrawals |
+| `oz20` | 2026102103 | 10,010 | 6,531 | 3,479 | 76 | 509 (76) | 0 | 359 s | 1,043 mints, 469 burns, 581 transferFroms |
+| `solady` | 2026102104 | 10,010 | 6,358 | 3,652 | 66 | 478 (66) | 0 | 344 s | 584 permits, 639 transferFroms, 245 failed approves (Permit2 rule) |
+| `weth9` | 2026102105 | 10,010 | 7,597 | 2,413 | 70 | 514 (70) | 0 | 446 s | 1,638 deposits, 669 fallback deposits, 1,004 withdrawals |
+| `usdt` | 2026102106 | 10,023 | 5,420 | 4,603 | 1,341 | 485 (125) | 0 | 363 s | 33 deprecations, 47 pauses, 7 fee changes, 1 destroyBlackFunds, 1,341 INVALID/OOG halts |
+| `usdtfee` | 2026102107 | 10,023 | 5,407 | 4,616 | 1,357 | 497 (127) | 0 | 365 s | 757 fee transfers, 36 deprecations, 1,357 INVALID/OOG halts |
+| `bnb` | 2026102108 | 10,013 | 5,682 | 4,331 | 66 | 485 (66) | 0 | 524 s | 696 phantom/fallback calls, 394 freezes, 35 unfreezes, 40 withdrawEther |
+| `sta` | 2026102109 | 10,011 | 6,077 | 3,934 | 505 | 505 (105) | 0 | 360 s | 1,283 fee transfers, 52 destroyFrom, 505 INVALID/OOG halts |
+| `ampl` | 2026102110 | 10,013 | 5,321 | 4,692 | 50 | 502 (50) | 0 | 394 s | 139 rebases, 263 transferAll, 2 upgrades |
+| `gusd` | 2026102111 | 10,019 | 5,735 | 4,284 | 52 | 530 (52) | 0 | 432 s | 99 batchTransfers, 144 print requests, 0 confirmed prints, 4 proxy impl changes, 1 store impl changes, 4 custodian changes |
+| `yamv2` | 2026102112 | 10,013 | 5,762 | 4,251 | 69 | 528 (69) | 0 | 397 s | 225 mints, 433 transferFroms |
+| `lend` | 2026102113 | 10,015 | 5,846 | 4,169 | 53 | 499 (53) | 0 | 441 s | 581 failed transfers, 223 failed approves |
+| `lendico` | 2026102114 | 10,014 | 4,990 | 5,024 | 65 | 461 (44) | 0 | 447 s | 207 purchases, 435 fallback purchases, 69 state changes, 42 withdrawEther |
+| `zrx` | 2026102115 | 10,011 | 9,734 | 277 | 277 | 475 (73) | 0 | 323 s | 934 transfer → false/0, 2,148 transferFrom → false/0, 277 halts |
+
+**Pass B** (`--sequences 100 --length 50 --edge --low-gas 15`):
+
+| Family | Seed | Transactions | Both succeed | Fail | Exceptional halts | Low-gas calls (halted) | Mismatches | Time | Special paths (successes unless noted) |
+|---|---|---|---|---|---|---|---|---|---|
+| `solmate` | 2026102200 | 5,015 | 2,600 | 2,415 | 126 | 737 (126) | 0 | 159 s | 45 deposits, 26 redeems, 186 withdrawals, 78 invalid permits |
+| `oz` | 2026102201 | 5,015 | 2,835 | 2,180 | 152 | 749 (152) | 0 | 168 s | 220 deposits, 184 redeems, 198 withdrawals |
+| `oz3` | 2026102202 | 5,015 | 2,900 | 2,115 | 137 | 793 (137) | 0 | 167 s | 201 deposits, 192 redeems, 187 withdrawals |
+| `oz20` | 2026102203 | 5,010 | 3,047 | 1,963 | 107 | 751 (107) | 0 | 151 s | 485 mints, 196 burns, 273 transferFroms |
+| `solady` | 2026102204 | 5,010 | 2,982 | 2,028 | 90 | 720 (90) | 0 | 143 s | 310 permits, 317 transferFroms, 137 failed approves (Permit2 rule) |
+| `weth9` | 2026102205 | 5,010 | 3,692 | 1,318 | 119 | 774 (119) | 0 | 190 s | 804 deposits, 329 fallback deposits, 446 withdrawals |
+| `usdt` | 2026102206 | 5,023 | 2,564 | 2,459 | 719 | 741 (174) | 0 | 160 s | 35 deprecations, 16 pauses, 3 fee changes, 1 destroyBlackFunds, 719 INVALID/OOG halts |
+| `usdtfee` | 2026102207 | 5,023 | 2,620 | 2,403 | 660 | 698 (157) | 0 | 165 s | 363 fee transfers, 24 deprecations, 660 INVALID/OOG halts |
+| `bnb` | 2026102208 | 5,013 | 2,692 | 2,321 | 101 | 784 (101) | 0 | 194 s | 335 phantom/fallback calls, 174 freezes, 16 unfreezes, 14 withdrawEther |
+| `sta` | 2026102209 | 5,011 | 2,858 | 2,153 | 318 | 743 (141) | 0 | 162 s | 623 fee transfers, 15 destroyFrom, 318 INVALID/OOG halts |
+| `ampl` | 2026102210 | 5,013 | 2,487 | 2,526 | 82 | 729 (82) | 0 | 163 s | 82 rebases, 121 transferAll, 0 upgrades |
+| `gusd` | 2026102211 | 5,019 | 2,807 | 2,212 | 79 | 758 (79) | 0 | 172 s | 43 batchTransfers, 59 print requests, 2 confirmed prints, 2 proxy impl changes, 0 store impl changes, 3 custodian changes |
+| `yamv2` | 2026102212 | 5,013 | 2,847 | 2,166 | 119 | 755 (119) | 0 | 180 s | 106 mints, 205 transferFroms |
+| `lend` | 2026102213 | 5,015 | 2,820 | 2,195 | 78 | 710 (78) | 0 | 221 s | 323 failed transfers, 114 failed approves |
+| `lendico` | 2026102214 | 5,014 | 2,481 | 2,533 | 77 | 718 (67) | 0 | 221 s | 123 purchases, 208 fallback purchases, 29 state changes, 24 withdrawEther |
+| `zrx` | 2026102215 | 5,011 | 4,772 | 239 | 239 | 766 (124) | 0 | 180 s | 501 transfer → false/0, 1,036 transferFrom → false/0, 239 halts |
+
+
+Notes. The first pass-A `weth9` run stopped after its scenario: `--low-gas` repeated a call
+with ether its sender no longer had, which anvil rejects (fixed in `40fad80`; the table shows
+the rerun). Pass-A `gusd` was rerun with lock-id reuse (`e29730d`); the first run (10,019
+transactions, 0 mismatches, 0 confirmed prints) is superseded. Coverage gaps: GUSD prints are
+rarely confirmed (2 in pass B: a lock id must reach `confirmPrint` from the custodian), AMPL
+upgrades and USDT `destroyBlackFunds` are rare, and BLOCKHASH beyond `number − 1` is not
+provided to evm-lean (no target reads it). Lowered gas limits were applied to calls that
+go through external calls too (GUSD's proxy → implementation → store, AMPL's `DELEGATECALL`,
+WETH9/BNB/LEND ether sends, USDT's deprecated forwarding), where the 63/64 rule and the
+stipend decide whether the inner or the outer frame runs out; the tester does not record at
+which depth a call ran out of gas.
+
+**Result: no discrepancy between evm-lean and anvil (revm) was found.** Status, return and
+revert data, logs, receipt `gasUsed` (refunds included), every touched storage slot of every
+contract and, for ether-holding tokens, the ether balances agreed on all 240,460
+transactions.
 
 ## Model-level results
 

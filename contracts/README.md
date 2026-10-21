@@ -243,6 +243,11 @@ functions and fallbacks; ether balances compared for WETH9 and BNB). Details in
 --sequences 30 --length 40`: 13,358 transactions (7,924 successful on both sides), **0
 mismatches** over all 11 families (510 s).
 
+Campaign of 2026-10-21 (all 16 families, 200 × 50 plus an edge-case pass of 100 × 50 with
+`--edge --low-gas 15`, fresh per-family seeds): **240,460 transactions** (144,245 successful on
+both sides, 7,486 exceptional halts, 19,842 with lowered gas limits), **0 mismatches**; per
+family tables in [docs/tokens.md](../docs/tokens.md#differential-campaign).
+
 A fixed first-depositor scenario runs first (alice deposits 1 wei, donates 10¹⁸, bob
 deposits 2·10¹⁸ − 1, alice redeems): both sides agree; on Solmate alice ends with
 1.5·10¹⁸ (bob holds 1 share), on OpenZeppelin with 0.6·10¹⁸ (bob holds 3 shares).
