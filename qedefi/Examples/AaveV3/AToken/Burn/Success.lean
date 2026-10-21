@@ -22,8 +22,8 @@ set_option maxHeartbeats 0 in
 `burn(u, r, amount, amt, idx)` with `r` not the executing account, the Pool as caller, no
 value, a non-static frame, gas in `[5·10^6, 2^64)` (two calls each forward all but 1/64);
 `u`'s slot is neither 54 nor 61; the checks pass: `amt ≠ 0`, `amt ≤ scaledBalance u`,
-`amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, the accrued interest is
-not negative; the rewards controller is deployed (code of size in `(0, 2^256)`, not a
+`amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, the accrued
+interest is not negative; the rewards controller is deployed (code of size in `(0, 2^256)`, not a
 precompile, not delegated) and behaves (`HandleActionOkCode`); the underlying (slot 61) is
 not a precompile, not delegated, and its `transfer` behaves (`TransferOk`); depth < 1024. -/
 theorem burn_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
@@ -131,9 +131,10 @@ theorem burn_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (by decide)
   simp only [Nat.reducePow, Nat.reduceSub] at hc120b
   fresh_intro
-  pwp_run_to 8307 [hc120b, hT, hS, hS2, hsub2, World.sload_sstore_self, hlow, ham, hm1, hm2, hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3, harg4,
-    hc', hW, hbal, hprev, hsub0, iszero_zero, hr1, hr2, hr3, hsub1, hc128, hc120, ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self,
-    Memory.read_64]
+  pwp_run_to 8307 [hc120b, hT, hS, hS2, hsub2, World.sload_sstore_self, hlow, ham, hm1, hm2, hval,
+    hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3, harg4, hc', hW, hbal,
+    hprev, hsub0, iszero_zero, hr1, hr2, hr3, hsub1, hc128, hc120, ofAddress_and_addressMask,
+    addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
   wp_abstract gas g2 hgas2
   have hg3 : 4900000 ≤ g2 := by rw [← hgas2]; evm_gas
   have hgu3 : g2 ≤ m_gasLeft := by rw [← hgas2]; omega

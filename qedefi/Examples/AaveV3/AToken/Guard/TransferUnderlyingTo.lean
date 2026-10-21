@@ -3,11 +3,12 @@ import Examples.AaveV3.AToken.Basic
 /-!
 # `AToken.transferUnderlyingTo`: only the Pool
 
-`transferUnderlyingTo(address,uint256)` (selector `0x4efecaa5`) is `onlyPool`. solc decodes the arguments before the modifier,
-so with a non-Pool caller the frame reverts with `CallerMustBePool()` when the calldata is
-well formed (`transferUnderlyingTo_reverts_of_not_pool`), and with empty data when it is not (too short, a dirty
-address word) or when value is sent (every AToken function is non-payable). In every case
-nothing changes (`transferUnderlyingTo_noEffect_of_not_pool`, any calldata with the selector, any value).
+`transferUnderlyingTo(address,uint256)` (selector `0x4efecaa5`) is `onlyPool`. solc decodes the
+arguments before the modifier, so with a non-Pool caller the frame reverts with `CallerMustBePool()`
+when the calldata is well formed (`transferUnderlyingTo_reverts_of_not_pool`), and with empty data
+when it is not (too short, a dirty address word) or when value is sent (every AToken function is
+non-payable). In every case nothing changes (`transferUnderlyingTo_noEffect_of_not_pool`, any
+calldata with the selector, any value).
 -/
 
 namespace Examples.AaveV3.AToken
@@ -17,8 +18,8 @@ open Examples.Solmate.ERC20 (lt_size_four)
 
 set_option maxHeartbeats 0 in
 /-- **`transferUnderlyingTo` from a non-Pool caller, well-formed calldata**: the frame reverts with
-`CallerMustBePool()` and changes nothing. Calldata of at least 68 bytes with the selector and its address arguments clean (what the ABI decoder accepts);
-no value. -/
+`CallerMustBePool()` and changes nothing. Calldata of at least 68 bytes with the selector and its
+address arguments clean (what the ABI decoder accepts); no value. -/
 theorem transferUnderlyingTo_reverts_of_not_pool (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0x4efecaa5)
     (hsize : 68 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 64)
@@ -41,8 +42,8 @@ theorem transferUnderlyingTo_reverts_of_not_pool (m : Machine) (hf : Fresh AToke
     evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`transferUnderlyingTo` from a non-Pool caller, any calldata and value**: the frame reverts and changes
-nothing (calldata with the selector `0x4efecaa5`). -/
+/-- **`transferUnderlyingTo` from a non-Pool caller, any calldata and value**: the frame reverts and
+changes nothing (calldata with the selector `0x4efecaa5`). -/
 theorem transferUnderlyingTo_noEffect_of_not_pool (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x4efecaa5) (hsize' : m.frame.msg.data.size < 2 ^ 64)
     (hc : m.frame.msg.caller ≠ pool) (hg : 3000 ≤ m.frame.gasLeft) :

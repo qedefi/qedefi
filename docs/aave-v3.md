@@ -253,6 +253,15 @@ underlying's `transfer(receiver, amount)` through `GPv2SafeERC20.safeTransfer` (
 | `burn_halts_effect` | the same → `BurnEffect`: `scaledBalance u` and `scaledTotalSupply` both shrink by `amt`, `previousIndex u = idx`, delegation byte and other slots unchanged |
 | `burnWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` |
 
+**Not proved yet.** The effects of `mintToTreasury`, `transferOnLiquidation` and
+`transferUnderlyingTo` with the Pool as caller; `burn` with `receiverOfUnderlying` = the token
+itself (no transfer); the revert cases of `burn`; `transfer`, `transferFrom`, `balanceOf`,
+`totalSupply` (they call the Pool's `getReserveNormalizedIncome` / `finalizeTransfer`, which
+need summaries of the Pool proxy and implementation); `permit`, `approve`, `initialize`,
+`rescueTokens` (calls the ACL manager). Build times (incremental, this machine): `Code` 6 s,
+each `Guard/*` 3–4 s, `Views/*` 5–6 s, `Mint/Success` 19 s, `Mint/Revert` 14 s, `Burn/Success`
+29 s, the rest about 1 s each.
+
 Proof tools added in `Tactic.lean` (generic, candidates for `EvmLogic`): `wp_abstract`
 (abstract the memory, gas, substate or world of a `WP` goal without `generalize`),
 `access_bounds`, `step_extcodesize`, `step_returndatacopy`.

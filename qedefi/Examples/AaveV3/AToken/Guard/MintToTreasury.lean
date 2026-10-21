@@ -3,11 +3,12 @@ import Examples.AaveV3.AToken.Basic
 /-!
 # `AToken.mintToTreasury`: only the Pool
 
-`mintToTreasury(uint256,uint256)` (selector `0x7df5bd3b`) is `onlyPool`. solc decodes the arguments before the modifier,
-so with a non-Pool caller the frame reverts with `CallerMustBePool()` when the calldata is
-well formed (`mintToTreasury_reverts_of_not_pool`), and with empty data when it is not (too short, a dirty
-address word) or when value is sent (every AToken function is non-payable). In every case
-nothing changes (`mintToTreasury_noEffect_of_not_pool`, any calldata with the selector, any value).
+`mintToTreasury(uint256,uint256)` (selector `0x7df5bd3b`) is `onlyPool`. solc decodes the arguments
+before the modifier, so with a non-Pool caller the frame reverts with `CallerMustBePool()` when the
+calldata is well formed (`mintToTreasury_reverts_of_not_pool`), and with empty data when it is not
+(too short, a dirty address word) or when value is sent (every AToken function is non-payable). In
+every case nothing changes (`mintToTreasury_noEffect_of_not_pool`, any calldata with the selector,
+any value).
 -/
 
 namespace Examples.AaveV3.AToken
@@ -39,8 +40,8 @@ theorem mintToTreasury_reverts_of_not_pool (m : Machine) (hf : Fresh AToken.runt
     evm_gas
 
 set_option maxHeartbeats 0 in
-/-- **`mintToTreasury` from a non-Pool caller, any calldata and value**: the frame reverts and changes
-nothing (calldata with the selector `0x7df5bd3b`). -/
+/-- **`mintToTreasury` from a non-Pool caller, any calldata and value**: the frame reverts and
+changes nothing (calldata with the selector `0x7df5bd3b`). -/
 theorem mintToTreasury_noEffect_of_not_pool (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hsel : Abi.selectorOf m.frame.msg.data = 0x7df5bd3b) (hsize' : m.frame.msg.data.size < 2 ^ 64)
     (hc : m.frame.msg.caller ≠ pool) (hg : 3000 ≤ m.frame.gasLeft) :

@@ -151,7 +151,8 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
   simp only [Nat.reducePow, Nat.reduceSub] at hc120b
   -- the three writes (`_userState[u]` index, `_totalSupply`, `_userState[u]` balance)
   pwp_run_to 8177 [hMs, hW, hMf, hT, hS, hc120, iszero_zero, ham, hadd2, hS2,
-    World.sload_sstore_self, hlow, hm1, hm2, hc120b, ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64]
+    World.sload_sstore_self, hlow, hm1, hm2, hc120b, ofAddress_and_addressMask,
+    addressMask_and_ofAddress, Memory.read_64]
   wp_abstract memory M2 hM2
   have hM2s : M2.size = 96 := by
     rw [← hM2]
