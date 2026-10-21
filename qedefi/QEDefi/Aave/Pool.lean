@@ -390,6 +390,41 @@ def burnDebtTokens (irs : Strategy) (r : ReserveState A) (c : ReserveCache) (bor
    else some t.1).bind fun r2 =>
   (r2.updateInterestRatesAndVirtualBalance irs t.2.1 actual 0).map fun r3 => (r3, t.2.1, t.2.2)
 
+/-- The collateral leg of a liquidation: with `receiveAToken`, `transferOnLiquidation` of the
+seized aTokens to the liquidator; otherwise `_burnCollateralATokens` (rates and virtual balance
+update of the collateral reserve, then burn; `nextScaledDebt` is the debt reserve's new scaled
+debt, used when both assets are the same). -/
+def liquidateCollateral (m : Market A R) (env : Env R) (collAsset debtAsset : R)
+    (borrower liquidator : A) (receiveAToken : Bool) (cc1 : ReserveCache) (nextScaledDebt collLiq : ℕ) :
+    Option (Market A R) :=
+  if receiveAToken then
+    (getATokenTransferScaledAmount collLiq cc1.nextLiquidityIndex).bind fun st =>
+    ((m.reserves collAsset).aToken.transferScaled getATokenBalance borrower liquidator st
+      cc1.nextLiquidityIndex).map fun a' =>
+    m.setReserve collAsset { m.reserves collAsset with aToken := a' }
+  else
+    let cc2 := if collAsset = debtAsset then { cc1 with nextScaledVariableDebt := nextScaledDebt }
+      else cc1
+    ((m.reserves collAsset).updateInterestRatesAndVirtualBalance (env.irs collAsset) cc2 0
+      collLiq).bind fun rc2 =>
+    (getATokenBurnScaledAmount collLiq cc1.nextLiquidityIndex).bind fun sb =>
+    (rc2.aToken.burnScaled getATokenBalance borrower sb cc1.nextLiquidityIndex).map fun res =>
+    m.setReserve collAsset { rc2 with aToken := res.1 }
+
+/-- The protocol fee leg of a liquidation: `transferOnLiquidation` of `fee` (capped at the
+borrower's scaled balance) to the treasury. -/
+def transferLiquidationFee (m : Market A R) (collAsset : R) (borrower : A) (idx fee : ℕ) :
+    Option (Market A R) :=
+  if fee ≠ 0 then
+    let rcx := m.reserves collAsset
+    (getATokenTransferScaledAmount fee idx).bind fun sf0 =>
+    let bal := rcx.aToken.balance borrower
+    (if bal < sf0 then (getATokenBalance bal idx).map fun f => (bal, f)
+     else some (sf0, fee)).bind fun sf =>
+    (rcx.aToken.transferScaled getATokenBalance borrower m.treasury sf.1 idx).map fun a' =>
+    m.setReserve collAsset { rcx with aToken := a' }
+  else some m
+
 /-- `LiquidationLogic.executeLiquidationCall` by `liquidator` (eMode 0, simplified: the
 `_burnBadDebt` sweep over the borrower's other debt reserves is outside the model). -/
 def liquidationCall (m : Market A R) (env : Env R) (collAsset debtAsset : R)
@@ -459,29 +494,9 @@ def liquidationCall (m : Market A R) (env : Env R) (collAsset debtAsset : R)
     fun dres =>
   let m4 := m3.setReserve debtAsset dres.1
   let m5 := if dres.2.2 then m4.setBorrowing borrower debtAsset false else m4
-  (if receiveAToken then
-    (getATokenTransferScaledAmount collLiq cc1.nextLiquidityIndex).bind fun st =>
-    ((m5.reserves collAsset).aToken.transferScaled getATokenBalance borrower liquidator st
-      cc1.nextLiquidityIndex).map fun a' =>
-    m5.setReserve collAsset { m5.reserves collAsset with aToken := a' }
-   else
-    let cc2 := if collAsset = debtAsset then { cc1 with nextScaledVariableDebt :=
-      dres.2.1.nextScaledVariableDebt } else cc1
-    ((m5.reserves collAsset).updateInterestRatesAndVirtualBalance (env.irs collAsset) cc2 0
-      collLiq).bind fun rc2 =>
-    (getATokenBurnScaledAmount collLiq cc1.nextLiquidityIndex).bind fun sb =>
-    (rc2.aToken.burnScaled getATokenBalance borrower sb cc1.nextLiquidityIndex).map fun res =>
-    m5.setReserve collAsset { rc2 with aToken := res.1 }).bind fun m6 =>
-  (if fee ≠ 0 then
-    let rcx := m6.reserves collAsset
-    (getATokenTransferScaledAmount fee cc1.nextLiquidityIndex).bind fun sf0 =>
-    let bal := rcx.aToken.balance borrower
-    (if bal < sf0 then (getATokenBalance bal cc1.nextLiquidityIndex).map fun f => (bal, f)
-     else some (sf0, fee)).bind fun sf =>
-    (rcx.aToken.transferScaled getATokenBalance borrower m.treasury sf.1
-      cc1.nextLiquidityIndex).map fun a' =>
-    m6.setReserve collAsset { rcx with aToken := a' }
-   else some m6).bind fun m7 =>
+  (m5.liquidateCollateral env collAsset debtAsset borrower liquidator receiveAToken cc1
+    dres.2.1.nextScaledVariableDebt collLiq).bind fun m6 =>
+  (m6.transferLiquidationFee collAsset borrower cc1.nextLiquidityIndex fee).bind fun m7 =>
   -- `_burnBadDebt` over other reserves: outside the model
   if noColl && m7.isBorrowingAny borrower then none else
   -- `IERC20(debtAsset).safeTransferFrom(liquidator, aToken, actual)`: not modelled
