@@ -8,6 +8,7 @@ import EvmLogic.Step.Memory
 import EvmLogic.Step.Storage
 import EvmLogic.Step.Env
 import EvmLogic.Program.Summary
+import EvmLogic.Program.Code
 
 /-!
 # An any-gas prefix calculus
@@ -442,6 +443,32 @@ theorem pwp_sstore {x y : Word} {rest : List Word}
     rw [hdec]
     simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
       StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_true]
+    rfl
+
+/-- `PUSHn`. -/
+theorem pwp_push {v : Word} (n : Nat) (hn : n < 33)
+    (hsnap : Good m.frame.snapshot.1)
+    (hcode : m.frame.code[m.frame.pc]? = some (0x5f + n).toUInt8)
+    (hval : Bytes.toWord (readBytes m.frame.code (m.frame.pc + 1) n) = v)
+    (hrec : m.frame.stack.length < 1024 →
+      (if n = 0 then Gas.base else Gas.veryLow) ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with stack := v :: m.frame.stack, gasLeft := m.frame.gasLeft - (if n = 0 then Gas.base else Gas.veryLow), pc := m.frame.pc + (1 + n) } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  by_cases hg : (if n = 0 then Gas.base else Gas.veryLow) ≤ m.frame.gasLeft
+  · by_cases hl : m.frame.stack.length < 1024
+    · exact WP.of_step (step_push_val n hn hcode hval hl hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
+        (hrec hl hg)
+    · have hl' : Gas.stackLimit ≤ m.frame.stack.length := Nat.le_of_not_lt hl
+      refine wp_fail_of_error (e := .stackOverflow) hsnap hcode ?_
+      rw [show (0x5f + n).toUInt8 = (0x5f + (⟨n, hn⟩ : Fin 33).val).toUInt8 from rfl, decode_push]
+      simp only [exec, push, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+        Nat.not_lt.mpr hg, hl', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind,
+        ite_true, ite_false]
+      rfl
+  · refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [show (0x5f + n).toUInt8 = (0x5f + (⟨n, hn⟩ : Fin 33).val).toUInt8 from rfl, decode_push]
+    simp only [exec, push, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+      Nat.lt_of_not_le hg, StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
     rfl
 
 end EvmLogic.Program.Reentrancy
