@@ -1,4 +1,5 @@
 import Examples.Solmate.ERC4626.Nested.Permit
+import Examples.Solmate.ERC4626.Nested.Views
 
 /-!
 # The invariants for arbitrary transactions

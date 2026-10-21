@@ -45,6 +45,21 @@ structure WordCall (data : ByteArray) (sel : Nat) (x : Word) : Prop where
   size : 36 ≤ data.size
   arg : Bytes.toWord (readBytes data 4 32) = x
 
+/-- The share balance word of `a` (`balanceOf[a]` of the executing account). -/
+def sharesOf (m : Machine) (a : Address) : Word :=
+  m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
+
+/-- Calldata of a function without arguments, with selector `sel`. -/
+structure NoArgCall (data : ByteArray) (sel : Nat) : Prop where
+  selector : Abi.selectorOf data = sel
+  size : 4 ≤ data.size
+
+/-- Calldata with selector `sel` and one ABI-clean `address` argument `a`. -/
+structure AddrCall (data : ByteArray) (sel : Nat) (a : Address) : Prop where
+  selector : Abi.selectorOf data = sel
+  size : 36 ≤ data.size
+  arg : Bytes.toWord (readBytes data 4 32) = Word.ofAddress a
+
 theorem initMemory_fmpInit : FmpInit ((({} : Memory).expand 64 32).storeWord 64 128#256) :=
   ⟨Memory.loadWord_storeWord _ _ _, by
     simp [Memory.size_storeWord, Memory.size_expand, Memory.wordsAfter, Memory.words]⟩
@@ -249,21 +264,6 @@ open Examples.Solmate.ERC20
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
-
-/-- The share balance word of `a` (`balanceOf[a]` of the executing account). -/
-def sharesOf (m : Machine) (a : Address) : Word :=
-  m.world.sload m.frame.msg.currentTarget (ERC20.balanceSlot m.ctx.crypto ERC20.Layout.solmate a)
-
-/-- Calldata of a function without arguments, with selector `sel`. -/
-structure NoArgCall (data : ByteArray) (sel : Nat) : Prop where
-  selector : Abi.selectorOf data = sel
-  size : 4 ≤ data.size
-
-/-- Calldata with selector `sel` and one ABI-clean `address` argument `a`. -/
-structure AddrCall (data : ByteArray) (sel : Nat) (a : Address) : Prop where
-  selector : Abi.selectorOf data = sel
-  size : 36 ≤ data.size
-  arg : Bytes.toWord (readBytes data 4 32) = Word.ofAddress a
 
 theorem ofNat_toNat_address (a : Address) : BitVec.ofNat 256 a.toNat = Word.ofAddress a := by
   apply BitVec.eq_of_toNat_eq

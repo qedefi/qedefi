@@ -109,7 +109,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
           Memory.read_storeWord_of_disjoint _ 164 128 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -190,7 +190,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
           Memory.read_storeWord_of_disjoint _ 164 128 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -273,7 +273,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
           Memory.read_storeWord_of_disjoint _ 196 160 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 164 160 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -354,7 +354,7 @@ theorem safeTransfer_wp {i : SolmateVault.Immutables} (m : Machine) {amount r : 
           Memory.read_storeWord_of_disjoint _ 196 160 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 164 160 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide

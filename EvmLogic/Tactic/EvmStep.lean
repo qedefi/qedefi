@@ -183,6 +183,10 @@ macro_rules | `(tactic| evm_halt_core) => `(tactic| first
   | evm_apply step_revert_top
   | fail "no halting step lemma applies")
 
+/-- One trace line per instruction executed by the symbolic-execution tactics (benchmarks count
+them). -/
+initialize Lean.registerTraceClass `EvmLean.symStep
+
 /-! ## The driver -/
 
 /-- Normalize the machine after a step (literal code bytes, numerals, gas constants). -/

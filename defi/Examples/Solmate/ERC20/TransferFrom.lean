@@ -1,4 +1,7 @@
-import Examples.Solmate.ERC20.Transfer
+import Examples.Solmate.ERC20.BalanceOf
+import EvmLogic.Solidity.Dispatch
+import EvmLogic.Solidity.Call
+import EvmLogic.Tactic.Patched
 import EvmLogic.Solidity.ERC20
 
 /-!

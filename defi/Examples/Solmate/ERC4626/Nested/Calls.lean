@@ -1,5 +1,6 @@
 import Examples.Solmate.ERC4626.Nested.System
 import Examples.Solmate.ERC4626.SharesFrame
+import Examples.Solmate.ERC4626.Invariants.Deployed
 
 /-!
 # Frame summaries of every modelled call, in any frame

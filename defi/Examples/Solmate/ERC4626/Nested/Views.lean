@@ -1,7 +1,9 @@
 import Examples.Solmate.ERC4626.Nested.Calls
+import Examples.Solmate.ERC4626.Nested.Domain
 import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC20.Strings
+import Examples.Solmate.ERC4626.Strings
 import Examples.Solmate.ERC4626.PermitSpec
 import Examples.Solmate.ERC4626.Malformed
 
@@ -53,19 +55,6 @@ def AssetViewData (d : ByteArray) : Prop :=
   (∃ a, AddrCall d balanceOfSelector a) ∨ NoArgCall d 0x18160ddd ∨
   (∃ o s, TwoWordCall d 0xdd62ed3e (Word.ofAddress o) (Word.ofAddress s)) ∨
   NoArgCall d 0x313ce567 ∨ (∃ a, AddrCall d 0x7ecebe00 a)
-
-/-- The cases `DOMAIN_SEPARATOR()` and `permit` are proved for (`Permit.DomainCase`): the
-deployment chain, or a name in slot 0 shorter than 32 bytes. A long name on another chain is not
-covered (the out-of-place string encoder is not verified). -/
-def DomainOk (m : Machine) : Prop :=
-  (∀ i : SolmateVault.Immutables,
-    m.world.code m.frame.msg.currentTarget = SolmateVault.runtimeCodeWith i →
-    Permit.DomainCase i.initialChainId (ofNat m.ctx.block.chainId)
-      (m.world.sload m.frame.msg.currentTarget 0#256)) ∧
-  (∀ ia : SolmateAsset.Immutables,
-    m.world.code m.frame.msg.currentTarget = SolmateAsset.runtimeCodeWith ia →
-    Permit.DomainCase ia.initialChainId (ofNat m.ctx.block.chainId)
-      (m.world.sload m.frame.msg.currentTarget 0#256))
 
 /-- The views both tokens share whose summaries need more than the calldata: `name()` and
 `symbol()` with the gas the stored string needs (`Str.getterGas` of its length), and

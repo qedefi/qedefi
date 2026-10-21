@@ -1,5 +1,5 @@
-import Examples.Solmate.ERC4626.Deposit
-import Examples.Solmate.ERC20.Events
+import Examples.Solmate.ERC4626.DepositInternal
+import Examples.Solmate.ERC20.EventsTransfer
 import Defi.ERC4626.Logs
 import Examples.Solmate.ERC4626.WithdrawInternal
 
@@ -126,7 +126,7 @@ theorem safeTransferFrom_wp_logs {i : SolmateVault.Immutables} (m : Machine) {am
         rw [Memory.readBytes_read _ _ 100 0 4 (by decide)]
         simp (disch := decide) only [Memory.read_expand, Nat.add_zero,
           Memory.read_storeWord_of_disjoint, Memory.read_storeWord_prefix]
-        decide +kernel
+        kernel_decide
       all_goals
         rw [Memory.readBytes_read _ _ 100 _ 32 (by decide)]
         simp (disch := decide) only [Memory.read_expand, Nat.reduceAdd,
@@ -605,7 +605,7 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
           Memory.read_storeWord_of_disjoint _ 164 128 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -686,7 +686,7 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
           Memory.read_storeWord_of_disjoint _ 164 128 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -769,7 +769,7 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
           Memory.read_storeWord_of_disjoint _ 196 160 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 164 160 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide
@@ -850,7 +850,7 @@ theorem safeTransfer_wp_logs {i : SolmateVault.Immutables} (m : Machine) {amount
           Memory.read_storeWord_of_disjoint _ 196 160 4 _ (by decide),
           Memory.read_storeWord_of_disjoint _ 164 160 4 _ (by decide),
           Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-        decide +kernel
+        kernel_decide
       · dsimp only [Frame.init, childMsg, callMemory]
         simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
         decide

@@ -1,5 +1,6 @@
 import EvmLogic.Solidity.Immutables
 import EvmLogic.Solidity.Layout
+import EvmLogic.Program.Code
 
 /-!
 # `SolmateAsset`: compiled bytecode and metadata (generated)
@@ -469,6 +470,10 @@ def runtimeCode : ByteArray := ⟨⟨
 
 /-- `runtimeCode` has the size of the compiled runtime code. -/
 theorem size_runtimeCode : runtimeCode.size = 2870 := by decide +kernel
+
+/-! Kernel lookup table of `runtimeCode` (bytes and jump destinations), checked once:
+`runtimeCode.codeTable`, `runtimeCode.codeTable_ok`. -/
+code_table runtimeCode
 
 /-- `creationCode` has the size of the compiled creation code. -/
 theorem size_creationCode : creationCode.size = 3885 := by decide +kernel

@@ -25,10 +25,11 @@ theorem addStore_slot0 (crypto : Crypto) :
   kernel_rfl
 ```
 
-`kernel_rfl` / `kernel_decide` abstract the local context into an auxiliary theorem checked
-**only by the kernel**. Do not use plain `rfl` or `decide`: they check definitional equality
-in the elaborator (`Meta.isDefEq`/`whnf`), which does not finish on a whole-program run (over
-150 s even for `Crypto.real`); `decide +kernel` is fast but refuses free variables. Prefer
+`kernel_rfl` / `kernel_decide` close the goal with a proof term (`Eq.refl`, `of_decide_eq_true`)
+checked **only by the kernel**, with the enclosing declaration (no auxiliary declaration). Do not
+use plain `rfl` or `decide`: they check definitional equality in the elaborator
+(`Meta.isDefEq`/`whnf`), which does not finish on a whole-program run (over 150 s even for
+`Crypto.real`); `decide +kernel` is fast but refuses free variables. Prefer
 `kernel_decide` when both sides only meet after evaluating to numbers (gas arithmetic):
 `kernel_rfl`'s lazy unfolding of `Nat.sub` can recurse too deeply. If the run *does* inspect
 a free variable (a `JUMPI` on a symbolic value), the kernel gets stuck and reports a type

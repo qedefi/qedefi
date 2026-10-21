@@ -29,17 +29,17 @@ theorem insns_vault (i : SolmateVault.Immutables) :
 
 theorem vault_gasFeedsCall (i : SolmateVault.Immutables) :
     GasFeedsCall (SolmateVault.runtimeCodeWith i) 5216 := by
-  rw [gasFeedsCall_iff, insns_vault]; decide +kernel
+  rw [gasFeedsCall_iff, insns_vault]; kernel_decide
 
 theorem vault_regionOk (i : SolmateVault.Immutables) :
     RegionOk (SolmateVault.runtimeCodeWith i) 5216 := by
-  rw [regionOk_iff, insns_vault]; decide +kernel
+  rw [regionOk_iff, insns_vault]; kernel_decide
 
 /-- The vault's call sites return to 1233 (`asset.balanceOf`), 3439 (`ecrecover`), 3957
 (`safeTransferFrom`, `require`) and 4327 (`safeTransfer`, `require`); the others bubble. -/
 theorem vault_callReturnPoints (i : SolmateVault.Immutables) :
     callReturnPoints (SolmateVault.runtimeCodeWith i) 5216 = [1233, 3439, 3957, 4327] := by
-  rw [callReturnPoints_eq, insns_vault]; decide +kernel
+  rw [callReturnPoints_eq, insns_vault]; kernel_decide
 
 theorem vault_failureReverts_1233 (i : SolmateVault.Immutables) :
     FailureReverts (SolmateVault.runtimeCodeWith i) 1233 := by
@@ -93,16 +93,16 @@ theorem insns_asset (ia : SolmateAsset.Immutables) :
 
 theorem asset_gasFeedsCall (ia : SolmateAsset.Immutables) :
     GasFeedsCall (SolmateAsset.runtimeCodeWith ia) 2838 := by
-  rw [gasFeedsCall_iff, insns_asset]; decide +kernel
+  rw [gasFeedsCall_iff, insns_asset]; kernel_decide
 
 theorem asset_regionOk (ia : SolmateAsset.Immutables) :
     RegionOk (SolmateAsset.runtimeCodeWith ia) 2838 := by
-  rw [regionOk_iff, insns_asset]; decide +kernel
+  rw [regionOk_iff, insns_asset]; kernel_decide
 
 /-- The asset's only call site returns to 1632 (`ecrecover` in `permit`). -/
 theorem asset_callReturnPoints (ia : SolmateAsset.Immutables) :
     callReturnPoints (SolmateAsset.runtimeCodeWith ia) 2838 = [1632] := by
-  rw [callReturnPoints_eq, insns_asset]; decide +kernel
+  rw [callReturnPoints_eq, insns_asset]; kernel_decide
 
 theorem asset_failureReverts_1632 (ia : SolmateAsset.Immutables) :
     FailureReverts (SolmateAsset.runtimeCodeWith ia) 1632 := by
@@ -136,12 +136,12 @@ open Examples.Solmate.Contracts
 theorem vault_callsFed (i : SolmateVault.Immutables) :
     CallsFed (SolmateVault.runtimeCodeWith i) 5216 := by
   apply callsFed_of_scan
-  rw [insns_vault]; decide +kernel
+  rw [insns_vault]; kernel_decide
 
 theorem asset_callsFed (ia : SolmateAsset.Immutables) :
     CallsFed (SolmateAsset.runtimeCodeWith ia) 2838 := by
   apply callsFed_of_scan
-  rw [insns_asset]; decide +kernel
+  rw [insns_asset]; kernel_decide
 
 /-- The code-level conditions of the lockstep for the vault. -/
 theorem vault_codeOk (i : SolmateVault.Immutables) :

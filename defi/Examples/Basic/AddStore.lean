@@ -7,7 +7,7 @@ import EvmLogic.Step.Basic
 The outcome of running real bytecode for an arbitrary `crypto` (the program never hashes),
 proved by `kernel_rfl` (the kernel evaluates the run with `crypto` free) and by `evm_steps`
 (symbolic execution, which also handles symbolic inputs). Plain `rfl`/`decide` fail here:
-`decide +kernel` rejects free variables, and elaborator `isDefEq` does not finish.
+`kernel_decide` rejects free variables, and elaborator `isDefEq` does not finish.
 -/
 
 namespace Examples.Basic

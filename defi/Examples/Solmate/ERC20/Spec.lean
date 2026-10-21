@@ -1,12 +1,13 @@
-import Examples.Solmate.ERC4626.Abstraction
-import Examples.Solmate.ERC4626.Shares
+import Examples.Solmate.ERC20.SpecView
+import Examples.Solmate.ERC20.Transfer
+import Examples.Solmate.ERC20.TransferFrom
 
 /-!
 # The asset's functions refine the model's `Token` operations, in any frame
 
 The asset's callee summaries stated against the model ledger (`Shares.Rep`/`Shares.RepOn`):
-`assetBalanceOf_refines`, `assetTransfer_refines`, `assetTransferFrom_refines` (success with a
-represented `t'` when the model returns `some t'`, revert on `none`). Hypotheses:
+`assetTransfer_refines`, `assetTransferFrom_refines` (success with a represented `t'` when the
+model returns `some t'`, revert on `none`); `assetBalanceOf_refines` is in `SpecView`. Hypotheses:
 `BalanceSlotOk`/`AllowanceSlotOk` for the written entries and `Token.WF` (the unchecked
 `balanceOf[to] += amount` does not wrap). See `docs/erc4626/details.md` §2.
 -/
@@ -18,24 +19,6 @@ open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmL
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld view_transferWorld)
 open Defi.Math Defi.ERC20 Examples.Solmate.ERC4626.Shares
-
-/-- The asset's storage view in the frame `m` (the asset is the executing account). -/
-abbrev assetView (m : Machine) : ERC20.State :=
-  ERC20.view m.ctx.crypto ERC20.Layout.solmate m.world m.frame.msg.currentTarget
-
-/-- **`balanceOf(a)` of the asset** returns the represented balance, in any frame. -/
-theorem assetBalanceOf_refines {ia : SolmateAsset.Immutables} (m : Machine)
-    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m) (a : Address)
-    (hval : m.frame.msg.value = 0)
-    (hsel : Abi.selectorOf m.frame.msg.data = balanceOfSelector)
-    (hsize : 36 ≤ m.frame.msg.data.size) (hsize' : m.frame.msg.data.size < 2 ^ 64)
-    (harg : Bytes.toWord (readBytes m.frame.msg.data 4 32) = Word.ofAddress a)
-    (hg : 3000 ≤ m.frame.gasLeft) {P : Address → Address → Prop} {t : Token Address}
-    (hr : RepOn P (assetView m) t) :
-    Halts m (fun mf o => o = .success (Bytes.ofWord (BitVec.ofNat 256 (t.balanceOf a))) ∧
-      mf.world = m.world) :=
-  (balanceOf_halts m hf a hval hsel hsize hsize' harg hg).mono fun _ _ _ ⟨ho, hw, _⟩ =>
-    ⟨by rw [ho, ← hr.balanceOf a, ofNat_toNat_word]; rfl, hw⟩
 
 /-- Allowance entries represented after `transfer`: those in neither written balance slot. -/
 def TransferAllowances (crypto : Crypto) (src dst : Address) (o sp : Address) : Prop :=

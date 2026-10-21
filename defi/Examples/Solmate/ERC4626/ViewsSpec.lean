@@ -1,5 +1,5 @@
 import Examples.Solmate.ERC4626.Abstraction
-import Examples.Solmate.ERC4626.SharesFrame
+import Examples.Solmate.ERC4626.SharesBase
 import Examples.Solmate.ERC20.BalanceOf
 
 /-!

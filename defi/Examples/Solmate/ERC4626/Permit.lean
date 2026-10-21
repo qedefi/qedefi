@@ -1,5 +1,5 @@
 import Examples.Solmate.ERC20.Permit
-import Examples.Solmate.ERC4626.SharesCode
+import Examples.Solmate.ERC4626.SharesBase
 
 /-!
 # The vault's `permit`, `DOMAIN_SEPARATOR()` and `nonces(owner)`

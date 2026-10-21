@@ -93,9 +93,9 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_le hbal']
   sol_steps [transferCalldata]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -115,7 +115,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_lt hbal']
   sol_steps [transferCalldata]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp
   · simp
 
@@ -195,25 +195,6 @@ namespace Examples.Solmate.ERC20
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts
 open EvmLogic.Solidity.ERC20 (transferWorld)
-
-/-- Calldata of a function taking two static words `x`, `y`, with selector `sel`. -/
-structure TwoWordCall (data : ByteArray) (sel : Nat) (x y : Word) : Prop where
-  selector : Abi.selectorOf data = sel
-  size : 68 ≤ data.size
-  arg0 : Bytes.toWord (readBytes data 4 32) = x
-  arg1 : Bytes.toWord (readBytes data 36 32) = y
-
-/-- A successful asset `transfer`: ABI `true`, world `transferWorld`, ≤ 55000 gas. -/
-def TransferOk (to : Address) (amount : Word) (m mf : Machine) (o : Outcome) : Prop :=
-  o = .success (Bytes.ofWord 1) ∧
-  mf.world = transferWorld m.ctx.crypto m.world m.frame.msg.currentTarget m.frame.msg.caller
-    to amount ∧
-  mf.transient = m.transient ∧ mf.createdAccounts = m.createdAccounts ∧
-  m.frame.gasLeft ≤ mf.frame.gasLeft + 55000
-
-/-- What a reverting call ends with: a `REVERT` (some data), at most `g` gas used. -/
-def Reverts (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
-  (∃ out, o = .revert out) ∧ m.frame.gasLeft ≤ mf.frame.gasLeft + g
 
 set_option maxHeartbeats 0 in
 /-- **The asset's `transfer`, success**, in any non-static frame, when the balance covers it. -/

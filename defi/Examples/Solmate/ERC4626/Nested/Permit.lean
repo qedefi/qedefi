@@ -1,4 +1,6 @@
-import Examples.Solmate.ERC4626.Nested.Views
+import Examples.Solmate.ERC4626.Nested.Calls
+import Examples.Solmate.ERC4626.Nested.Domain
+import Examples.Solmate.ERC4626.PermitSpec
 
 /-!
 # `permit` in any frame, as a modelled call

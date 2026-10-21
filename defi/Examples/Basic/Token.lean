@@ -105,7 +105,7 @@ theorem transfer_ok (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
   simp only [hlt]
   evm_steps [calldata_to, calldata_amount]
   refine ⟨_, rfl, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_world, transferWorld, balanceOf, slot]
 
 theorem transfer_revert (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = [])
@@ -124,7 +124,7 @@ theorem transfer_revert (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations =
   simp only [hlt]
   evm_steps [calldata_to, calldata_amount]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp
   · simp
 

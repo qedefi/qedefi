@@ -3,7 +3,7 @@ import EvmLogic.Program.Summary
 import EvmLogic.Solidity.Word
 import Examples.Solmate.Contracts.SolmateVault
 import EvmLogic.Tactic.Patched
-import Examples.Solmate.ERC4626.SharesCode
+import Examples.Solmate.ERC4626.SharesBase
 
 /-!
 # Solmate `mulDivDown` / `mulDivUp` in the compiled vault

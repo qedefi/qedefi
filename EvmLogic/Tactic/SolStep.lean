@@ -4,6 +4,8 @@ import EvmLogic.Solidity.JumpDest
 import EvmLogic.Solidity.Steps
 import EvmLogic.Solidity.Memory
 import EvmLogic.Solidity.Word
+import EvmLogic.Program.Code
+import EvmLogic.Tactic.FastStep
 
 /-!
 # Symbolic execution of compiled contracts: `sol_step`
@@ -45,11 +47,14 @@ def codeBytes? (c : Expr) : MetaM (Option (Array Nat)) :=
 def readNat (bytes : Array Nat) (off n : Nat) : Nat :=
   (List.range n).foldl (fun acc j => acc * 256 + bytes.getD (off + j) 0) 0
 
-/-- A proof of the closed `lhs = rhs` by `decide`, as an auxiliary theorem (comparing the sides
-by lazy unfolding instead recurses too deeply on large numerals). -/
+/-- A proof of the closed `lhs = rhs` by `decide`, checked by the kernel with the enclosing
+declaration (comparing the sides by lazy unfolding instead recurses too deeply on large
+numerals). -/
 def kernelEq (lhs rhs : Expr) : MetaM Expr := do
+  trace[EvmLean.wp] "kernelEq: {lhs}"
   let eq ← mkEq lhs rhs
-  return mkConst (← mkAuxLemma [] eq (← mkDecideProof eq))
+  -- inline (no auxiliary declaration: adding one waits for all earlier kernel checks)
+  mkDecideProof eq
 
 /-- Evaluate `Bytes.toWord (readBytes code i n)` and `readBytes code i 32` for literal code. -/
 simproc_decl reduceCodeImm (_) := fun e => do
@@ -61,6 +66,10 @@ simproc_decl reduceCodeImm (_) := fun e => do
     let some bytes ← codeBytes? c | return .continue
     let v := readNat bytes i n % 2 ^ 256
     let rhs := mkApp2 (mkConst ``BitVec.ofNat) (mkRawNatLit 256) (mkRawNatLit v)
+    if n ≤ 32 then
+      if let some (tab, ok, _) ← EvmLogic.Program.codeTable? c then
+        let pf ← EvmLogic.Program.wordFact c tab ok i n v
+        return .visit { expr := rhs, proof? := some (← mkExpectedTypeHint pf (← mkEq e rhs)) }
     return .visit { expr := rhs, proof? := some (← kernelEq e rhs) }
   | readBytes c i n =>
     let some n' ← (evalNat n).run | return .continue
@@ -70,6 +79,14 @@ simproc_decl reduceCodeImm (_) := fun e => do
     let v := readNat bytes i 32
     let w := mkApp2 (mkConst ``BitVec.ofNat) (mkRawNatLit 256) (mkRawNatLit v)
     let rhs := mkApp (mkConst ``Bytes.ofWord) w
+    if let some (tab, ok, _) ← EvmLogic.Program.codeTable? c then
+      if let some pbytes ← EvmLogic.Program.codeBytes? c then
+        -- `readBytes c i 32 = ⟨⟨l⟩⟩` by lookups, `Bytes.ofWord w = ⟨⟨l⟩⟩` by evaluation
+        let h1 ← EvmLogic.Program.bytesFact c tab ok pbytes i 32
+        let some (_, _, lit) := (← inferType h1).eq? | return .continue
+        let h2 ← EvmLogic.Program.kernelFact (← mkEq rhs lit) lit
+        let pf ← mkEqTrans h1 (← mkEqSymm h2)
+        return .visit { expr := rhs, proof? := some (← mkExpectedTypeHint pf (← mkEq e rhs)) }
     return .visit { expr := rhs, proof? := some (← kernelEq e rhs) }
   | _ => return .continue
 
@@ -91,18 +108,18 @@ elab "sol_disch" : tactic => withMainContext do
     | some lhs => lhs.isAppOf ``isValidJumpDest
     | none => false
   if isCodeByte then
-    evalTactic (← `(tactic| (try dsimp only); decide +kernel))
+    evalTactic (← `(tactic| (try dsimp only); table_decide))
   else if isJumpDest then
     evalTactic (← `(tactic| (try dsimp only)))
     evalTactic (← `(tactic| apply EvmLogic.Solidity.isValidJumpDest_of_mem))
-    evalTactic (← `(tactic| decide +kernel))
+    evalTactic (← `(tactic| table_decide))
   else
     -- Closed goals go to the kernel: the elaborator's `rfl`/`decide` can hit the recursion
     -- limit on large numerals, a runtime error that `first` does not catch.
     if !t.hasFVar && !t.hasMVar then
       let s ← saveState
       try
-        evalTactic (← `(tactic| decide +kernel))
+        evalTactic (← `(tactic| table_decide))
         return
       catch _ => s.restore
     tryCatchRuntimeEx (evalTactic (← `(tactic| evm_disch))) fun e =>
@@ -213,15 +230,54 @@ elab_rules : tactic
       setGoals [hg]
       firstOf halts s!"sol_step: no halting lemma applies to opcode {b}"
       setGoals rest
+    trace[EvmLean.symStep] "byte {b}"
     evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
       Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*]))
 
 /-- Repeat `sol_step` while it succeeds. -/
 syntax "sol_steps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
-macro_rules
-  | `(tactic| sol_steps) => `(tactic| repeat sol_step)
-  | `(tactic| sol_steps [$extra,*]) => `(tactic| repeat sol_step [$extra,*])
+/-- The fast stepper's configuration for a goal with `run _ m` on literal code: the
+normalization and side conditions of `sol_step`. -/
+def solFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
+    TacticM (Option FastStep.Cfg) := withMainContext do
+  let t ← instantiateMVars (← getMainTarget)
+  let some m := findRunMachine? t | return none
+  let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
+  let some bytes ← EvmLogic.Program.codeBytes? code | return none
+  let normStx ← `(tactic| evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
+      Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*])
+  let some simpStx ← liftMacroM <| expandMacro? normStx | return none
+  let r ← mkSimpContext simpStx (eraseLocal := false)
+  return some {
+    simpCtx := r.ctx, simprocs := r.simprocs
+    codeFact := fun c pc b => EvmLogic.Program.codeFact c pc b
+    pushFact := fun c pc n => do
+      let some bs ← EvmLogic.Program.codeBytes? c | return none
+      return some (← EvmLogic.Program.pushFact c bs pc n)
+    bytes := fun c => do
+      if c == code then return some bytes
+      EvmLogic.Program.codeBytes? c
+    disch := do evalTactic (← `(tactic| sol_disch)) }
+
+elab_rules : tactic
+  | `(tactic| sol_steps $[[$extra,*]]?) => do
+    let extra := (extra.map (·.getElems)).getD #[]
+    let one : TacticM Bool := do
+      let s ← saveState
+      try
+        evalTactic (← `(tactic| sol_step [$extra,*]))
+        return true
+      catch _ =>
+        s.restore
+        return false
+    let cfg ← solFastCfg extra
+    let mut first := true
+    for _ in [0:1000000] do
+      if let some c := cfg then
+        discard <| FastStep.fastRunSteps c first
+      first := false
+      unless ← one do return
 
 end EvmLogic.Tactic.SolStep
 

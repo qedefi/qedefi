@@ -5,6 +5,8 @@ import Examples.Solmate.Contracts.SolmateVault
 import Examples.Solmate.Contracts.Deploy
 import EvmLogic.Tactic.KernelRfl
 
+import Examples.Solmate.ERC4626.SharesBase
+
 /-!
 # The vault's share token: code, calldata, dispatch
 
@@ -19,46 +21,6 @@ namespace Examples.Solmate.ERC4626.Shares
 
 open EvmLean Examples.Solmate EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
 open Examples.Solmate.Contracts EvmLogic.Solidity.Dispatch
-
-/-! ## Code -/
-
-/-- The runtime code of the vault deployed with immutables `i`. -/
-abbrev code (i : SolmateVault.Immutables) : ByteArray := SolmateVault.runtimeCodeWith i
-
-theorem code_deployment : code SolmateVault.deployment = SolmateVault.runtimeCode :=
-  SolmateVault.runtimeCodeWith_deployment
-
-theorem code_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat) (asset self : Address) :
-    code (SolmateVault.immutablesFor keccak256 chainId asset self) =
-      SolmateVault.runtimeCodeFor keccak256 chainId asset self := rfl
-
-theorem decimals_immutablesFor (keccak256 : ByteArray → Word) (chainId : Nat)
-    (asset self : Address) : (SolmateVault.immutablesFor keccak256 chainId asset self).decimals = 18#256 :=
-  rfl
-
-/-- The patches only touch `PUSH32` immediates, so the jump table is the canonical one for all
-immutables (kernel evaluation of the `JUMPDEST` scan, which skips the patched bytes). -/
-theorem jumpDestsAgree (i : SolmateVault.Immutables) :
-    JumpDestsAgree (code i) SolmateVault.runtimeCode := by
-  unfold JumpDestsAgree; kernel_decide
-
-theorem size_code (i : SolmateVault.Immutables) : (code i).size = 5248 := by
-  exact (size_patchWords _ _).trans SolmateVault.size_runtimeCode
-
-theorem delegatedAddress?_code (i : SolmateVault.Immutables) : delegatedAddress? (code i) = none :=
-  delegatedAddress?_of_size (by rw [size_code]; decide)
-
--- The `decimals` immutable, as the `PUSH32` at 622 reads it.
-theorem readBytes_code_decimals (i : SolmateVault.Immutables) :
-    readBytes (code i) 623 32 = Bytes.ofWord i.decimals := by
-  have hp : i.patches = [(1831, i.initialChainId), (1879, i.initialDomainSeparator),
-      (688, Word.ofAddress i.asset), (1170, Word.ofAddress i.asset),
-      (2014, Word.ofAddress i.asset), (2169, Word.ofAddress i.asset),
-      (2668, Word.ofAddress i.asset), (2995, Word.ofAddress i.asset)] ++ (623, i.decimals) :: [] :=
-    rfl
-  simp only [code, SolmateVault.runtimeCodeWith, hp]
-  exact readBytes_patchWords_last _ _ _ _ _ (by rw [SolmateVault.size_runtimeCode]; decide)
-    (by simp)
 
 /-! ## Calldata -/
 
@@ -201,9 +163,9 @@ theorem transfer_ok (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_le hbal']
   psol_steps [transferData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -224,7 +186,7 @@ theorem transfer_revert (hgas : 100000 ≤ gas)
   simp only [gt_sub_self_of_lt hbal']
   psol_steps [transferData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp
   · simp
 
@@ -269,9 +231,9 @@ theorem approve_ok (hgas : 100000 ≤ gas) (k : Nat) :
   simp only [start, Frame.init, callMsg]
   psol_steps [approveData]
   refine ⟨_, rfl, ?_, ?_, ?_⟩
-  · simp [ChildResult.success]
+  · rw [topLevelResult_success]; rfl
   · simp only [topLevelResult_output]
-    decide +kernel
+    kernel_decide
   · simp only [topLevelResult_world]
     rfl
 
@@ -337,7 +299,7 @@ theorem transferFrom_ok (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]
@@ -367,7 +329,7 @@ theorem transferFrom_ok (hgas : 100000 ≤ gas)
     refine ⟨_, rfl, ?_, ?_, ?_⟩
     · simp only [topLevelResult_success]; rfl
     · simp only [topLevelResult_output]
-      decide +kernel
+      kernel_decide
     · simp only [topLevelResult_world, transferFromWorld, spendWorld,
         show ¬ w.sload vault (allowanceSlot ctx.crypto Layout.solmate src caller) = maxWord from hmax,
         ↓reduceIte]
