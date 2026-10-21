@@ -1,5 +1,6 @@
 import Examples.Differential.Session
 import Examples.Differential.Token
+import Examples.Differential.Time
 import Examples.Deployment
 
 /-!
@@ -12,7 +13,8 @@ lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME�
 
 Families: vaults `solmate`, `oz`, `oz3` (OpenZeppelin, decimals offset 3); tokens `oz20`,
 `solady`, `weth9`, `usdt`, `usdtfee`, `bnb`, `sta`, `ampl`, `gusd`, `yamv2`, `lend`, `lendico`,
-`zrx` (all but the first two are mainnet bytecode); groups `vaults`, `tokens`, `all`.
+`zrx` (all but the first two are mainnet bytecode); across blocks `vesting` (OpenZeppelin
+`VestingWallet` with time jumps, `Time.lean`); groups `vaults`, `tokens`, `all`.
 Default: `solmate,oz`. `--edge` makes the token generators favour extreme amounts,
 self-transfers and dirty address arguments; `--low-gas PCT` lowers the gas limit of `PCT` % of
 the random calls (around the gas the previous call used, or barely above the intrinsic gas).
@@ -59,6 +61,8 @@ structure Config where
   edge : Bool := false
   /-- Percentage of random calls with a lowered gas limit. -/
   lowGas : Nat := 0
+  /-- Test the vesting wallet across blocks (`Time.lean`). -/
+  vesting : Bool := false
 
 /-- A decimal command-line argument. -/
 def natArg (s : String) : Except String Nat :=
@@ -77,6 +81,7 @@ def parseArgs : Config → List String → Except String Config
     let vaults := [solmate, openzeppelin, openzeppelinOffset]
     let mut fams := []
     let mut toks := []
+    let mut vest := false
     for n in f.splitOn "," do
       match vaults.find? (·.name == n), tokenFamilies.find? (·.name == n) with
       | some v, _ => fams := fams ++ [v]
@@ -85,10 +90,12 @@ def parseArgs : Config → List String → Except String Config
         match n with
         | "vaults" => fams := fams ++ vaults
         | "tokens" => toks := toks ++ tokenFamilies
-        | "all" => fams := fams ++ vaults; toks := toks ++ tokenFamilies
+        | "all" => fams := fams ++ vaults; toks := toks ++ tokenFamilies; vest := true
+        | "vesting" => vest := true
         | _ => throw (s!"unknown family {n} (" ++ ", ".intercalate
-            ((vaults.map (·.name)) ++ (tokenFamilies.map (·.name)) ++ ["vaults", "tokens", "all"]) ++ ")")
-    parseArgs { c with families := fams, tokens := toks } rest
+            ((vaults.map (·.name)) ++ (tokenFamilies.map (·.name)) ++
+              ["vesting", "vaults", "tokens", "all"]) ++ ")")
+    parseArgs { c with families := fams, tokens := toks, vesting := vest } rest
   | c, "--inject-bug" :: rest => parseArgs { c with injectBug := true } rest
   | c, "--verbose" :: rest => parseArgs { c with verbose := true } rest
   | c, "--edge" :: rest => parseArgs { c with edge := true } rest
@@ -191,6 +198,8 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
     discard <| testToken rpc stats cfg.seed i cfg.sequences cfg.length cfg.verbose
       { tok with edge := cfg.edge } cfg.lowGas
     i := i + 1
+  if cfg.vesting then
+    discard <| Time.testVesting rpc stats cfg.seed cfg.sequences cfg.length cfg.verbose
 
 end Examples.Differential
 

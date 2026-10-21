@@ -12,6 +12,7 @@ import Examples.Differential.Local
 import Examples.Differential.Main
 import Examples.Differential.Rpc
 import Examples.Differential.Session
+import Examples.Differential.Time
 import Examples.Differential.Token
 import Examples.OpenZeppelin.Contracts.Deploy
 import Examples.OpenZeppelin.Contracts.OzAsset
