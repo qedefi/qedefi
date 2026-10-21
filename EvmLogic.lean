@@ -33,6 +33,10 @@ import EvmLogic.Program.Reentrancy.Halts
 import EvmLogic.Program.Reentrancy.Havoc
 import EvmLogic.Program.Reentrancy.NoWrite
 import EvmLogic.Program.Reentrancy.Prefix
+import EvmLogic.Program.Reentrancy.PrefixCall
+import EvmLogic.Program.Reentrancy.PrefixOps
+import EvmLogic.Program.Reentrancy.Tail
+import EvmLogic.Program.Reentrancy.Value
 import EvmLogic.Program.Reentrancy.World
 import EvmLogic.Program.Run
 import EvmLogic.Program.Summary
@@ -67,6 +71,7 @@ import EvmLogic.Tactic.FastStep
 import EvmLogic.Tactic.KernelRfl
 import EvmLogic.Tactic.Mcopy
 import EvmLogic.Tactic.Patched
+import EvmLogic.Tactic.PrefixStep
 import EvmLogic.Tactic.SolStep
 import EvmLogic.Tactic.WpStep
 import EvmLogic.Word
