@@ -234,6 +234,8 @@ balance)` calldata, in any frame, its code `rc` succeeds and leaves `t`'s storag
 |---|---|
 | `mint_halts_ok` | Pool caller, no value, non-static frame, gas in `[10^6, 2^64)`, well-formed calldata `mint(c, u, amt, idx)`; `userStateSlot u ≠ 54`; `amt ≠ 0`, `scaledBalance u + amt < 2^120`, `idx < 2^128`, `(scaledBalance u + amt) · idx < 2^256`, `⌊scaledBalance u · previousIndex u / RAY⌋ ≤ ⌊scaledBalance u · idx / RAY⌋`, `scaledTotalSupply + amt < 2^256`; rewards controller: `HandleActionOk`, code size in `(0, 2^256)`, not a precompile, not EIP-7702-delegated, depth < 1024 → returns `iszero(scaledBalance u)`, and every slot of the executing account equals `mintWorld`'s (`MintOk`) |
 | `mint_halts_effect` | the same → `MintEffect`: `scaledBalance u` and `scaledTotalSupply` both grow by `amt`, `previousIndex u = idx`, the delegation byte and every other slot unchanged |
+| `mint_reverts_of_zero` | Pool caller, no value, well-formed calldata with `scaledAmount = 0` → `RevertsWith invalidMintAmount 3000` (`InvalidMintAmount()`, `0xccfad018`) |
+| `mint_reverts_of_cast` | Pool caller, no value, non-static frame, gas ≥ 10^5, well-formed calldata with `scaledAmount ≥ 2^120` → the frame reverts (whichever check fails first: supply-side add, `rayMulFloor` guard, interest subtraction, `toUint128(index)`, `toUint120(amount)` after the index write) |
 | `mintWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` (the scaled ledger stays balanced) |
 | `scaledBalance_mintWorld`, `scaledTotalSupply_mintWorld`, `previousIndex_mintWorld`, `delegation_mintWorld`, `sload_mintWorld_other`, `sload_mintWorld_account` | the field-by-field reading of `mintWorld` |
 
