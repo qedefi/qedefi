@@ -244,6 +244,13 @@ is just a trace: `BlockTrace.induction_on` (`Examples/Time/Solmate.lean` turns
    obligations are one `cases` on the call (`wallet_refinement`); the multi-block theorems are
    one-line instances (`released_le_vested_blocks`, `total_blocks`, `vested_mono_blocks`).
 
+A second, model-level demonstrator is Synthetix `StakingRewards` (`QEDefi/Staking/Model.lean`):
+`rewardPerToken` in closed form (piecewise linear, constant after `periodFinish`), a time-free
+solvency invariant (`Funded`: claims + stored rewards + unstored accrual + what is still to
+stream ≤ funded), giving `claimed_add_earned_le` at every time, and no dilution
+(`entitlement_step`: every action at time `t`, by anyone, keeps each user's earned + claimed;
+`entitlement_mono` along any monotone execution). Its bytecode refinement is not done.
+
 A plain ether payment (`Address.sendValue`) to an account without code is one rule,
 `WP.call_codeless` (`EvmLogic/Program/CallCodeless.lean`: the child halts at once; with
 `callCost_le`, `le_gas_after_call'` for the gas). Payments to contracts re-enter and need the

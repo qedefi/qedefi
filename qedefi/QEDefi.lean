@@ -21,6 +21,8 @@ import QEDefi.ERC4626.Solmate
 import QEDefi.ERC4626.SolmateProps
 import QEDefi.ERC4626.Witnesses
 import QEDefi.Math.Arith
+import QEDefi.Staking.Deps
+import QEDefi.Staking.Model
 import QEDefi.Trace.Lift
 import QEDefi.Trace.Time
 import QEDefi.Vesting.Model
