@@ -215,12 +215,13 @@ names the chain, the contracts and optional extra calls; the block is pinned at 
 unless given.
 
 ```bash
-ALCHEMY_KEY=… lake exe snapshot fetch contracts/snapshots/<Name>   # network, read-only
+lake exe snapshot fetch contracts/snapshots/<Name>                 # network, read-only
 lake exe snapshot check contracts/snapshots/<Name> [--verbose]     # offline
 ```
 
-`fetch` (any JSON-RPC archive endpoint via `--rpc URL`, or Alchemy with `ALCHEMY_KEY`; the URL
-is never printed or saved) uses only `eth_get*`/`eth_call`, no `debug_*` tracing. The state
+`fetch` (any JSON-RPC archive endpoint via `--rpc URL`, or Alchemy with `ALCHEMY_KEY` from the
+environment or from a gitignored `.env` in the working directory; the URL is never printed or
+saved) uses only `eth_get*`/`eth_call`, no `debug_*` tracing. The state
 is found with the Lean interpreter as the tracer: seed calls (the given ones, plus every
 argument-free view of each target and of its EIP-1967/ZeppelinOS/beacon implementation) run
 on the state fetched so far, `Snapshot.runObserved` records every account, slot and
