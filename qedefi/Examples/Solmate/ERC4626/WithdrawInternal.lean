@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC20.Spec
 import Examples.Solmate.ERC4626.SafeTransfer
 import Examples.Solmate.ERC20.TransferFrom
+import Examples.MathlibDeps
 
 /-!
 # `withdraw` / `redeem` as world transformations, and their relation to the model

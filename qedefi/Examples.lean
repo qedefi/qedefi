@@ -5,6 +5,7 @@ import Examples.Basic.Token
 import Examples.Basic.TwoContracts
 import Examples.Basic.VaultTotalSupply
 import Examples.Deployment
+import Examples.MathlibDeps
 import Examples.Differential.Family
 import Examples.Differential.Gen
 import Examples.Differential.Local

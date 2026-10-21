@@ -1,6 +1,8 @@
 module
 
 public import QEDefi.ERC4626.AssetVariants
+public import Mathlib.Data.Finsupp.Pointwise
+public import Mathlib.Order.Lattice.Nat
 
 /-!
 # Vaults over non-standard assets (model level)

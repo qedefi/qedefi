@@ -2,6 +2,7 @@ module
 
 public import QEDefi.ERC4626.Oz
 public import QEDefi.Math.Arith
+public import Mathlib.Tactic.Positivity
 
 /-!
 # Properties of the OpenZeppelin vault

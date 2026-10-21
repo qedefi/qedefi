@@ -3,6 +3,7 @@ import EvmLogic.Tactic.Mcopy
 import EvmLogic.Solidity.Strings
 import Examples.Solmate.ERC4626.StringsCommon
 import Examples.Solmate.ERC4626.Abstraction
+import Examples.MathlibDeps
 
 /-!
 # Short strings of `Examples.Solmate.ERC4626.StringsCode`

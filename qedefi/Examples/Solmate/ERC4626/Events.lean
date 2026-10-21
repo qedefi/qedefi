@@ -2,6 +2,7 @@ import QEDefi.ERC4626.Events
 import Examples.Solmate.ERC4626.Abstraction
 import QEDefi.ERC4626.Logs
 import EvmLogic.Solidity.Word
+import Examples.MathlibDeps
 
 /-!
 # Events as EVM logs

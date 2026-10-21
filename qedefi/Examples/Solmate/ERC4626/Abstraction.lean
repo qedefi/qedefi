@@ -12,6 +12,7 @@ import EvmLean
 import Examples.Solmate.ERC4626.Views
 import EvmLogic.Solidity.Call
 import QEDefi.ERC20.Rep
+import Examples.MathlibDeps
 
 /-!
 # Abstraction: deployed bytecode ↔ the Solmate vault model

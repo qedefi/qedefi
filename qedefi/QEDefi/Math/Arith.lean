@@ -1,6 +1,9 @@
 module
 
-public import Mathlib
+public import Mathlib.Algebra.Order.Ring.Star
+public import Mathlib.Algebra.Order.Star.Int
+public import Mathlib.Order.SuccPred.Nat
+public import Mathlib.Tactic.Linarith
 
 /-!
 # uint256 arithmetic of the vault libraries

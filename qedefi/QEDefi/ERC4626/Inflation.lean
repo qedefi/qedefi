@@ -1,8 +1,10 @@
 module
 
-public import Mathlib
 public import QEDefi.ERC4626.SolmateProps
 public import QEDefi.ERC4626.OzProps
+public import Mathlib.Algebra.Order.Star.Rat
+public import Mathlib.Tactic.FieldSimp
+public import Mathlib.Tactic.Ring
 
 /-!
 # The algebra of the donation ("inflation") attack

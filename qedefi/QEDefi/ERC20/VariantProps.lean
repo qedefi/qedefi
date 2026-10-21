@@ -1,6 +1,7 @@
 module
 
 public import QEDefi.ERC20.Variant
+public import Mathlib.Tactic.Ring
 
 /-!
 # Properties of the ERC-20 variants

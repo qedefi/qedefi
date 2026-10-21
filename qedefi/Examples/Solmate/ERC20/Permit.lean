@@ -10,6 +10,7 @@ import EvmLogic.Tactic.Mcopy
 import EvmLogic.Solidity.Word
 import EvmLogic.Solidity.Events
 import QEDefi.ERC4626.Logs
+import Examples.MathlibDeps
 
 /-!
 # EIP-2612 as the bytecode computes it
