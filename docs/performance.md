@@ -13,6 +13,10 @@ statement.
   `EvmLean` without timing it, then times `lake build --wfail EvmLogic` (root package) and
   `lake build --wfail QEDefi Examples` (`qedefi/`) at Lake's default parallelism, on a 12-core
   Apple machine.
+  The timed `qedefi` targets are the proof libraries `QEDefi Examples` only. Since the
+  low-hanging-fruit changes below, the `#guard` evaluation tests (formerly `Examples.Tests.*`,
+  ~28 s of interpretation) live in the separate `QEDefiTest` library (`lake test` in `qedefi/`)
+  and are no longer part of this measurement; earlier rows include them.
 - **(b) Per-file times**: Lake's `Built … (t)` lines from the same logs. These times come from
   the parallel build, so contention inflates them. A single file built alone takes about half as
   long.
@@ -127,10 +131,54 @@ parallel, which is why the wall time per instruction is lower than that.
 - `cd qedefi && lake exe difftest --seed 3 --sequences 10 --length 30` gives 0 mismatching
   sequences (630 transactions).
 
+## Low-hanging fruit (branch `perf/lowhang`)
+
+Clean `scripts/bench-build.sh` run, same machine, after four changes:
+
+| | before | after |
+|---|---:|---:|
+| `QEDefi Examples` wall | 171.3 s (199 s in a contended run the same day) | **129.3 s** |
+| `QEDefi Examples` CPU (user) | 1195 s (1332 s contended) | 1079 s |
+| sum of `QEDefi`/`Examples` module times | 1653 s (contended run) | 1204 s |
+| longest module chain in the `qedefi` phase | ≈ 180 s | 117 s |
+| `EvmLogic` wall / CPU (unchanged code) | 50.1 s / 247 s | 51.2 s / 247 s |
+
+1. **Per-file Mathlib imports.** `QEDefi.Math.Arith` and `QEDefi.ERC4626.Inflation` imported all
+   of Mathlib, so every `QEDefi`/`Examples` module loaded it. Each module-system file now imports
+   the Mathlib modules its declarations reference (from a dump of the constants each module
+   uses, reduced along Mathlib's import graph) and the tactic frontends it calls; the
+   non-module example files get the four remaining modules through `Examples.MathlibDeps`.
+   Loading the imports of a module went from 3.3–4.4 s to 1.0–1.5 s (e.g. `Arith` 3.31 → 0.96 s,
+   `ERC20.Approve` 4.37 → 1.52 s, `ERC4626.EventsEntry` 4.44 → 1.50 s; measured alone).
+2. **Shorter chains.** Example imports were reduced to the modules whose constants they use
+   (keeping their `EvmLogic` imports for tactics), and the few early definitions importers needed
+   were moved earlier, namespaces unchanged (`sharesOf`, `FmpAfterTransfer` → `Convert`;
+   `ApproveOk` → `SpecView`; `TransferAllowances` → `TransferFrom`; `allowanceSlot_solmate` →
+   `BalanceOf`; `Deployed.asset_ne` → `Abstraction`). The ERC-20 refinement and event modules no
+   longer wait for the vault's views (`SolmateVault` → … → `Views` → `Abstraction`), `Approve`
+   no longer waits for `transfer`/`transferFrom`, `DepositInternal` no longer waits for
+   `safeTransferFrom`, and `Deposit` no longer waits for `Withdraw`. Each generated contract is
+   split into `<Name>Data` (bytes, immutables, selectors, layout) and `<Name>` (sizes, code
+   table, deployment theorem), so `Deploy`, `SharesRep`, `Nested.Domain`, `LowGas.Certify` and
+   the tests do not wait for the code table. The longest chain is now
+   `SolmateAssetData` 6 → `SolmateAsset` 4 → `BalanceOf` 4 → `TransferFrom` 38 →
+   `EventsTransfer` 30 → `EventsInternal` 21 → `EventsEntry` 10 → `Invariants.Events` 2 s
+   (117 s); the events, `EventsSharesCode` and `LowGas` chains are within 11 s of it.
+3. **Tests out of the proof build**: `QEDefiTest` (see Method).
+4. **Lake noise.** `qedefi/lake-manifest.json` already used the lakefile's `https` URLs. The
+   `remote URL changed` lines come from a global `url.ssh://git@github.com/.insteadOf
+   https://github.com/` git setting, which makes the package clones report `ssh` URLs; nothing in
+   the repository changes that.
+
+The contributions were not measured separately (one clean build). Statement dump: 3640
+theorems before, 0 missing, 0 statement changes, 0 axiom changes; one new auto-generated lemma
+(`Finsupp.equivFunOnFinite.congr_simp`, generated locally now that its Mathlib module is not
+loaded).
+
 ## Limits
 
-- Each module that imports Mathlib pays about 4.5 s (≈2.5 s CPU) to load its imports, and the
-  dependent chains are 10–17 modules deep.
+- Each module that imports Mathlib pays about 1–1.5 s to load its imports (4.5 s before the
+  per-file imports).
 - The kernel checks the theorems of one module sequentially. Files whose kernel time is
   20–30 s (`SharesCode`, `SharesFrame`, `LowGas/Certify`, `Basic/TwoContracts`) would need
   further splitting.
