@@ -76,6 +76,7 @@ header roots.
 | | `EvmLogic` | `EvmLean` | generic program logic and proof library ([proving.md](proving.md)) |
 | | `EvmTest` | `EvmLean`, `EvmLogic`, `Conformance.Hex` | `#guard` unit tests (`lake test`) |
 | | `Conformance` | `EvmLean` | `lake exe conform` |
+| | `Snapshot` | `EvmLean`, `Conformance.Hex` | `lake exe snapshot`: deployed contracts at a pinned block ([contracts/README.md](../contracts/README.md#snapshots)) |
 | `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | reusable kits: `Math` (`uint256` `mulDiv`), `ERC20` ledgers, `ERC4626` models and properties, `Trace` lifting |
 | | `Examples` | `QEDefi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`) |
 | | `QEDefiTest` | `Examples` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
