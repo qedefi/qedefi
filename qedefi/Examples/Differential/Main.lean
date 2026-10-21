@@ -1,5 +1,6 @@
 import Examples.Differential.Session
 import Examples.Differential.Token
+import Examples.Differential.Time
 import Examples.Deployment
 
 /-!
@@ -12,7 +13,8 @@ lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME�
 
 Families: vaults `solmate`, `oz`, `oz3` (OpenZeppelin, decimals offset 3); tokens `oz20`,
 `solady`, `weth9`, `usdt`, `usdtfee`, `bnb`, `sta`, `ampl`, `gusd`, `yamv2`, `lend`, `lendico`,
-`zrx` (all but the first two are mainnet bytecode); groups `vaults`, `tokens`, `all`.
+`zrx` (all but the first two are mainnet bytecode); across blocks `vesting` (OpenZeppelin
+`VestingWallet` with time jumps, `Time.lean`); groups `vaults`, `tokens`, `all`.
 Default: `solmate,oz`. `--edge` makes the token generators favour extreme amounts,
 self-transfers and dirty address arguments; `--low-gas PCT` lowers the gas limit of `PCT` % of
 the random calls (around the gas the previous call used, or barely above the intrinsic gas).
@@ -192,25 +194,33 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
       { tok with edge := cfg.edge } cfg.lowGas
     i := i + 1
 
+/-- `runAll`, then the vesting wallet across blocks if requested. -/
+def runAllWith (cfg : Config) (vesting : Bool) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
+  runAll cfg rpc stats
+  if vesting then
+    discard <| Time.testVesting rpc stats cfg.seed cfg.sequences cfg.length cfg.verbose
+
 end Examples.Differential
 
 open Examples.Differential in
 /-- Entry point of `lake exe difftest`. -/
 def main (args : List String) : IO UInt32 := do
+  let (args, vesting, onlyVesting) := Time.stripVesting args
   let cfg ← match parseArgs {} args with
     | .ok c => pure c
     | .error e => IO.eprintln e; return 2
+  let cfg := if onlyVesting then { cfg with families := [], tokens := [] } else cfg
   let stats ← IO.mkRef ({} : Stats)
   let start ← IO.monoMsNow
   match cfg.rpc with
   | some url =>
-    try runAll cfg { url } stats
+    try runAllWith cfg vesting { url } stats
     catch e => IO.eprintln s!"error: {e}"; return 2
   | none =>
     let now ← IO.monoMsNow
     let port := if cfg.port = 0 then 30000 + now % 20000 else cfg.port
     let child ← spawnAnvil port Examples.Deployment.chainId
-    try runAll cfg { url := s!"http://127.0.0.1:{port}" } stats
+    try runAllWith cfg vesting { url := s!"http://127.0.0.1:{port}" } stats
     catch e => child.kill; IO.eprintln s!"error: {e}"; return 2
     child.kill
   let st ← stats.get

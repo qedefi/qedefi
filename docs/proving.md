@@ -237,8 +237,88 @@ changes of `exec_world`; `DStart` records the value transfer that started a dang
 the attack transaction is evaluated by the kernel with the real Keccak (`exploit_run`) and leaves
 the bank owing the victim 2 ether while holding none (`exploit_insolvent`). `Defended.lean`: the
 same attack replayed against `CEIBank` (debit before the call) and `GuardedBank` (OpenZeppelin
-`ReentrancyGuard`) reverts and leaves the bank solvent (`cei_exploit_fails`,
-`guarded_exploit_fails`), also kernel-evaluated on bytecode.
+`ReentrancyGuard`) leaves the bank solvent (`cei_solvent`; the guarded run reverts,
+`guarded_solvent`), while `VulnerableBank` is drained (`vulnerable_drained`), all
+kernel-evaluated on bytecode against a re-enter-once attacker. `NoWrite.lean`/`Certified.lean`:
+`noWrite_halts` — a certified tail with no storage-writing or calling instruction keeps the
+world for any gas.
+
+## Time and multiple blocks
+
+Modules: `EvmLogic/Program/Time.lean` (block environments), `qedefi/QEDefi/Trace/Time.lean`
+(EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
+`qedefi/Examples/Time/` (OpenZeppelin `VestingWallet`, Solmate across blocks).
+
+**Principle: the block context stays symbolic.** Per-call theorems hold for every `ctx`, so
+`TIMESTAMP`, `NUMBER`, `PREVRANDAO`, the base fee … are free variables of the bytecode proof,
+and the code's own branches on them are the only case splits. A multi-block trace is a list
+of block environments with the calls of each block; the only assumptions relating blocks are
+hypotheses on the list:
+
+- `NextBlock b b'` / `BlockChain bs`: same chain id, number `+1`, strictly increasing
+  timestamp, ancestor hashes shifted by the parent's hash; everything else arbitrary.
+  `nextBlock_stateTransition` checks them against the semantics: the environments in which
+  `Block.stateTransition` runs two consecutive valid blocks are `NextBlock`.
+  `BlockChain.timestamp_lt`, `number_eq`, `chainId_eq` are what proofs use.
+
+**Time-indexed models** (`QEDefi.Trace.Time`). The model step is `step now s op`; behaviour
+over time is a closed form in `now` (e.g. `Vesting.Schedule.vested total t`), proved
+monotone once, for a symbolic `t`. Executions take timed operations (`Timed`, `texec`), and
+`Monotone`/`Within` state that times do not decrease. A **time invariant** `I t s`
+(`TimeInvariant`: kept by a step at time `t`, and by advancing the clock `t ≤ t'`) is carried
+along any monotone execution by one induction (`texec_timeInvariant`); `texec_quantity_mono`
+does the same for a quantity that never decreases. Nothing is enumerated: the induction is
+over the trace, the time facts are `≤` lemmas.
+
+**Lifting** (`TSystem`): as `Lift.System`, with `call t w op w'` (a concrete call at time `t`)
+and the refinement obligations stated for a symbolic `t` (`TSystem.Refinement`).
+`TSystem.untimed` reduces it to `Lift`, so all of `Lift` applies. `BlockTrace step bs w w'`
+runs blocks in order, each a sequence of `step b` transitions; with
+`BlockStep σ time b` (admissible calls at `time b`, or environment steps):
+
+- `Refinement.lift_blocks`: the final abstraction agrees with `texec` of the blocks' calls
+  stamped with their blocks' times (`stamp`), for any blocks;
+- `Refinement.timeInvariant_blocks`: a time invariant stable under `Agree` holds at any
+  `t₁` after the last block, given block times monotone and in `[t₀, t₁]`.
+
+Time-independent systems are the constant case (`TSystem.const`, `refinement_const`,
+`texec_const`). For a protocol whose trace theorems are already proved, a multi-block trace
+is just a trace: `BlockTrace.induction_on` (`Examples/Time/Solmate.lean` turns
+`BlockTrace (BlockTxStep …)` into `TxTrace` and gets `supply_eq_sum_multiBlock`,
+`solvent_multiBlock`, … for any sequence of blocks, unchanged statements, no time reasoning).
+
+**Recipe for a time-dependent contract** (`Examples/Time/VestingWallet/`):
+
+1. Model with `now` (`Vesting.step`, mirroring the contract's reverts) and its closed form;
+   prove its laws once (`vested_mono_time`, `vested_mono_total`, `vested_le`) and the time
+   invariant (`timeInvariant_released`).
+2. Prove the time-dependent internal function once with the timestamp on the stack symbolic
+   (`vested_wp`: `ts :: r :: rest`, three code branches, checked `+ - *`), then the external
+   functions compose it (`releasable_halts`, `vestedAmount_halts`, `release_halts`). Note
+   `uint64(block.timestamp)`: the clock is `timestamp mod 2⁶⁴` (`clock`), and monotone only
+   while timestamps fit in 64 bits (a stated hypothesis).
+3. Top level (`Spec.lean`): `result_of_halts` turns a frame summary into the result of any
+   terminating `processMessageCall`, for every block environment.
+4. The system (`System.lean`): calls at `clock ctx.block`, inflows as calls of a `deposit`
+   operation (any transition adding ether), environment steps keeping the abstraction; the
+   obligations are one `cases` on the call (`wallet_refinement`); the multi-block theorems are
+   one-line instances (`released_le_vested_blocks`, `total_blocks`, `vested_mono_blocks`).
+
+A second, model-level demonstrator is Synthetix `StakingRewards` (`QEDefi/Staking/Model.lean`):
+`rewardPerToken` in closed form (piecewise linear, constant after `periodFinish`), a time-free
+solvency invariant (`Funded`: claims + stored rewards + unstored accrual + what is still to
+stream ≤ funded), giving `claimed_add_earned_le` at every time, and no dilution
+(`entitlement_step`: every action at time `t`, by anyone, keeps each user's earned + claimed;
+`entitlement_mono` along any monotone execution). Its bytecode refinement is not done.
+
+A plain ether payment (`Address.sendValue`) to an account without code is one rule,
+`WP.call_codeless` (`EvmLogic/Program/CallCodeless.lean`: the child halts at once; with
+`callCost_le`, `le_gas_after_call'` for the gas). Payments to contracts re-enter: see section
+7.
+
+Cost: the `VestingWallet` bytecode proofs (schedule, three views, `release`) elaborate in
+about 20 s; the multi-block layer adds no per-block or per-time work. `lake exe difftest
+--family vesting` compares the wallet with anvil across blocks with `evm_increaseTime`.
 
 ## Pitfalls
 

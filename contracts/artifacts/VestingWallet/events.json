@@ -1,0 +1,5 @@
+{
+  "ERC20Released(address,uint256)": "0xc0e523490dd523c33b1878c9eb14ff46991e3f5b2cd33710918618f2a39cba1b",
+  "EtherReleased(uint256)": "0xda9d4e5f101b8b9b1c5b76d0c5a9f7923571acfc02376aa076b75a8c080c956b",
+  "OwnershipTransferred(address,address)": "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0"
+}

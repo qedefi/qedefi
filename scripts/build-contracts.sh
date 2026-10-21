@@ -18,6 +18,7 @@
 #   qedefi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}{,Data}.lean
 #   qedefi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}{,Data}.lean
 #   qedefi/Examples/Solady/Contracts/SoladyToken{,Data}.lean
+#   qedefi/Examples/Time/Contracts/VestingWallet{,Data}.lean
 #   qedefi/Examples/Reentrancy/Contracts/{VulnerableBank,CEIBank,GuardedBank,Attacker}{,Data}.lean
 #     (<Name>Data.lean: bytes, immutables, selectors, layout; <Name>.lean: the code facts and
 #     the kernel code table)
@@ -44,6 +45,8 @@ DEPLOYER=0x1000000000000000000000000000000000000000
 SOLMATE_ASSET_ARGS=("constructor(string,string,uint8)" "Solmate Asset" "SAST" 18)
 SOLMATE_VAULT_NAME="Solmate Vault"
 SOLMATE_VAULT_SYMBOL="svSAST"
+# OpenZeppelin `VestingWallet(beneficiary, startTimestamp, durationSeconds)`.
+VESTING_ARGS=("constructor(address,uint64,uint64)" 0x2000000000000000000000000000000000000000 1700000000 31536000)
 
 SOLC="$HOME/.svm/0.8.28/solc-0.8.28"
 "$SOLC" --version | grep -q '0.8.28+commit.7893614a' || { echo "error: need solc 0.8.28 at $SOLC" >&2; exit 1; }
@@ -58,6 +61,7 @@ declare -A SRC=(
   [OzVault]="out/OzVault.sol/OzVault.json"
   [OzVaultOffset]="out/OzVaultOffset.sol/OzVaultOffset.json"
   [SoladyToken]="out/SoladyToken.sol/SoladyToken.json"
+  [VestingWallet]="out/VestingWallet.sol/VestingWallet.json"
   [VulnerableBank]="out/Banks.sol/VulnerableBank.json"
   [CEIBank]="out/Banks.sol/CEIBank.json"
   [GuardedBank]="out/Banks.sol/GuardedBank.json"
@@ -71,6 +75,7 @@ declare -A SOLNAME=(
   [OzVault]="src/OzVault.sol:OzVault"
   [OzVaultOffset]="src/OzVaultOffset.sol:OzVaultOffset"
   [SoladyToken]="src/SoladyToken.sol:SoladyToken"
+  [VestingWallet]="lib/openzeppelin-contracts/contracts/finance/VestingWallet.sol:VestingWallet"
   [VulnerableBank]="src/reentrancy/Banks.sol:VulnerableBank"
   [CEIBank]="src/reentrancy/Banks.sol:CEIBank"
   [GuardedBank]="src/reentrancy/Banks.sol:GuardedBank"
@@ -78,7 +83,7 @@ declare -A SOLNAME=(
   [OnceAttacker]="src/reentrancy/Banks.sol:OnceAttacker"
 )
 TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken
-  VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
+  VulnerableBank CEIBank GuardedBank Attacker OnceAttacker VestingWallet)
 REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
@@ -89,6 +94,7 @@ declare -A LEANNS=(
   [OzVault]="Examples.OpenZeppelin.Contracts"
   [OzVaultOffset]="Examples.OpenZeppelin.Contracts"
   [SoladyToken]="Examples.Solady.Contracts"
+  [VestingWallet]="Examples.Time.Contracts"
   [VulnerableBank]="Examples.Reentrancy.Contracts"
   [CEIBank]="Examples.Reentrancy.Contracts"
   [GuardedBank]="Examples.Reentrancy.Contracts"
@@ -102,6 +108,7 @@ declare -A LEANDIR=(
   [OzVault]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
   [OzVaultOffset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
   [SoladyToken]="$ROOT/qedefi/Examples/Solady/Contracts"
+  [VestingWallet]="$ROOT/qedefi/Examples/Time/Contracts"
   [VulnerableBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [CEIBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [GuardedBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
@@ -190,6 +197,13 @@ ARGS[SoladyToken]=""
 ADDR[SoladyToken]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[SoladyToken]}")")
 CODE[SoladyToken]=$(cast code --rpc-url "$RPC" "${ADDR[SoladyToken]}" | strip0x)
 
+# Time: an OpenZeppelin `VestingWallet` at deployer nonce 0 (no value sent).
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+ARGS[VestingWallet]=$(cast abi-encode "${VESTING_ARGS[@]}" | strip0x)
+ADDR[VestingWallet]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[VestingWallet]}")${ARGS[VestingWallet]}")
+CODE[VestingWallet]=$(cast code --rpc-url "$RPC" "${ADDR[VestingWallet]}" | strip0x)
+
 # Reentrancy demonstrators: a fresh chain, deployer nonces 0 (VulnerableBank) to 3 (Attacker).
 cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
 fund
@@ -201,7 +215,7 @@ done
 
 [ "${ADDR[SolmateAsset]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[SolmateVault]}" = "${ADDR[OzVault]}" ] \
   && [ "$oz3asset" = "${ADDR[OzAsset]}" ] && [ "${ADDR[OzVaultOffset]}" = "${ADDR[OzVault]}" ] \
-  && [ "${ADDR[SoladyToken]}" = "${ADDR[OzAsset]}" ] \
+  && [ "${ADDR[SoladyToken]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[VestingWallet]}" = "${ADDR[OzAsset]}" ] \
   || { echo "error: deployment addresses differ between families" >&2; exit 1; }
 
 # ---------------------------------------------------------------- Lean helpers
@@ -219,6 +233,8 @@ imm_field() {
     _underlyingDecimals) echo "underlyingDecimals" ;;
     INITIAL_CHAIN_ID) echo "initialChainId" ;;
     INITIAL_DOMAIN_SEPARATOR) echo "initialDomainSeparator" ;;
+    _start) echo "start" ;;
+    _duration) echo "duration" ;;
     *) echo "error: unknown immutable $1" >&2; exit 1 ;;
   esac
 }
@@ -559,6 +575,7 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
   --arg oa "${ADDR[OzAsset]}" --arg ov "${ADDR[OzVault]}" \
   --arg saArgs "${ARGS[SolmateAsset]}" --arg svArgs "${ARGS[SolmateVault]}" --arg ovArgs "${ARGS[OzVault]}" \
   --arg o3 "${ADDR[OzVaultOffset]}" --arg o3Args "${ARGS[OzVaultOffset]}" --arg sl "${ADDR[SoladyToken]}" \
+  --arg vw "${ADDR[VestingWallet]}" --arg vwArgs "${ARGS[VestingWallet]}" \
   --arg vb "${ADDR[VulnerableBank]}" --arg cb "${ADDR[CEIBank]}" --arg gb "${ADDR[GuardedBank]}" \
   --arg at "${ADDR[Attacker]}" --arg oa2 "${ADDR[OnceAttacker]}" \
   --argjson mainnet "$(for t in "${MAINNET[@]}"; do jq -c --arg t "$t" '{($t): {address, block, codeHash, codeSize}}' "$C/mainnet/$t/meta.json"; done | jq -s 'add // {}')" \
@@ -571,6 +588,8 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
     openzeppelinOffset3: {asset: {contract: "ERC20Mock", address: $oa, args: [], argsHex: ""},
                           vault: {contract: "OzVaultOffset", address: $o3, args: [$oa], argsHex: $o3Args}},
     solady: {token: {contract: "SoladyToken", address: $sl, args: [], argsHex: ""}},
+    time: {vestingWallet: {contract: "VestingWallet", address: $vw,
+           args: ["0x2000000000000000000000000000000000000000", 1700000000, 31536000], argsHex: $vwArgs}},
     reentrancy: {note: "A fresh chain: deployer nonces 0 to 3.",
                  vulnerableBank: {contract: "VulnerableBank", address: $vb},
                  ceiBank: {contract: "CEIBank", address: $cb},
@@ -592,6 +611,7 @@ if [ $CHECK -eq 1 ]; then
   git -C "$ROOT" diff --exit-code -- contracts/artifacts contracts/mainnet \
     qedefi/Examples/Solmate/Contracts qedefi/Examples/OpenZeppelin/Contracts \
     qedefi/Examples/Solady/Contracts qedefi/Examples/Reentrancy/Contracts \
+    qedefi/Examples/Time/Contracts \
     $(for t in "${MAINNET[@]}"; do printf '%s ' "qedefi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"

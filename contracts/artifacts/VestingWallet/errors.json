@@ -1,0 +1,7 @@
+{
+  "FailedCall()": "d6bda275",
+  "InsufficientBalance(uint256,uint256)": "cf479181",
+  "OwnableInvalidOwner(address)": "1e4fbdf7",
+  "OwnableUnauthorizedAccount(address)": "118cdaa7",
+  "SafeERC20FailedOperation(address)": "5274afe7"
+}
