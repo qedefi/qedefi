@@ -220,6 +220,27 @@ at least 4 (+32 per argument) bytes and < 2^64, an address argument a clean word
 
 `viewSelectors_abi` and `immutables_eq` tie the selectors and immutables to the generated tables.
 
+**`mint` by the Pool** (`Mint/Basic.lean`, `Mint/Success.lean`, `Mint/Effect.lean`). In this
+version the Pool passes the *scaled* amount (`mint(caller, onBehalfOf, scaledAmount, index)`),
+so no `rayDiv` happens in the token; `rayMulFloor` only computes the event amounts, and its
+overflow guard and the checked subtractions are hypotheses. `mintWorld` is the storage after
+the three writes (`_userState[u]` with `index` in bits 128–255, `_totalSupply + amt`,
+`_userState[u]` with `balance + amt` in bits 0–119; `userWordIndexed`, `userWordMinted` are the
+words exactly as the code computes them). `HandleActionOk rc t` is the **modelling assumption**
+on the rewards controller: called by `t` without value with `handleAction(user, supply,
+balance)` calldata, in any frame, its code `rc` succeeds and leaves `t`'s storage unchanged.
+
+| Theorem | Statement |
+|---|---|
+| `mint_halts_ok` | Pool caller, no value, non-static frame, gas in `[10^6, 2^64)`, well-formed calldata `mint(c, u, amt, idx)`; `userStateSlot u ≠ 54`; `amt ≠ 0`, `scaledBalance u + amt < 2^120`, `idx < 2^128`, `(scaledBalance u + amt) · idx < 2^256`, `⌊scaledBalance u · previousIndex u / RAY⌋ ≤ ⌊scaledBalance u · idx / RAY⌋`, `scaledTotalSupply + amt < 2^256`; rewards controller: `HandleActionOk`, code size in `(0, 2^256)`, not a precompile, not EIP-7702-delegated, depth < 1024 → returns `iszero(scaledBalance u)`, and every slot of the executing account equals `mintWorld`'s (`MintOk`) |
+| `mint_halts_effect` | the same → `MintEffect`: `scaledBalance u` and `scaledTotalSupply` both grow by `amt`, `previousIndex u = idx`, the delegation byte and every other slot unchanged |
+| `mintWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` (the scaled ledger stays balanced) |
+| `scaledBalance_mintWorld`, `scaledTotalSupply_mintWorld`, `previousIndex_mintWorld`, `delegation_mintWorld`, `sload_mintWorld_other`, `sload_mintWorld_account` | the field-by-field reading of `mintWorld` |
+
+Proof tools added in `Tactic.lean` (generic, candidates for `EvmLogic`): `wp_abstract`
+(abstract the memory, gas or world of a `WP` goal without `generalize`), `access_bounds`,
+`step_extcodesize`.
+
 ## Reproducibility
 
 Every target is reproduced byte for byte by a local recompilation of the verified
