@@ -154,6 +154,32 @@ theorem exec_solvent_of_fresh {m m' : Market A R} {env : Env R} {tx : Tx A R} {k
 
 end Market
 
+/-! ## A freshly initialised reserve -/
+
+/-- The storage of a reserve right after `ReserveLogic.init` (both indexes `RAY`, empty tokens,
+nothing accrued), last updated at `t`. -/
+def ReserveState.initial (A : Type) (t : ℕ) : ReserveState A where
+  liquidityIndex := RAY
+  currentLiquidityRate := 0
+  variableBorrowIndex := RAY
+  currentVariableBorrowRate := 0
+  deficit := 0
+  lastUpdateTimestamp := t
+  liquidationGracePeriodUntil := 0
+  accruedToTreasury := 0
+  virtualUnderlyingBalance := 0
+  aToken := ScaledToken.empty
+  vToken := ScaledToken.empty
+
+/-- The invariants hold initially: `Solvent 0`, `TokensWF` and `RateSound` (zero rates). -/
+theorem ReserveState.initial_invariants {A : Type} [DecidableEq A] (t rf now : ℕ)
+    (hrf : rf ≤ PERCENTAGE_FACTOR) :
+    (ReserveState.initial A t).Solvent 0 ∧ (ReserveState.initial A t).TokensWF ∧
+      ReserveState.RateSound rf now (ReserveState.initial A t) :=
+  ⟨by simp [ReserveState.Solvent, ReserveState.initial, ScaledToken.empty],
+   ⟨ScaledToken.WF_empty, ScaledToken.WF_empty⟩,
+   ⟨hrf, by simp [ReserveState.initial], by simp [ReserveState.initial]⟩⟩
+
 /-! ## The exact invariant is not preserved by accrual -/
 
 /-- A reserve with 2 scaled aTokens at liquidity index `1.5`, 1 scaled debt unit at borrow index

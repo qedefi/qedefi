@@ -148,7 +148,7 @@ theorem withdraw_frame {m m' : Market A R} {env : Env R} {asset : R} {amount : �
   · split_ifs at hfin <;>
       (try simp only [Option.map_eq_some_iff, Option.some.injEq, Prod.mk.injEq] at hfin) <;>
       (first | obtain ⟨rfl, -⟩ := hfin | obtain ⟨-, -, rfl, -⟩ := hfin) <;>
-      first | rfl | simp
+      rfl
   obtain ⟨nI, nB, nT, rfl, -, -, -, hI, -⟩ := ReserveState.updateState_spec hu
   obtain ⟨lr, vr, v, rfl, hv⟩ := ReserveState.updateInterestRates_spec hr2
   obtain ⟨-, -, hle, e1, -⟩ := ScaledToken.burnScaled_eq_some hburn
@@ -179,13 +179,13 @@ theorem transfer_frame {m m' : Market A R} {env : Env R} {asset : R} {src dst : 
     ∃ X, m'.reserves = Function.update m.reserves asset X ∧
       ReserveState.Step (m.reserves asset) X := by
   unfold transfer at h
-  simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff, Option.ite_none_left_eq_some] at h
+  simp only [Option.bind_eq_some_iff, Option.ite_none_left_eq_some] at h
   obtain ⟨-, idx, -, sa, -, a', ha', -, hfin⟩ := h
   refine ⟨{ m.reserves asset with aToken := a' }, ?_, ?_⟩
   · split_ifs at hfin <;>
       (try simp only [Option.map_eq_some_iff, Option.some.injEq] at hfin) <;>
       (first | obtain rfl := hfin | obtain ⟨-, -, rfl⟩ := hfin) <;>
-      first | rfl | simp
+      rfl
   obtain ⟨e1, -, -⟩ := ScaledToken.transferScaled_eq_some ha'
   refine ⟨?_, rfl, rfl, fun hw => ⟨ScaledToken.WF_transferScaled hw.1 ha', hw.2⟩⟩
   unfold ReserveState.Backed; simp only [e1]; omega
@@ -224,7 +224,7 @@ theorem repay_frame {m m' : Market A R} {env : Env R} {asset : R} {amount : ℕ}
         env.now = some (r1, c1) ∧
       m'.reserves = Function.update m.reserves asset X ∧ ReserveState.Step r1 X := by
   unfold repay at h
-  simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff, Option.ite_none_left_eq_some] at h
+  simp only [Option.bind_eq_some_iff, Option.ite_none_left_eq_some] at h
   obtain ⟨-, ⟨r1, c1⟩, hu, ud, -, -, -, -, -, pb0, -, sd, hsd, res, hburn, r3, hr3, hfin⟩ := h
   obtain ⟨nI, nB, nT, rfl, -, -, -, hI, hB, -⟩ := ReserveState.updateState_spec hu
   obtain ⟨lr, vr, v, hr3e, hv⟩ := ReserveState.updateInterestRates_spec hr3
@@ -264,7 +264,7 @@ theorem repay_frame {m m' : Market A R} {env : Env R} {asset : R} {amount : ℕ}
     · split_ifs at hfin <;>
         (try simp only [Option.map_eq_some_iff, Option.some.injEq, Prod.mk.injEq] at hfin) <;>
         (first | obtain ⟨rfl, -⟩ := hfin | obtain ⟨-, -, rfl, -⟩ := hfin) <;>
-        first | rfl | simp
+        simp
     · subst hr3e
       refine ⟨?_, rfl, rfl, fun hw => ⟨ScaledToken.WF_burnScaled hw.1 haburn,
         ScaledToken.WF_burnScaled hw.2 hburn⟩⟩
@@ -288,7 +288,7 @@ theorem AllStep.trans {m m' m'' : Market A R} (h1 : AllStep m m') (h2 : AllStep 
     AllStep m m'' := fun b => (h1 b).trans (h2 b)
 
 theorem AllStep.of_reserves_eq {m m' : Market A R} (h : m'.reserves = m.reserves) :
-    AllStep m m' := fun b => h ▸ ReserveState.Step.refl _
+    AllStep m m' := fun _ => h ▸ ReserveState.Step.refl _
 
 theorem AllStep.setReserve {m : Market A R} {a : R} {X : ReserveState A}
     (h : ReserveState.Step (m.reserves a) X) : AllStep m (m.setReserve a X) := by
@@ -354,11 +354,11 @@ theorem mintToTreasuryOne_allStep {m m' : Market A R} {env : Env R} {a : R}
   unfold mintToTreasuryOne at h
   dsimp only at h
   by_cases h1 : (!(m.config a).active) = true
-  · rw [if_pos h1] at h; cases h; exact AllStep.refl _
-  rw [if_neg h1] at h
+  · rw [ite_eq_left h1] at h; cases h; exact AllStep.refl _
+  rw [ite_eq_right h1] at h
   by_cases h2 : (m.reserves a).accruedToTreasury = 0
-  · rw [if_pos h2] at h; cases h; exact AllStep.refl _
-  rw [if_neg h2] at h
+  · rw [ite_eq_left h2] at h; cases h; exact AllStep.refl _
+  rw [ite_eq_right h2] at h
   simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨ni, -, -, -, res, hmint, rfl⟩ := h
   apply AllStep.setReserve
@@ -398,11 +398,11 @@ theorem burnDebtTokens_step {irs : Strategy} {r r' : ReserveState A} {c c' : Res
       r2.virtualUnderlyingBalance = t.1.virtualUnderlyingBalance ∧
       ((δ = 0 ∧ (noColl = false ∨ debt = actual)) ∨ (noColl = true ∧ δ = debt - actual)) := by
     by_cases hc : noColl = true ∧ debt - actual ≠ 0
-    · rw [if_pos hc] at hr2
+    · rw [ite_eq_left hc] at hr2
       split_ifs at hr2
       cases hr2
       exact ⟨debt - actual, rfl, rfl, rfl, rfl, rfl, rfl, rfl, Or.inr ⟨hc.1, rfl⟩⟩
-    · rw [if_neg hc] at hr2
+    · rw [ite_eq_right hc] at hr2
       cases hr2
       refine ⟨0, rfl, rfl, rfl, rfl, rfl, rfl, rfl, Or.inl ⟨rfl, ?_⟩⟩
       cases noColl
@@ -418,14 +418,14 @@ theorem burnDebtTokens_step {irs : Strategy} {r r' : ReserveState A} {c c' : Res
       sd * r.variableBorrowIndex ≤ (if noColl = true then debt else actual) * RAY ∧
       (r.TokensWF → t.1.TokensWF) := by
     by_cases hdz : debt ≠ 0
-    · rw [if_pos hdz] at ht
+    · rw [ite_eq_left hdz] at ht
       simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at ht
       obtain ⟨sd, hsd, res, hburn, rfl⟩ := ht
       rw [hB] at hsd hburn
       obtain ⟨-, -, hle, e1, -⟩ := ScaledToken.burnScaled_eq_some hburn
       exact ⟨sd, rfl, rfl, rfl, rfl, rfl, rfl, by simp only [e1]; omega,
         (rayDivFloor_bounds hsd).1, fun hw => ⟨hw.1, ScaledToken.WF_burnScaled hw.2 hburn⟩⟩
-    · rw [if_neg hdz] at ht
+    · rw [ite_eq_right hdz] at ht
       cases ht
       have : actual = 0 := by omega
       subst this
@@ -437,7 +437,7 @@ theorem burnDebtTokens_step {irs : Strategy} {r r' : ReserveState A} {c c' : Res
     subst hvv
     have hk : (if noColl = true then debt else actual) * RAY ≤ actual * RAY + δ * RAY := by
       rw [← Nat.add_mul]; apply Nat.mul_le_mul_right
-      rcases hδ with ⟨rfl, h0 | h0⟩ | ⟨h0, rfl⟩ <;> simp [h0] <;> omega
+      rcases hδ with ⟨rfl, h0 | h0⟩ | ⟨h0, rfl⟩ <;> first | (simp [h0]; done) | (simp [h0]; omega)
     have e8 : r.vToken.totalSupply * r.variableBorrowIndex =
         t.1.vToken.totalSupply * r.variableBorrowIndex + sd * r.variableBorrowIndex := by
       rw [← Nat.add_mul, e7]
@@ -453,14 +453,14 @@ theorem liquidateCollateral_allStep {m m' : Market A R} {env : Env R} {collAsset
     (hI : cc1.nextLiquidityIndex = (m.reserves collAsset).liquidityIndex) : AllStep m m' := by
   unfold liquidateCollateral at h
   by_cases hr : recv = true
-  · rw [if_pos hr] at h
+  · rw [ite_eq_left hr] at h
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨st, -, a', ha', rfl⟩ := h
     apply AllStep.setReserve
     obtain ⟨e1, -, -⟩ := ScaledToken.transferScaled_eq_some ha'
     refine ⟨?_, rfl, rfl, fun hw => ⟨ScaledToken.WF_transferScaled hw.1 ha', hw.2⟩⟩
     unfold ReserveState.Backed; simp only [e1]; omega
-  · rw [if_neg hr] at h
+  · rw [ite_eq_right hr] at h
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨rc2, hr2, sb, hsb, res, hburn, rfl⟩ := h
     apply AllStep.setReserve
