@@ -200,6 +200,26 @@ revert data `0x54b39ce2` of `CallerMustBePool()`.
 
 `poolOnlySelectors_abi` ties the five selectors to the verified ABI.
 
+**Views** (`State.lean`, `Views/Ledger.lean`, `Views/Addresses.lean`). Storage readings of the
+executing account `t` in world `w`: `scaledBalance` (low 120 bits of `_userState[a]` at
+`userStateSlot a = keccak(pad(a) ‖ pad(52))`), `previousIndex` (its high 128 bits),
+`scaledTotalSupply` (slot 54), `underlyingAsset` (low 160 bits of slot 61). `Returns out g m`:
+`RETURN` of `out`, `Unchanged`, at most `g` gas. Hypotheses: no value, the selector, calldata of
+at least 4 (+32 per argument) bytes and < 2^64, an address argument a clean word
+`Word.ofAddress a`, gas ≥ the bound.
+
+| Theorem | Returns (gas bound) |
+|---|---|
+| `scaledBalanceOf_halts` | `ofWord (scaledBalance crypto w t a)` (3000) |
+| `scaledTotalSupply_halts` | `ofWord (scaledTotalSupply w t)` (3000) |
+| `getScaledUserBalanceAndSupply_halts` | `ofWord (scaledBalance …) ++ ofWord (scaledTotalSupply …)` (5000) |
+| `getPreviousIndex_halts` | `ofWord (previousIndex crypto w t a)` (3000) |
+| `POOL_halts`, `TREASURY_halts`, `RESERVE_TREASURY_ADDRESS_halts`, `REWARDS_CONTROLLER_halts` | `ofWord (Word.ofAddress pool / treasury / treasury / rewardsController)` (1000) |
+| `UNDERLYING_ASSET_ADDRESS_halts` | `ofWord (underlyingAsset w t)` (3000) |
+| `noEffect_of_value` | any calldata with value ≠ 0 → `NoEffect 100` (every function is non-payable) |
+
+`viewSelectors_abi` and `immutables_eq` tie the selectors and immutables to the generated tables.
+
 ## Reproducibility
 
 Every target is reproduced byte for byte by a local recompilation of the verified
