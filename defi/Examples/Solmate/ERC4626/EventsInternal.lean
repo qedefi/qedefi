@@ -1,5 +1,5 @@
-import Examples.Solmate.ERC4626.Deposit
-import Examples.Solmate.ERC20.Events
+import Examples.Solmate.ERC4626.DepositInternal
+import Examples.Solmate.ERC20.EventsTransfer
 import Defi.ERC4626.Logs
 import Examples.Solmate.ERC4626.WithdrawInternal
 

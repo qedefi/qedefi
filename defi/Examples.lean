@@ -19,6 +19,7 @@ import Examples.Solmate.Contracts.SolmateVault
 import Examples.Solmate.ERC20.Approve
 import Examples.Solmate.ERC20.BalanceOf
 import Examples.Solmate.ERC20.Events
+import Examples.Solmate.ERC20.EventsTransfer
 import Examples.Solmate.ERC20.Malformed
 import Examples.Solmate.ERC20.MintBurn
 import Examples.Solmate.ERC20.Permit
@@ -32,6 +33,7 @@ import Examples.Solmate.ERC4626.Abstraction
 import Examples.Solmate.ERC4626.Convert
 import Examples.Solmate.ERC4626.ConvertGas
 import Examples.Solmate.ERC4626.Deposit
+import Examples.Solmate.ERC4626.DepositInternal
 import Examples.Solmate.ERC4626.Events
 import Examples.Solmate.ERC4626.EventsConvert
 import Examples.Solmate.ERC4626.EventsEntry
