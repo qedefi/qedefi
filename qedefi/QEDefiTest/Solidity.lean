@@ -1,7 +1,7 @@
 import EvmLean.Crypto.Real
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Layout
-import Examples.Solmate.Contracts.SolmateAsset
+import Examples.Solmate.Contracts.SolmateAssetData
 
 /-!
 # Tests for the Solidity layer

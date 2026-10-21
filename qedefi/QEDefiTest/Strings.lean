@@ -1,8 +1,8 @@
 import EvmTest.InterpreterUtil
 import EvmLean.Crypto.Real
 import EvmLogic.Solidity.Strings
-import Examples.Solmate.Contracts.SolmateVault
-import Examples.Solmate.Contracts.SolmateAsset
+import Examples.Solmate.Contracts.SolmateVaultData
+import Examples.Solmate.Contracts.SolmateAssetData
 
 /-!
 # Tests for `string` storage and ABI encoding (`EvmLogic.Solidity.Strings`)

@@ -1,6 +1,7 @@
 name = "qedefi"
 version = "0.1.0"
 defaultTargets = ["QEDefi", "Examples", "difftest"]
+testDriver = "QEDefiTest"
 
 [leanOptions]
 autoImplicit = false
@@ -25,6 +26,11 @@ name = "QEDefi"
 # Worked examples: small demos, the Solmate and OpenZeppelin contracts, differential testing.
 [[lean_lib]]
 name = "Examples"
+
+# `#guard` evaluation tests (contract constants, Solidity layer, string getters); `lake test`.
+# Kept out of the proof libraries so that their build does not run the evaluations.
+[[lean_lib]]
+name = "QEDefiTest"
 
 # Differential testing of compiled contracts: evm-lean vs. Foundry (`lake exe difftest`).
 [[lean_exe]]

@@ -77,7 +77,8 @@ header roots.
 | | `EvmTest` | `EvmLean`, `EvmLogic`, `Conformance.Hex` | `#guard` unit tests (`lake test`) |
 | | `Conformance` | `EvmLean` | `lake exe conform` |
 | `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | reusable kits: `Math` (`uint256` `mulDiv`), `ERC20` ledgers, `ERC4626` models and properties, `Trace` lifting |
-| | `Examples` | `QEDefi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`), `Tests` |
+| | `Examples` | `QEDefi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`) |
+| | `QEDefiTest` | `Examples` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
 
 Rules: the root package never depends on Mathlib or on `qedefi/`; `EvmLean` never imports
 `EvmLogic`; generic results go to `EvmLogic` or `QEDefi`, contract-specific ones to
@@ -91,7 +92,7 @@ README).
 
 ## Testing
 
-- **Unit tests** (`EvmTest/`, `qedefi/Examples/Tests/`): `#guard` and kernel `example`s, one file
+- **Unit tests** (`EvmTest/`, `qedefi/QEDefiTest/`): `#guard` and kernel `example`s, one file
   per module, on official vectors where they exist.
 - **Conformance** (`Conformance/`): `lake exe conform [dirs] [--threads N] [--filter S]
   [--fork Cancun|Prague|Osaka|all] [--parse-only] [--results FILE]` runs BlockchainTests

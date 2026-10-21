@@ -91,9 +91,6 @@ import Examples.Solmate.ERC4626.Views
 import Examples.Solmate.ERC4626.ViewsSpec
 import Examples.Solmate.ERC4626.Withdraw
 import Examples.Solmate.ERC4626.WithdrawInternal
-import Examples.Tests.Contracts
-import Examples.Tests.Solidity
-import Examples.Tests.Strings
 import Examples.WETH9.Contracts.WETH9
 import Examples.WeirdERC20.AMPL.Contracts.AMPL
 import Examples.WeirdERC20.AMPL.Contracts.AMPLProxy
@@ -112,6 +109,6 @@ import Examples.WeirdERC20.ZRX.Contracts.ZRX
 
 Worked examples: small demos (`Examples.Basic`), the Solmate vault and asset verified
 end to end (`Examples.Solmate`), the OpenZeppelin contracts (`Examples.OpenZeppelin`),
-differential testing against anvil (`Examples.Differential`) and contract tests
-(`Examples.Tests`).
+and differential testing against anvil (`Examples.Differential`). The `#guard` tests of the
+contract constants are in the separate `QEDefiTest` library (`lake test`).
 -/

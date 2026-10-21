@@ -10,7 +10,7 @@ export PATH="$HOME/.elan/bin:$PATH"
 lake build EvmLean EvmLogic        # semantics and program logic
 lake test                          # EvmTest (#guard)
 lake exe conform tests/fixtures    # after scripts/fetch-fixtures.sh
-(cd qedefi && lake exe cache get && lake build)
+(cd qedefi && lake exe cache get && lake build && lake test)   # lake test: QEDefiTest
 ```
 
 Lean v4.35.0. The root package uses core + Std only; `qedefi/` adds Mathlib v4.35.0. Do not add
@@ -109,5 +109,5 @@ dependencies.
 - `#guard` for executable checks; `example … := by decide +kernel` (or `kernel_rfl`) for
   kernel checks (plain `decide` uses the elaborator and can hang on `ByteArray` code);
   `#guard_msgs in #eval` for printed output. One test file per module in `EvmTest/`
-  (`qedefi/Examples/Tests/` in the `qedefi` package).
+  (`qedefi/QEDefiTest/` in the `qedefi` package, its `lake test`).
 - Use official vectors: NIST/FIPS, EIP test cases, go-ethereum precompile JSONs, c-kzg.
