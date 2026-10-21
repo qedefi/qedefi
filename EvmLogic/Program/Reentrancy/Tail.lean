@@ -15,6 +15,8 @@ writes storage and calls. This module certifies such a tail on its own:
   never reached may be anything); `tailCheck` checks both by evaluation (`tailCheck_sound`).
 * `noWrite_halts_tail`: a frame described by a recorded state of such a certificate halts with
   its world unchanged, for any gas; `Halts.failOk` turns this into `FailOk` for a prefix.
+* `pwp_safe`: the prefix rule for any world-safe instruction that only pops (`LOG*`, …) once
+  the frame's world is `Good`.
 -/
 
 namespace EvmLogic.Program.Reentrancy
@@ -178,5 +180,40 @@ theorem Halts.failOk {Good : World → Prop} {m : Machine} {ko ks : Nat}
   · rw [h1, hmf]; exact hw
   · rw [hsf.kind, hk] at hk'; cases hk'
   · rw [h1, hsf.snapshot]; exact hsnap
+
+/-! ## Any world-safe instruction in a prefix -/
+
+/-- **A world-safe instruction that only pops** (`LOG*`, `CALLDATACOPY`, `MSTORE8`, …: shape
+`.gen p 0`), in a frame whose world is already `Good`: it ends the frame in a `Good` world, or
+continues at `pc + 1` with `p` words popped and the world unchanged; the transient storage,
+created accounts, memory, gas, return data and substate after it are left unknown. -/
+theorem pwp_safe {Good : World → Prop} {Q : Machine → Prop} {m : Machine} {b : UInt8}
+    {p ko ks : Nat} (hsnap : Good m.frame.snapshot.1) (hw : Good m.world)
+    (hkind : m.frame.kind = .call ko ks) (hcode : m.frame.code[m.frame.pc]? = some b)
+    (hsafe : WorldSafe b = true) (heff : byteEff b = .gen p 0)
+    (hrec : ∀ (t : TransientStorage) (c : AddressSet) (mem : Memory) (g : Nat) (rd : ByteArray)
+      (sub : Substate), WP { m with transient := t, createdAccounts := c, frame := { m.frame with
+        pc := m.frame.pc + 1, stack := m.frame.stack.drop p, memory := mem, gasLeft := g,
+        returnData := rd, sub := sub } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  rcases step_worldSafe hcode hsafe with ⟨m', o, he, hf, hworld⟩ | ⟨m', he, hf, -, hworld, hex⟩
+  · refine WP.halt_of_step he hf.same ?_
+    show Good (frameResult m' o).2.1
+    rcases frameResult_world m' o with h1 | ⟨hk', -⟩ | h1
+    · rw [h1, hworld]; exact hw
+    · rw [hf.same.kind, hkind] at hk'; cases hk'
+    · rw [h1, hf.same.snapshot]; exact hsnap
+  · have hpost : NextPost (byteEff b) m m' := (exec_eff_byte m.ctx.fork b m).of_run hex
+    rw [heff] at hpost
+    obtain ⟨hpc, -, hl, hd⟩ := hpost
+    simp only [List.drop_zero] at hd
+    refine WP.of_step he hf.same ?_
+    have hs := hf.same
+    obtain ⟨c', p', w', t', o', cr', ⟨msg', code', jd', pc', st', mem', g', rd', sub', snap',
+      kind'⟩, par'⟩ := m'
+    obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9⟩ := hs
+    dsimp only at h1 h2 h3 h4 h5 h6 h7 h8 h9 hpc hd hworld
+    subst h1 h2 h3 h4 h5 h6 h7 h8 h9 hpc hd hworld
+    exact hrec t' cr' mem' g' rd' sub'
 
 end EvmLogic.Program.Reentrancy
