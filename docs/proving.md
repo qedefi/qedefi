@@ -204,6 +204,16 @@ by an AbsInt certificate (§6) — are all world-safe halts with its world uncha
 gas**, no gas bound. This is the tail of a checks-effects-interactions function after its single
 external call.
 
+**The any-gas prefix calculus** (`Prefix.lean`). A protected function's body up to its single
+untrusted call is a *prefix*, run under symbolic gas: `FailOk Good mf o` is `Good (frameResult mf
+o).2.1` (the snapshot, hence `Good`, on a revert or halt), and the forward rules `pwp_push`,
+`pwp_binOp`, `pwp_unOp`, `pwp_ternOp`, `pwp_pushValue`, `pwp_dup`, `pwp_pop`, `pwp_jumpdest`,
+`pwp_jump`, `pwp_jumpi_zero`, `pwp_jumpi_ne_zero`, `pwp_mload`, `pwp_mstore`, `pwp_calldataload`,
+`pwp_sload`, `pwp_sstore` each take the instruction when gas and stack allow and otherwise absorb
+the failure (`wp_fail_of_error`, `wp_fail_of_revert`). They mirror `GasMono.CodeFails` with a
+forward goal, so a prefix reaches the call site (`pwp_reached`) with no gas lower bound and
+composes with `WP.call_havoc`.
+
 **The havoc theorem** (`Halts.lean`). `Covers P Good G`: every dangerous frame start with at most
 `G` gas, *with any parents* (callbacks have dangerous ancestors), halts in a `Good` world.
 `halts_inv`: under `Covers`, any non-dangerous frame (`Inv`: `Good` world and snapshot) halts in a
