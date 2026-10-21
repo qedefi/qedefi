@@ -362,4 +362,86 @@ theorem pwp_calldataload {x : Word} {rest : List Word}
       ite_true]
     rfl
 
+/-- `SLOAD` (the loaded value is unknown). -/
+theorem pwp_sload {x : Word} {rest : List Word}
+    (hsnap : Good m.frame.snapshot.1) (hcode : m.frame.code[m.frame.pc]? = some 0x54)
+    (hstk : m.frame.stack = x :: rest)
+    (hrec : rest.length < 1024 →
+      sloadCost (storageKeyWarm m.frame.sub.accessedStorageKeys m.frame.msg.currentTarget x)
+        ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with
+        stack := m.world.sload m.frame.msg.currentTarget x :: rest,
+        gasLeft := m.frame.gasLeft - sloadCost (storageKeyWarm m.frame.sub.accessedStorageKeys
+          m.frame.msg.currentTarget x),
+        sub := m.frame.sub.warmKey m.frame.msg.currentTarget x,
+        pc := m.frame.pc + 1 } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  have hdec : Opcode.decode m.ctx.fork 0x54 = .sload := by cases m.ctx.fork <;> rfl
+  by_cases hl : rest.length < 1024
+  · by_cases hg : sloadCost (storageKeyWarm m.frame.sub.accessedStorageKeys
+        m.frame.msg.currentTarget x) ≤ m.frame.gasLeft
+    · exact WP.of_step (step_sload hcode hstk hl hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
+        (hrec hl hg)
+    · have hg' := Nat.lt_of_not_le hg
+      simp only [sloadCost] at hg'
+      refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, pop, push, charge, advance, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, run_accessStorageKey,
+        hg', ite_true]
+      rfl
+  · have hl' : Gas.stackLimit ≤ rest.length := Nat.le_of_not_lt hl
+    by_cases hg : sloadCost (storageKeyWarm m.frame.sub.accessedStorageKeys
+        m.frame.msg.currentTarget x) ≤ m.frame.gasLeft
+    · have hg'' := Nat.not_lt.mpr hg
+      simp only [sloadCost] at hg''
+      refine wp_fail_of_error (e := .stackOverflow) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, pop, push, charge, advance, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, run_accessStorageKey,
+        hg'', hl', ite_true, ite_false]
+      rfl
+    · have hg' := Nat.lt_of_not_le hg
+      simp only [sloadCost] at hg'
+      refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, pop, push, charge, advance, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, run_accessStorageKey,
+        hg', ite_true]
+      rfl
+/-- `SSTORE` from a non-static frame (the only writing instruction of a prefix). -/
+theorem pwp_sstore {x y : Word} {rest : List Word}
+    (hsnap : Good m.frame.snapshot.1) (hcode : m.frame.code[m.frame.pc]? = some 0x55)
+    (hstk : m.frame.stack = x :: y :: rest) (hstatic : m.frame.msg.isStatic = false)
+    (hrec : Gas.callStipend < m.frame.gasLeft → (sstoreCostRefund m x y).1 ≤ m.frame.gasLeft →
+      WP { m with
+        world := m.world.sstore m.frame.msg.currentTarget x y,
+        frame := { m.frame with
+          stack := rest,
+          gasLeft := m.frame.gasLeft - (sstoreCostRefund m x y).1,
+          sub := (m.frame.sub.warmKey m.frame.msg.currentTarget x).addRefund
+            (sstoreCostRefund m x y).2,
+          pc := m.frame.pc + 1 } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  have hdec : Opcode.decode m.ctx.fork 0x55 = .sstore := by cases m.ctx.fork <;> rfl
+  by_cases hsp : Gas.callStipend < m.frame.gasLeft
+  · by_cases hg : (sstoreCostRefund m x y).1 ≤ m.frame.gasLeft
+    · exact WP.of_step (step_sstore hcode hstk hstatic hsp hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
+        (hrec hsp hg)
+    · have hg' := Nat.lt_of_not_le hg
+      have hs : ¬ m.frame.gasLeft ≤ Gas.callStipend := Nat.not_le.mpr hsp
+      simp only [sstoreCostRefund] at hg'
+      refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_false,
+        run_accessStorageKey, modifySub, charge, hg', ite_true]
+      rfl
+  · have hs : m.frame.gasLeft ≤ Gas.callStipend := Nat.le_of_not_lt hsp
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [hdec]
+    simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+      StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_true]
+    rfl
+
 end EvmLogic.Program.Reentrancy
