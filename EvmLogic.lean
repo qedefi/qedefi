@@ -25,6 +25,9 @@ import EvmLogic.Program.Nested.Run
 import EvmLogic.Program.Nested.Step
 import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
+import EvmLogic.Program.Reentrancy.Exec
+import EvmLogic.Program.Reentrancy.Halts
+import EvmLogic.Program.Reentrancy.Havoc
 import EvmLogic.Program.Run
 import EvmLogic.Program.Summary
 import EvmLogic.Solidity.Abi
