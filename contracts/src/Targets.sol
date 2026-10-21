@@ -7,6 +7,7 @@ pragma solidity 0.8.28;
 //   OpenZeppelin, decimals offset 3: ERC20Mock (asset), OzVaultOffset (vault, below)
 //   Solady: SoladyToken (below; Solady's ERC20 vendored, unmodified)
 //   Time: OpenZeppelin VestingWallet (vendored, unmodified)
+//   Reentrancy demonstrators: VulnerableBank, CEIBank, GuardedBank, Attacker (reentrancy/Banks.sol)
 // WETH9 and the mainnet tokens are not compiled here: their targets are the deployed mainnet
 // bytecode (contracts/mainnet/).
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -16,3 +17,4 @@ import {OzVault} from "./OzVault.sol";
 import {OzVaultOffset} from "./OzVaultOffset.sol";
 import {SoladyToken} from "./SoladyToken.sol";
 import {VestingWallet} from "@openzeppelin/contracts/finance/VestingWallet.sol";
+import {VulnerableBank, CEIBank, GuardedBank, Attacker} from "./reentrancy/Banks.sol";
