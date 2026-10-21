@@ -2,8 +2,9 @@
 
 The deployed bytecode of Aave V3's Core market on Ethereum mainnet, pinned as mainnet targets
 (`contracts/mainnet/<Name>/`, generated modules `qedefi/Examples/AaveV3/Contracts/<Name>.lean`,
-namespace `Examples.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. Nothing
-is proved yet; this file records what the targets are, exactly. Fetch and build workflow:
+namespace `Examples.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. This file
+records what the targets are, exactly, and what is proved about them
+([Proved on the bytecode](#proved-on-the-bytecode)). Fetch and build workflow:
 [contracts/README.md](../contracts/README.md#mainnet-targets).
 
 ## Deployment (read on chain at block 26,243,038–26,243,102, 2026-10-21)
@@ -167,6 +168,103 @@ packed slot per reserve (`uint16 optimalUsageRatio`, `uint32 baseVariableBorrowR
 
 There is no `handleRepayment` in this version (removed upstream). All 35 selectors, the events
 and the custom errors are in the generated module (`selectors`, `events`, `errors`).
+
+## Proved on the bytecode
+
+`qedefi/Examples/AaveV3/AToken/` (namespace `Examples.AaveV3.AToken`), about the deployed AToken
+implementation `AToken.runtimeCode` (immutables concrete in the code; `pool` = the Pool proxy).
+Every theorem is a `Halts` statement for an arbitrary frame `m` with `Fresh AToken.runtimeCode m`:
+any executing address (on mainnet the aToken proxy, reaching the implementation by
+`DELEGATECALL`, so storage is the proxy's), any caller, world, `Crypto` and depth. It is a
+top-level fact and a callee summary at once. `Code.lean` adds the kernel code table
+(`code_table runtimeCode`, about 6 s).
+
+Postconditions (`Basic.lean`): `Unchanged m mf` (world, transient storage, created accounts and
+logs as in `m`); `RevertsWith out g m` (`REVERT` with data `out`, `Unchanged`, at most `g` gas);
+`NoEffect g m` (`REVERT` with some data, `Unchanged`, at most `g` gas). `callerMustBePool` is the
+revert data `0x54b39ce2` of `CallerMustBePool()`.
+
+**Access control** (`Guard/<Function>.lean`, `Guard.lean`). solc runs the ABI decoder before the
+`onlyPool` modifier, and every AToken function is non-payable.
+
+| Theorem | Statement (hypotheses beyond `Fresh`, gas ≥ 3000, calldata size < 2^64) |
+|---|---|
+| `mint_reverts_of_not_pool` | selector `0xb3f1c93d`, ≥ 132 bytes, both address words clean, no value, caller ≠ `pool` → `RevertsWith callerMustBePool 3000` |
+| `burn_reverts_of_not_pool` | the same for `0xb18d6afd`, ≥ 164 bytes, two address words |
+| `mintToTreasury_reverts_of_not_pool` | the same for `0x7df5bd3b`, ≥ 68 bytes |
+| `transferOnLiquidation_reverts_of_not_pool` | the same for `0x353b7b9a`, ≥ 164 bytes, two address words |
+| `transferUnderlyingTo_reverts_of_not_pool` | the same for `0x4efecaa5`, ≥ 68 bytes, one address word |
+| `<f>_noEffect_of_not_pool` (each of the five) | selector of `f`, any further calldata, any value, caller ≠ `pool` → `NoEffect 3000` (short calldata, dirty address words and value revert with empty data) |
+| `poolOnly_noEffect` | selector ∈ `poolOnlySelectors` (the five), caller ≠ `pool` → `NoEffect 3000` |
+| `poolOnly_sload_unchanged` | the same → revert, and every slot of the executing account (`_totalSupply` 54, `_userState` rows) unchanged |
+
+`poolOnlySelectors_abi` ties the five selectors to the verified ABI.
+
+**Views** (`State.lean`, `Views/Ledger.lean`, `Views/Addresses.lean`). Storage readings of the
+executing account `t` in world `w`: `scaledBalance` (low 120 bits of `_userState[a]` at
+`userStateSlot a = keccak(pad(a) ‖ pad(52))`), `previousIndex` (its high 128 bits),
+`scaledTotalSupply` (slot 54), `underlyingAsset` (low 160 bits of slot 61). `Returns out g m`:
+`RETURN` of `out`, `Unchanged`, at most `g` gas. Hypotheses: no value, the selector, calldata of
+at least 4 (+32 per argument) bytes and < 2^64, an address argument a clean word
+`Word.ofAddress a`, gas ≥ the bound.
+
+| Theorem | Returns (gas bound) |
+|---|---|
+| `scaledBalanceOf_halts` | `ofWord (scaledBalance crypto w t a)` (3000) |
+| `scaledTotalSupply_halts` | `ofWord (scaledTotalSupply w t)` (3000) |
+| `getScaledUserBalanceAndSupply_halts` | `ofWord (scaledBalance …) ++ ofWord (scaledTotalSupply …)` (5000) |
+| `getPreviousIndex_halts` | `ofWord (previousIndex crypto w t a)` (3000) |
+| `POOL_halts`, `TREASURY_halts`, `RESERVE_TREASURY_ADDRESS_halts`, `REWARDS_CONTROLLER_halts` | `ofWord (Word.ofAddress pool / treasury / treasury / rewardsController)` (1000) |
+| `UNDERLYING_ASSET_ADDRESS_halts` | `ofWord (underlyingAsset w t)` (3000) |
+| `noEffect_of_value` | any calldata with value ≠ 0 → `NoEffect 100` (every function is non-payable) |
+
+`viewSelectors_abi` and `immutables_eq` tie the selectors and immutables to the generated tables.
+
+**`mint` by the Pool** (`Mint/Basic.lean`, `Mint/Success.lean`, `Mint/Effect.lean`). In this
+version the Pool passes the *scaled* amount (`mint(caller, onBehalfOf, scaledAmount, index)`),
+so no `rayDiv` happens in the token; `rayMulFloor` only computes the event amounts, and its
+overflow guard and the checked subtractions are hypotheses. `mintWorld` is the storage after
+the three writes (`_userState[u]` with `index` in bits 128–255, `_totalSupply + amt`,
+`_userState[u]` with `balance + amt` in bits 0–119; `userWordIndexed`, `userWordMinted` are the
+words exactly as the code computes them). `HandleActionOk rc t` is the **modelling assumption**
+on the rewards controller: called by `t` without value with `handleAction(user, supply,
+balance)` calldata, in any frame, its code `rc` succeeds and leaves `t`'s storage unchanged.
+
+| Theorem | Statement |
+|---|---|
+| `mint_halts_ok` | Pool caller, no value, non-static frame, gas in `[10^6, 2^64)`, well-formed calldata `mint(c, u, amt, idx)`; `userStateSlot u ≠ 54`; `amt ≠ 0`, `scaledBalance u + amt < 2^120`, `idx < 2^128`, `(scaledBalance u + amt) · idx < 2^256`, `⌊scaledBalance u · previousIndex u / RAY⌋ ≤ ⌊scaledBalance u · idx / RAY⌋`, `scaledTotalSupply + amt < 2^256`; rewards controller: `HandleActionOk`, code size in `(0, 2^256)`, not a precompile, not EIP-7702-delegated, depth < 1024 → returns `iszero(scaledBalance u)`, and every slot of the executing account equals `mintWorld`'s (`MintOk`) |
+| `mint_halts_effect` | the same → `MintEffect`: `scaledBalance u` and `scaledTotalSupply` both grow by `amt`, `previousIndex u = idx`, the delegation byte and every other slot unchanged |
+| `mint_reverts_of_zero` | Pool caller, no value, well-formed calldata with `scaledAmount = 0` → `RevertsWith invalidMintAmount 3000` (`InvalidMintAmount()`, `0xccfad018`) |
+| `mint_reverts_of_cast` | Pool caller, no value, non-static frame, gas ≥ 10^5, well-formed calldata with `scaledAmount ≥ 2^120` → the frame reverts (whichever check fails first: supply-side add, `rayMulFloor` guard, interest subtraction, `toUint128(index)`, `toUint120(amount)` after the index write) |
+| `mintWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` (the scaled ledger stays balanced) |
+| `scaledBalance_mintWorld`, `scaledTotalSupply_mintWorld`, `previousIndex_mintWorld`, `delegation_mintWorld`, `sload_mintWorld_other`, `sload_mintWorld_account` | the field-by-field reading of `mintWorld` |
+
+**`burn` by the Pool** (`Burn/Basic.lean`, `Burn/Success.lean`, `Burn/Effect.lean`). Two
+external calls: the rewards controller (assumption `HandleActionOkCode`: as `HandleActionOk`,
+and every account's code is unchanged, so that the underlying is still there) and the
+underlying's `transfer(receiver, amount)` through `GPv2SafeERC20.safeTransfer` (assumption
+`TransferOk ua t`: from `t`, without value, the code at `ua` returns the word `true` and leaves
+`t`'s storage unchanged; in particular the aToken is assumed to hold enough underlying).
+`burnWorld` mirrors `mintWorld` with `_totalSupply - amt` and `balance - amt`.
+
+| Theorem | Statement |
+|---|---|
+| `burn_halts_ok` | Pool caller, no value, non-static frame, gas in `[5·10^6, 2^64)`, well-formed calldata `burn(u, r, amount, amt, idx)` with `r` ≠ the executing account; `userStateSlot u ∉ {54, 61}`; `amt ≠ 0`, `amt ≤ scaledBalance u`, `amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, interest not negative; rewards controller as for `mint` with `HandleActionOkCode`; underlying (`underlyingAddress`, slot 61) not a precompile, not delegated, `TransferOk` → returns `iszero(scaledBalance u - amt)`, storage = `burnWorld` (`BurnOk`); both event branches (`Mint` / `Burn`) |
+| `burn_halts_effect` | the same → `BurnEffect`: `scaledBalance u` and `scaledTotalSupply` both shrink by `amt`, `previousIndex u = idx`, delegation byte and other slots unchanged |
+| `burnWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` |
+
+**Not proved yet.** The effects of `mintToTreasury`, `transferOnLiquidation` and
+`transferUnderlyingTo` with the Pool as caller; `burn` with `receiverOfUnderlying` = the token
+itself (no transfer); the revert cases of `burn`; `transfer`, `transferFrom`, `balanceOf`,
+`totalSupply` (they call the Pool's `getReserveNormalizedIncome` / `finalizeTransfer`, which
+need summaries of the Pool proxy and implementation); `permit`, `approve`, `initialize`,
+`rescueTokens` (calls the ACL manager). Build times (incremental, this machine): `Code` 6 s,
+each `Guard/*` 3–4 s, `Views/*` 5–6 s, `Mint/Success` 19 s, `Mint/Revert` 14 s, `Burn/Success`
+29 s, the rest about 1 s each.
+
+Proof tools added in `Tactic.lean` (generic, candidates for `EvmLogic`): `wp_abstract`
+(abstract the memory, gas, substate or world of a `WP` goal without `generalize`),
+`access_bounds`, `step_extcodesize`, `step_returndatacopy`.
 
 ## Reproducibility
 
