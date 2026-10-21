@@ -5,6 +5,7 @@ import EvmLogic.Solidity.Steps
 import EvmLogic.Solidity.Memory
 import EvmLogic.Solidity.Word
 import EvmLogic.Program.Code
+import EvmLogic.Tactic.FastStep
 
 /-!
 # Symbolic execution of compiled contracts: `sol_step`
@@ -236,9 +237,47 @@ elab_rules : tactic
 /-- Repeat `sol_step` while it succeeds. -/
 syntax "sol_steps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
-macro_rules
-  | `(tactic| sol_steps) => `(tactic| repeat sol_step)
-  | `(tactic| sol_steps [$extra,*]) => `(tactic| repeat sol_step [$extra,*])
+/-- The fast stepper's configuration for a goal with `run _ m` on literal code: the
+normalization and side conditions of `sol_step`. -/
+def solFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
+    TacticM (Option FastStep.Cfg) := withMainContext do
+  let t ← instantiateMVars (← getMainTarget)
+  let some m := findRunMachine? t | return none
+  let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
+  let some bytes ← EvmLogic.Program.codeBytes? code | return none
+  let normStx ← `(tactic| evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
+      Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*])
+  let some simpStx ← liftMacroM <| expandMacro? normStx | return none
+  let r ← mkSimpContext simpStx (eraseLocal := false)
+  return some {
+    simpCtx := r.ctx, simprocs := r.simprocs
+    codeFact := fun c pc b => EvmLogic.Program.codeFact c pc b
+    pushFact := fun c pc n => do
+      let some bs ← EvmLogic.Program.codeBytes? c | return none
+      return some (← EvmLogic.Program.pushFact c bs pc n)
+    bytes := fun c => do
+      if c == code then return some bytes
+      EvmLogic.Program.codeBytes? c
+    disch := do evalTactic (← `(tactic| sol_disch)) }
+
+elab_rules : tactic
+  | `(tactic| sol_steps $[[$extra,*]]?) => do
+    let extra := (extra.map (·.getElems)).getD #[]
+    let one : TacticM Bool := do
+      let s ← saveState
+      try
+        evalTactic (← `(tactic| sol_step [$extra,*]))
+        return true
+      catch _ =>
+        s.restore
+        return false
+    let cfg ← solFastCfg extra
+    let mut first := true
+    for _ in [0:1000000] do
+      if let some c := cfg then
+        discard <| FastStep.fastRunSteps c first
+      first := false
+      unless ← one do return
 
 end EvmLogic.Tactic.SolStep
 
