@@ -1,4 +1,7 @@
 import Examples.AaveV3.AToken.Basic
+import Examples.AaveV3.AToken.Burn.Basic
+import Examples.AaveV3.AToken.Burn.Effect
+import Examples.AaveV3.AToken.Burn.Success
 import Examples.AaveV3.AToken.Code
 import Examples.AaveV3.AToken.Guard
 import Examples.AaveV3.AToken.Guard.Burn

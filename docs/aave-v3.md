@@ -239,9 +239,23 @@ balance)` calldata, in any frame, its code `rc` succeeds and leaves `t`'s storag
 | `mintWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` (the scaled ledger stays balanced) |
 | `scaledBalance_mintWorld`, `scaledTotalSupply_mintWorld`, `previousIndex_mintWorld`, `delegation_mintWorld`, `sload_mintWorld_other`, `sload_mintWorld_account` | the field-by-field reading of `mintWorld` |
 
+**`burn` by the Pool** (`Burn/Basic.lean`, `Burn/Success.lean`, `Burn/Effect.lean`). Two
+external calls: the rewards controller (assumption `HandleActionOkCode`: as `HandleActionOk`,
+and every account's code is unchanged, so that the underlying is still there) and the
+underlying's `transfer(receiver, amount)` through `GPv2SafeERC20.safeTransfer` (assumption
+`TransferOk ua t`: from `t`, without value, the code at `ua` returns the word `true` and leaves
+`t`'s storage unchanged; in particular the aToken is assumed to hold enough underlying).
+`burnWorld` mirrors `mintWorld` with `_totalSupply - amt` and `balance - amt`.
+
+| Theorem | Statement |
+|---|---|
+| `burn_halts_ok` | Pool caller, no value, non-static frame, gas in `[5·10^6, 2^64)`, well-formed calldata `burn(u, r, amount, amt, idx)` with `r` ≠ the executing account; `userStateSlot u ∉ {54, 61}`; `amt ≠ 0`, `amt ≤ scaledBalance u`, `amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, interest not negative; rewards controller as for `mint` with `HandleActionOkCode`; underlying (`underlyingAddress`, slot 61) not a precompile, not delegated, `TransferOk` → returns `iszero(scaledBalance u - amt)`, storage = `burnWorld` (`BurnOk`); both event branches (`Mint` / `Burn`) |
+| `burn_halts_effect` | the same → `BurnEffect`: `scaledBalance u` and `scaledTotalSupply` both shrink by `amt`, `previousIndex u = idx`, delegation byte and other slots unchanged |
+| `burnWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` |
+
 Proof tools added in `Tactic.lean` (generic, candidates for `EvmLogic`): `wp_abstract`
-(abstract the memory, gas or world of a `WP` goal without `generalize`), `access_bounds`,
-`step_extcodesize`.
+(abstract the memory, gas, substate or world of a `WP` goal without `generalize`),
+`access_bounds`, `step_extcodesize`, `step_returndatacopy`.
 
 ## Reproducibility
 

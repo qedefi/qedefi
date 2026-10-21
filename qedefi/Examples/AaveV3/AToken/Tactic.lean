@@ -11,7 +11,7 @@ import EvmLogic.Program.Call
 
 ## `wp_abstract`
 
-`wp_abstract memory M h` (also `gas`, `world`) turns the goal `WP m Q H`, whose machine is a
+`wp_abstract memory M h` (also `gas`, `sub`, `world`) turns the goal `WP m Q H`, whose machine is a
 structure literal, into `WP m' Q H` with the field replaced by a fresh variable `M` and
 `h : <old value> = M` in context. Unlike `wp_generalize_mem`/`wp_generalize_gas` (which call
 `generalize`, i.e. `kabstract` over the whole goal), it rebuilds the machine at the known
@@ -39,8 +39,9 @@ elab "wp_abstract " fld:ident x:ident h:ident : tactic => withMainContext do
   let (val, mk) ← match fld.getId with
     | `memory => pure (fargs[5]!, mkFrame 5)
     | `gas => pure (fargs[6]!, mkFrame 6)
+    | `sub => pure (fargs[8]!, mkFrame 8)
     | `world => pure (margs[2]!, fun v => mkAppN (mkConst ``Machine.mk) (margs.set! 2 v))
-    | _ => throwError "wp_abstract: field must be memory, gas or world"
+    | _ => throwError "wp_abstract: field must be memory, gas, sub or world"
   let ty ← inferType val
   let newTy ← withLocalDeclD x.getId ty fun xv => do
     let eq ← mkEq val xv
@@ -94,6 +95,31 @@ theorem step_extcodesize (hcode : m.frame.code[m.frame.pc]? = some 0x3b)
   rw [run_accessAddress]
   simp only [pure_bind, charge, push, advance, getFrame, modifyFrame, StateT.run_bind,
     StateT.run_get, StateT.run_pure, StateT.run_modify, hg, hl, ite_false]
+  rfl
+
+/-- **`RETURNDATACOPY`** of a non-empty window inside the return data. -/
+theorem step_returndatacopy (hcode : m.frame.code[m.frame.pc]? = some 0x3e)
+    {y z : Word} (hstk : m.frame.stack = x :: y :: z :: rest) (hz : z.toNat ≠ 0)
+    (hrd : y.toNat + z.toNat ≤ m.frame.returnData.size)
+    (hgas : 3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat ≤ m.frame.gasLeft) :
+    step m = .running { m with frame := { m.frame with
+      stack := rest,
+      memory := (m.frame.memory.expand x.toNat z.toNat).write x.toNat
+        (m.frame.returnData.extract y.toNat (y.toNat + z.toNat)),
+      gasLeft := m.frame.gasLeft - (3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat),
+      pc := m.frame.pc + 1 } } := by
+  have hc : Gas.veryLow + Gas.copyCost z.toNat = 3 + 3 * ((z.toNat + 31) / 32) := rfl
+  have hg := Nat.not_lt.mpr hgas
+  rw [← hc] at hg ⊢
+  simp only [memoryCost] at hg
+  have hr : ¬ y.toNat + z.toNat > m.frame.returnData.size := Nat.not_lt.mpr hrd
+  have hs : ¬ (m.frame.returnData.extract y.toNat (y.toNat + z.toNat)).size = 0 := by
+    rw [ByteArray.size_extract]; omega
+  rw [step_eq_of_code hcode, show Opcode.decode m.ctx.fork 0x3e = .returndatacopy by
+    cases m.ctx.fork <;> rfl]
+  simp only [exec, popNat, pop, charge, advance, getFrame, modifyFrame,
+    StateT.run_bind, hstk, hg, StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind,
+    ite_false, memoryExpansion, expandMemory, List.foldl, writeMemory, hs, hr]
   rfl
 
 end Examples.AaveV3.AToken
