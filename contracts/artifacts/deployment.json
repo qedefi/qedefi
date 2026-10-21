@@ -66,6 +66,25 @@
       "argsHex": ""
     }
   },
+  "reentrancy": {
+    "note": "A fresh chain: deployer nonces 0 to 3.",
+    "vulnerableBank": {
+      "contract": "VulnerableBank",
+      "address": "0x13136008B64FF592819B2FA6d43F2835C452020e"
+    },
+    "ceiBank": {
+      "contract": "CEIBank",
+      "address": "0x7c5a2c91b22d7A9226523D4Ba717DB6afB741ebd"
+    },
+    "guardedBank": {
+      "contract": "GuardedBank",
+      "address": "0x55e1B4B8c6509339cCE963c9b9A46ae6dc1d515D"
+    },
+    "attacker": {
+      "contract": "Attacker",
+      "address": "0x7720Db4a71b388FF07453C5aE2998F5615FB34Ec"
+    }
+  },
   "mainnetNote": "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
   "mainnet": {
     "WETH9": {

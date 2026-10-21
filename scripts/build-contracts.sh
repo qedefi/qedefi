@@ -18,6 +18,7 @@
 #   qedefi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}{,Data}.lean
 #   qedefi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}{,Data}.lean
 #   qedefi/Examples/Solady/Contracts/SoladyToken{,Data}.lean
+#   qedefi/Examples/Reentrancy/Contracts/{VulnerableBank,CEIBank,GuardedBank,Attacker}{,Data}.lean
 #     (<Name>Data.lean: bytes, immutables, selectors, layout; <Name>.lean: the code facts and
 #     the kernel code table)
 #   qedefi/Examples/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
@@ -57,6 +58,10 @@ declare -A SRC=(
   [OzVault]="out/OzVault.sol/OzVault.json"
   [OzVaultOffset]="out/OzVaultOffset.sol/OzVaultOffset.json"
   [SoladyToken]="out/SoladyToken.sol/SoladyToken.json"
+  [VulnerableBank]="out/Banks.sol/VulnerableBank.json"
+  [CEIBank]="out/Banks.sol/CEIBank.json"
+  [GuardedBank]="out/Banks.sol/GuardedBank.json"
+  [Attacker]="out/Banks.sol/Attacker.json"
 )
 declare -A SOLNAME=(
   [SolmateAsset]="lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20"
@@ -65,8 +70,14 @@ declare -A SOLNAME=(
   [OzVault]="src/OzVault.sol:OzVault"
   [OzVaultOffset]="src/OzVaultOffset.sol:OzVaultOffset"
   [SoladyToken]="src/SoladyToken.sol:SoladyToken"
+  [VulnerableBank]="src/reentrancy/Banks.sol:VulnerableBank"
+  [CEIBank]="src/reentrancy/Banks.sol:CEIBank"
+  [GuardedBank]="src/reentrancy/Banks.sol:GuardedBank"
+  [Attacker]="src/reentrancy/Banks.sol:Attacker"
 )
-TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken)
+TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken
+  VulnerableBank CEIBank GuardedBank Attacker)
+REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
 declare -A LEANNS=(
@@ -76,6 +87,10 @@ declare -A LEANNS=(
   [OzVault]="Examples.OpenZeppelin.Contracts"
   [OzVaultOffset]="Examples.OpenZeppelin.Contracts"
   [SoladyToken]="Examples.Solady.Contracts"
+  [VulnerableBank]="Examples.Reentrancy.Contracts"
+  [CEIBank]="Examples.Reentrancy.Contracts"
+  [GuardedBank]="Examples.Reentrancy.Contracts"
+  [Attacker]="Examples.Reentrancy.Contracts"
 )
 declare -A LEANDIR=(
   [SolmateAsset]="$ROOT/qedefi/Examples/Solmate/Contracts"
@@ -84,6 +99,10 @@ declare -A LEANDIR=(
   [OzVault]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
   [OzVaultOffset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
   [SoladyToken]="$ROOT/qedefi/Examples/Solady/Contracts"
+  [VulnerableBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
+  [CEIBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
+  [GuardedBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
+  [Attacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
 )
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
@@ -166,6 +185,15 @@ fund
 ARGS[SoladyToken]=""
 ADDR[SoladyToken]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[SoladyToken]}")")
 CODE[SoladyToken]=$(cast code --rpc-url "$RPC" "${ADDR[SoladyToken]}" | strip0x)
+
+# Reentrancy demonstrators: a fresh chain, deployer nonces 0 (VulnerableBank) to 3 (Attacker).
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+for t in "${REENTRANCY[@]}"; do
+  ARGS[$t]=""
+  ADDR[$t]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[$t]}")")
+  CODE[$t]=$(cast code --rpc-url "$RPC" "${ADDR[$t]}" | strip0x)
+done
 
 [ "${ADDR[SolmateAsset]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[SolmateVault]}" = "${ADDR[OzVault]}" ] \
   && [ "$oz3asset" = "${ADDR[OzAsset]}" ] && [ "${ADDR[OzVaultOffset]}" = "${ADDR[OzVault]}" ] \
@@ -527,6 +555,8 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
   --arg oa "${ADDR[OzAsset]}" --arg ov "${ADDR[OzVault]}" \
   --arg saArgs "${ARGS[SolmateAsset]}" --arg svArgs "${ARGS[SolmateVault]}" --arg ovArgs "${ARGS[OzVault]}" \
   --arg o3 "${ADDR[OzVaultOffset]}" --arg o3Args "${ARGS[OzVaultOffset]}" --arg sl "${ADDR[SoladyToken]}" \
+  --arg vb "${ADDR[VulnerableBank]}" --arg cb "${ADDR[CEIBank]}" --arg gb "${ADDR[GuardedBank]}" \
+  --arg at "${ADDR[Attacker]}" \
   --argjson mainnet "$(for t in "${MAINNET[@]}"; do jq -c --arg t "$t" '{($t): {address, block, codeHash, codeSize}}' "$C/mainnet/$t/meta.json"; done | jq -s 'add // {}')" \
   '{chainId: $chainId, deployer: $deployer, evmVersion: "cancun", solc: "0.8.28+commit.7893614a",
     note: "Each family is deployed on its own fresh chain: the asset at deployer nonce 0, the vault at nonce 1.",
@@ -537,6 +567,11 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
     openzeppelinOffset3: {asset: {contract: "ERC20Mock", address: $oa, args: [], argsHex: ""},
                           vault: {contract: "OzVaultOffset", address: $o3, args: [$oa], argsHex: $o3Args}},
     solady: {token: {contract: "SoladyToken", address: $sl, args: [], argsHex: ""}},
+    reentrancy: {note: "A fresh chain: deployer nonces 0 to 3.",
+                 vulnerableBank: {contract: "VulnerableBank", address: $vb},
+                 ceiBank: {contract: "CEIBank", address: $cb},
+                 guardedBank: {contract: "GuardedBank", address: $gb},
+                 attacker: {contract: "Attacker", address: $at}},
     mainnetNote: "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
     mainnet: $mainnet}' \
   > "$ART/deployment.json"
@@ -551,7 +586,7 @@ done
 if [ $CHECK -eq 1 ]; then
   git -C "$ROOT" diff --exit-code -- contracts/artifacts contracts/mainnet \
     qedefi/Examples/Solmate/Contracts qedefi/Examples/OpenZeppelin/Contracts \
-    qedefi/Examples/Solady/Contracts \
+    qedefi/Examples/Solady/Contracts qedefi/Examples/Reentrancy/Contracts \
     $(for t in "${MAINNET[@]}"; do printf '%s ' "qedefi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"
