@@ -405,8 +405,8 @@ def closedDecide? (ty : Expr) : MetaM (Option Expr) := do
       (← mkEq (mkApp2 (mkConst ``Decidable.decide) ty inst) (mkConst ``Bool.true))))
   catch _ => return none
 
-/-- `c ≤ gas` / `c < gas` for a closed cost `c`, by `omega` on the gas field itself (whose
-symbolic parts omega treats as atoms, with the context's linear facts). -/
+/-- `c ≤ gas` / `c < gas` for a closed cost `c`, by `evm_gas` on the gas field itself in a
+context cut down to the small linear facts over `Nat` (large hypotheses make it slow). -/
 def gasOmega? (ty gas : Expr) : TacticM (Option Expr) := do
   let (isLt, c) ← match_expr ty with
     | LE.le _ _ c _ => pure (false, c)
@@ -420,13 +420,23 @@ def gasOmega? (ty gas : Expr) : TacticM (Option Expr) := do
   for decl in ← getLCtx do
     if decl.isImplementationDetail then continue
     let t ← instantiateMVars decl.type
-    let small := t.approxDepth ≤ 16 && (t.isAppOf ``LE.le || t.isAppOf ``LT.lt)
+    let isNatEq := match t.eq? with
+      | some (ty, _, _) => ty.isConstOf ``Nat
+      | none => false
+    let small := t.approxDepth ≤ 32 && (t.isAppOf ``LE.le || t.isAppOf ``LT.lt || isNatEq)
     unless small do drop := drop.push decl.fvarId
   let g' ← g.mvarId!.tryClearMany drop
   let saved ← getGoals
   setGoals [g']
-  let ok ← tryTac (withTheReader Core.Context (fun c => { c with maxHeartbeats := 20000000 })
-    (evalTactic (← `(tactic| omega))))
+  let st ← saveState
+  let ok ← tryCatchRuntimeEx (do
+      withTheReader Core.Context (fun c => { c with maxHeartbeats := 200000000 })
+        (withoutRecover (evalTactic (← `(tactic| evm_gas))))
+      return true)
+    (fun e => do
+      trace[EvmLean.wp] "gas omega failed: {e.toMessageData}"
+      st.restore
+      return false)
   setGoals saved
   unless ok do return none
   return some (← mkExpectedTypeHint (← instantiateMVars g) ty)

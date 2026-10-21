@@ -1,4 +1,4 @@
-import Examples.Solmate.ERC4626.Abstraction
+import Examples.Solmate.ERC4626.Views
 import EvmLogic.Tactic.Mcopy
 import EvmLogic.Solidity.Strings
 
@@ -13,7 +13,7 @@ the vault's and the asset's getters (`Strings.lean` in `ERC4626/` and `ERC20/`).
 section
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20 Defi.ERC4626
+open Examples.Solmate.ERC20
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes

@@ -24,6 +24,7 @@ import Examples.Solmate.ERC20.MintBurn
 import Examples.Solmate.ERC20.Permit
 import Examples.Solmate.ERC20.Spec
 import Examples.Solmate.ERC20.Strings
+import Examples.Solmate.ERC20.StringsCode
 import Examples.Solmate.ERC20.StringsVault
 import Examples.Solmate.ERC20.Transfer
 import Examples.Solmate.ERC20.TransferFrom
@@ -61,6 +62,7 @@ import Examples.Solmate.ERC4626.Shares
 import Examples.Solmate.ERC4626.SharesCode
 import Examples.Solmate.ERC4626.SharesFrame
 import Examples.Solmate.ERC4626.Strings
+import Examples.Solmate.ERC4626.StringsCode
 import Examples.Solmate.ERC4626.StringsCommon
 import Examples.Solmate.ERC4626.UnknownSelectors
 import Examples.Solmate.ERC4626.Views
