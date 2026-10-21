@@ -1,5 +1,6 @@
 import EvmLogic.Tactic.WpStep
 import EvmLogic.Solidity.Memory
+import EvmLogic.Tactic.SolStep
 import EvmLogic.Program.Reentrancy.PrefixOps
 
 /-!
@@ -68,7 +69,8 @@ macro "apwp_norm" " [" extra:Lean.Parser.Tactic.simpLemma,* "]" : tactic =>
   `(tactic| evm_norm [List.set_cons_zero, List.set_cons_succ, Nat.sub_sub,
       Memory.loadWord_expand, Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
       Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint, true_or, or_true,
-      reduceClosedWord, Bytes.size_ofWord, Memory.read_64, $extra,*])
+      reduceClosedWord, Bytes.size_ofWord, Memory.read_64, EvmLogic.Tactic.SolStep.reduceCodeImm,
+      Memory.write_ofWord, $extra,*])
 
 /-- The `Frame` field `f` of the machine of a goal `WP m Q H`, after `whnfR`. -/
 def frameField? (g : MVarId) (f : Name) : MetaM (Option Expr) := g.withContext do
@@ -181,6 +183,15 @@ def apwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
   if 0x90 ≤ bn ∧ bn < 0xa0 then
     let nS := Syntax.mkNumLit (toString (bn - 0x90))
     return ← run (← `(tactic| refine pwp_swap ⟨$nS, by decide⟩ ‹_› $hb rfl rfl ?_)) 1
+  if bn = 0x39 then
+    return ← run (← `(tactic| refine pwp_codecopy ‹_› $hb rfl (by decide) ?_)) 1
+  if bn = 0x3e then
+    if ← attempt (do
+        evalTactic (← `(tactic| refine pwp_returndatacopy ‹_› $hb rfl ?_))
+        evalTactic (← `(tactic| intro _ _))
+        norm) then
+      return some (← getGoals)
+    return none
   if bn = 0x55 then
     return ← run (← `(tactic| refine pwp_sstore ‹_› $hb rfl (by assumption) ?_)) 2
   if bn = 0x57 then

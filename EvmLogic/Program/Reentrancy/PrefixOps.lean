@@ -1,4 +1,5 @@
 import EvmLogic.Program.Reentrancy.Prefix
+import EvmLogic.Solidity.Steps
 
 /-!
 # More rules of the any-gas prefix calculus
@@ -7,7 +8,8 @@ The rules of `EvmLogic.Program.Reentrancy.Prefix` for the remaining instructions
 function body up to its external call: one rule per arithmetic, comparison and environment
 opcode (`pwp_add`, `pwp_eq`, `pwp_caller`, …, instances of `pwp_binOp`/`pwp_unOp`/
 `pwp_pushValue`), `SWAPn` (`pwp_swap`), both branches of `JUMPI` at once (`pwp_jumpi`),
-`KECCAK256`, `MLOAD` with its value (`pwp_mload_val`), and the frame ends: `REVERT` and
+`KECCAK256`, `MLOAD` with its value (`pwp_mload_val`), `CODECOPY` (solc's 32-byte constants),
+`RETURNDATACOPY` (the memory after it is left unknown), and the frame ends: `REVERT` and
 `INVALID` are always acceptable (the snapshot is `Good`), `STOP` and `RETURN` hand back the
 current world, which must then be `Good`. Each rule takes the instruction when gas and stack
 allow and otherwise absorbs the failure (`FailOk`). The tactic `apwp_steps`
@@ -164,6 +166,88 @@ theorem pwp_return {ko ks : Nat} {x y : Word} {rest : List Word}
     simp only [exec, readOutput, popNat, pop, charge, getFrame, modifyFrame, StateT.run_bind,
       hstk, hg', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true,
       memoryExpansion, expandMemory, List.foldl, readMemory]
+    rfl
+
+/-! ## Copies -/
+
+/-- `CODECOPY` of `z ≠ 0` bytes. -/
+theorem pwp_codecopy {x y z : Word} {rest : List Word}
+    (hsnap : Good m.frame.snapshot.1) (hcode : m.frame.code[m.frame.pc]? = some 0x39)
+    (hstk : m.frame.stack = x :: y :: z :: rest) (hz : z.toNat ≠ 0)
+    (hrec : 3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with
+        stack := rest,
+        memory := (m.frame.memory.expand x.toNat z.toNat).write x.toNat
+          (readBytes m.frame.code y.toNat z.toNat),
+        gasLeft := m.frame.gasLeft - (3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat),
+        pc := m.frame.pc + 1 } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  by_cases hg : 3 + 3 * ((z.toNat + 31) / 32) + memoryCost m x z.toNat ≤ m.frame.gasLeft
+  · exact WP.of_step (step_codecopy hcode hstk hz hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
+      (hrec hg)
+  · have hc : Gas.veryLow + Gas.copyCost z.toNat = 3 + 3 * ((z.toNat + 31) / 32) := rfl
+    have hg' : m.frame.gasLeft < Gas.veryLow + Gas.copyCost z.toNat +
+        (Gas.extendMemory m.frame.memory.size [(x.toNat, z.toNat)]).cost := by
+      rw [hc]; simp only [memoryCost] at hg; omega
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [show Opcode.decode m.ctx.fork 0x39 = .codecopy by cases m.ctx.fork <;> rfl]
+    simp only [exec, copyToMemory, popNat, pop, charge, advance, getFrame, modifyFrame,
+      StateT.run_bind, hstk, hg', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind,
+      ite_true, memoryExpansion, expandMemory, List.foldl, writeMemory]
+    rfl
+
+set_option linter.unusedSimpArgs false in
+/-- `RETURNDATACOPY`: the memory and gas after it are left unknown (a prefix only needs that the
+frame goes on). -/
+theorem pwp_returndatacopy {x y z : Word} {rest : List Word}
+    (hsnap : Good m.frame.snapshot.1) (hcode : m.frame.code[m.frame.pc]? = some 0x3e)
+    (hstk : m.frame.stack = x :: y :: z :: rest)
+    (hrec : ∀ (mem : Memory) (g : Nat), WP { m with frame := { m.frame with
+      stack := rest, memory := mem, gasLeft := g, pc := m.frame.pc + 1 } } Q (FailOk Good)) :
+    WP m Q (FailOk Good) := by
+  have hdec : Opcode.decode m.ctx.fork 0x3e = .returndatacopy := by cases m.ctx.fork <;> rfl
+  by_cases hg : Gas.veryLow + Gas.copyCost z.toNat + (Gas.extendMemory m.frame.memory.size
+      [(x.toNat, z.toNat)]).cost ≤ m.frame.gasLeft
+  · have hg' := Nat.not_lt.mpr hg
+    by_cases hb : y.toNat + z.toNat ≤ m.frame.returnData.size
+    · have hb' := Nat.not_lt.mpr hb
+      have : ∃ mem, step m = .running { m with frame := { m.frame with
+          stack := rest, memory := mem, gasLeft := m.frame.gasLeft - (Gas.veryLow +
+            Gas.copyCost z.toNat + (Gas.extendMemory m.frame.memory.size
+              [(x.toNat, z.toNat)]).cost), pc := m.frame.pc + 1 } } := by
+        by_cases hs : (m.frame.returnData.extract y.toNat (y.toNat + z.toNat)).size = 0
+        all_goals have hs' := hs
+        all_goals simp only [ByteArray.size_extract] at hs'
+        · refine ⟨m.frame.memory.expand x.toNat z.toNat, ?_⟩
+          rw [step_eq_of_code hcode, hdec]
+          simp only [exec, popNat, pop, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+            hstk, hg', hb', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind,
+            ite_false, ite_true, memoryExpansion, expandMemory, List.foldl, writeMemory, gt_iff_lt,
+            ByteArray.size_extract, hs']
+          rfl
+        · refine ⟨(m.frame.memory.expand x.toNat z.toNat).write x.toNat
+            (m.frame.returnData.extract y.toNat (y.toNat + z.toNat)), ?_⟩
+          rw [step_eq_of_code hcode, hdec]
+          simp only [exec, popNat, pop, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+            hstk, hg', hb', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind,
+            ite_false, ite_true, memoryExpansion, expandMemory, List.foldl, writeMemory, gt_iff_lt,
+            ByteArray.size_extract, hs']
+          rfl
+      obtain ⟨mem, h⟩ := this
+      exact WP.of_step h ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩ (hrec _ _)
+    · have hb' : m.frame.returnData.size < y.toNat + z.toNat := Nat.lt_of_not_le hb
+      refine wp_fail_of_error (e := .returnDataOutOfBounds) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, popNat, pop, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+        hstk, hg', hb', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_false,
+        ite_true, memoryExpansion, expandMemory, List.foldl, writeMemory, gt_iff_lt]
+      rfl
+  · have hg' := Nat.lt_of_not_le hg
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [hdec]
+    simp only [exec, popNat, pop, charge, advance, getFrame, modifyFrame, StateT.run_bind,
+      hstk, hg', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true,
+      memoryExpansion, expandMemory, List.foldl, writeMemory]
     rfl
 
 /-! ## One rule per opcode -/

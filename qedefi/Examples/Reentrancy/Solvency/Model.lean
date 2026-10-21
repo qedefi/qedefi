@@ -394,4 +394,114 @@ theorem solvent_withdraw (hsize : code.size ≠ 0) {w : World} {a : Address}
   have := h.backed
   omega
 
+/-! ## Writes outside the balance entries, credits -/
+
+/-- A write outside the balance entries keeps the bank solvent. -/
+theorem Solvent.sstore_other {w : World} (h : Solvent crypto base code bank w) {k : Word}
+    (hk : k ∉ balanceSlots crypto base) (v : Word) :
+    Solvent crypto base code bank (w.sstore bank k v) where
+  code := by rw [World.code_sstore]; exact h.code
+  backed := by rw [owed_sstore_other w hk, World.balance_sstore]; exact h.backed
+  bounded := by rw [owed_sstore_other w hk]; exact h.bounded
+  capped := by rw [supply_sstore]; exact h.capped
+
+/-- **Crediting `v` to an entry** keeps the bank solvent when its ether already covers what it
+owes plus `v` and the checked addition did not overflow. -/
+theorem solvent_credit {w : World} {a : Address} {v : Word} (hcode : w.code bank = code)
+    (hcap : supply w < 2 ^ 256)
+    (hb : owed crypto base bank w + v.toNat ≤ (w.balance bank).toNat)
+    (hno : (Word.gt (w.sload bank (mappingSlot crypto (Word.ofAddress a) base))
+      (v + w.sload bank (mappingSlot crypto (Word.ofAddress a) base))).iszero ≠ 0) :
+    Solvent crypto base code bank (w.sstore bank (mappingSlot crypto (Word.ofAddress a) base)
+      (v + w.sload bank (mappingSlot crypto (Word.ofAddress a) base))) := by
+  obtain ⟨hadd, hlt⟩ := toNat_add_of_not_gt hno
+  have ho := owed_sstore (crypto := crypto) (base := base) (bank := bank) w a
+    (v + w.sload bank (mappingSlot crypto (Word.ofAddress a) base))
+  rw [hadd] at ho
+  have hbal := (w.balance bank).isLt
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [World.code_sstore, hcode]
+  · rw [World.balance_sstore]; omega
+  · omega
+  · rw [supply_sstore]; exact hcap
+
+/-- The ether entering a bank's frame covers what it owes plus the value. -/
+theorem backed_transferValue (hsize : code.size ≠ 0) {w : World} {msg : Message}
+    (h : Solvent crypto base code bank w) (htgt : msg.currentTarget = bank)
+    (hc : msg.caller ≠ bank) (hstv : msg.shouldTransferValue = true)
+    (haff : msg.value ≠ 0 → msg.value.toNat ≤ (w.balance msg.caller).toNat) :
+    owed crypto base bank (transferValue w msg) + msg.value.toNat ≤
+      ((transferValue w msg).balance bank).toNat := by
+  obtain ⟨hk, hb, -⟩ := transferValue_in hsize h htgt hc hstv haff
+  rw [owed_keep hk, hb]; have := h.backed; omega
+
+/-! ## A held lock -/
+
+/-- While a guarded bank's lock is held: its storage and code are those of `w₀`, it holds at
+least `L` wei, and all ether fits a word. -/
+structure Locked (bank : Address) (w₀ : World) (L : Nat) (w : World) : Prop where
+  /-- The bank's storage and code are those of `w₀`. -/
+  keep : Keep bank w₀ w
+  /-- The bank holds at least `L` wei. -/
+  floor : L ≤ (w.balance bank).toNat
+  /-- All ether fits a word. -/
+  capped : supply w < 2 ^ 256
+
+/-- **`Locked` is closed under everything arbitrary code does** (`GoodOps`). -/
+theorem goodOps_locked {w₀ : World} {L : Nat} (hsize : (w₀.code bank).size ≠ 0)
+    (hdel : delegatedAddress? (w₀.code bank) = none) : GoodOps (· = bank) (Locked bank w₀ L) where
+  code w h p hp := by subst hp; rw [h.keep.code]; exact hsize
+  deleg w h p hp := by subst hp; rw [h.keep.code]; exact hdel
+  sstore w a k v h ha := ⟨h.keep.trans (keep_sstore (Ne.symm ha)),
+    by rw [World.balance_sstore]; exact h.floor, by rw [supply_sstore]; exact h.capped⟩
+  nonce w a h := ⟨h.keep.trans (keep_incrementNonce (by rw [h.keep.code]; exact hsize)),
+    by rw [balance_incrementNonce]; exact h.floor, by rw [supply_incrementNonce]; exact h.capped⟩
+  move w src dst v h hv hsrc := by
+    have hk : Keep bank w (moveEther w src dst v) :=
+      keep_moveEther (by rw [h.keep.code]; exact hsize)
+    refine ⟨h.keep.trans hk, ?_, by rw [supply_moveEther hv h.capped]; exact h.capped⟩
+    by_cases hsd : src = dst
+    · subst hsd; rw [balance_moveEther_self]; exact h.floor
+    have hsb : src ≠ bank := by
+      rcases hsrc with hs | hs
+      · exact hs
+      · exact absurd hs.symm hsd
+    rw [balance_moveEther w v hsd]
+    by_cases hdb : bank = dst
+    · subst hdb
+      simp only [Ne.symm hsb, ite_false, ite_true]
+      have h2 := add_le_sum (fun b => (w.balance b).toNat) hsd
+      have := h.capped; simp only [supply] at this
+      rw [toNat_add_of_lt (by omega)]
+      exact Nat.le_add_right_of_le h.floor
+    · simp only [Ne.symm hsb, hdb, ite_false]; exact h.floor
+  burn w a h ha := by
+    refine ⟨h.keep.trans (keep_setAccountBalance (by rw [h.keep.code]; exact hsize)), ?_,
+      Nat.lt_of_le_of_lt (supply_setAccountBalance_zero _ _) h.capped⟩
+    simp only [setAccountBalance, balance_modifyState, Ne.symm ha, ite_false]; exact h.floor
+  setCode w a c h ha := ⟨h.keep.trans (keep_setCode (Ne.symm ha)),
+    by rw [balance_setCode]; exact h.floor, by rw [supply_setCode]; exact h.capped⟩
+
+/-- **Releasing the lock after a withdrawal**: if, at the call, the bank was backed and at
+least its ether minus the entry's old value is left whatever the callee did, zeroing the entry
+leaves it solvent. -/
+theorem solvent_unlock {w₀ w : World} {a : Address} (hcode : w₀.code bank = code)
+    (h0 : owed crypto base bank w₀ ≤ (w₀.balance bank).toNat)
+    (hl : Locked bank w₀ ((w₀.balance bank).toNat -
+      (w₀.sload bank (mappingSlot crypto (Word.ofAddress a) base)).toNat) w) :
+    Solvent crypto base code bank (w.sstore bank (mappingSlot crypto (Word.ofAddress a) base) 0) := by
+  have ho := owed_sstore (crypto := crypto) (base := base) (bank := bank) w a 0
+  rw [show (0 : Word).toNat = 0 from rfl, Nat.add_zero, owed_keep hl.keep] at ho
+  have hs : w.sload bank (mappingSlot crypto (Word.ofAddress a) base) =
+      w₀.sload bank (mappingSlot crypto (Word.ofAddress a) base) := hl.keep.sload _
+  rw [hs] at ho
+  have hle := sload_le_owed (crypto := crypto) (base := base) (bank := bank) w₀ a
+  have hbal := (w₀.balance bank).isLt
+  have hf := hl.floor
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [World.code_sstore, hl.keep.code, hcode]
+  · rw [World.balance_sstore]; omega
+  · omega
+  · rw [supply_sstore]; exact hl.capped
+
 end Examples.Reentrancy.Solvency
