@@ -12,7 +12,8 @@ fact:
 
 * `exec_value`: a requested child that runs at another account than its caller's frame, and is
   not static, moves its value (`shouldTransferValue = true`): only `CALL` does that.
-* `DStartV`, `CoversV`: dangerous frame starts whose value moved, and their summaries.
+* `DStartV`, `CoversV`: dangerous frame starts whose value moved, in a context satisfying `C`
+  (e.g. a fixed `Crypto`: a contract's storage layout depends on it), and their summaries.
 * `halts_inv_v`: the havoc theorem with `CoversV` summaries.
 * `processMessageCall_good_v`: any top-level message call that transfers its value keeps a
   `GoodOps` invariant when the protected code `CoversV` it.
@@ -21,7 +22,7 @@ fact:
 namespace EvmLogic.Program.Reentrancy
 open EvmLean EvmLean.Interpreter EvmLogic.Program EvmLogic.Program.Nested EvmLogic.AbsInt
 
-variable {P : Address → Prop} {Good : World → Prop}
+variable {P : Address → Prop} {Good : World → Prop} {C : Context → Prop}
 
 /-! ## Calls to another account move their value -/
 
@@ -88,38 +89,43 @@ theorem step_value (m : Machine) :
 
 /-! ## Dangerous frames whose value moved -/
 
-/-- A dangerous frame start (`DStart`) whose message transferred its value. -/
-structure DStartV (P : Address → Prop) (Good : World → Prop) (G : Nat) (m : Machine) : Prop
-    extends DStart P Good G m where
+/-- A dangerous frame start (`DStart`) whose message transferred its value, in a context
+satisfying `C`. -/
+structure DStartV (P : Address → Prop) (Good : World → Prop) (C : Context → Prop) (G : Nat)
+    (m : Machine) : Prop extends DStart P Good G m where
   /-- The value moved (`CALL` or a value-transferring top-level message). -/
   transfers : m.frame.msg.shouldTransferValue = true
+  /-- The transaction's context. -/
+  context : C m.ctx
 
 /-- **Frame summaries for dangerous frames whose value moved**: every such frame with at most
 `G` gas, started from a `Good` snapshot with any parents, ends in a `Good` world. -/
-def CoversV (P : Address → Prop) (Good : World → Prop) (G : Nat) : Prop :=
-  ∀ m, DStartV P Good G m → Halts m (fun mf o => Good (frameResult mf o).2.1)
+def CoversV (P : Address → Prop) (Good : World → Prop) (C : Context → Prop) (G : Nat) : Prop :=
+  ∀ m, DStartV P Good C G m → Halts m (fun mf o => Good (frameResult mf o).2.1)
 
 /-- `CoversV` by induction on gas: reentrant frames have less gas than their ancestors. -/
-theorem coversV_of_lt (h : ∀ G, (∀ G' < G, CoversV P Good G') → CoversV P Good G) (G : Nat) :
-    CoversV P Good G := by
+theorem coversV_of_lt (h : ∀ G, (∀ G' < G, CoversV P Good C G') → CoversV P Good C G)
+    (G : Nat) : CoversV P Good C G := by
   induction G using Nat.strongRecOn with
   | ind G ih => exact h G ih
 
 /-- `CoversV` for more gas gives `CoversV` for less. -/
-theorem CoversV.mono {G G' : Nat} (h : CoversV P Good G) (hle : G' ≤ G) : CoversV P Good G' :=
+theorem CoversV.mono {G G' : Nat} (h : CoversV P Good C G) (hle : G' ≤ G) :
+    CoversV P Good C G' :=
   fun m hd => h m { hd with gas := Nat.le_trans hd.gas hle }
 
 /-- `CoversE` gives `CoversV`. -/
-theorem CoversE.coversV {G : Nat} (h : CoversE P Good G) : CoversV P Good G :=
+theorem CoversE.coversV {G : Nat} (h : CoversE P Good G) : CoversV P Good C G :=
   fun m hd => h m hd.toDStart
 
 /-- The child of a call requested by a frame satisfying `Inv`: a `DStartV` or an `Inv` frame. -/
 theorem child_cases_v (S : GoodOps P Good) {G : Nat} {m m' : Machine} {req : CallRequest}
     (h : Inv P Good m) (hf : InstrFrame m m') (hc : CallOk m m' req) (hw' : Good m'.world)
-    (ht : TransferOk m (.call req) m') (hv : CallValue m req) (hg : req.msg.gas ≤ G) :
-    DStartV P Good G (pushCall m' req) ∨ Inv P Good (pushCall m' req) := by
+    (ht : TransferOk m (.call req) m') (hv : CallValue m req) (hg : req.msg.gas ≤ G)
+    (hC : C m.ctx) :
+    DStartV P Good C G (pushCall m' req) ∨ Inv P Good (pushCall m' req) := by
   rcases child_cases_e S h hf hc hw' ht hg with hd | hi
-  · refine .inl ⟨hd, ?_⟩
+  · refine .inl ⟨hd, ?_, by show C m'.ctx; rw [hf.same.ctx]; exact hC⟩
     show req.msg.shouldTransferValue = true
     have hd' := hd.danger
     have hst : req.msg.isStatic = false := hd'.2
@@ -133,24 +139,25 @@ theorem child_cases_v (S : GoodOps P Good) {G : Nat} {m m' : Machine} {req : Cal
 
 /-- **The havoc theorem with `CoversV` summaries.** Under `CoversV` for its gas, a frame
 satisfying `Inv` halts in a `Good` world, whatever code it and its descendants run. -/
-theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good G) :
-    ∀ m, m.frame.gasLeft ≤ G → Inv P Good m →
+theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good C G) :
+    ∀ m, C m.ctx → m.frame.gasLeft ≤ G → Inv P Good m →
       Halts m (fun mf o => Good (frameResult mf o).2.1) := by
-  suffices ∀ n m, m.frame.gasLeft = n → n ≤ G → Inv P Good m →
-      Halts m (fun mf o => Good (frameResult mf o).2.1) from fun m hg h => this _ m rfl hg h
+  suffices ∀ n m, m.frame.gasLeft = n → C m.ctx → n ≤ G → Inv P Good m →
+      Halts m (fun mf o => Good (frameResult mf o).2.1) from
+    fun m hC hg h => this _ m rfl hC hg h
   intro n
   induction n using Nat.strongRecOn with
   | ind n ih =>
-    intro m hn hG h
-    have ih' : ∀ m'', m''.frame.gasLeft < m.frame.gasLeft → Inv P Good m'' →
+    intro m hn hC hG h
+    have ih' : ∀ m'', m''.frame.gasLeft < m.frame.gasLeft → m''.ctx = m.ctx → Inv P Good m'' →
         Halts m'' (fun mf o => Good (frameResult mf o).2.1) :=
-      fun m'' hlt hi => ih _ (hn ▸ hlt) m'' rfl (by omega) hi
+      fun m'' hlt hc hi => ih _ (hn ▸ hlt) m'' rfl (hc ▸ hC) (by omega) hi
     rcases step_value m with ⟨m', o, he, hf, hws⟩ | ⟨m', he, hf, hs, hws⟩ |
       ⟨m', req, he, hf, hc, hs, hws, ht, hv⟩ | ⟨m', msg, he, hf, hc, hs, hst, ht⟩
     · exact Halts.of_step he hf.same
         (S.frameResult (h.frame.of_same hf.same.msg hf.same.snapshot hf.same.kind)
           (S.step h.world h.frame.safe hws) o)
-    · refine Halts.of_steps (Steps.of_step he hf.same) (ih' m' hs ?_)
+    · refine Halts.of_steps (Steps.of_step he hf.same) (ih' m' hs hf.same.ctx ?_)
       exact ⟨S.step h.world h.frame.safe hws,
         h.frame.of_same hf.same.msg hf.same.snapshot hf.same.kind,
         by rw [hf.same.precompiles, hf.same.ctx]; exact h.pre⟩
@@ -163,7 +170,7 @@ theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good G) :
         have hsf : SameFrame m (resume { m' with world := w, transient := t } r) :=
           (hf.same.trans (show SameFrame m' { m' with world := w, transient := t } from
             ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)).trans (sameFrame_resume _ _)
-        refine Halts.of_steps (Steps.of_step he hsf) (ih' _ ?_ ?_)
+        refine Halts.of_steps (Steps.of_step he hsf) (ih' _ ?_ hsf.ctx ?_)
         · simp only [resume_gasLeft]; omega
         · refine ⟨?_, hfr'.of_same rfl rfl rfl, hpre'⟩
           rcases hw with rfl | rfl
@@ -172,14 +179,14 @@ theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good G) :
       · have hpar : (pushCall m' req).parents = m'.frame :: m.parents := by
           simp only [pushCall, hf.same.parents]
         have hcallee : Halts (pushCall m' req) (fun mf o => Good (frameResult mf o).2.1) := by
-          rcases child_cases_v (G := G) S h hf hc hw' ht hv (by omega) with hd | hi
+          rcases child_cases_v (G := G) S h hf hc hw' ht hv (by omega) hC with hd | hi
           · exact hcov _ hd
-          · exact ih' _ (by rw [pushCall_gasLeft]; omega) hi
+          · exact ih' _ (by rw [pushCall_gasLeft]; omega) hf.same.ctx hi
         refine halts_resume he hpar ⟨hf.same.ctx, hf.same.precompiles, hf.same.originalWorld,
           rfl, hf.same.msg, hf.same.code, hf.same.jumpDests, hf.same.kind, hf.same.snapshot⟩
           (by simp only [pushCall]; rw [hpre']; exact precompilesOk_standard _) hcallee ?_
         intro mf o hsf hgood hgas
-        refine ih' _ ?_ (Inv.of_resume hfr' hgood ?_)
+        refine ih' _ ?_ (hsf.ctx.trans hf.same.ctx) (Inv.of_resume hfr' hgood ?_)
         · rw [pushCall_gasLeft] at hgas; omega
         · rw [hsf.precompiles, hsf.ctx]; exact hpre'
     · obtain ⟨hcaller, hbal, hw0⟩ := ht
@@ -192,7 +199,7 @@ theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good G) :
       have hpar : (launchCreate m' msg).parents = m'.frame :: m.parents := by
         simp only [launchCreate, hf.same.parents]
       have hcallee : Halts (launchCreate m' msg) (fun mf o => Good (frameResult mf o).2.1) := by
-        refine ih' _ (by rw [launchCreate_gasLeft]; omega) ⟨?_, ⟨hw', ?_, ?_⟩, ?_⟩
+        refine ih' _ (by rw [launchCreate_gasLeft]; omega) hf.same.ctx ⟨?_, ⟨hw', ?_, ?_⟩, ?_⟩
         · simp only [launchCreate, beginCreate]
           refine S.transfer (S.nonce _ _ hw') fun _ _ => ⟨?_, .inl (hcaller ▸ hnp)⟩
           rw [balance_incrementNonce, hw0, balance_incrementNonce, hcaller]
@@ -204,7 +211,7 @@ theorem halts_inv_v (S : GoodOps P Good) {G : Nat} (hcov : CoversV P Good G) :
         rfl, hf.same.msg, hf.same.code, hf.same.jumpDests, hf.same.kind, hf.same.snapshot⟩
         (by simp only [launchCreate]; rw [hpre']; exact precompilesOk_standard _) hcallee ?_
       intro mf o hsf hgood hgas
-      refine ih' _ ?_ (Inv.of_resume hfr' hgood ?_)
+      refine ih' _ ?_ (hsf.ctx.trans hf.same.ctx) (Inv.of_resume hfr' hgood ?_)
       · rw [launchCreate_gasLeft] at hgas; omega
       · rw [hsf.precompiles, hsf.ctx]; exact hpre'
 
@@ -227,7 +234,7 @@ theorem applyTopLevelDelegation_transfers (ctx : Context) (isPre : Address → B
 /-- A machine started by `initMachine` runs the message it was given. -/
 theorem initMachine_msg {pre : PrecompileImpl} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {m₀ : Machine}
-    (h : initMachine pre ctx w tr msg = .inr m₀) : m₀.frame.msg = msg := by
+    (h : initMachine pre ctx w tr msg = .inr m₀) : m₀.frame.msg = msg ∧ m₀.ctx = ctx := by
   unfold initMachine at h
   dsimp only at h
   split at h
@@ -237,19 +244,20 @@ theorem initMachine_msg {pre : PrecompileImpl} {ctx : Context} {w : World}
   split at h
   · split at h
     · cases h
-    · cases h; rfl
+    · cases h; exact ⟨rfl, rfl⟩
   · split at h
     · cases h
-    · cases h; rfl
+    · cases h; exact ⟨rfl, rfl⟩
 
 /-- **Any top-level message call that transfers its value keeps a `GoodOps` invariant** when
 the protected code `CoversV` it for its gas (callbacks at any depth included): from a `Good`
 world, a `TopOk` message with `shouldTransferValue = true` (any code, value, calldata; an
-unprotected caller), before Prague or without EIP-7702 authorizations. -/
+unprotected caller), in a context satisfying `C`, before Prague or without EIP-7702
+authorizations. -/
 theorem processMessageCall_good_v (S : GoodOps P Good) {fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult} (hw : Good w)
     (hdeleg : ctx.fork < .prague ∨ ctx.tx.authorizations = []) (hmsg : TopOk P w msg)
-    (hv : msg.shouldTransferValue = true) (hcov : CoversV P Good msg.gas)
+    (hv : msg.shouldTransferValue = true) (hC : C ctx) (hcov : CoversV P Good C msg.gas)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) : Good r.world := by
   obtain ⟨msg', hd, hcur, hcaller, htarget, hdepth, hstatic, hgas, hsame⟩ :=
     applyTopLevelDelegation_spec (isPre := (PrecompileImpl.standard ctx).isPrecompile) (w := w)
@@ -275,9 +283,10 @@ theorem processMessageCall_good_v (S : GoodOps P Good) {fuel : Nat} {ctx : Conte
   · have hH : Halts m₀ (fun mf o => Good (frameResult mf o).2.1) := by
       rcases hm with hm | hm
       · exact halts_inv_v S (hcov.mono (Nat.le_of_eq hgas)) _
-          (by rw [hg0]; exact Nat.le_refl _) hm
-      · refine hcov _ ⟨by rw [← hgas]; exact hm, ?_⟩
-        rw [initMachine_msg hi]; exact hv'
+          (by rw [(initMachine_msg hi).2]; exact hC) (by rw [hg0]; exact Nat.le_refl _) hm
+      · refine hcov _ ⟨by rw [← hgas]; exact hm, ?_, ?_⟩
+        · rw [(initMachine_msg hi).1]; exact hv'
+        · rw [(initMachine_msg hi).2]; exact hC
     obtain ⟨n, mf, o, hgood, hsf, hrun⟩ := hH.run hpar
     cases hrun' : run fuel m₀ with
     | error e => rw [hrun'] at hr; cases hr

@@ -1,4 +1,5 @@
 import EvmLogic.Program.Reentrancy.Certified
+import EvmLogic.Program.Reentrancy.Prefix
 
 /-!
 # Certified tails: world-safe from a given pc, for any gas
@@ -13,7 +14,7 @@ writes storage and calls. This module certifies such a tail on its own:
 * `WorldSafeReached`: every instruction **at which a state is recorded** is world-safe (entries
   never reached may be anything); `tailCheck` checks both by evaluation (`tailCheck_sound`).
 * `noWrite_halts_tail`: a frame described by a recorded state of such a certificate halts with
-  its world unchanged, for any gas.
+  its world unchanged, for any gas; `Halts.failOk` turns this into `FailOk` for a prefix.
 -/
 
 namespace EvmLogic.Program.Reentrancy
@@ -165,5 +166,17 @@ theorem noWrite_halts_tail (hc : TailCert ρ allowed code q init t) (hw : WorldS
 theorem inCert_of_entry (hc : TailCert ρ allowed code q init t) {m : Machine}
     (hpc : m.frame.pc = q) (hst : StackOk ρ init m.frame.stack) : InCert ρ t m :=
   ⟨init, by rw [hpc]; exact hc.init, hst⟩
+
+/-- A frame of a call that halts with its world unchanged, from a world and a snapshot satisfying
+`Good`, hands back a `Good` world (`FailOk`): its own on success, the snapshot otherwise. -/
+theorem Halts.failOk {Good : World → Prop} {m : Machine} {ko ks : Nat}
+    (hk : m.frame.kind = .call ko ks) (hsnap : Good m.frame.snapshot.1) (hw : Good m.world)
+    (h : Halts m (fun mf _ => mf.world = m.world)) : Halts m (FailOk Good) := by
+  refine h.mono fun mf o hsf hmf => ?_
+  show Good (frameResult mf o).2.1
+  rcases frameResult_world mf o with h1 | ⟨hk', -⟩ | h1
+  · rw [h1, hmf]; exact hw
+  · rw [hsf.kind, hk] at hk'; cases hk'
+  · rw [h1, hsf.snapshot]; exact hsnap
 
 end EvmLogic.Program.Reentrancy

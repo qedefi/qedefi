@@ -46,15 +46,18 @@ theorem shape_call {a b c d e f g : Word} {rest st' : List Word}
 
 /-! ## The rule -/
 
-variable {P : Address → Prop} {Good Gc : World → Prop} {Q : Machine → Prop} {m : Machine}
+variable {P : Address → Prop} {Good Gc : World → Prop} {C : Context → Prop} {Q : Machine → Prop}
+  {m : Machine}
 
 /-- **The untrusted `CALL` of a prefix, any gas, any outcome.** At a `CALL` to an unprotected
 account from any frame, if the call-site invariant `Gc` (a `GoodOps` invariant) holds of the
 world and of the world after an affordable value transfer to the callee, and the protected code
-`CoversV` `Gc` for every gas below the caller's, then the caller continues from every machine
+`CoversV` `Gc` (in contexts satisfying `C`, which `m`'s does) for every gas below the caller's,
+then the caller continues from every machine
 of its frame at `pc + 1` with one word pushed on `rest`, in a world satisfying `Gc`; a failure
 of the instruction itself hands back the `Good` snapshot. -/
-theorem pwp_call_v (S : GoodOps P Gc) (hcov : ∀ g < m.frame.gasLeft, CoversV P Gc g)
+theorem pwp_call_v (S : GoodOps P Gc) (hC : C m.ctx)
+    (hcov : ∀ g < m.frame.gasLeft, CoversV P Gc C g)
     {gas toW value inOff inSize outOff outSize : Word} {rest : List Word}
     (hsnap : Good m.frame.snapshot.1) (hcode : m.frame.code[m.frame.pc]? = some 0xf1)
     (hstk : m.frame.stack = gas :: toW :: value :: inOff :: inSize :: outOff :: outSize :: rest)
@@ -131,7 +134,8 @@ theorem pwp_call_v (S : GoodOps P Gc) (hcov : ∀ g < m.frame.gasLeft, CoversV P
           exact hto (by rw [← htgt]; exact hd.1)
         have hlt : req.msg.gas < m.frame.gasLeft := by omega
         refine WP.call hst hpar hp
-          (halts_inv_v S (hcov _ hlt) _ (Nat.le_of_eq (pushCall_gasLeft _ _)) hinv) ?_
+          (halts_inv_v S (hcov _ hlt) _ (show C m'.ctx by rw [hf.same.ctx]; exact hC)
+            (Nat.le_of_eq (pushCall_gasLeft _ _)) hinv) ?_
         intro mf o hsf hgood
         have hsame : SameFrame m (resumeAfter m'.frame m.parents mf o) := by
           refine SameFrame.trans ?_ (sameFrame_resume _ _)
