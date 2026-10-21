@@ -23,13 +23,12 @@ def readsDepthB : Opcode → Bool
   | _ => false
 
 set_option maxHeartbeats 8000000 in
-/-- **Every instruction not reading the depth commutes with changing it.** -/
-theorem exec_setDepth_wp (op : Opcode) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for `DUP`, `SWAP`, `LOG` and `RETURNDATACOPY` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_s (op : Opcode) (hk : op.ctorIdx ∈ [42, 71, 72, 73]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
     Wp (exec op) (fun a m' => Twp (exec op)
       (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
-  cases op
-  case call | callcode | delegatecall | staticcall | create | create2 =>
-    simp [readsDepthB] at hop
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
   case dup n =>
     simp [exec, setDepth]
     intro _
@@ -50,9 +49,101 @@ theorem exec_setDepth_wp (op : Opcode) (hop : readsDepthB op = false) (m : Machi
     intro hz
     simp only [hz] at *
     exact ⟨by omega, by omega, .inl (by omega)⟩
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_0 (op : Opcode) (hk : op.ctorIdx ∈ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
   all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
     memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
     setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_1 (op : Opcode) (hk : op.ctorIdx ∈ [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[21, 22, 23, 24, 25, 26, 27, 28, 29, 30]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_2 (op : Opcode) (hk : op.ctorIdx ∈ [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_3 (op : Opcode) (hk : op.ctorIdx ∈ [31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[43, 44, 45, 46, 47, 48, 49, 50, 51, 52]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_4 (op : Opcode) (hk : op.ctorIdx ∈ [43, 44, 45, 46, 47, 48, 49, 50, 51, 52]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_5 (op : Opcode) (hk : op.ctorIdx ∈ [53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+set_option linter.unusedSimpArgs false in
+/-- `exec_setDepth_wp` for the opcodes of constructor index in `[64, 65, 66, 67, 68, 69, 70, 77, 81, 82, 83]` (split for parallel elaboration). -/
+theorem exec_setDepth_wp_6 (op : Opcode) (hk : op.ctorIdx ∈ [64, 65, 66, 67, 68, 69, 70, 77, 81, 82, 83]) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op <;> (try exact absurd hk (by dsimp only [Opcode.ctorIdx]; decide)) <;> clear hk
+  all_goals simp [exec, binOp, unOp, ternOp, pushValue, copyToMemory, readOutput,
+    memoryExpansion, expandMemory, writeMemory, readMemory, accessStorageKey, requireNonStatic,
+    setDepth, execSstore, execSelfdestruct] <;> intros <;> (try simp_all) <;> omega
+
+set_option maxHeartbeats 8000000 in
+/-- **Every instruction not reading the depth commutes with changing it.** -/
+theorem exec_setDepth_wp (op : Opcode) (hop : readsDepthB op = false) (m : Machine) (d : Nat) :
+    Wp (exec op) (fun a m' => Twp (exec op)
+      (fun a' m'' => a' = a ∧ m'' = setDepth d m') (setDepth d m)) m := by
+  cases op
+  all_goals first
+    | (simp [readsDepthB] at hop; done) |
+      exact exec_setDepth_wp_s _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_0 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_1 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_2 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_3 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_4 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_5 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d |
+      exact exec_setDepth_wp_6 _ (by dsimp only [Opcode.ctorIdx]; decide) hop m d
+    | fail "exec_setDepth_wp: no group"
 
 theorem exec_setDepth (op : Opcode) (hop : readsDepthB op = false) {m m' : Machine} {a : Action}
     (h : (exec op).run m = .ok (a, m')) (d : Nat) :

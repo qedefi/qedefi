@@ -31,6 +31,14 @@ register_option fastStep.check : Bool := {
   defValue := false
   descr := "type-check each proof term built by the fast symbolic stepper" }
 
+/-- Use the fast stepper (`false`: the original one-lemma-per-step tactics only; for
+comparison). -/
+register_option fastStep.enable : Bool := {
+  defValue := true
+  descr := "use the fast symbolic stepper in pwp_steps/psol_steps" }
+
+register_option fastStep.debugSorry : Nat := { defValue := 0, descr := "debug" }
+
 /-! ## Gas side conditions -/
 
 theorem le_gas_sub {L G n c : Nat} (hL : L ≤ G) (h : Nat.ble (c + n) L = true) : c ≤ G - n := by
@@ -75,6 +83,15 @@ theorem lt_sub_chain {L G c bc : Nat} (l bs : List Nat) (hb : BoundedBy l bs) (h
 theorem sub_le_sub_of {l H a b : Nat} (h1 : l ≤ H) (h2 : a ≤ b) : l - b ≤ H - a := by omega
 
 theorem le_of_le_add {L X G c : Nat} (h1 : L ≤ X) (h2 : X ≤ G + c) : L - c ≤ G := by omega
+
+theorem foldl_sub_eq (G : Nat) : ∀ l : List Nat, l.foldl (· - ·) G = G - l.sum
+  | [] => by simp
+  | a :: l => by
+    simp only [List.foldl_cons, List.sum_cons, foldl_sub_eq (G - a) l, Nat.sub_sub]
+
+theorem chain_sub (G k s : Nat) (l : List Nat) (h : l.sum + k = s) :
+    l.foldl (· - ·) G - k = G - s := by
+  rw [foldl_sub_eq, Nat.sub_sub, h]
 
 theorem sub_sub_lit (G n k s : Nat) (h : n + k = s) : G - n - k = G - s := by
   rw [Nat.sub_sub, h]
@@ -155,6 +172,20 @@ def gasChain (norm : Expr → MetaM (Option (Expr × Option Expr))) (g : Expr) :
     let_expr HSub.hSub _ _ _ _ x a := cur | return none
     let some (b, p) ← costBound norm 4096 a | return none
     subs := subs.push (a, b, p)
+    cur := x.consumeMData
+  return none
+
+/-- `G - a₁ - … - aₖ` (`k ≥ 2`, closed `aᵢ`) as `(G, [a₁, …, aₖ])`. -/
+def closedChain? (g : Expr) : MetaM (Option (Expr × Array Expr)) := do
+  let mut cur := g.consumeMData
+  let mut subs : Array Expr := #[]
+  for _ in [0:100000] do
+    if cur.isFVar then
+      if subs.size < 2 then return none
+      return some (cur, subs.reverse)
+    let_expr HSub.hSub _ _ _ _ x a := cur | return none
+    if (← closedNat? a).isNone then return none
+    subs := subs.push a
     cur := x.consumeMData
   return none
 
@@ -582,6 +613,20 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
   if !cfg.foldGas then return (v', sub old k', p1)
   let some kv ← (evalNat k').run | fallback
   let some (G, n) ← gasShape old | do
+    -- a chain `G - a₁ - … - aₖ` of closed costs (the `sol_step` normal form): fold it
+    if let some (G, subs) ← closedChain? old then
+      let mut tot := kv
+      for a in subs do
+        let some v ← closedNat? a | return ← fallback
+        tot := tot + v
+      let l ← mkListLit (mkConst ``Nat) subs.toList
+      let h ← mkEqRefl (mkNatLit tot)
+      let p2 ← mkExpectedTypeHint (mkAppN (mkConst ``chain_sub) #[G, k', mkNatLit tot, l, h])
+        (← mkEq (sub old k') (sub G (mkNatLit tot)))
+      let pf ← match p1 with
+        | some p => mkEqTrans p p2
+        | none => pure p2
+      return (v', sub G (mkNatLit tot), some pf)
     -- `G - A - k = G - (A + k)` (`Nat.sub_sub`, as `wp_step`'s simp set leaves it)
     let_expr HSub.hSub _ _ _ _ G A := old.consumeMData | fallback
     unless G.isFVar do return ← fallback
@@ -604,6 +649,7 @@ normalized) and a proof of `step m = .running m'`. `none` if the instruction is 
 here (halts, calls, creates, `GAS`) or a side condition fails. -/
 def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
     TacticM (Option (Expr × Expr)) := do
+  unless fastStep.enable.get (← getOptions) do return none
   let some (ms, fs) := literalFields? m | do trace[EvmLean.wp] "fast step: core check 1"; return none
   let code := fs[1]!
   let some pc ← (evalNat fs[3]!).run | do trace[EvmLean.wp] "fast step: core check 2"; return none
@@ -677,7 +723,11 @@ def stepCore (cfg : Cfg) (m : Expr) (normAll : Bool := false) :
       let stepTy (x : Expr) := mkApp3 (mkConst ``Eq [1]) (mkConst ``StepResult)
         (mkApp (mkConst ``step) m) (mkApp (mkConst ``StepResult.running) x)
       let mut hstep ← mkExpectedTypeHint pfStep (stepTy m'raw)
+      if fastStep.debugSorry.get (← getOptions) == 1 then hstep ← mkSorry (stepTy m'raw) false
       if let some p ← congrApp (mkConst ``Machine.mk) mRaw mPf then
+        if fastStep.debugSorry.get (← getOptions) == 7 then
+          hstep ← mkEqTrans hstep (← mkSorry (← mkEq (mkApp (mkConst ``StepResult.running) m'raw) (mkApp (mkConst ``StepResult.running) m')) false)
+        else
         hstep ← mkEqTrans hstep (← mkCongrArg (mkConst ``StepResult.running) p)
       if fastStep.check.get (← getOptions) then
         try check pfStep catch e => throwError "fast step: pfStep ill-typed: {e.toMessageData}"
@@ -726,27 +776,53 @@ def predFuel? (fuel : Expr) : MetaM (Option Expr) := do
   if c = 1 then return some k
   return some (← mkAdd k (mkNatLit (c - 1)))
 
-/-- One fast step in a goal containing `run fuel m`: rewrite it to `run fuel' m'`. -/
-def fastRunStep (cfg : Cfg) (normAll : Bool := false) : TacticM Bool := withMainContext do
-  let g ← getMainGoal
-  let t ← instantiateMVars (← g.getType)
-  let some runE := t.find? fun x => x.isAppOfArity ``EvmLean.Interpreter.run 2 | return false
+/-- The `run fuel m` term of a goal (outside binders). -/
+def goalRun? (t : Expr) : Option Expr :=
+  match t.find? fun x => x.isAppOfArity ``EvmLean.Interpreter.run 2 with
+  | some e => if e.hasLooseBVars then none else some e
+  | none => none
+
+/-- One fast step of `run fuel m`: `(run fuel' m', proof of run fuel m = run fuel' m')`. -/
+def runStepEq (cfg : Cfg) (runE : Expr) (normAll : Bool := false) :
+    TacticM (Option (Expr × Expr)) := do
   let fuel := runE.appFn!.appArg!
   let m := runE.appArg!
-  let some fuel' ← predFuel? fuel | return false
-  let some (m', hstep) ← stepCore cfg m normAll | return false
+  let some fuel' ← predFuel? fuel | return none
+  let some (m', hstep) ← stepCore cfg m normAll | return none
   -- `run (fuel' + 1) m = run fuel' m'`, with `fuel' + 1 ≡ fuel`
+  let runE' := mkApp2 (mkConst ``EvmLean.Interpreter.run) fuel' m'
   let heq := mkAppN (mkConst ``run_succ_of_running) #[m, m', fuel', hstep]
-  let heq ← mkExpectedTypeHint heq (← mkEq runE (mkApp2 (mkConst ``EvmLean.Interpreter.run) fuel' m'))
-  if runE.hasLooseBVars then return false
+  return some (runE', ← mkExpectedTypeHint heq (← mkEq runE runE'))
+
+/-- Rewrite the occurrence of `runE` in the main goal to `runE'` by `h : runE = runE'` (one
+motive for a whole chain of steps). -/
+def rewriteRun (runE runE' h : Expr) : TacticM Unit := withMainContext do
+  let g ← getMainGoal
+  let t ← instantiateMVars (← g.getType)
   let motive ← withLocalDeclD `x (← inferType runE) fun x => do
     mkLambdaFVars #[x] (t.replace fun e => if e == runE then some x else none)
-  let t' := motive.beta #[mkApp2 (mkConst ``EvmLean.Interpreter.run) fuel' m']
+  let t' := motive.beta #[runE']
   let g' ← mkFreshExprSyntheticOpaqueMVar t' (← g.getTag)
-  -- `t = t'` by congruence, then `t' → t`
-  let hcongr ← mkCongrArg motive heq
-  g.assign (← mkEqMPR hcongr g')
+  g.assign (← mkEqMPR (← mkCongrArg motive h) g')
   replaceMainGoal [g'.mvarId!]
-  return true
+
+/-- Fast steps of the `run` term of the main goal while they apply (at most `limit`), composed
+into one equation and rewritten into the goal once. The number of steps taken. -/
+def fastRunSteps (cfg : Cfg) (normFirst : Bool) (limit : Nat := 1000000) : TacticM Nat :=
+  withMainContext do
+  let t ← instantiateMVars (← getMainTarget)
+  let some run0 := goalRun? t | return 0
+  let mut cur := run0
+  let mut pf : Option Expr := none
+  let mut n := 0
+  for _ in [0:limit] do
+    let some (next, h) ← runStepEq cfg cur (normFirst && n == 0) | break
+    pf ← match pf with
+      | none => pure (some h)
+      | some p => pure (some (← mkEqTrans p h))
+    cur := next
+    n := n + 1
+  if let some p := pf then rewriteRun run0 cur p
+  return n
 
 end EvmLogic.Tactic.FastStep

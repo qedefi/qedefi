@@ -572,7 +572,7 @@ def psolFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
       if c == code then return some bytes
       return (← EvmLogic.Program.codeInfo? c).map (·.1)
     disch := do evalTactic (← `(tactic| psol_disch))
-    foldGas := false }
+    foldGas := true }
 
 elab_rules : tactic
   | `(tactic| psol_steps $[[$extra,*]]?) => do
@@ -585,11 +585,13 @@ elab_rules : tactic
       catch _ =>
         s.restore
         return false
-    let mut cfg : Option FastStep.Cfg := none
-    for i in [0:1000000] do
-      if i == 0 then cfg ← psolFastCfg extra
+    let cfg ← psolFastCfg extra
+    let mut first := true
+    for _ in [0:1000000] do
       if let some c := cfg then
-        if ← FastStep.fastRunStep c (normAll := i == 0) then continue
+        if (← FastStep.fastRunSteps c first) > 0 then
+          first := false
+      first := false
       unless ← one do return
 
 end EvmLogic.Tactic.Patched

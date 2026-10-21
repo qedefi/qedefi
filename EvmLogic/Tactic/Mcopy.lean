@@ -356,11 +356,12 @@ syntax "psol_msteps" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 elab_rules : tactic
   | `(tactic| psol_msteps $[[$extra,*]]?) => do
     let extraA := (extra.map (·.getElems)).getD #[]
-    let mut cfg : Option FastStep.Cfg := none
-    for i in [0:1000000] do
-      if i == 0 then cfg ← psolFastCfg extraA
+    let cfg ← psolFastCfg extraA
+    let mut first := true
+    for _ in [0:1000000] do
       if let some c := cfg then
-        if ← FastStep.fastRunStep c (normAll := i == 0) then continue
+        discard <| FastStep.fastRunSteps c first
+      first := false
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_step [$extraA,*]))) then continue
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy [$extraA,*]))) then continue
       if ← EvmLogic.Program.tryTac (Lean.Elab.Tactic.evalTactic (← `(tactic| psol_mcopy_zero [$extraA,*]))) then continue
