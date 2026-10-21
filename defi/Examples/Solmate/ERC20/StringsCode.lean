@@ -1,6 +1,7 @@
 import Examples.Solmate.ERC4626.StringsCommon
 import Examples.Solmate.ERC20.BalanceOf
 import EvmLogic.Solidity.Strings
+import Examples.Solmate.ERC4626.Abstraction
 
 /-!
 # `name()` / `symbol()` of the compiled asset
@@ -14,7 +15,7 @@ The asset compiles the `string public` getters exactly as the vault does
 section
 
 namespace Examples.Solmate.ERC20
-open Examples.Solmate.ERC4626
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -94,7 +95,7 @@ theorem assetEncodeShort_wp {ia : SolmateAsset.Immutables} (m : Machine) {L : Na
 end Examples.Solmate.ERC20
 
 namespace Examples.Solmate.ERC20
-open Examples.Solmate.ERC4626
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -173,7 +174,7 @@ section
 /-! ## Long strings: the copy loop (`0x02b9`–`0x02cc`, exit `0x02cd`) -/
 
 namespace Examples.Solmate.ERC20
-open Examples.Solmate.ERC4626
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -589,7 +590,7 @@ The getter returns `Abi.encodeString s` when `stringAt crypto w asset slot = som
 -/
 
 namespace Examples.Solmate.ERC20
-open Examples.Solmate.ERC4626
+open Examples.Solmate.ERC4626 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes

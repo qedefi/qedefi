@@ -2,6 +2,7 @@ import Examples.Solmate.ERC4626.Views
 import EvmLogic.Tactic.Mcopy
 import EvmLogic.Solidity.Strings
 import Examples.Solmate.ERC4626.StringsCommon
+import Examples.Solmate.ERC4626.Abstraction
 
 /-!
 # `name()` / `symbol()` of the compiled vault: the getters
@@ -14,7 +15,7 @@ is inconsistent, with gas `Str.getterGas L`. See `docs/erc4626/details.md` §8.
 section
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -94,7 +95,7 @@ theorem vaultEncodeShort_wp {i : SolmateVault.Immutables} (m : Machine) {L : Nat
 end Examples.Solmate.ERC4626
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -179,7 +180,7 @@ encoder (`0x1148`) copies again with `MCOPY`. Memory expansion is tracked throug
 -/
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -315,7 +316,7 @@ theorem vaultCopyLoop_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
 end Examples.Solmate.ERC4626
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -517,7 +518,7 @@ theorem vaultLongTail_wp {i : SolmateVault.Immutables} {w : World} {a : Address}
 end Examples.Solmate.ERC4626
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
@@ -606,7 +607,7 @@ section
 /-! ## `name()` / `symbol()` refine the storage strings (slots 0 and 1) -/
 
 namespace Examples.Solmate.ERC4626
-open Examples.Solmate.ERC20
+open Examples.Solmate.ERC20 Defi.ERC4626
 
 open EvmLean Examples.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Examples.Solmate.Contracts EvmLean.Bytes
