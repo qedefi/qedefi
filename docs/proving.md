@@ -204,15 +204,42 @@ by an AbsInt certificate (§6) — are all world-safe halts with its world uncha
 gas**, no gas bound. This is the tail of a checks-effects-interactions function after its single
 external call.
 
-**The any-gas prefix calculus** (`Prefix.lean`). A protected function's body up to its single
-untrusted call is a *prefix*, run under symbolic gas: `FailOk Good mf o` is `Good (frameResult mf
-o).2.1` (the snapshot, hence `Good`, on a revert or halt), and the forward rules `pwp_push`,
-`pwp_binOp`, `pwp_unOp`, `pwp_ternOp`, `pwp_pushValue`, `pwp_dup`, `pwp_pop`, `pwp_jumpdest`,
-`pwp_jump`, `pwp_jumpi_zero`, `pwp_jumpi_ne_zero`, `pwp_mload`, `pwp_mstore`, `pwp_calldataload`,
-`pwp_sload`, `pwp_sstore` each take the instruction when gas and stack allow and otherwise absorb
-the failure (`wp_fail_of_error`, `wp_fail_of_revert`). They mirror `GasMono.CodeFails` with a
-forward goal, so a prefix reaches the call site (`pwp_reached`) with no gas lower bound and
-composes with `WP.call_havoc`.
+**The any-gas prefix calculus** (`Prefix.lean`, `PrefixOps.lean`). A protected function's body
+up to its untrusted call is a *prefix*, run under symbolic gas: `FailOk Good mf o` is
+`Good (frameResult mf o).2.1` (the snapshot, hence `Good`, on a revert or halt), and each rule
+takes the instruction when gas and stack allow and otherwise absorbs the failure
+(`wp_fail_of_error`, `wp_fail_of_revert`): `pwp_push`, `pwp_dup`, `pwp_swap`, `pwp_pop`, one rule
+per arithmetic/comparison/environment opcode (`pwp_add`, `pwp_eq`, `pwp_caller`, …), `pwp_jump`,
+`pwp_jumpi` (both branches), `pwp_mload_val`, `pwp_mstore`, `pwp_keccak256`, `pwp_codecopy`,
+`pwp_returndatacopy` (memory left unknown), `pwp_calldataload`, `pwp_sload`, `pwp_sstore`; the
+frame ends with `pwp_revert`/`pwp_invalid` (always fine) or `pwp_stop`/`pwp_return` (the world
+must be `Good`). They mirror `GasMono.CodeFails` with a forward goal, so no gas lower bound.
+**`apwp_steps [h₁, …]`** (`Tactic/PrefixStep.lean`) drives them over literal code from a
+`Machine.mk … (Frame.mk …)` goal: it splits `JUMPI` on symbolic conditions (closing branches the
+normalization decides), closes reverts, generalizes gas and substate after each step (keeping a
+bound `g ≤ B`), and stops at `STOP`/`RETURN`/`CALL`/`LOG`. A dispatcher and all paths of a
+function run in seconds (`CEIBank`: 8 s for the whole contract).
+
+**The untrusted call of a prefix** (`PrefixCall.lean`). `pwp_call_v`: a `CALL` to an unprotected
+account for **any gas and any outcome** (out of gas, soft failure, precompile, child): given the
+call-site invariant `Gc` (a `GoodOps` invariant, which may differ from the frame's `Good`) before
+and after the value transfer and `CoversV` for every gas below the caller's, the caller resumes
+at `pc + 1` with one word on the popped stack in some `Gc` world. `pwp_call_stipend`: a callee
+with at most 2300 gas, no invariant (`halts_low`): the caller resumes with the flag `x` and the
+world before the call (`x = 0`) or after the affordable transfer (`x ≠ 0`).
+
+**Value-moving dangerous frames** (`Value.lean`). `DStart` does not record that the value of a
+dangerous frame arrived; a payable function crediting `msg.value` needs it. `exec_value`: a
+non-static request to another account transfers its value (only `CALL`). `DStartV`/`CoversV`
+add it and a context predicate `C` (e.g. the transaction's `Crypto`, on which a storage layout
+depends); `halts_inv_v`, `processMessageCall_good_v` (top-level messages with
+`shouldTransferValue`).
+
+**Certified tails** (`Tail.lean`). `noWrite_halts` needs every *table entry* of a `Cert` explored
+from pc `0` to be world-safe, which no function containing an `SSTORE` satisfies. `certifyAt`
+explores from the tail's pc; `tailCheck` checks by evaluation that every **reached**
+instruction is world-safe; `noWrite_halts_tail` and `Halts.failOk` close a frame after its call.
+`pwp_safe`: any world-safe popping instruction (`LOG*`) once the world is `Good`.
 
 **The havoc theorem** (`Halts.lean`). `Covers P Good G`: every dangerous frame start with at most
 `G` gas, *with any parents* (callbacks have dangerous ancestors), halts in a `Good` world.
@@ -252,6 +279,24 @@ same attack replayed against `CEIBank` (debit before the call) and `GuardedBank`
 kernel-evaluated on bytecode against a re-enter-once attacker. `NoWrite.lean`/`Certified.lean`:
 `noWrite_halts` — a certified tail with no storage-writing or calling instruction keeps the
 world for any gas.
+
+**Solvency after any transaction** (`qedefi/Examples/Reentrancy/Solvency/`), on bytecode, for any
+gas. `Model.lean`: `Solvent crypto base code bank` (what the bank owes, the sum of its balance
+entries **over their slots** — no Keccak hypothesis — is at most its ether, and all ether is below
+`2²⁵⁶`) is closed under everything arbitrary code does (`goodOps_solvent`); `Locked` (bank
+storage frozen, ether floor) likewise. `CEI.lean`: `cei_frame` runs every function with
+`apwp_steps`, the `withdraw()` call with `pwp_call_v` (`Gc = Solvent`), the tail with a certified
+tail; `cei_covers` by `coversV_of_lt`; **`cei_solvent`** (any top-level message call that moves
+its value, hashing with the world's `crypto`) and `cei_backed` (`Σₐ balances[a] ≤ balance`
+under slot injectivity). `Guarded.lean`: under the held lock every bank frame reverts or only
+reads (`locked_covers`, no induction), so the call of `withdraw()` is `pwp_call_v` with
+`Gc = Locked` and the post-call tail (debit, unlock) runs with `apwp_steps`; **`guarded_solvent`**
+assumes the ERC-7201 status slot is not a balance slot. `WETH9.lean` (mainnet bytecode):
+`withdraw_frame`/**`withdraw_halts_refines`**: `withdraw(wad)` debits, sends with the stipend
+(`pwp_call_stipend`), and ends in the world it started from or in the checked withdrawal, which
+refines `Variant.weth9.withdraw … true` (any gas, any depth, any recipient). The any-transaction
+ether backing of WETH9 is not proved (it needs every function, and `approve`/`transferFrom`
+write nested-mapping slots that would have to avoid all balance slots).
 
 ## Time and multiple blocks
 
