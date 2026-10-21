@@ -88,6 +88,9 @@ structure TokenFamily where
   uint8Values : Array Nat := #[0, 1, 27, 28, 255]
   /-- Edge mode: more extreme amounts, self-transfers, dirty address arguments. -/
   edge : Bool := false
+  /-- The token returns lock ids from request functions and takes them in `confirm*`
+  functions (GUSD): reuse hash-like return values and send confirmations from alice. -/
+  lockIds : Bool := false
 
 /-- The account holding the token's ledger. -/
 def TokenFamily.ledgerAddr (f : TokenFamily) : Address := f.ledger.getD f.token
@@ -185,6 +188,12 @@ def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call 
   for (s, k) in table do
     if x < k then sig := s; break
     x := x - k
+  -- Lock ids: confirmations mostly from the custodian (alice), with hash-like recent words
+  -- (ids returned by request functions) as `bytes32` arguments.
+  let hashes := if f.lockIds then recent.filter (·.toNat ≥ 2 ^ 200) else #[]
+  let sender ← if f.lockIds && (fnName sig).startsWith "confirm" then do
+      if (← below 10) < 7 then pure (actors[0]?.getD 0) else pure sender
+    else pure sender
   let mut args : List (AbiArg × String) := []
   let mut debit := sender
   let mut first := true
@@ -208,7 +217,11 @@ def genTokenCall (f : TokenFamily) (w : World) (recent : Array Word) : Gen Call 
     | "uint8" =>
       let v := BitVec.ofNat 256 (← pick f.uint8Values); args := args ++ [(.word v, toString v.toNat)]
     | "bytes32" =>
-      let v ← if !recent.isEmpty && (← below 2) = 0 then pick recent else randWord
+      let v ← if f.lockIds then do
+          let r ← below 10
+          if !hashes.isEmpty && r < 6 then pick hashes
+          else if !recent.isEmpty && r < 8 then pick recent else randWord
+        else if !recent.isEmpty && (← below 2) = 0 then pick recent else randWord
       args := args ++ [(.word v, hexOfWord v)]
     | "address[]" | "uint256[]" =>
       let n ← if (← below 10) = 0 then below 4 else pure arrLen
@@ -675,6 +688,7 @@ def gusd : TokenFamily :=
       others := [(GUSDAddrs.impl, "impl", Examples.WeirdERC20.GUSD.Contracts.GUSDImpl.selectors),
         (GUSDAddrs.store, "store", Examples.WeirdERC20.GUSD.Contracts.GUSDStore.selectors)]
       othersPct := 30
+      lockIds := true
       weights := [("transfer(address,uint256)", 8), ("transferFrom(address,address,uint256)", 8),
         ("approve(address,uint256)", 5), ("increaseApproval(address,uint256)", 3),
         ("decreaseApproval(address,uint256)", 3), ("batchTransfer(address[],uint256[])", 6),
