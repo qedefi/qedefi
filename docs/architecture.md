@@ -76,20 +76,22 @@ header roots.
 | | `EvmLogic` | `EvmLean` | generic program logic and proof library ([proving.md](proving.md)) |
 | | `EvmTest` | `EvmLean`, `EvmLogic`, `Conformance.Hex` | `#guard` unit tests (`lake test`) |
 | | `Conformance` | `EvmLean` | `lake exe conform` |
-| `defi` (`defi/`) | `Defi` | Mathlib v4.35.0, `EvmLogic` | reusable kits: `Math` (`uint256` `mulDiv`), `ERC20` ledgers, `ERC4626` models and properties, `Trace` lifting |
-| | `Examples` | `Defi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`), `Tests` |
+| `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | reusable kits: `Math` (`uint256` `mulDiv`), `ERC20` ledgers, `ERC4626` models and properties, `Trace` lifting |
+| | `Examples` | `QEDefi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`), `Tests` |
 
-Rules: the root package never depends on Mathlib or on `defi/`; `EvmLean` never imports
-`EvmLogic`; generic results go to `EvmLogic` or `Defi`, contract-specific ones to
+Rules: the root package never depends on Mathlib or on `qedefi/`; `EvmLean` never imports
+`EvmLogic`; generic results go to `EvmLogic` or `QEDefi`, contract-specific ones to
 `Examples`. Namespaces mirror directories (`EvmLogic.Solidity.Keccak` is
 `EvmLogic/Solidity/Keccak.lean`); lemmas about `EvmLean`'s own types keep the `EvmLean.*`
-namespaces so that dot notation works. Model files in `Defi` use the Lean module system
-(`module`, `public import`) as Mathlib does. The `defi` package requires the root by path
-(`..`).
+namespaces so that dot notation works. Model files in `QEDefi` use the Lean module system
+(`module`, `public import`) as Mathlib does. The `qedefi` package (QEDefi, the DeFi layer)
+requires the root by path (`..`); both packages live in this one repository, and external
+projects depend on QEDefi with a Lake git requirement and `subDir = "qedefi"` (see the
+README).
 
 ## Testing
 
-- **Unit tests** (`EvmTest/`, `defi/Examples/Tests/`): `#guard` and kernel `example`s, one file
+- **Unit tests** (`EvmTest/`, `qedefi/Examples/Tests/`): `#guard` and kernel `example`s, one file
   per module, on official vectors where they exist.
 - **Conformance** (`Conformance/`): `lake exe conform [dirs] [--threads N] [--filter S]
   [--fork Cancun|Prague|Osaka|all] [--parse-only] [--results FILE]` runs BlockchainTests
@@ -99,7 +101,7 @@ namespaces so that dot notation works. Model files in `Defi` use the Lean module
   EVMYulLean reports against (it passes 22,267 / 22,302 there); execution-spec-tests v5.4.0
   (`scripts/fetch-eest-fixtures.sh`). Transition networks (`<A>To<B>AtTime15k`) switch fork
   per block by timestamp. Results are in the [README](../README.md#results).
-- **Differential** (`defi/Examples/Differential/`): `lake exe difftest` deploys the compiled
+- **Differential** (`qedefi/Examples/Differential/`): `lake exe difftest` deploys the compiled
   ERC-4626 targets in evm-lean and in anvil and compares random call sequences
   ([contracts/README.md](../contracts/README.md#differential-testing)).
 

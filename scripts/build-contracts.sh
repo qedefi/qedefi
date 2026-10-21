@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the verification targets with the pinned compiler, extract their artifacts and
-# generate the Lean constants in defi/Examples/<Project>/Contracts/. Two kinds of target:
+# generate the Lean constants in qedefi/Examples/<Project>/Contracts/. Two kinds of target:
 #   compiled  Solidity sources under contracts/ (forge, solc 0.8.28), deployed on anvil;
 #   mainnet   deployed mainnet bytecode pinned in contracts/mainnet/<Name>/ (fetched once by
 #             scripts/fetch-mainnet.sh; this script is offline and checks the code hash).
@@ -15,10 +15,10 @@
 #     storageLayout.json, immutableReferences.json}
 #   contracts/artifacts/deployment.json
 #   contracts/mainnet/<Name>/{methodIdentifiers.json, events.json, errors.json}
-#   defi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}.lean
-#   defi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}.lean
-#   defi/Examples/Solady/Contracts/SoladyToken.lean
-#   defi/Examples/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
+#   qedefi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}.lean
+#   qedefi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}.lean
+#   qedefi/Examples/Solady/Contracts/SoladyToken.lean
+#   qedefi/Examples/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
 #
 # Immutables. solc emits the runtime code with zero placeholders where immutables go
 # (`runtime.template.hex`, positions in `immutableReferences.json`); the constructor fills
@@ -76,12 +76,12 @@ declare -A LEANNS=(
   [SoladyToken]="Examples.Solady.Contracts"
 )
 declare -A LEANDIR=(
-  [SolmateAsset]="$ROOT/defi/Examples/Solmate/Contracts"
-  [SolmateVault]="$ROOT/defi/Examples/Solmate/Contracts"
-  [OzAsset]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
-  [OzVault]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
-  [OzVaultOffset]="$ROOT/defi/Examples/OpenZeppelin/Contracts"
-  [SoladyToken]="$ROOT/defi/Examples/Solady/Contracts"
+  [SolmateAsset]="$ROOT/qedefi/Examples/Solmate/Contracts"
+  [SolmateVault]="$ROOT/qedefi/Examples/Solmate/Contracts"
+  [OzAsset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [OzVault]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [OzVaultOffset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [SoladyToken]="$ROOT/qedefi/Examples/Solady/Contracts"
 )
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
@@ -438,7 +438,7 @@ for t in "${MAINNET[@]}"; do
   done
 
   ns="${MNS[$t]}"
-  dir="$ROOT/defi/$(printf '%s' "$ns" | tr . /)"
+  dir="$ROOT/qedefi/$(printf '%s' "$ns" | tr . /)"
   mkdir -p "$dir"
   f="$dir/$t.lean"
   opt=$(jq -r 'if .optimizer.enabled then "\(.optimizer.runs) runs" else "off" end' "$d/meta.json")
@@ -524,9 +524,9 @@ done
 
 if [ $CHECK -eq 1 ]; then
   git -C "$ROOT" diff --exit-code -- contracts/artifacts contracts/mainnet \
-    defi/Examples/Solmate/Contracts defi/Examples/OpenZeppelin/Contracts \
-    defi/Examples/Solady/Contracts \
-    $(for t in "${MAINNET[@]}"; do printf '%s ' "defi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
+    qedefi/Examples/Solmate/Contracts qedefi/Examples/OpenZeppelin/Contracts \
+    qedefi/Examples/Solady/Contracts \
+    $(for t in "${MAINNET[@]}"; do printf '%s ' "qedefi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"
 fi

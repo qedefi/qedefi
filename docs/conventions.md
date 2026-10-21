@@ -10,10 +10,10 @@ export PATH="$HOME/.elan/bin:$PATH"
 lake build EvmLean EvmLogic        # semantics and program logic
 lake test                          # EvmTest (#guard)
 lake exe conform tests/fixtures    # after scripts/fetch-fixtures.sh
-(cd defi && lake exe cache get && lake build)
+(cd qedefi && lake exe cache get && lake build)
 ```
 
-Lean v4.35.0. The root package uses core + Std only; `defi/` adds Mathlib v4.35.0. Do not add
+Lean v4.35.0. The root package uses core + Std only; `qedefi/` adds Mathlib v4.35.0. Do not add
 dependencies.
 
 ## Trust rules
@@ -29,8 +29,8 @@ dependencies.
 ## Before you commit
 
 - `lake build` and `lake test` are green with no warnings in your files (CI builds both
-  packages with `--wfail`); also `(cd defi && lake build)` if you touched `EvmLogic` or
-  `defi/`.
+  packages with `--wfail`); also `(cd qedefi && lake build)` if you touched `EvmLogic` or
+  `qedefi/`.
 - `scripts/check-trust.sh`: no trust escape hatch (comments and backtick spans are ignored).
 - `scripts/check-comment-only.py <base-rev> [paths…]`: for documentation-only changes to Lean
   files, checks that only comments, whitespace and `open` lines changed.
@@ -40,9 +40,9 @@ dependencies.
 
 ## Organisation
 
-- Namespaces mirror directories. Generic results go to `EvmLogic` (root package) or `Defi`;
-  anything about a specific contract goes to `defi/Examples/`.
-- Root files (`EvmLean.lean`, `EvmLogic.lean`, `EvmTest.lean`, `Defi.lean`, `Examples.lean`)
+- Namespaces mirror directories. Generic results go to `EvmLogic` (root package) or `QEDefi`;
+  anything about a specific contract goes to `qedefi/Examples/`.
+- Root files (`EvmLean.lean`, `EvmLogic.lean`, `EvmTest.lean`, `QEDefi.lean`, `Examples.lean`)
   contain only `import`s and a module doc.
 - Stable interfaces: `Crypto` and `Context.crypto`, `Interpreter.processMessageCall`,
   `OutOfFuel`, `createAddress`/`create2Address`, `Precompile.isPrecompile`/`Precompile.run`
@@ -109,5 +109,5 @@ dependencies.
 - `#guard` for executable checks; `example … := by decide +kernel` (or `kernel_rfl`) for
   kernel checks (plain `decide` uses the elaborator and can hang on `ByteArray` code);
   `#guard_msgs in #eval` for printed output. One test file per module in `EvmTest/`
-  (`defi/Examples/Tests/` in the `defi` package).
+  (`qedefi/Examples/Tests/` in the `qedefi` package).
 - Use official vectors: NIST/FIPS, EIP test cases, go-ethereum precompile JSONs, c-kzg.

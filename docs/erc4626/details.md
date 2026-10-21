@@ -1,7 +1,7 @@
 # ERC-4626 verification: technical notes
 
 Notes per component of the Solmate verification ([README](README.md)). Paths are under
-`defi/Examples/Solmate/` unless stated; theorem names are in the namespace of their
+`qedefi/Examples/Solmate/` unless stated; theorem names are in the namespace of their
 directory (`Examples.Solmate.ERC4626.…`, `Examples.Solmate.ERC20.…`). Every theorem holds
 for every `Crypto`, every fork the hypotheses allow, and arbitrary immutables.
 
@@ -15,7 +15,7 @@ for every `Crypto`, every fork the hypotheses allow, and arbitrary immutables.
   `ERC20.view` (supply slot 2, `balanceOf[a]` at `keccak(a ‖ 3)`, `allowance[o][s]` at
   `keccak(s ‖ keccak(o ‖ 4))`), hook counters at slots 7 and 6. `Address` is finite, so the
   balances form a `Finsupp` with no assumption.
-- `Refines crypto w vault asset s` (both ledgers represented as `Defi.ERC20.Rep`, counters
+- `Refines crypto w vault asset s` (both ledgers represented as `QEDefi.ERC20.Rep`, counters
   equal) and `refines_iff : Refines … s ↔ s = abs …`. After writes, `RepOn P` keeps
   allowances only for entries whose slot was not written.
 - Reading needs **no** hash hypothesis: `abs` is by definition what the code reads. Writes need
@@ -38,7 +38,7 @@ summary (`WP.call`/`WP.staticcall`).
 | share token | `sharesTransfer_refines`, `sharesTransferFrom_refines`, `sharesApprove_refines` and views (`SharesFrame.lean`) |
 | asset functions | `assetTransfer_refines`, `assetTransferFrom_refines`, `assetApprove_refines`, `assetMint_refines`, `assetBurn_refines` (`ERC20/`) |
 
-Model relation: each operation of `Defi.ERC4626.Solmate` is an `Option` chain whose steps map
+Model relation: each operation of `QEDefi.ERC4626.Solmate` is an `Option` chain whose steps map
 one-to-one to these summaries; `some s'` ⇒ the bytecode succeeds and the final storage
 represents `s'`, `none` ⇒ the whole call reverts. Hypotheses: `BalanceSlotOk` for every
 balance written (caller, receiver, owner, the vault in the asset), `AllowanceSlotOk` for
@@ -50,9 +50,9 @@ context and `readBytes_code_asset*` lemmas for the six `PUSH32`s of the `asset` 
 internal functions composed with `WP.bind_mono`; asset calls via `WP.call` with the callee
 summaries, then `wp_generalize_gas` before continuing.
 
-## 3. Traces of top-level calls (`ERC4626/Invariants/`, `Defi/Trace/Lift.lean`)
+## 3. Traces of top-level calls (`ERC4626/Invariants/`, `QEDefi/Trace/Lift.lean`)
 
-- `Defi.Trace.Lift` is EVM-independent: a `System` packs model `step`, `abs`, concrete call
+- `QEDefi.Trace.Lift` is EVM-independent: a `System` packs model `step`, `abs`, concrete call
   and environment transitions, `Inv`, an agreement `Agree` and per-operation side conditions.
   `System.Refinement` lists the per-call obligations (`OpRefines`: `match step (abs w) op with
   | some s' => abs w' ≈ s' | none => w' = w`); `Refinement.lift`, `Refinement.invariant`,
@@ -101,7 +101,7 @@ address argument), with at least 2000 gas.
 
 ## 6. Events
 
-Model (`Defi/ERC4626/Events.lean`): `Solmate.events s op` lists exactly what Solmate emits:
+Model (`QEDefi/ERC4626/Events.lean`): `Solmate.events s op` lists exactly what Solmate emits:
 `Transfer`/`Approval` of either token (no `Approval` when `transferFrom` spends an
 allowance), `Transfer` from/to 0 for asset `mint`/`burn`; `deposit`/`mint` emit the asset's
 `Transfer(caller, vault, assets)`, the share `Transfer(0, receiver, shares)` and
@@ -109,7 +109,7 @@ allowance), `Transfer` from/to 0 for asset `mint`/`burn`; `deposit`/`mint` emit 
 `Transfer(vault, receiver, assets)`. Reverting calls emit nothing (`events_eq_nil`);
 `Solmate.stream` concatenates (`stream_append`).
 
-Encoding (`Defi/ERC4626/Logs.lean`): `transferLog`, `approvalLog`, `depositLog`,
+Encoding (`QEDefi/ERC4626/Logs.lean`): `transferLog`, `approvalLog`, `depositLog`,
 `withdrawLog`; topic hashes are the bytecode's constants, `#guard`-checked against Keccak,
 so no hash hypothesis. `EventsPost`: success after appending exactly the expected logs, or a
 revert with none; `processMessageCall_logs_of_fail` makes reverts free. Theorems are
@@ -120,7 +120,7 @@ share-token `transfer_events_call` etc. (`EventsShares.lean`).
 
 ## 7. `permit`, `nonces`, `DOMAIN_SEPARATOR()`
 
-Model (`Defi/ERC20/Permit.lean`): `PermitToken` = ledger + nonces; `permit` approves and bumps
+Model (`QEDefi/ERC20/Permit.lean`): `PermitToken` = ledger + nonces; `permit` approves and bumps
 the nonce modulo `2²⁵⁶` iff a validity predicate holds.
 
 Bytecode (`ERC20/Permit.lean`, `ERC4626/Permit.lean`, `ERC4626/PermitSpec.lean`):

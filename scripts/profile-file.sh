@@ -4,7 +4,7 @@
 #
 #   scripts/profile-file.sh PATH/TO/File.lean [N]
 #
-# Run from the package that owns the file (`defi/` for `defi/...`). Times are wall seconds of
+# Run from the package that owns the file (`qedefi/` for `qedefi/...`). Times are wall seconds of
 # `elaborating proof of …` (tactic proof, including its kernel check when synchronous) and
 # `typechecking declarations […]` (kernel).
 set -euo pipefail

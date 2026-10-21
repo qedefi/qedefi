@@ -1,8 +1,8 @@
 # Verification targets
 
 Pinned Solidity sources, a reproducible build, pinned mainnet bytecode, and the artifacts used
-by the Lean proofs (`defi/Examples/Solmate/`), the generated contract modules
-(`defi/Examples/<Project>/Contracts/`) and the differential tester (`lake exe difftest`). The
+by the Lean proofs (`qedefi/Examples/Solmate/`), the generated contract modules
+(`qedefi/Examples/<Project>/Contracts/`) and the differential tester (`lake exe difftest`). The
 ERC-4626 verification is described in [docs/erc4626](../docs/erc4626/README.md), the token
 targets in [docs/tokens.md](../docs/tokens.md).
 
@@ -210,7 +210,7 @@ creation code.
 
 `lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]] [--edge]
 [--low-gas PCT]`
-(`defi/Examples/Differential/Main.lean`, run from `defi/`, needs anvil) deploys both families
+(`qedefi/Examples/Differential/Main.lean`, run from `qedefi/`, needs anvil) deploys both families
 through their creation code in evm-lean (`processMessageCall`, `Crypto.real`, Cancun) and in
 anvil, then runs random call sequences from four actors: asset mint/burn/approve/transfer/
 transferFrom, donations, vault deposit/mint/withdraw/redeem with third-party owners, share
@@ -224,7 +224,7 @@ Families: `solmate`, `oz` (default), `oz3` (OZ vault with δ = 3), and the token
 `oz20`, `solady`, `weth9`, `usdt`, `usdtfee` (fee on in genesis), `bnb`, `sta`, `ampl`, `gusd`
 (proxy, implementation and store; calls to all three), `yamv2`, `lend`, `lendico` (LEND with
 the ICO reopened: purchases with ether, transfers locked) and `zrx`
-(`defi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. `--edge` makes
+(`qedefi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. `--edge` makes
 the token generators favour extreme amounts (0, 1, `2²⁵⁶ − 1`, `2²⁵⁵`, balance, balance + 1),
 self-transfers and address arguments with dirty upper 96 bits; `--low-gas PCT` lowers the
 gas limit of `PCT` % of random calls (vaults too): the previous call again with `gasUsed + δ`
@@ -273,4 +273,4 @@ The Solmate failure is a genuine deviation from EIP-4626 ("`maxWithdraw` MUST NO
 `shares · totalAssets ≥ 2²⁵⁶` (e.g. an owner with ~4.3·10⁶⁵ shares). `convertToAssets`,
 `previewRedeem`, `convertToShares`, `previewDeposit` and the corresponding `deposit`/`redeem`
 paths revert the same way; the model makes these operations partial accordingly
-(`Defi.ERC4626.Solmate.maxWithdraw_reverts_of_overflow`).
+(`QEDefi.ERC4626.Solmate.maxWithdraw_reverts_of_overflow`).

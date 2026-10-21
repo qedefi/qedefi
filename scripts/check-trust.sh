@@ -4,7 +4,7 @@
 # * The semantics (EvmLean/): no `sorry`, `axiom`, `opaque`, `partial def`, `unsafe`,
 #   `@[extern]`, `implemented_by`, `native_decide`, `panic!`, `get!`, `head!`, `getLast!`,
 #   `!`-indexing.
-# * The proof libraries (EvmLogic/, defi/Defi/, defi/Examples/): no `sorry`, `axiom`,
+# * The proof libraries (EvmLogic/, qedefi/QEDefi/, qedefi/Examples/): no `sorry`, `axiom`,
 #   `native_decide`.
 #
 # Comments and backtick-quoted spans (docs mentioning e.g. `opaque`) are ignored.
@@ -30,7 +30,7 @@ scan() { # scan <regex> <paths...>
 semantics=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?(axiom|opaque|partial\s+def|unsafe)\b|\@\[extern|implemented_by|native_decide|panic!|\bget!|\bhead!|\bgetLast!|\]!' \
   EvmLean EvmLean.lean)
 proofs=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?axiom\b|native_decide' \
-  EvmLogic EvmLogic.lean defi/Defi defi/Defi.lean defi/Examples defi/Examples.lean)
+  EvmLogic EvmLogic.lean qedefi/QEDefi qedefi/QEDefi.lean qedefi/Examples qedefi/Examples.lean)
 status=0
 if [ -n "$semantics" ]; then
   echo "$semantics"

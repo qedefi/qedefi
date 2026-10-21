@@ -5,6 +5,27 @@ mirroring directories) renamed modules and namespaces but kept every declaration
 This table lists the old and new full names of the headline theorems; every other
 declaration moved the same way (old namespace prefix → new prefix, see the module table at the end).
 
+## Package rename: defi → qedefi, Defi → QEDefi
+
+The DeFi package was later renamed to QEDefi ("QEDefi: DeFi, quod erat demonstrandum."). Every
+declaration kept its base name and statement; only the `Defi` prefix changed. The sections
+below record the restructuring as it happened, so their "new" names still read `Defi.*`
+(and `defi/Defi/`): apply this mapping to get the current names.
+
+| Old | New |
+|---|---|
+| directory `defi/` | `qedefi/` |
+| Lake package `defi` | `qedefi` |
+| library and root module `Defi` (`defi/Defi.lean`) | `QEDefi` (`qedefi/QEDefi.lean`) |
+| modules `Defi.*` (`defi/Defi/…`) | `QEDefi.*` (`qedefi/QEDefi/…`) |
+| namespace `Defi.Math.*` | `QEDefi.Math.*` |
+| namespace `Defi.ERC20.*` | `QEDefi.ERC20.*` |
+| namespace `Defi.ERC4626.*` | `QEDefi.ERC4626.*` |
+| namespace `Defi.Trace.*` | `QEDefi.Trace.*` |
+| `Examples.*` (library, modules, namespaces), in `defi/Examples/` | unchanged names, in `qedefi/Examples/` |
+
+The core package `evm-lean` (`EvmLean`, `EvmLogic`, `EvmTest`, `Conformance`) is unchanged.
+
 ## `Defi.ERC4626.Inflation` (was `EvmLeanSpecs.Vault.InflationAlgebra`)
 
 | Old name | New name |

@@ -9,9 +9,9 @@ statement.
 ## Method
 
 - **(a) Clean builds**: `scripts/bench-build.sh OUTDIR`. It deletes `.lake/build` and
-  `defi/.lake/build` but keeps `defi/.lake/packages` (Mathlib comes from its cache). It builds
+  `qedefi/.lake/build` but keeps `qedefi/.lake/packages` (Mathlib comes from its cache). It builds
   `EvmLean` without timing it, then times `lake build --wfail EvmLogic` (root package) and
-  `lake build --wfail Defi Examples` (`defi/`) at Lake's default parallelism, on a 12-core
+  `lake build --wfail QEDefi Examples` (`qedefi/`) at Lake's default parallelism, on a 12-core
   Apple machine.
 - **(b) Per-file times**: Lake's `Built … (t)` lines from the same logs. These times come from
   the parallel build, so contention inflates them. A single file built alone takes about half as
@@ -22,7 +22,7 @@ statement.
   The time per instruction is the difference between the two (best of 3) divided by the
   instructions the symbolic-execution tactics executed. The count comes from
   `trace.EvmLean.symStep`, and that trace is on during the timed run.
-- **Statements**: a dump of every theorem in `EvmLogic`/`Defi`/`Examples`. Each entry is a deep
+- **Statements**: a dump of every theorem in `EvmLogic`/`QEDefi`/`Examples`. Each entry is a deep
   hash of the statement plus every definition reachable from it, and the 267 headline
   statements are also pretty-printed. The dump ran before the work and again after each step.
 
@@ -35,10 +35,10 @@ Baseline: `85ff30d` (`main` when the work started). Final: branch `perf`.
 | | baseline wall | final wall | speedup | baseline CPU (user) | final CPU (user) |
 |---|---:|---:|---:|---:|---:|
 | `EvmLogic` | 81.8 s | 50.1 s | 1.6× | 183 s | 247 s |
-| `Defi Examples` | 2572.0 s | 171.3 s | **15.0×** | 10121 s | 1195 s |
+| `QEDefi Examples` | 2572.0 s | 171.3 s | **15.0×** | 10121 s | 1195 s |
 | both | 2653.8 s | 221.4 s | **12.0×** | 10304 s | 1443 s (7.1×) |
 
-Repeated clean builds of the same tree vary by about ±5 s (`defi`: 166–171 s).
+Repeated clean builds of the same tree vary by about ±5 s (`qedefi`: 166–171 s).
 
 ### (b) The 20 heaviest files of the baseline
 
@@ -124,7 +124,7 @@ parallel, which is why the wall time per instruction is lower than that.
 - `scripts/check-trust.sh` passes. Both packages build with `--wfail`.
 - `lake exe conform --threads 11 tests/fixtures` gives 22,334 passed / 0 failed. That is
   BlockchainTests 22,332 / 0, the same set as `main`, plus 2 EIPTests examples.
-- `cd defi && lake exe difftest --seed 3 --sequences 10 --length 30` gives 0 mismatching
+- `cd qedefi && lake exe difftest --seed 3 --sequences 10 --length 30` gives 0 mismatching
   sequences (630 transactions).
 
 ## Limits

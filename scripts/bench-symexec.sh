@@ -8,12 +8,12 @@
 # of `ERC4626/Deposit.lean`) as a standalone file, with `trace.EvmLean.symStep` on, and an empty
 # file with the same imports. Reports the instructions executed by the symbolic-execution
 # tactics, the elaboration time beyond the imports (best of RUNS, default 3), and their ratio.
-# Needs the defi package built up to Deposit's imports.
+# Needs the qedefi package built up to Deposit's imports.
 set -euo pipefail
 runs=${1:-3}
 export PATH="$HOME/.elan/bin:$PATH"
 root=$(cd "$(dirname "$0")/.." && pwd)
-src="$root/defi/Examples/Solmate/ERC4626/Deposit.lean"
+src="$root/qedefi/Examples/Solmate/ERC4626/Deposit.lean"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 end=$(grep -n '^theorem mint_refines' "$src" | cut -d: -f1)
@@ -23,7 +23,7 @@ opt=""
 grep -q 'EvmLean.symStep' "$root/EvmLogic/Tactic/EvmStep.lean" && opt='set_option trace.EvmLean.symStep true'
 # Where `mintShares_wp`/`afterDeposit_wp` live in their own module (`DepositInternal`), that
 # module's body is prepended, so both trees elaborate the same proofs.
-int="$root/defi/Examples/Solmate/ERC4626/DepositInternal.lean"
+int="$root/qedefi/Examples/Solmate/ERC4626/DepositInternal.lean"
 { if [ -f "$int" ]; then
     grep '^import' "$int"; grep '^import' "$src" | grep -v 'ERC4626.DepositInternal$'
   else head -n "$imports" "$src"; fi
@@ -32,7 +32,7 @@ int="$root/defi/Examples/Solmate/ERC4626/DepositInternal.lean"
   if [ -f "$int" ]; then grep -v '^import' "$int"; fi
   sed -n "$((imports + 1)),$((end - 4))p" "$src"; echo 'end Examples.Solmate.ERC4626'; echo 'end'
 } > "$tmp/Bench.lean"
-cd "$root/defi"
+cd "$root/qedefi"
 best() { # file → best wall seconds
   local b=""
   for _ in $(seq "$runs"); do

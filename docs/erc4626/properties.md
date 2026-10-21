@@ -1,8 +1,8 @@
 # ERC-4626 property catalogue
 
 Each property, its source, and the Lean theorem proving (✓) or refuting (✗) it on the models
-in `defi/Defi/ERC4626/`. Names are relative to `Defi.ERC4626` (`Solmate.`, `Oz.`,
-`Inflation.`, `Witnesses.`); the round-trip arithmetic is in `Defi.Math`.
+in `qedefi/QEDefi/ERC4626/`. Names are relative to `QEDefi.ERC4626` (`Solmate.`, `Oz.`,
+`Inflation.`, `Witnesses.`); the round-trip arithmetic is in `QEDefi.Math`.
 
 - **Solmate**: `ERC4626` + `MockERC4626` (`totalAssets = asset.balanceOf(this)`) over
   `MockERC20` (`Solmate.lean`).
@@ -53,7 +53,7 @@ inflation attack and virtual offsets; public audit findings on first-depositor a
 Solmate satisfies each when `S > 0` before the call (and, for trips starting with a
 withdrawal or redemption, shares remain in between): exactly the a16z assumption with
 `_vaultMayBeEmpty = false`. OZ(δ) satisfies all eight in every state. The arithmetic core is
-`Defi.Math.rt_in_out_assets`, `rt_in_out_shares`, `rt_out_in_shares`, `rt_out_in_assets`.
+`QEDefi.Math.rt_in_out_assets`, `rt_in_out_shares`, `rt_out_in_shares`, `rt_out_in_assets`.
 
 | Property (a16z `prop_RT_*`) | Solmate | Lean |
 |---|---|---|
@@ -91,5 +91,5 @@ The OZ theorems have the same names in `Oz.` (`Oz.rt_deposit_redeem`, …, `Oz.c
 - OZ `maxDeposit`/`maxRedeem` exactness, and an empty-vault setup theorem for OZ (its attack
   theorems take the post-setup state as hypothesis).
 
-Events and `permit` are modelled separately (`Defi.ERC4626.Events`, `Defi.ERC20.Permit`) and
+Events and `permit` are modelled separately (`QEDefi.ERC4626.Events`, `QEDefi.ERC20.Permit`) and
 proved on the bytecode ([details.md](details.md)).

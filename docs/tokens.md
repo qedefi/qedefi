@@ -1,11 +1,11 @@
 # Token verification targets
 
-Preparation for verifying further tokens, one at a time, each as `defi/Examples/<Project>/`
-with pinned sources, artifacts, differential tests, a refinement against the `Defi.ERC20`
+Preparation for verifying further tokens, one at a time, each as `qedefi/Examples/<Project>/`
+with pinned sources, artifacts, differential tests, a refinement against the `QEDefi.ERC20`
 model and invariants, the way Solmate's ERC-4626 vault is verified
 ([erc4626](erc4626/README.md)). Nothing here is proved on the bytecode yet; this file records what
 each target is, exactly, and what should be proved about it. The model-level results (the
-`Defi.ERC20.Variant` model and its integration with the vault models) are in the last section.
+`QEDefi.ERC20.Variant` model and its integration with the vault models) are in the last section.
 
 | Target | Kind | Artifact | Lean module | `difftest` family |
 |---|---|---|---|---|
@@ -61,7 +61,7 @@ transaction (any sender, any calldata, any value, any gas, top-level or nested):
    transaction in which `T` is called by arbitrary contracts at any depth.
 
 The Solmate ERC-20 already has 2, 3, 5, 6 at the bytecode level
-(`defi/Examples/Solmate/ERC20/`) and 1, 4, 7 through the vault proofs.
+(`qedefi/Examples/Solmate/ERC20/`) and 1, 4, 7 through the vault proofs.
 
 ## OpenZeppelin `ERC20` (v5.7.0, `ERC20Mock`)
 
@@ -84,7 +84,7 @@ Artifact `OzAsset`: 1,900 B runtime, no immutables, no constructor arguments (`n
 | `burn(a, v)` | `a = 0`: `ERC20InvalidSender(0)`; `bal[a] < v`: `ERC20InsufficientBalance` | `bal[a] −= v`, supply −= v (unchecked) | `Transfer(a, 0, v)` |
 | views | value sent: empty revert | — | — |
 
-**Differences from Solmate's `ERC20`** (both already modelled in `Defi.ERC20.Token`:
+**Differences from Solmate's `ERC20`** (both already modelled in `QEDefi.ERC20.Token`:
 `transfer` vs. `ozTransfer` etc.):
 
 - zero-address checks on sender, receiver, approver, spender (Solmate has none: transfers to
@@ -112,7 +112,7 @@ helper and instantiated twice.
 `convertToShares(a) = a · (S + 10^δ) / (T + 1)`, `convertToAssets(s) = s · (T + 1) /
 (S + 10^δ)` (rounding per EIP-4626), `T = asset.balanceOf(vault)`.
 
-**Properties to prove on the bytecode**: the refinement `OzVaultOffset ⊑ Defi.ERC4626.Oz`
+**Properties to prove on the bytecode**: the refinement `OzVaultOffset ⊑ QEDefi.ERC4626.Oz`
 with `δ = 3` (the model is already parametric in δ: `Oz.lean`, `OzProps.lean`), and through it
 the inflation bounds already proved on the model: attacker profit
 `P·(S + 1000) ≤ T + 1 − 999·D` (`Inflation.oz_profit_bound`), cost of inflicting loss `L`
@@ -236,7 +236,7 @@ decoder (dirty upper bits: empty revert).
 - `allowance` is a *view function*, not a slot: the model allowance is
   `if s = PERMIT2 then max else slot`; storage rows `(o, PERMIT2)` can still be written
   (`approve(PERMIT2, max)` stores `max`), and `transferFrom` by Permit2 bypasses them;
-- `permit` refinement as for Solmate (`Defi.ERC20.Permit`), with Solady's revert order;
+- `permit` refinement as for Solmate (`QEDefi.ERC20.Permit`), with Solady's revert order;
 - `totalSupply`'s fixed slot must avoid every hashed slot the proof touches (a
   `KeccakAvoids`-style hypothesis over the three preimage families), and the three families
   must be mutually fresh (`KeccakFresh` per touched preimage) — the 52-byte allowance
@@ -375,7 +375,7 @@ with an invalid signature (`ecrecover` returns 0).
 **Model variant**: balances stored in *shares* (gons) with a global scale; the ERC-20 view is
 `gons / gpf`; `rebase` is a privileged operation changing the view of every account; the
 supply invariant becomes `Σ gons ≤ TOTAL_GONS` (exact for gons) with the fragment view
-bounded by `S`. Structurally this is an ERC-4626-like share ledger, so `Defi.ERC4626` rounding
+bounded by `S`. Structurally this is an ERC-4626-like share ledger, so `QEDefi.ERC4626` rounding
 lemmas apply.
 
 ### GUSD (Gemini dollar): 2 decimals, three contracts linked by `CALL`
@@ -460,7 +460,7 @@ status success, no event and no state change (an integration that ignores the re
 proceeds as if paid); an allowance of exactly `2²⁵⁶ − 1` is not spent; no zero-address checks
 (transfers to `0` keep the supply); zero transfers and self-transfers succeed. Unknown
 selectors fail by `throw` and consume all gas (204 of 276 malformed calls in campaign pass
-A; arguments cut short are read as zeros, so the others succeed). **Model variant**: failure convention `returnFalse` (already in `Defi.ERC20.Variant`, so
+A; arguments cut short are read as zeros, so the others succeed). **Model variant**: failure convention `returnFalse` (already in `QEDefi.ERC20.Variant`, so
 `unchecked_call_returnFalse` and `unchecked_returnFalse_deposit` apply to ZRX as is),
 `infiniteAllowance = MAX`.
 
@@ -469,7 +469,7 @@ A; arguments cut short are read as zeros, so the others succeed). **Model varian
 USDC and PAXG (zos-slot proxies; PAXG's current implementation has no transfer fee anymore,
 contrary to the `weird-erc20` list). Addresses and code hashes in `contracts/README.md`.
 
-### The `Defi/ERC20` variant these need
+### The `QEDefi/ERC20` variant these need
 
 One `Token.Variant` record (see the next section) with: return convention
 (`bool | none | perFunction`), `zeroValueReverts`, `zeroAddressReverts`, `approveGuard`,
@@ -509,9 +509,9 @@ rebasing: balances change without transfers; deprecation: behaviour delegated).
   relying on `permit` for authorization then uses a stale allowance (witness: the scenario's
   phantom call).
 
-## Generalizing `Defi/ERC20` into a reusable kit
+## Generalizing `QEDefi/ERC20` into a reusable kit
 
-Today: `Defi.ERC20.Token` (balances `A →₀ ℕ`, supply, allowances) with Solmate operations
+Today: `QEDefi.ERC20.Token` (balances `A →₀ ℕ`, supply, allowances) with Solmate operations
 and OZ variants (`ozTransfer`, `ozSpend`, …), `Rep` relating it to
 `EvmLogic.Solidity.ERC20.State` read through `Layout` (`⟨supply, balances, allowances⟩`
 slot numbers, Solidity mapping derivation only). Proposed shape:
@@ -537,10 +537,10 @@ slot numbers, Solidity mapping derivation only). Proposed shape:
    OZ custom errors with arguments, Solady 4-byte errors, empty reverts, `INVALID` for 0.4
    `throw`), return convention (`bool` vs. nothing), and the event list per operation (OZ v5
    and Solady emit no `Approval` on spend; USDT emits `Transfer` to the owner for fees). The
-   `Events`/`Logs` modules of `Defi.ERC4626` show the pattern.
+   `Events`/`Logs` modules of `QEDefi.ERC4626` show the pattern.
 5. **One refinement theorem shape** per token: for each selector, the bytecode's
    `processMessageCall` result equals the model step lifted through `Rep` (as
-   `Examples.Solmate.ERC20.Spec`), so the vault theorems (`Defi.Trace.Lift`) can be
+   `Examples.Solmate.ERC20.Spec`), so the vault theorems (`QEDefi.Trace.Lift`) can be
    instantiated with any asset satisfying it — in particular the integration theorems below.
 
 ## Expected proof difficulties (summary)
@@ -570,12 +570,12 @@ implementation refinement over the proxy's storage.
 ## Differential testing
 
 `lake exe difftest --family oz3,oz20,solady,weth9` (or `tokens`, `vaults`, `all`; run from
-`defi/`; `--edge` and `--low-gas PCT` as in `contracts/README.md`). The GUSD family installs
+`qedefi/`; `--edge` and `--low-gas PCT` as in `contracts/README.md`). The GUSD family installs
 all three contracts with their own storage, compares the storage of all three and sends 30 %
 of its ABI calls to the implementation and the store directly (`batchTransfer`, prints, the
 custodian's and the access-controlled setters); lock ids returned by earlier calls are reused
 as `bytes32` arguments, so `confirmPrint`/`confirmImplChange`/`confirmCustodianChange` hit
-real requests. Token families (`defi/Examples/Differential/Token.lean`): compiled tokens are
+real requests. Token families (`qedefi/Examples/Differential/Token.lean`): compiled tokens are
 deployed through their creation code, mainnet tokens installed with their genesis storage
 (both sides); actors are funded with 1000 ether where ether matters. The generator draws from
 the token's ABI by weight with state-aware amounts, sends ether to payable functions, to the
@@ -678,7 +678,7 @@ transactions.
 
 Proved in Mathlib (standard axioms only, `#print axioms` checked), no bytecode yet.
 
-**The variant model** (`defi/Defi/ERC20/Variant.lean`). `Defi.ERC20.Variant A` is a record of
+**The variant model** (`qedefi/QEDefi/ERC20/Variant.lean`). `QEDefi.ERC20.Variant A` is a record of
 policies: return data per entry point (`bool`/`empty`), how guards and insufficient
 balance/allowance fail (`revert`/`invalid`/`returnFalse`), zero-address checks (also inside
 OZ's `_spendAllowance`), `rejectsSelf`, `zeroValueReverts`, `approveGuard`, infinite
@@ -710,8 +710,8 @@ it a `permit` call reaches the fallback). The fee computation's SafeMath overflo
 | `Variant.move_fee_dst`, `move_fee_src`, `move_fee_supply` | with a fee the recipient gets `v − fee`, the payer loses `v`, a burned fee leaves the supply |
 | `Variant.usdt_approve_isSome_iff`, `approve_approve_eq_none`, `usdt_approve_reset`, `bnb_approve_zero` | USDT `approve` succeeds iff `v = 0 ∨ allowance = 0`; approve-then-approve fails; resetting to 0 works on USDT and is impossible on BNB |
 
-**The extra entry points** (`defi/Defi/ERC20/VariantExtras.lean`, namespace
-`Defi.ERC20.Variant`):
+**The extra entry points** (`qedefi/QEDefi/ERC20/VariantExtras.lean`, namespace
+`QEDefi.ERC20.Variant`):
 
 | Theorem | Statement |
 |---|---|
@@ -732,7 +732,7 @@ it a `permit` call reaches the fallback). The fee computation's SafeMath overflo
 | `withdraw_eq_withdrawWith`, `weth9_withdraw_reject` | `withdraw` is `withdrawWith` with a stipend callee (accept/reject, no storage change: no `SSTORE` under the EIP-2200 sentry, no value transfer; `TSTORE`/logs only, never read by WETH9); a rejection reverts the withdrawal |
 | `weth9_backed_withdrawWith`, `weth9_reentrant_withdraw` | even an unbounded reentrant callee keeps the ether backing and cannot withdraw the same funds twice (debit before the call) |
 
-**USDT deprecation** (`defi/Defi/ERC20/VariantDeprecation.lean`): `DState` is legacy USDT, the
+**USDT deprecation** (`qedefi/QEDefi/ERC20/VariantDeprecation.lean`): `DState` is legacy USDT, the
 switch, and the upgraded token's state (`none`: no code), the upgraded token any variant `W`
 with legacy entry points `byLegacy trusted` (accepted only from `msg.sender = trusted`, then
 executed as called by the original user passed as an argument: `msg.sender` is rewritten to
@@ -749,7 +749,7 @@ USDT by the forward).
 | `Variant.byLegacy_spoof`, `byLegacyUnchecked_impersonation` | with the `msg.sender` check direct calls revert; without it anyone moves anyone's tokens |
 | `DState.deprecated_call`, `deprecated_setDeprecated` | `deprecated` is never cleared |
 
-**The vaults over an asset variant** (`defi/Defi/ERC4626/AssetVariants.lean`). `Asset σ A`
+**The vaults over an asset variant** (`qedefi/QEDefi/ERC4626/AssetVariants.lean`). `Asset σ A`
 abstracts what a vault uses (balance view, `transfer`, `transferFrom`); `GSolmate` and `GOz`
 are the two vault models over any `Asset`, and `GSolmate.deposit_solmate` …,
 `GOz.deposit_oz` … prove they are the existing models over `Asset.solmate`/`Asset.oz`.
@@ -758,7 +758,7 @@ invariant (`Inv_*`) and solvency (`GSolmate.solvent`, `GOz.solvent`); for an
 `Asset.ExactOn` asset: no dilution (`GSolmate.*_price_mono` while `S > 0`, `GOz.*_price_mono`
 always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`NoFee`).
 
-**Integration** (`defi/Defi/ERC4626/Integration.lean`, namespace `Defi.ERC4626.Integration`):
+**Integration** (`qedefi/QEDefi/ERC4626/Integration.lean`, namespace `QEDefi.ERC4626.Integration`):
 
 | Theorem | Statement |
 |---|---|
@@ -776,7 +776,7 @@ always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`N
 | `usdt_reapprove_reverts` | (c) `approve(x)` then `approve(y)`, `x, y ≠ 0`: the second call halts with `REVERT` |
 | `usdt_reapprove_after_pull` | after `approve(x)` (`x < MAX`) and a spender's `transferFrom` of `x'`, a nonzero `approve(y)` succeeds iff `x' = x` |
 
-**Vaults over USDT** (`defi/Defi/ERC4626/IntegrationUsdt.lean`, same namespace):
+**Vaults over USDT** (`qedefi/QEDefi/ERC4626/IntegrationUsdt.lean`, same namespace):
 
 | Theorem | Statement |
 |---|---|

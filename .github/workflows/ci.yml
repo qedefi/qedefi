@@ -15,9 +15,9 @@ jobs:
         with:
           build-args: "--wfail"
           test: true
-      # The `defi` package (Mathlib): Defi, Examples, difftest.
+      # The `qedefi` package (Mathlib): QEDefi, Examples, difftest.
       - name: DeFi package
-        working-directory: defi
+        working-directory: qedefi
         run: |
           lake exe cache get
           lake build --wfail

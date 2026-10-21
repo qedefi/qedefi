@@ -1,0 +1,97 @@
+import EvmLogic.Solidity.Events
+import EvmLean.Crypto.Keccak
+
+/-!
+# The logs of the Solmate contracts' events
+
+Event topics (checked against the executable Keccak; in the bytecode they are constants, so
+no hash hypothesis is needed), the expected `Log` of each event, and the `event_log` /
+`logs_simp` tactics for log proofs after symbolic execution.
+-/
+
+section
+
+namespace QEDefi.ERC4626
+
+open EvmLean EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+
+/-! ## Topics and logs -/
+
+/-- `keccak256("Transfer(address,address,uint256)")`. -/
+def transferTopic : Word :=
+  0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef#256
+
+/-- `keccak256("Approval(address,address,uint256)")`. -/
+def approvalTopic : Word :=
+  0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925#256
+
+/-- `keccak256("Deposit(address,address,uint256,uint256)")`. -/
+def depositTopic : Word :=
+  0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7#256
+
+/-- `keccak256("Withdraw(address,address,address,uint256,uint256)")`. -/
+def withdrawTopic : Word :=
+  0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db#256
+
+#guard Keccak.hash256 "Transfer(address,address,uint256)".toUTF8 = transferTopic
+#guard Keccak.hash256 "Approval(address,address,uint256)".toUTF8 = approvalTopic
+#guard Keccak.hash256 "Deposit(address,address,uint256,uint256)".toUTF8 = depositTopic
+#guard Keccak.hash256 "Withdraw(address,address,address,uint256,uint256)".toUTF8 =
+  withdrawTopic
+
+/-- `Transfer(src, dst, amount)` emitted by `token`. -/
+def transferLog (token src dst : Address) (amount : Word) : Log :=
+  eventLog token [transferTopic, Word.ofAddress src, Word.ofAddress dst] [amount]
+
+/-- `Approval(owner, spender, amount)` emitted by `token`. -/
+def approvalLog (token owner spender : Address) (amount : Word) : Log :=
+  eventLog token [approvalTopic, Word.ofAddress owner, Word.ofAddress spender] [amount]
+
+/-- `Deposit(caller, owner, assets, shares)` emitted by `vault`. -/
+def depositLog (vault caller owner : Address) (assets shares : Word) : Log :=
+  eventLog vault [depositTopic, Word.ofAddress caller, Word.ofAddress owner] [assets, shares]
+
+/-- `Withdraw(caller, receiver, owner, assets, shares)` emitted by `vault`. -/
+def withdrawLog (vault caller receiver owner : Address) (assets shares : Word) : Log :=
+  eventLog vault [withdrawTopic, Word.ofAddress caller, Word.ofAddress receiver,
+    Word.ofAddress owner] [assets, shares]
+
+/-! ## Tactics -/
+
+/-- Close the memory goal `mem.read off len = Abi.encodeArgs [..]` of an event's data after
+symbolic execution: read-over-write through the `MSTORE`s and expansions. -/
+macro "event_data" : tactic => `(tactic| (
+  dsimp only
+  simp (disch := decide) only [BitVec.reduceToNat, Memory.read_expand, Memory.read_storeWord,
+    Memory.read_storeWord_of_disjoint, Memory.read_64, encodeArgs_one, encodeArgs_two]))
+
+/-- Turn the entry a `LOGn` appended (`logEntry`) into the `eventLog` with data `d` and close
+the log equation: the data by `event_data`, the rest (address, topics, earlier logs) by
+`rfl`. -/
+macro "event_log " d:term : tactic => `(tactic| (
+  rw [logEntry_eq_eventLog (data := $d)]
+  rotate_left
+  event_data
+  try rfl))
+
+end QEDefi.ERC4626
+
+end
+
+section
+
+/-! ## Tactics for the log companions of the vault's internal functions -/
+
+namespace QEDefi.ERC4626
+
+open EvmLean EvmLogic EvmLean.Interpreter EvmLogic.Solidity EvmLogic.Tactic
+
+/-- Normalise the logs of a substate built by symbolic execution, with extra rewrite facts. -/
+macro "logs_simp" " [" hs:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
+  simp only [mergeSub_logs, failSub_logs, warmKey_logs, warmAddr_logs, addRefund_logs,
+    ofMessage_logs, frameInit_logs, resumeWith_logs, Array.append_empty, Array.empty_append,
+    Array.append_push, $hs,*]))
+
+end QEDefi.ERC4626
+
+end

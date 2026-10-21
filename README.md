@@ -32,7 +32,7 @@ return data, logs, gas, storage): 20,008 transactions, 0 mismatches.
 **ERC-4626.** The deployed bytecode of Solmate `MockERC4626` over `MockERC20` (solc 0.8.28,
 any immutables) refines an abstract Mathlib model call by call, and the model's invariants
 hold on the bytecode after arbitrary transactions, at any gas and call depth
-(`defi/Examples/Solmate/ERC4626/LowGas/AnyGas.lean`):
+(`qedefi/Examples/Solmate/ERC4626/LowGas/AnyGas.lean`):
 
 | Theorem | Statement, read from the final world's storage |
 |---|---|
@@ -68,11 +68,36 @@ lake exe conform --filter sar      # a subset
 scripts/fetch-eest-fixtures.sh     # execution-spec-tests v5.4.0 into tests/fixtures-eest
 lake exe conform tests/fixtures-eest/fixtures/blockchain_tests --fork Osaka   # Cancun|Prague|Osaka|all
 
-# DeFi package (Mathlib + evm-lean): models, proofs, examples, difftest
-(cd defi && lake exe cache get && lake build)
-(cd defi && lake exe difftest --seed 1 --sequences 30)   # needs Foundry (anvil)
+# QEDefi package (Mathlib + evm-lean): models, proofs, examples, difftest
+(cd qedefi && lake exe cache get && lake build)
+(cd qedefi && lake exe difftest --seed 1 --sequences 30)   # needs Foundry (anvil)
 scripts/build-contracts.sh --check # artifacts and generated Lean reproduce (needs solc 0.8.28)
 ```
+
+## QEDefi
+
+*QEDefi: DeFi, quod erat demonstrandum.*
+
+QEDefi is the DeFi verification layer on top of evm-lean: a second Lake package, `qedefi`, in
+the `qedefi/` directory of this repository (Mathlib v4.35.0 + evm-lean). Its library `QEDefi`
+holds the reusable kits (`Math`, `ERC20` and `ERC4626` models and properties, `Trace` lifting);
+`Examples` holds the verified contracts (Solmate, OpenZeppelin, Solady, mainnet tokens) and the
+differential tester. The repository stays one monorepo with two packages; the root package
+never depends on Mathlib or on `qedefi/`.
+
+Other projects can depend on QEDefi directly from git; Lake clones the repository and builds
+the package in `subDir` (its `require evm-lean` path `".."` resolves inside that clone):
+
+```toml
+[[require]]
+name = "qedefi"
+git = "https://github.com/<owner>/evm-lean"   # this repository
+rev = "main"
+subDir = "qedefi"
+```
+
+Then `import QEDefi` (or a module such as `QEDefi.ERC4626.Solmate`), and run
+`lake exe cache get` for Mathlib's cache.
 
 ## Layout
 
@@ -83,8 +108,8 @@ EvmLogic/       program logic: step lemmas, frame-local WP logic, calls, Solidit
                 gas monotonicity (GasMono), certified abstract interpretation (AbsInt), tactics
 EvmTest/        #guard unit tests
 Conformance/    fixture runner (lake exe conform)
-defi/           Lake package with Mathlib
-  Defi/         reusable kits: Math, ERC20, ERC4626 models and theorems, Trace lifting
+qedefi/         Lake package QEDefi (Mathlib + evm-lean)
+  QEDefi/       reusable kits: Math, ERC20, ERC4626 models and theorems, Trace lifting
   Examples/     Basic demos, Solmate (refinement and invariants), OpenZeppelin (contracts),
                 Differential (lake exe difftest), Tests
 contracts/      pinned Solidity sources, build configuration, compiled artifacts

@@ -3,7 +3,7 @@
 `EvmLogic` is a generic proof library over the `EvmLean` semantics. Every execution theorem
 in it holds for an **arbitrary `Crypto`** and every fork unless stated, and depends only on
 `propext`, `Classical.choice`, `Quot.sound`. Worked examples are in
-`defi/Examples/Basic/`:
+`qedefi/Examples/Basic/`:
 
 | Example | Shows |
 |---|---|
