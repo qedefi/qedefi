@@ -1,12 +1,13 @@
-import Snapshot.Run
+import Snapshot.Sequence
 
 /-!
 # Checking a snapshot offline
 
 Loads a snapshot (checking every code file against its hash) and replays each recorded call
 in the Lean interpreter. A call passes if it reads only state the snapshot determines and
-returns exactly what the node's `eth_call` returned (success flag and output bytes). No
-network access.
+returns exactly what the node's `eth_call` returned (success flag and output bytes). If the
+snapshot has a recorded transaction sequence (`sequence.json`, from `snapshot fork`), it is
+replayed too (`checkSequence`). No network access.
 -/
 
 namespace Snapshot
@@ -38,6 +39,8 @@ def checkSnapshot (dir : System.FilePath) (verbose : Bool := false) : IO Nat := 
       IO.println s!"ERROR       {c.spec.label}: {e}"
   IO.println s!"{dir}: chain {s.chainId} block {s.block} {s.fork.name}, {s.accounts.size} accounts; \
     {ok}/{calls.size} calls reproduce eth_call exactly"
+  if ← (dir / "sequence.json").pathExists then
+    failures := failures + (← checkSequence dir s verbose)
   return failures
 
 end Snapshot

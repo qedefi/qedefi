@@ -22,25 +22,49 @@ def batchSize : Nat := 100
 /-- The outcome of one request: its result, or the JSON-RPC error object. -/
 abbrev RpcResult := Except Json Json
 
-/-- Send `(method, params)` requests in batches; results in request order. -/
+/-- Send one batch; results in request order. -/
+def Rpc.batchOnce (r : Rpc) (part : Array (String × Json)) : IO (Array RpcResult) := do
+  let reqs := part.mapIdx fun i (m, p) =>
+    Json.mkObj [("jsonrpc", "2.0"), ("id", toJson i), ("method", m), ("params", p)]
+  let text ← postJson r.url (Json.arr reqs).compress
+  -- A throttled batch may be refused as a whole (an error object, or an empty body): every
+  -- request of it is then marked rate-limited, to be retried.
+  let refused := Array.replicate part.size (.error (Json.mkObj [("code", toJson (429 : Int))]))
+  let some resp := (Json.parse text).toOption | return refused
+  let arr ← match resp.getArr? with
+    | .ok a => pure a
+    | .error _ =>
+      if (resp.getObjVal? "error" >>= (·.getObjValAs? Int "code")).toOption == some 429 then
+        return refused
+      else fail s!"JSON-RPC error: {text.take 500}"
+  let mut res : Array RpcResult := Array.replicate part.size (.error (Json.str "no response"))
+  for item in arr do
+    let some i := (item.getObjValAs? Nat "id").toOption | continue
+    if i < part.size then
+      res := res.set! i <| match item.getObjVal? "error" with
+        | .ok e => .error e
+        | .error _ => .ok ((item.getObjVal? "result").toOption.getD .null)
+  return res
+
+/-- Whether a request was refused by rate limiting (HTTP/JSON-RPC 429), to be retried. -/
+def rateLimited : RpcResult → Bool
+  | .error e => (e.getObjValAs? Int "code").toOption == some 429
+  | .ok _ => false
+
+/-- Send `(method, params)` requests in batches; results in request order. Requests refused
+by rate limiting (free tiers allow a few hundred compute units per second) are resent after
+a growing pause. -/
 def Rpc.batchRaw (r : Rpc) (calls : Array (String × Json)) : IO (Array RpcResult) := do
   let mut out : Array RpcResult := #[]
   for chunk in (List.range ((calls.size + batchSize - 1) / batchSize)) do
     let part := calls.extract (chunk * batchSize) ((chunk + 1) * batchSize)
-    let reqs := part.mapIdx fun i (m, p) =>
-      Json.mkObj [("jsonrpc", "2.0"), ("id", toJson i), ("method", m), ("params", p)]
-    let text ← postJson r.url (Json.arr reqs).compress
-    let resp ← ofExcept "invalid JSON-RPC response" (Json.parse text)
-    let arr ← match resp.getArr? with
-      | .ok a => pure a
-      | .error _ => fail s!"JSON-RPC error: {text.take 500}"
-    let mut res : Array RpcResult := Array.replicate part.size (.error (Json.str "no response"))
-    for item in arr do
-      let some i := (item.getObjValAs? Nat "id").toOption | continue
-      if i < part.size then
-        res := res.set! i <| match item.getObjVal? "error" with
-          | .ok e => .error e
-          | .error _ => .ok ((item.getObjVal? "result").toOption.getD .null)
+    let mut res ← r.batchOnce part
+    for attempt in [1:30] do
+      let todo := (List.range part.size).filter fun i => rateLimited res[i]!
+      if todo.isEmpty then break
+      IO.sleep (min 10_000 (500 * attempt)).toUInt32
+      let again ← r.batchOnce (todo.toArray.map (part[·]!))
+      for (i, x) in todo.zip again.toList do res := res.set! i x
     out := out ++ res
   return out
 

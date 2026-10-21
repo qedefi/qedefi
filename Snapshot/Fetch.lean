@@ -13,6 +13,7 @@ Input: `<dir>/targets.json`, written by hand:
   "autoViews": true,                      -- optional: seed every argument-free view
   "sourceClosure": true,                  -- optional: sources of every contract read, not
                                           --   only of the targets and their implementations
+  "maxRounds": 256,                       -- optional: bound on discovery rounds
   "contracts": [{"label": "srUSDe", "address": "0x…"}, …],
   "calls": [{"label": "…", "to": "0x…", "data": "0x…", "from": "0x…", "value": "0x0",
              "gas": 30000000}, …] }
@@ -46,6 +47,7 @@ structure Targets where
   sender : Address
   autoViews : Bool := true
   sourceClosure : Bool := true
+  maxRounds : Nat := 256
   contracts : Array Target
   calls : Array CallSpec
 
@@ -74,6 +76,7 @@ def Targets.decode (j : Json) : Except String Targets := do
            block := (j.getObjValAs? Nat "block").toOption, fork, sender,
            autoViews := (j.getObjValAs? Bool "autoViews").toOption.getD true,
            sourceClosure := (j.getObjValAs? Bool "sourceClosure").toOption.getD true,
+           maxRounds := (j.getObjValAs? Nat "maxRounds").toOption.getD 256,
            contracts, calls }
 
 /-! ## Proxies -/
@@ -123,17 +126,25 @@ def fetchInto (r : Rpc) (s : State) (accounts : List Address) (slots : List (Add
 def State.slotCount (s : State) : Nat := s.accounts.foldl (fun n _ st => n + st.storage.size) 0
 
 /-- Run every seed on the current state, fetch what they read and the state does not
-determine, and repeat until nothing is missing. Returns the state and the rounds taken. -/
-def discover (r : Rpc) (s : State) (seeds : Array CallSpec) (maxRounds : Nat := 64) :
+determine, and repeat until nothing is missing. Returns the state and the rounds taken.
+A seed whose run read only fetched state is not run again: fetching adds entries and changes
+none, so its run would not change. Each round follows reads one level deeper (a loop over
+reserves, each behind an oracle adapter behind a feed, takes a round per hop). -/
+def discover (r : Rpc) (s : State) (seeds : Array CallSpec) (maxRounds : Nat := 256) :
     IO (State × Nat) := do
   let mut s := s
+  let mut pending := seeds
   for round in [1:maxRounds + 1] do
     let world := s.world
     let mut acc : Accesses := {}
-    for c in seeds do
+    let mut next := #[]
+    for c in pending do
       match simulate s world c with
-      | .ok (_, a) => acc := acc.union a
+      | .ok (_, a) =>
+        if !(s.missing a).isEmpty then next := next.push c
+        acc := acc.union a
       | .error e => IO.eprintln s!"  {c.label}: {e}"
+    pending := next
     let miss := s.missing acc
     if miss.isEmpty then return (s, round)
     IO.println s!"round {round}: fetching {miss.accounts.size} accounts, \
@@ -167,12 +178,16 @@ def implementationOf? (r : Rpc) (s : State) (a : Address) : IO (Option Address) 
       if res.success && res.output.size ≥ 32 then return some (Word.toAddress (word0 res.output))
   return none
 
-/-- Fetch and save the verified sources of `a`, if it has code and they exist. -/
+/-- Fetch and save the verified sources of `a`, if it has code and they exist. A failing
+provider (rate limits, malformed answers) only costs these sources, not the snapshot. -/
 def saveSources (dir : System.FilePath) (s : State) (labels : Std.HashMap Address String)
     (a : Address) : IO (Option Verified) := do
   let some st := s.accounts[a]? | return none
   if st.code.size = 0 then return none
-  let some v ← verifiedSources? s.chainId a | return none
+  let v ← try verifiedSources? s.chainId a catch e =>
+    IO.eprintln s!"  {hexOfAddress a}: sources not fetched ({e})"
+    pure none
+  let some v := v | return none
   v.save dir a (codeName st.code) (labels.getD a "")
   return some v
 
@@ -234,7 +249,7 @@ def fetchSnapshot (dir : System.FilePath) (rpc : Rpc) : IO Unit := do
         seeds := seeds.push { label := s!"{c.label}.{sig}", sender := t.sender,
                               target := c.address, data := selector sig }
   IO.println s!"{seeds.size} seed calls"
-  let (s', rounds) ← discover rpc s seeds
+  let (s', rounds) ← discover rpc s seeds t.maxRounds
   s := s'
   -- Sources of every other contract the seeds reached.
   if t.sourceClosure then

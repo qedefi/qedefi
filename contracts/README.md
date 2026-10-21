@@ -221,14 +221,17 @@ lake exe snapshot check contracts/snapshots/<Name> [--verbose]     # offline
 
 `fetch` (any JSON-RPC archive endpoint via `--rpc URL`, or Alchemy with `ALCHEMY_KEY` from the
 environment or from a gitignored `.env` in the working directory; the URL is never printed or
-saved) uses only `eth_get*`/`eth_call`, no `debug_*` tracing. The state
+saved) uses only `eth_get*`/`eth_call`, no `debug_*` tracing; requests a rate-limited endpoint
+refuses (HTTP/JSON-RPC 429, empty answers) are resent after a growing pause. The state
 is found with the Lean interpreter as the tracer: seed calls (the given ones, plus every
 argument-free view of each target and of its EIP-1967/ZeppelinOS/beacon implementation) run
 on the state fetched so far, `Snapshot.runObserved` records every account, slot and
 `BLOCKHASH` they read (reverted frames included), the reads the snapshot does not determine
-are fetched at the pinned block, and this repeats until nothing new is read. Sources come
-from Sourcify, else the chain's public Blockscout, for every contract read (paths
-sanitized). It writes:
+are fetched at the pinned block, and this repeats until nothing new is read (seeds that read
+nothing new are not rerun; each round follows reads one hop deeper, so a loop over reserves
+behind oracle adapters behind feeds takes hundreds of rounds: `"maxRounds"`, default 256).
+Sources come from Sourcify, else the chain's public Blockscout, for every contract read (paths
+sanitized; a failing provider only loses those sources). It writes:
 
 | File | Contents |
 |---|---|
@@ -237,6 +240,7 @@ sanitized). It writes:
 | `calls.json` | the seed calls with the node's `eth_call` result at the block |
 | `contracts/<address>/` | `source/`, `abi.json`, `verification.json` (provider, name, compiler, settings) |
 | `meta.json` | summary: counts, discovery rounds, verified contracts, RPC host |
+| `sequence.json` | `snapshot fork` only: the node's record of the transaction sequence |
 
 `check` replays every recorded call in the interpreter: it passes iff the call reads only
 state the snapshot determines and returns exactly the node's success flag and output bytes.
@@ -246,12 +250,65 @@ is detected (`State.missing`) instead of reading zeros. The fork comes from the 
 Ethereum mainnet and must be set in `targets.json` elsewhere (L2-specific EVM behaviour is not
 modelled).
 
-Snapshots are fetched locally and not committed (they carry third-party sources). Tested on:
+Snapshots are fetched locally and not committed (they carry third-party sources); a
+hand-written `targets.json` may be (`snapshots/.gitignore`). Tested on:
 
 | Snapshot | Chain | Block | Accounts | Slots | Calls reproduced |
 |---|---|---|---|---|---|
 | Strata's USDe market (tranches, CDO, accounting, strategy, APR feed, cooldowns) | 1 | 26,239,549 | 27 | 160 | 162 / 162 |
 | USDC on Base (proxy and implementation) | 8453 | 52,889,654 | 3 | 15 | 19 / 19 |
+| `AaveV3`: Aave V3 Core market (Pool rev. 11, see below) | 1 | 26,243,000 | 198 | 789 | 364 / 364, sequence 25 / 25 |
+
+### Aave V3 and the anvil fork differential
+
+`snapshots/AaveV3/targets.json` (committed) names the PoolAddressesProvider
+`0x2f39…4E9e`, Pool `0x8787…A4E2` (`PoolInstance`, `POOL_REVISION` 11), PoolConfigurator,
+ACLManager, AaveOracle, AaveProtocolDataProvider, the shared interest-rate strategy
+(`DefaultReserveInterestRateStrategyV2`), WETH, USDC and wstETH with their aTokens and variable
+debt tokens (revision 5), and the price sources the oracle uses for them (Chainlink ETH/USD
+and USDC/USD `EACAggregatorProxy` over `DualAggregator`s, the USDC and wstETH price-cap
+adapters). 108 seed calls (reserve data, normalized income and debt, configurations, oracle
+prices, data-provider views, `calculateInterestRates`, aToken and debt-token balances and
+scaled balances, `getUserAccountData` of four large positions found from recent `Borrow`/
+`Supply` logs) plus 256 argument-free views. The four positions hold collateral in many
+reserves, so the reads reach 190 accounts (118 codes, 188 verified contracts) in 197 rounds
+(about 4 minutes on Alchemy's free tier, mostly sources). All 364 calls reproduce `eth_call`.
+
+`targets.json` may also hold a `sequence` of state-changing steps (`Snapshot/Sequence.lean`):
+transactions, and the cheats anvil offers (`setBalance`, `setCode`, `setStorage`,
+`increaseTime`).
+
+```bash
+lake exe snapshot fork contracts/snapshots/<Name> [--rpc URL] [--anvil URL | --port N]   # network, anvil
+lake exe snapshot check contracts/snapshots/<Name>                                     # offline, includes the sequence
+```
+
+`fork` (`Snapshot/Fork.lean`) starts anvil forked from the same RPC at the snapshot block
+(the URL reaches anvil through the environment, via an RPC alias in `<dir>/anvil/foundry.toml`,
+never as an argument; `--hardfork` from the snapshot, base fee and gas price 0, any sender
+impersonated, blocks 12 s apart so runs are reproducible) and runs the steps there, one block
+per transaction; it then runs them in the interpreter from the snapshot state, each
+transaction in the environment of the block anvil mined it in, processed as `Tx.process`
+does at gas price zero (refund cap, EIP-7623 floor), fetching at the snapshot block whatever
+the runs read and the snapshot lacks (as `fetch` does, so the saved snapshot covers the
+sequence; a slot written and later read is fetched too, as its original value). For each
+transaction it records anvil's status, return or revert data (`callTracer`), logs, receipt
+`gasUsed`, and, read back from anvil at that block, the balance and nonce of every account
+and the value of every slot either side touched (the interpreter's reads, anvil's
+`prestateTracer` diff) into `sequence.json`, then compares; a slot or account the
+interpreter changed that the record lacks is a difference. `check` replays the record offline.
+
+The AaveV3 sequence: three fresh accounts get 100 ether; A wraps and supplies 10 WETH and
+borrows 5,000 USDC; C supplies 10 WETH and borrows 19,000 USDC (health factor 1.09); L
+supplies 50 WETH, borrows 20,000 USDC and approves the Pool; 30 days pass; A approves, repays
+2,500 USDC and withdraws 2 WETH; C's borrow of 10,000 more reverts (`0x6679996d`) and a
+liquidation of the healthy C reverts (`0x930bb771`); the ETH/USD feed's code is replaced by a
+constant 2,200 USD answer; L liquidates 5,000 USDC of C's debt for WETH and 2,000 for aWETH;
+L's `repay(USDC, max)` reverts inside USDC (`Error(string)`); `getUserAccountData(C)` as a
+transaction. Result: **25 / 25 steps identical** (22 transactions: status, return/revert
+data, all 79 logs, 518 slots and 253 balances/nonces compared, `gasUsed` equal to the unit
+for every transaction), 11 s per run; the record is identical across runs. Corrupting one
+recorded timestamp makes the following transactions mismatch (status, output, storage, gas).
 
 ## Differential testing
 

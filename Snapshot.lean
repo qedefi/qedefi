@@ -7,6 +7,8 @@ import Snapshot.Sources
 import Snapshot.Run
 import Snapshot.Fetch
 import Snapshot.Check
+import Snapshot.Sequence
+import Snapshot.Fork
 
 /-!
 # Snapshots of deployed contracts
@@ -14,5 +16,6 @@ import Snapshot.Check
 Fetch once, search offline: the code, verified sources and the reachable state of deployed
 contracts at one pinned block (`lake exe snapshot fetch`), loaded as an `EvmLean.World` with
 its block environment (`Snapshot.State.load`, `State.world`, `State.context`), and calls on
-it checked against the node's `eth_call` (`lake exe snapshot check`).
+it checked against the node's `eth_call` (`lake exe snapshot check`); transaction sequences
+run from it, differentially against an anvil fork (`lake exe snapshot fork`).
 -/

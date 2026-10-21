@@ -21,21 +21,31 @@ open Lean EvmLean Conformance
 /-- Interpreter steps allowed per call. -/
 def fuel : Nat := 100_000_000
 
-/-- Run `c` on `world` in the snapshot's environment. -/
-def simulate (s : State) (world : World) (c : CallSpec) :
+/-- The legacy transaction (gas price zero) that sends `c` with the sender's nonce `nonce`. -/
+def CallSpec.tx (c : CallSpec) (nonce : Nat) : Transaction :=
+  .legacy { nonce, gasPrice := 0, gas := c.gas, to := some c.target, value := c.value,
+            data := c.data, v := 27, r := 0, s := 0 }
+
+/-- Run `c` on `world` under `fork` in the block environment `env`. -/
+def simulateIn (fork : Fork) (env : BlockEnv) (world : World) (c : CallSpec) :
     Except String (MessageResult × Accesses) := do
-  let tx : Transaction := .legacy
-    { nonce := (world.account c.sender).nonce, gasPrice := 0, gas := c.gas, to := some c.target,
-      value := c.value, data := c.data, v := 27, r := 0, s := 0 }
+  let nonce := (world.account c.sender).nonce
+  let tx := c.tx nonce
   let intrinsic := (Tx.intrinsicGas tx).regular
   if c.gas < intrinsic then throw s!"gas {c.gas} below the intrinsic cost {intrinsic}"
   if (world.balance c.sender).toNat < c.value then throw "the sender cannot pay the value"
-  let nonce := (world.account c.sender).nonce
   let w := Interpreter.incrementNonce world c.sender
-  let msg := Tx.prepareMessage Crypto.real s.fork s.blockEnv w tx c.sender nonce (c.gas - intrinsic)
-  match runObserved fuel (s.context c.sender) w msg with
+  let msg := Tx.prepareMessage Crypto.real fork env w tx c.sender nonce (c.gas - intrinsic)
+  let ctx : Context := { crypto := Crypto.real, fork, block := env,
+                         tx := { origin := c.sender, gasPrice := 0 } }
+  match runObserved fuel ctx w msg with
   | (.ok r, acc) => pure (r, acc)
   | (.error _, _) => throw "interpreter out of fuel"
+
+/-- Run `c` on `world` in the snapshot's environment. -/
+def simulate (s : State) (world : World) (c : CallSpec) :
+    Except String (MessageResult × Accesses) :=
+  simulateIn s.fork s.blockEnv world c
 
 /-- A call and the node's result for it. -/
 structure RecordedCall where

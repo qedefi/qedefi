@@ -1,0 +1,4 @@
+# Fetched snapshots carry third-party sources and are not committed; their hand-written
+# targets.json may be.
+/*/*
+!/*/targets.json
