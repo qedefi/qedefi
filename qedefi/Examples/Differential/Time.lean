@@ -203,4 +203,20 @@ def testVesting (rpc : Rpc) (stats : IO.Ref Stats) (seed sequences length : Nat)
   IO.println s!"  {sequences} sequences × {length} steps: {found} mismatching sequences"
   return found
 
+/-- Take the `vesting` family out of the command line (the other families are parsed as
+before): the remaining arguments, whether to test the wallet (`vesting` or `all`), and whether
+it was the only family requested. -/
+def stripVesting : List String → List String × Bool × Bool
+  | "--family" :: f :: rest =>
+    let names := f.splitOn ","
+    let others := names.filter (· != "vesting")
+    let vest := names.contains "vesting" || names.contains "all"
+    let (rest', v, o) := stripVesting rest
+    if others.isEmpty then (rest', vest || v, true || o)
+    else ("--family" :: ",".intercalate others :: rest', vest || v, o)
+  | a :: rest =>
+    let (rest', v, o) := stripVesting rest
+    (a :: rest', v, o)
+  | [] => ([], false, false)
+
 end Examples.Differential.Time

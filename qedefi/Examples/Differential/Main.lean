@@ -61,8 +61,6 @@ structure Config where
   edge : Bool := false
   /-- Percentage of random calls with a lowered gas limit. -/
   lowGas : Nat := 0
-  /-- Test the vesting wallet across blocks (`Time.lean`). -/
-  vesting : Bool := false
 
 /-- A decimal command-line argument. -/
 def natArg (s : String) : Except String Nat :=
@@ -81,7 +79,6 @@ def parseArgs : Config → List String → Except String Config
     let vaults := [solmate, openzeppelin, openzeppelinOffset]
     let mut fams := []
     let mut toks := []
-    let mut vest := false
     for n in f.splitOn "," do
       match vaults.find? (·.name == n), tokenFamilies.find? (·.name == n) with
       | some v, _ => fams := fams ++ [v]
@@ -90,12 +87,10 @@ def parseArgs : Config → List String → Except String Config
         match n with
         | "vaults" => fams := fams ++ vaults
         | "tokens" => toks := toks ++ tokenFamilies
-        | "all" => fams := fams ++ vaults; toks := toks ++ tokenFamilies; vest := true
-        | "vesting" => vest := true
+        | "all" => fams := fams ++ vaults; toks := toks ++ tokenFamilies
         | _ => throw (s!"unknown family {n} (" ++ ", ".intercalate
-            ((vaults.map (·.name)) ++ (tokenFamilies.map (·.name)) ++
-              ["vesting", "vaults", "tokens", "all"]) ++ ")")
-    parseArgs { c with families := fams, tokens := toks, vesting := vest } rest
+            ((vaults.map (·.name)) ++ (tokenFamilies.map (·.name)) ++ ["vaults", "tokens", "all"]) ++ ")")
+    parseArgs { c with families := fams, tokens := toks } rest
   | c, "--inject-bug" :: rest => parseArgs { c with injectBug := true } rest
   | c, "--verbose" :: rest => parseArgs { c with verbose := true } rest
   | c, "--edge" :: rest => parseArgs { c with edge := true } rest
@@ -198,7 +193,11 @@ def runAll (cfg : Config) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
     discard <| testToken rpc stats cfg.seed i cfg.sequences cfg.length cfg.verbose
       { tok with edge := cfg.edge } cfg.lowGas
     i := i + 1
-  if cfg.vesting then
+
+/-- `runAll`, then the vesting wallet across blocks if requested. -/
+def runAllWith (cfg : Config) (vesting : Bool) (rpc : Rpc) (stats : IO.Ref Stats) : IO Unit := do
+  runAll cfg rpc stats
+  if vesting then
     discard <| Time.testVesting rpc stats cfg.seed cfg.sequences cfg.length cfg.verbose
 
 end Examples.Differential
@@ -206,20 +205,22 @@ end Examples.Differential
 open Examples.Differential in
 /-- Entry point of `lake exe difftest`. -/
 def main (args : List String) : IO UInt32 := do
+  let (args, vesting, onlyVesting) := Time.stripVesting args
   let cfg ← match parseArgs {} args with
     | .ok c => pure c
     | .error e => IO.eprintln e; return 2
+  let cfg := if onlyVesting then { cfg with families := [], tokens := [] } else cfg
   let stats ← IO.mkRef ({} : Stats)
   let start ← IO.monoMsNow
   match cfg.rpc with
   | some url =>
-    try runAll cfg { url } stats
+    try runAllWith cfg vesting { url } stats
     catch e => IO.eprintln s!"error: {e}"; return 2
   | none =>
     let now ← IO.monoMsNow
     let port := if cfg.port = 0 then 30000 + now % 20000 else cfg.port
     let child ← spawnAnvil port Examples.Deployment.chainId
-    try runAll cfg { url := s!"http://127.0.0.1:{port}" } stats
+    try runAllWith cfg vesting { url := s!"http://127.0.0.1:{port}" } stats
     catch e => child.kill; IO.eprintln s!"error: {e}"; return 2
     child.kill
   let st ← stats.get
