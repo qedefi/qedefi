@@ -40,6 +40,38 @@ theorem callCost_le {m : Machine} {gas value : Word} {to : Address} {create tran
       (Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + 0 + create + transfer)))
   omega
 
+/-- What the caller has after a call whose child returns all its gas: at least the gas left
+minus the access, creation and transfer charges and the memory expansion. -/
+theorem le_gas_after_call {m : Machine} {gas value : Word} {to : Address} {create transfer : Nat}
+    {inOff inSize outOff outSize : Word}
+    (h : Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + create + transfer +
+      (callExt m inOff inSize outOff outSize).cost ≤ m.frame.gasLeft) :
+    m.frame.gasLeft - (Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + create +
+        transfer + (callExt m inOff inSize outOff outSize).cost) ≤
+      m.frame.gasLeft - callCost m gas value to create transfer inOff inSize outOff outSize +
+        (callGas m gas value to create transfer inOff inSize outOff outSize).subCall := by
+  have hc := callCost_le (gas := gas) (value := value) h
+  unfold callCost callGas Gas.messageCallGas at *
+  have hlt : ¬ m.frame.gasLeft < Gas.accessCost (m.frame.sub.accessedAddresses.contains to) +
+      0 + create + transfer + (callExt m inOff inSize outOff outSize).cost := by omega
+  simp only [hlt, ite_false] at hc ⊢
+  omega
+
+/-- `le_gas_after_call` in the shape the caller's gas takes after `resumeAfter_success`. -/
+theorem le_gas_after_call' {m : Machine} {gas value : Word} {to : Address} {create transfer : Nat}
+    {inOff inSize outOff outSize : Word} {rest : List Word} {msg : Message} {kind : FrameKind}
+    {snap : World × TransientStorage} {g : Nat}
+    (h : Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + create + transfer +
+      (callExt m inOff inSize outOff outSize).cost ≤ m.frame.gasLeft)
+    (hmsg : msg.gas = (callGas m gas value to create transfer inOff inSize outOff outSize).subCall)
+    (he : (callerFrame m rest (callCost m gas value to create transfer inOff inSize outOff outSize)
+      to inOff inSize outOff outSize).gasLeft + (Frame.init msg kind snap).gasLeft = g) :
+    m.frame.gasLeft - (Gas.accessCost (m.frame.sub.accessedAddresses.contains to) + create +
+        transfer + (callExt m inOff inSize outOff outSize).cost) ≤ g := by
+  rw [← he]
+  simp only [callerFrame, Frame.init, hmsg]
+  exact le_gas_after_call h
+
 variable {m : Machine} {gas toW value inOff inSize outOff outSize : Word} {rest : List Word}
 
 /-- **`CALL` to an account with empty code** (not a precompile). The value moves to the

@@ -185,3 +185,28 @@ theorem eq_and_mask_of_ge {x : Word} (h : 2 ^ 64 ≤ x.toNat) :
   unfold Word.eq; simp [Word.ofBool, this]
 
 end Examples.Time.VestingWallet
+
+namespace Examples.Time.VestingWallet
+open EvmLean
+
+theorem ofNat_sub_add_word {v : Nat} {y : Word} (hv : v < 2 ^ 256) (h : y.toNat ≤ v) :
+    BitVec.ofNat 256 (v - y.toNat) + y = BitVec.ofNat 256 v := by
+  apply BitVec.eq_of_toNat_eq
+  rw [toNat_add_of_lt' (by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]; omega),
+    BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt hv]
+  omega
+
+end Examples.Time.VestingWallet
+
+namespace Examples.Time.VestingWallet
+open EvmLean
+
+/-- Masking to 160 bits does not change the address a word denotes. -/
+theorem toAddress_mask_and (x : Word) :
+    Word.toAddress (1461501637330902918203684832716283019655932542975#256 &&& x) = Word.toAddress x := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [Word.toAddress, BitVec.toNat_setWidth, BitVec.toNat_and]
+  rw [show (1461501637330902918203684832716283019655932542975#256 : Word).toNat = 2 ^ 160 - 1 by decide,
+    Nat.and_comm, Nat.and_two_pow_sub_one_eq_mod, Nat.mod_mod]
+
+end Examples.Time.VestingWallet

@@ -78,7 +78,7 @@ theorem releasable_halts {i : VestingWallet.Immutables} (m : Machine) (h : Walle
     refine ⟨hw, ?_⟩
     simp only [releasable, hnone]
     exact hrev
-  rintro m' - ⟨v, g, hv, rfl, hg1⟩
+  rintro m' - ⟨v, g, hv, rfl, -, hg1⟩
   dsimp only at hv
   rw [ofNat, toNat_timestamp_mask] at hv
   simp only [Machine.resumeWith, BitVec.reduceToNat] at hg1 ⊢
@@ -139,7 +139,7 @@ theorem vestedAmount_halts {i : VestingWallet.Immutables} (m : Machine) (h : Wal
       refine ⟨hw, ?_⟩
       simp only [hx, ↓reduceIte, hnone]
       exact hrev
-    rintro m' - ⟨v, g, hv, rfl, hg1⟩
+    rintro m' - ⟨v, g, hv, rfl, -, hg1⟩
     dsimp only at hv
     rw [Nat.mod_eq_of_lt hx] at hv
     simp only [Machine.resumeWith, BitVec.reduceToNat] at hg1 ⊢

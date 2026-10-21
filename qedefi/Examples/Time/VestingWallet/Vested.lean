@@ -28,7 +28,7 @@ theorem vested_wp {i : VestingWallet.Immutables} (m : Machine) {ts r : Word} {re
           (state m.world m.frame.msg.currentTarget) = some v ∧
         m' = m.resumeWith r.toNat (BitVec.ofNat 256 v :: rest) m.frame.memory g
           m.frame.returnData (m.frame.sub.warmKey m.frame.msg.currentTarget 1#256) ∧
-        m.frame.gasLeft ≤ g + 3000)
+        g ≤ m.frame.gasLeft ∧ m.frame.gasLeft ≤ g + 3000)
       (fun mf o => vestedAmount (sched i) (ts.toNat % 2 ^ 64)
           (state m.world m.frame.msg.currentTarget) = none ∧ (∃ out, o = .revert out) ∧
         mf.world = m.world) := by
@@ -51,7 +51,7 @@ theorem vested_wp {i : VestingWallet.Immutables} (m : Machine) {ts r : Word} {re
       pwp_steps
       refine WP.ret ⟨0, _, ?_, rfl, ?_⟩
       · rw [← hspec]; exact vestedAmount_before (by rw [htot]; exact hadd) h1
-      · evm_gas
+      · exact ⟨by evm_gas, by evm_gas⟩
     · rw [iszero_lt_eq_one (by rw [toNat_mask_and, toNat_and_mask]; unfold start at h1; omega)]
       pwp_steps [readBytes_code_1236, readBytes_code_1198, Bytes.toWord_ofWord]
       rw [checkedAdd_ok (by rw [toNat_mask_and, toNat_and_mask]; omega)]
@@ -62,7 +62,7 @@ theorem vested_wp {i : VestingWallet.Immutables} (m : Machine) {ts r : Word} {re
         refine WP.ret ⟨_, _, ?_, by rw [Machine.resumeWith, ofNat_add_toNat _ _ hadd], ?_⟩
         · rw [← hspec]
           exact vestedAmount_after (by rw [htot]; exact hadd) (by show start i ≤ _; omega) h2
-        · evm_gas
+        · exact ⟨by evm_gas, by evm_gas⟩
       · rw [lt_eq_one' (by rw [toNat_end, toNat_mask_and]; unfold start duration at h2; omega)]
         pwp_steps [readBytes_code_1458, readBytes_code_1198, Bytes.toWord_ofWord]
         rw [checkedSub_ok (by rw [toNat_and_mask, toNat_and_mask]; unfold start at h1; omega)]
@@ -99,7 +99,7 @@ theorem vested_wp {i : VestingWallet.Immutables} (m : Machine) {ts r : Word} {re
           · rw [← hspec]
             exact vestedAmount_mid (by rw [htot]; exact hadd) (by show start i ≤ _; omega)
               (by show _ < start i + duration i; omega) h3
-          · evm_gas
+          · exact ⟨by evm_gas, by evm_gas⟩
         · rw [checkedMul_overflow (by rw [hd, hT, Nat.mul_comm]; omega)]
           pwp_steps [hmsz]
           refine ⟨?_, ⟨_, rfl⟩, rfl⟩
