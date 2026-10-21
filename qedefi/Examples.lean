@@ -22,6 +22,13 @@ import Examples.OpenZeppelin.Contracts.OzVaultOffset
 import Examples.OpenZeppelin.Contracts.OzVaultOffsetData
 import Examples.OpenZeppelin.ERC20.Approve
 import Examples.OpenZeppelin.ERC20.Basic
+import Examples.OpenZeppelin.ERC20.Callee
+import Examples.OpenZeppelin.ERC20.CalleeApprove
+import Examples.OpenZeppelin.ERC20.CalleeMintBurn
+import Examples.OpenZeppelin.ERC20.CalleeSpec
+import Examples.OpenZeppelin.ERC20.CalleeTransfer
+import Examples.OpenZeppelin.ERC20.CalleeTransferFrom
+import Examples.OpenZeppelin.ERC20.Events
 import Examples.OpenZeppelin.ERC20.MintBurn
 import Examples.OpenZeppelin.ERC20.Spec
 import Examples.OpenZeppelin.ERC20.Transfer

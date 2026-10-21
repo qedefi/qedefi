@@ -98,8 +98,8 @@ Artifact `OzAsset`: 1,900 B runtime, no immutables, no constructor arguments (`n
 - the order of checks in `transferFrom` (allowance before addresses) shows up in revert data;
 - no `permit`/`nonces`/`DOMAIN_SEPARATOR` in `ERC20Mock`.
 
-**Proved on the bytecode** (`qedefi/Examples/OpenZeppelin/ERC20/`, top-level calls with zero
-value): property 2 without logs and revert data, the storage part of 3, and the
+**Proved on the bytecode** (`qedefi/Examples/OpenZeppelin/ERC20/`, calls with zero value):
+property 2 with logs but without revert data, the storage part of 3, and the
 `totalSupply`/`balanceOf`/`allowance`/`decimals` part of 5 (1 is `Token.WF_oz*`):
 
 - `EvmLogic.Solidity.ERC20Oz`: `Layout.oz = ⟨2, 0, 1⟩`, the word-level model `Model.ozTransfer`,
@@ -117,9 +117,19 @@ value): property 2 without logs and revert data, the storage part of 3, and the
   `Token.WF` ledgers) and `Spec` (`*_refines`): the bytecode against `Token.ozTransfer` etc.
   directly, hence `Variant.oz` by `Variant.oz_transfer`/….
 
-Not yet: events (`Transfer`, `Approval` logs), revert data, calls with value, `name`/`symbol`,
-callee summaries in arbitrary frames (needed for the OZ vaults), malformed calldata, nested
-callers (7).
+- Callee summaries in any fresh frame (`Fresh OzAsset.runtimeCode m`, for `WP.call` from the
+  OZ vaults): `Callee` (posts `TransferOk`, `ApproveOk`, `TransferFromOk`, `MintOk`, `BurnOk`:
+  output, world, transient storage, created accounts, the appended event log, a gas bound),
+  `CalleeTransfer` (`balanceOf_halts`, `transfer_halts_ok`/`_revert`), `CalleeApprove`,
+  `CalleeTransferFrom` (`TransferFromCond`, the exact success condition on the storage, no
+  hash hypothesis), `CalleeMintBurn`; the calldata is `TwoWordCall`/`ThreeWordCall` and a revert
+  is `Reverts g`. `CalleeSpec`: `assetTransfer_refines` etc. against `Token.oz*` (`Rep`/`RepOn`).
+- Events: the success posts fix the logs (`Transfer(caller, dst, v)`, `Approval(caller, sp, v)`,
+  for `transferFrom` only `Transfer(src, dst, v)`, i.e. no `Approval` when spending, and
+  `Transfer(0, dst, v)` / `Transfer(src, 0, v)`); `Events` (`*_logs`): the logs of a top-level
+  call are that event when `Model.oz*` succeeds and empty otherwise.
+
+Not yet: revert data, calls with value, `name`/`symbol`, malformed calldata, nested callers (7).
 
 ## OpenZeppelin `ERC4626` with decimals offset δ = 3 (`OzVaultOffset`)
 
