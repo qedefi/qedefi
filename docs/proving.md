@@ -183,6 +183,53 @@ values `top`, `const n` or a symbolic address immutable `sym k`) runs in the ker
 state, giving call targets (`absint_call`) and the absence of `CREATE` (`absint_no_create`)
 for all immutables at once.
 
+## 7. Untrusted callees and reentrancy (`EvmLogic/Program/Reentrancy/`)
+
+Section 5 assumes protected frames are atomic. `Reentrancy/` lifts this: a protected frame may
+call code it does not trust, which may call back into protected contracts at any depth. The
+callee is never explored; the untrusted call is **one symbolic step**.
+
+**Per instruction.** `exec_strict` (`Exec.lean`): every step that continues the frame strictly
+lowers its gas, and a requested child gets strictly less than the caller gave up; with at most
+`Gas.callStipend` gas an instruction leaves the world unchanged and requests neither a creation
+nor a value transfer (`SSTORE` sentry, `CALL` value cost 9000, `CREATE` 32000, `SELFDESTRUCT`
+5000). `exec_world` (`World.lean`): the world changes only by an `SSTORE`, nonce increment or
+`SELFDESTRUCT` of the executing non-static account, and requested value transfers are
+affordable and leave static frames only to themselves.
+
+**The havoc theorem** (`Halts.lean`). `Covers P Good G`: every dangerous frame start with at most
+`G` gas, *with any parents* (callbacks have dangerous ancestors), halts in a `Good` world.
+`halts_inv`: under `Covers`, any non-dangerous frame (`Inv`: `Good` world and snapshot) halts in a
+`Good` world, by strong induction on the frame's gas. Corollaries: `halts_any` (every frame
+halts), `halts_static` (a static frame keeps `Good` with no summaries) and `halts_low` (**the
+stipend lemma**: a frame with ≤ 2300 gas, and everything it starts, returns the world it started
+with). `covers_of_lt`: summaries may be proved by induction on gas, since a reentrant frame has
+less gas than its ancestors.
+
+**Rules** (`Havoc.lean`), for the frame-local logic of section 3:
+
+| Rule | Call site | Continuation sees |
+|---|---|---|
+| `WP.call_havoc` | `CALL` to an unprotected account, call-site invariant `Good m.world`, `Covers` | any return whose world is `Good`, any flag and return data |
+| `WP.call_stipend` | `CALL` whose child gets ≤ 2300 gas, any target | the callee's final world equals its initial world |
+| `WP.staticcall_havoc` | any `STATICCALL` | any return whose world is `Good` |
+| `WP.call_frozen` | `CALL` under a held guard: `Covers` for `Frozen P m.world` | protected storage and code exactly as at the call |
+
+Checks-effects-interactions is `WP.call_havoc` with the contract's invariant as `Good`; a
+reentrancy guard is `WP.call_frozen`, whose `Covers` (`covers_frozen`) asks that a frame
+started while the lock is held fails or writes no protected storage. `processMessageCall_covers`
+is the any-transaction theorem.
+
+**Ether** (`Ether.lean`). Invariants such as `Σ balances ≤ address(this).balance` depend on
+balances that arbitrary code changes. `GoodOps` replaces `GoodOk` by closure under the world
+changes of `exec_world`; `DStart` records the value transfer that started a dangerous frame.
+`halts_inv_e`, `WP.call_havoc_e`, `processMessageCall_good_e` are the counterparts.
+
+**Demonstrators** (`qedefi/Examples/Reentrancy/`, sources `contracts/src/reentrancy/Banks.sol`).
+`Exploit.lean`: `VulnerableBank` (send before debit) and an `Attacker` contract, both compiled;
+the attack transaction is evaluated by the kernel with the real Keccak (`exploit_run`) and leaves
+the bank owing the victim 2 ether while holding none (`exploit_insolvent`).
+
 ## Pitfalls
 
 - **No `bv_decide`**: it closes goals through `Lean.ofReduceBool`, an extra axiom. Use

@@ -6,6 +6,7 @@ pragma solidity 0.8.28;
 //   OpenZeppelin: ERC20Mock (asset), OzVault (vault, below) -- ERC20Mock vendored, unmodified
 //   OpenZeppelin, decimals offset 3: ERC20Mock (asset), OzVaultOffset (vault, below)
 //   Solady: SoladyToken (below; Solady's ERC20 vendored, unmodified)
+//   Reentrancy demonstrators: VulnerableBank, CEIBank, GuardedBank, Attacker (reentrancy/Banks.sol)
 // WETH9 and the mainnet tokens are not compiled here: their targets are the deployed mainnet
 // bytecode (contracts/mainnet/).
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
