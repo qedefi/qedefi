@@ -18,6 +18,7 @@ import EvmLogic.Program.Call
 import EvmLogic.Program.CallCodeless
 import EvmLogic.Program.Code
 import EvmLogic.Program.CodeTable
+import EvmLogic.Program.GasBound
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
 import EvmLogic.Program.Nested.Frame
