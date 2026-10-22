@@ -10,7 +10,8 @@ them to `n` (`low120_balanceWord`). Branch conditions of solc's checked arithmet
 -/
 
 namespace Examples.AaveV3.AToken.Havoc
-open EvmLean EvmLogic
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program.Nested EvmLogic.Solidity
+  Examples.AaveV3.Contracts
 
 /-- `2¹²⁰ - 1`, solc's `uint120` mask. -/
 abbrev mask120 : Word := 1329227995784915872903807060280344575#256
@@ -157,8 +158,112 @@ macro "word_omega" : tactic => `(tactic| (
   try simp only [gt_ne_zero_iff, gt_eq_zero_iff, lt_ne_zero_iff, lt_eq_zero_iff,
     iszero_ne_zero_iff, iszero_eq_zero_iff] at *
   set_option linter.unusedSimpArgs false in
-  try simp only [low120, toNat_mask120_and, toNat_and_mask120, BitVec.toNat_add,
-    BitVec.toNat_sub, BitVec.toNat_ofNat] at *
+  try simp only [BitVec.toNat_add, BitVec.toNat_sub, BitVec.toNat_ofNat, low120_balanceWord, low120_indexWord, low120_mask120_and, toNat_mask120_and, toNat_and_mask120] at *
+  try simp only [low120] at *
+  set_option linter.unusedSimpArgs false in
+  try simp only [BitVec.toNat_add, BitVec.toNat_sub, BitVec.toNat_ofNat, low120_balanceWord, low120_indexWord, low120_mask120_and, toNat_mask120_and, toNat_and_mask120] at *
+  try simp only [low120] at *
   omega))
+
+/-! ## Write chains -/
+
+/-- **A world reached from the `Good` world `w0` by writes at the protected account `t`**,
+whose ledger at `t` is off by `d` (`Σ balances = _totalSupply + d`): every other account, the
+code and the fixed slots of `t` other than `_totalSupply` as in `w0`. -/
+structure LedgerOff (crypto : Crypto) (w0 w : World) (t : Address) (d : Int) : Prop where
+  good : Good crypto w0
+  prot : Prot t
+  keep : ∀ p, p ≠ t → Keep p w0 w
+  code : w.code t = w0.code t
+  s0 : w.sload t 0#256 = w0.sload t 0#256
+  s1 : w.sload t 1#256 = w0.sload t 1#256
+  simpl : w.sload t ATokenProxy.implSlot = w0.sload t ATokenProxy.implSlot
+  ledger : (ledgerSum crypto w t : Int) = (w.sload t 54#256).toNat + d
+
+variable {crypto : Crypto}
+
+/-- The start of a chain: the `Good` world itself, off by `0`. -/
+theorem LedgerOff.start {w : World} {t : Address} {d : Int} (h : Good crypto w) (ht : Prot t)
+    (hd : d = 0) : LedgerOff crypto w w t d :=
+  ⟨h, ht, fun _ _ => keep_refl _ _, rfl, rfl, rfl, rfl, by rw [h.ledger ht, hd]; omega⟩
+
+/-- **The end of a chain**: a world off by `0` is `Good`. -/
+theorem LedgerOff.finish {w0 w : World} {t : Address} (h : LedgerOff crypto w0 w t 0) :
+    Good crypto w :=
+  h.good.of_writes h.prot h.keep h.code h.s0 h.s1 h.simpl (by have := h.ledger; omega)
+
+/-- A `_userState[a]` write moves the ledger by the change of the low 120 bits. -/
+theorem LedgerOff.user (hK : SlotsOk crypto) {w0 w : World} {t a : Address} {v : Word}
+    {D : Int} (h : LedgerOff crypto w0 w t
+      (D - ((low120 v : Int) - low120 (w.sload t (mappingSlot crypto (Word.ofAddress a) 52#256))))) :
+    LedgerOff crypto w0 (w.sstore t (mappingSlot crypto (Word.ofAddress a) 52#256) v) t D := by
+  have hne : ∀ k ∈ fixedSlots, (w.sstore t (mappingSlot crypto (Word.ofAddress a) 52#256) v).sload
+      t k = w.sload t k := fun k hk => World.sload_sstore_ne_key _ _ _ (user_ne_fixed hK a hk)
+  refine ⟨h.good, h.prot, fun p hp => (h.keep p hp).trans (keep_sstore hp), by
+    rw [World.code_sstore]; exact h.code, by rw [hne _ mem_fixed_0]; exact h.s0,
+    by rw [hne _ mem_fixed_1]; exact h.s1, by rw [hne _ mem_fixed_impl]; exact h.simpl, ?_⟩
+  have e := ledgerSum_sstore_user (crypto := crypto) w t a v
+  have hl := h.ledger
+  rw [hne _ mem_fixed_54]
+  omega
+
+/-- A `_totalSupply` write moves the supply. -/
+theorem LedgerOff.supply (hK : SlotsOk crypto) {w0 w : World} {t : Address} {v : Word}
+    {D : Int} (h : LedgerOff crypto w0 w t (D + v.toNat - (w.sload t 54#256).toNat)) :
+    LedgerOff crypto w0 (w.sstore t 54#256 v) t D := by
+  have hne : ∀ k ∈ fixedSlots, k ≠ 54#256 → (w.sstore t 54#256 v).sload t k = w.sload t k :=
+    fun k _ h => World.sload_sstore_ne_key _ _ _ h
+  refine ⟨h.good, h.prot, fun p hp => (h.keep p hp).trans (keep_sstore hp), by
+    rw [World.code_sstore]; exact h.code, by rw [hne _ mem_fixed_0 (by decide)]; exact h.s0,
+    by rw [hne _ mem_fixed_1 (by decide)]; exact h.s1,
+    by rw [hne _ mem_fixed_impl (by decide)]; exact h.simpl, ?_⟩
+  have e := ledgerSum_sstore_other (crypto := crypto) w t
+    (fun hm => Finset.disjoint_left.1 hK.userFixed hm mem_fixed_54) v
+  have hl := h.ledger
+  rw [World.sload_sstore_self, e]
+  omega
+
+/-- A write outside the ledger and the fixed slots changes nothing the chain tracks. -/
+theorem LedgerOff.free {w0 w : World} {t : Address} {k v : Word} {D : Int}
+    (hu : k ∉ userSlots crypto) (hf : k ∉ fixedSlots) (h : LedgerOff crypto w0 w t D) :
+    LedgerOff crypto w0 (w.sstore t k v) t D := by
+  have hne : ∀ j ∈ fixedSlots, (w.sstore t k v).sload t j = w.sload t j :=
+    fun j hj => World.sload_sstore_ne_key _ _ _ (fun e => hf (e ▸ hj))
+  refine ⟨h.good, h.prot, fun p hp => (h.keep p hp).trans (keep_sstore hp), by
+    rw [World.code_sstore]; exact h.code, by rw [hne _ mem_fixed_0]; exact h.s0,
+    by rw [hne _ mem_fixed_1]; exact h.s1, by rw [hne _ mem_fixed_impl]; exact h.simpl, ?_⟩
+  rw [ledgerSum_sstore_other _ _ hu, hne _ mem_fixed_54]; exact h.ledger
+
+/-- An `_allowances` write. -/
+theorem LedgerOff.allow (hK : SlotsOk crypto) {w0 w : World} {t o s : Address} {v : Word}
+    {D : Int} (h : LedgerOff crypto w0 w t D) :
+    LedgerOff crypto w0 (w.sstore t
+      (mappingSlot crypto (Word.ofAddress s) (mappingSlot crypto (Word.ofAddress o) 53#256)) v)
+      t D :=
+  h.free (Finset.disjoint_left.1 hK.allow (mem_allowanceSlots crypto o s))
+    (Finset.disjoint_left.1 hK.allowFixed (mem_allowanceSlots crypto o s))
+
+/-- A `_nonces` write. -/
+theorem LedgerOff.nonce (hK : SlotsOk crypto) {w0 w : World} {t a : Address} {v : Word}
+    {D : Int} (h : LedgerOff crypto w0 w t D) :
+    LedgerOff crypto w0 (w.sstore t (mappingSlot crypto (Word.ofAddress a) 58#256) v) t D :=
+  h.free (Finset.disjoint_left.1 hK.nonce (mem_nonceSlots crypto a))
+    (Finset.disjoint_left.1 hK.nonceFixed (mem_nonceSlots crypto a))
+
+set_option hygiene false in
+/-- `ledger_chain`: prove `Good` of a world written by the token at `t` from the `Good` world
+`hw`, peeling the writes off (`LedgerOff.user`/`supply`/`allow`/`nonce`) down to `hw`
+(`LedgerOff.start`); the arithmetic is left (`d = 0` over the balances and supplies read). -/
+macro "ledger_chain" : tactic => `(tactic| (
+  apply LedgerOff.finish
+  repeat (first
+    | apply LedgerOff.user hK
+    | apply LedgerOff.supply hK
+    | apply LedgerOff.allow hK
+    | apply LedgerOff.nonce hK)
+  apply LedgerOff.start hw ht
+  try simp only [World.sload_sstore_self, sloadUser_sstore54 hK, sload54_sstore_user hK,
+    sload54_sstore_allow hK, sloadUser_sstore_allow hK]))
+
 
 end Examples.AaveV3.AToken.Havoc

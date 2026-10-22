@@ -18,8 +18,7 @@ set_option maxHeartbeats 0 in
 /-- `mint`. -/
 theorem body_mint : BodyOk 1219 := by
   atok_run
-  refine Good.writes3 hK hw ht (low120_indexWord _ _) ?_
-  rw [low120_balanceWord]
+  ledger_chain
   word_omega
 
 end Examples.AaveV3.AToken.Havoc
