@@ -1,6 +1,7 @@
 import EvmLogic.Step.Memory
 import EvmLogic.Step.Stack
 import EvmLogic.Solidity.Abi
+import EvmLogic.Solidity.Memory
 
 /-!
 # Step lemmas used by compiled Solidity
@@ -335,5 +336,120 @@ theorem extendMemory_cost_eq_zero₂ {s n : Nat} (h : n ≤ s) :
   simpa using h1
 
 end EvmLean.Interpreter
+
+end
+
+section
+
+/-! ## Revert data of custom errors
+
+solc reverts with a custom error `E(a₁, …)` by `mstore(p, sel << 224)`, `mstore(p + 4, a₁)`, …,
+`revert(p, 4 + 32·k)`. `read_storeWord_selector` reads the selector back from the stored word
+for any selector (the word is `sel · 2²²⁴`, checked on numerals), `read_error₁`/`read_error₂`
+the data of errors with one or two word arguments; the `reduceErrorSelector` simproc rewrites a
+`read off 4` of a stored literal selector word to `Abi.selectorBytes sel`, so no proof needs
+a per-error lemma or a `decide` on memory. -/
+
+namespace EvmLean.Memory
+open EvmLogic EvmLean.Bytes
+
+theorem getD_ofNatBE (len n j : Nat) (h : j < len) :
+    getD (ofNatBE len n) j = (n >>> (8 * (len - 1 - j))).toUInt8 := by
+  have hs : j < (ofNatBE len n).size := by rw [size_ofNatBE]; exact h
+  simp only [getD, hs, ↓reduceDIte]
+  simp [ofNatBE, ByteArray.getElem_eq_getElem_data]
+
+/-- A whole word copied out of return data that is one word. -/
+theorem ofWord_extract_zero_32 (w : Word) : (ofWord w).extract 0 32 = ofWord w := by
+  rw [← size_ofWord w, ByteArray.extract_zero_size]
+
+/-- The first four bytes of the word `sel · 2²²⁴` are the selector `sel`. -/
+theorem ofWord_selector_extract (sel : Nat) (hsel : sel < 2 ^ 32) :
+    (ofWord (BitVec.ofNat 256 (sel * 2 ^ 224))).extract 0 4 = Solidity.Abi.selectorBytes sel := by
+  have hlt : sel * 2 ^ 224 < 2 ^ 256 := by
+    have : sel * 2 ^ 224 < 2 ^ 32 * 2 ^ 224 :=
+      Nat.mul_lt_mul_of_pos_right hsel (Nat.two_pow_pos 224)
+    rw [← Nat.pow_add] at this; exact this
+  apply ext_getD (by
+    rw [ByteArray.size_extract, size_ofWord, Solidity.Abi.selectorBytes, size_ofNatBE]; rfl)
+  intro j hj
+  rw [ByteArray.size_extract, size_ofWord] at hj
+  have hj4 : j < 4 := by omega
+  rw [getD_extract, ite_eq_left_of_eq_true _ _ (eq_true (by omega)), Nat.zero_add, ofWord,
+    BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt hlt, getD_ofNatBE _ _ _ (by omega), Solidity.Abi.selectorBytes,
+    getD_ofNatBE _ _ _ hj4]
+  congr 1
+  rw [Nat.shiftRight_eq_div_pow, Nat.shiftRight_eq_div_pow,
+    show 8 * (32 - 1 - j) = 224 + 8 * (4 - 1 - j) by omega, Nat.pow_add,
+    ← Nat.div_div_eq_div_mul, Nat.mul_div_cancel _ (Nat.two_pow_pos 224)]
+
+/-- **The selector of a custom error**, read back from the word solc stores (`sel << 224`). -/
+theorem read_storeWord_selector (mem : Memory) (off sel : Nat) (hsel : sel < 2 ^ 32) :
+    (mem.storeWord off (BitVec.ofNat 256 (sel * 2 ^ 224))).read off 4 =
+      Solidity.Abi.selectorBytes sel := by
+  rw [read_storeWord_prefix _ _ _ _ (by decide), ofWord_selector_extract sel hsel]
+
+/-- `read_storeWord_selector` for a word literal `w = sel · 2²²⁴` (checked on numerals). -/
+theorem read_storeWord_selector' (mem : Memory) (off : Nat) (w : Word) (sel : Nat)
+    (hw : w.toNat = sel * 2 ^ 224) (hsel : sel < 2 ^ 32) :
+    (mem.storeWord off w).read off 4 = Solidity.Abi.selectorBytes sel := by
+  have : w = BitVec.ofNat 256 (sel * 2 ^ 224) := by
+    apply BitVec.eq_of_toNat_eq; rw [hw, BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
+    rw [← hw]; exact w.isLt
+  rw [this, read_storeWord_selector _ _ _ hsel]
+
+/-- **Revert data of a custom error with one word argument**: `mstore(p, sel << 224)`,
+`mstore(q, a)` with `q = p + 4`, `revert(p, 36)`. -/
+theorem read_error₁ (mem : Memory) (p q sel : Nat) (a : Word) (hsel : sel < 2 ^ 32)
+    (hq : q = p + 4) :
+    ((mem.storeWord p (BitVec.ofNat 256 (sel * 2 ^ 224))).storeWord q a).read p 36 =
+      Solidity.Abi.selectorBytes sel ++ ofWord a := by
+  subst hq
+  rw [show (36 : Nat) = 4 + 32 from rfl, read_add,
+    read_storeWord_of_disjoint _ _ _ _ _ (.inl (Nat.le_refl _)),
+    read_storeWord_selector _ _ _ hsel, read_storeWord]
+
+/-- **Revert data of a custom error with two word arguments** (`SafeCastOverflowedUintDowncast`
+and the like): `mstore(p, sel << 224)`, `mstore(q, a)`, `mstore(r, b)`, `revert(p, 68)`,
+`q = p + 4`, `r = p + 36`. -/
+theorem read_error₂ (mem : Memory) (p q r sel : Nat) (a b : Word) (hsel : sel < 2 ^ 32)
+    (hq : q = p + 4) (hr : r = p + 36) :
+    (((mem.storeWord p (BitVec.ofNat 256 (sel * 2 ^ 224))).storeWord q a).storeWord r b).read p
+        68 = Solidity.Abi.selectorBytes sel ++ ofWord a ++ ofWord b := by
+  subst hq hr
+  rw [show (68 : Nat) = 36 + 32 from rfl, read_add,
+    read_storeWord_of_disjoint _ _ _ _ _ (.inl (by omega)), read_error₁ _ _ _ _ _ hsel rfl,
+    show p + 36 = p + 36 from rfl, read_storeWord]
+
+end EvmLean.Memory
+
+namespace EvmLogic.Solidity
+open EvmLean Lean Meta
+
+/-- Rewrite `(mem.storeWord off w).read off 4` for a word literal `w` whose low 224 bits are
+zero to `Solidity.Abi.selectorBytes (w / 2²²⁴)` (the selector of a custom error). -/
+simproc_decl reduceErrorSelector (Memory.read (Memory.storeWord _ _ _) _ 4) := fun e => do
+  let_expr Memory.read sw off n := e | return .continue
+  let_expr Memory.storeWord mem off' w := sw | return .continue
+  unless ← isDefEq off off' do return .continue
+  let some n ← (evalNat n).run | return .continue
+  unless n == 4 do return .continue
+  let some ⟨wn, wv⟩ ← getBitVecValue? w | return .continue
+  unless wn == 256 do return .continue
+  let v := wv.toNat
+  unless v % 2 ^ 224 == 0 do return .continue
+  let sel := v / 2 ^ 224
+  unless sel < 2 ^ 32 do return .continue
+  let hw ← mkEqRefl (mkNatLit v)
+  let hw ← mkExpectedTypeHint hw (← mkEq (← mkAppM ``BitVec.toNat #[w])
+    (← mkAppM ``HMul.hMul #[mkNatLit sel, ← mkAppM ``HPow.hPow #[mkNatLit 2, mkNatLit 224]]))
+  let hsel ← mkDecideProof (← mkLt (mkNatLit sel) (← mkAppM ``HPow.hPow #[mkNatLit 2, mkNatLit 32]))
+  let rhs ← mkAppM ``Solidity.Abi.selectorBytes #[mkNatLit sel]
+  let pf := mkAppN (mkConst ``Memory.read_storeWord_selector')
+    #[mem, off, w, mkNatLit sel, hw, hsel]
+  return .done { expr := rhs, proof? := some (← mkExpectedTypeHint pf (← mkEq e rhs)) }
+
+end EvmLogic.Solidity
 
 end
