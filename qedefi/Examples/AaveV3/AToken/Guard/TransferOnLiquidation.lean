@@ -17,7 +17,6 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open Examples.AaveV3.Contracts
 open Examples.Solmate.ERC20 (lt_size_four)
 
-set_option maxHeartbeats 0 in
 /-- **`transferOnLiquidation` from a non-Pool caller, well-formed calldata**: the frame reverts with
 `CallerMustBePool()` and changes nothing. Calldata of at least 164 bytes with the selector and its
 address arguments clean (what the ABI decoder accepts); no value. -/
@@ -43,7 +42,6 @@ theorem transferOnLiquidation_reverts_of_not_pool (m : Machine) (hf : Fresh ATok
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`transferOnLiquidation` from a non-Pool caller, any calldata and value**: the frame reverts,
 with at most 4 bytes of data, and changes nothing (calldata with the selector `0x353b7b9a`). -/
 theorem transferOnLiquidation_noEffectOut_of_not_pool (m : Machine)

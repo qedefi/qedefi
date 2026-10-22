@@ -28,7 +28,6 @@ theorem poolOnly_not_proxySelector {s : Nat} (h : s ∈ poolOnlySelectors) :
 theorem delegatedAddress_aToken : delegatedAddress? AToken.runtimeCode = none := by
   decide +kernel
 
-set_option maxHeartbeats 0 in
 /-- **Access control through the proxy.** A frame running the aToken proxy whose implementation
 slot points at the AToken implementation's code, called by anyone but the Pool with one of the
 `onlyPool` selectors (any further calldata, any value, any world, any depth below 1024), reverts

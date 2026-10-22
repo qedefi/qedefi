@@ -12,7 +12,6 @@ namespace Examples.AaveV3.ATokenProxy
 open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter EvmLogic.Tactic
 open Examples.AaveV3.Contracts
 
-set_option maxHeartbeats 0 in
 /-- **The admin cannot reach the implementation.** A fresh frame running the aToken proxy,
 called by the admin with calldata that selects none of the proxy's own functions, reverts
 (`"Cannot call fallback function from the proxy admin"`) and changes nothing. -/

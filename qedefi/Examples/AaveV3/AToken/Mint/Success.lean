@@ -9,9 +9,11 @@ the executing account's storage as `mintWorld` (the user's packed word with the 
 balance, `_totalSupply + amt`), provided the arithmetic checks of `_mintScaled`/`_mint` pass
 and the rewards controller behaves as `HandleActionOk` says.
 
-The run crosses one external `CALL` (`WP.call0` with the assumed callee summary) and two
-`CODECOPY`s of event topics; memory and gas are abstracted (`wp_abstract`) at the phase
-boundaries, which keeps the 600-instruction run at about 15 s.
+The run crosses `EXTCODESIZE`, one external `CALL` (`WP.call0` with the assumed callee summary)
+and two `CODECOPY`s of event topics, all stepped by `pwp_xrun_to`/`pwp_xsteps`; memory and gas
+are abstracted at the phase boundaries (`wp_abstract_mem`, which keeps the memory's size and free
+pointer, and `wp_abstract gas`). No upper bound on the gas is needed: the caller keeps at least
+1/64 of its gas whatever gas it requests (`callCost_le_gasLeft`, `messageCallGas_zero`).
 -/
 
 namespace Examples.AaveV3.AToken
@@ -19,13 +21,11 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open Examples.AaveV3.Contracts
 open Examples.Solmate.ERC20 (lt_size_four)
 
-set_option maxRecDepth 10000 in
-set_option maxHeartbeats 0 in
 /-- **`mint` by the Pool, success.** Hypotheses: well-formed calldata for
 `mint(c, u, amt, idx)`, the Pool as caller, no value, a non-static frame, enough gas
-(≥ 10^6, the rewards controller gets all but 1/64 of it); the user's slot is not slot 54; the
-checks of the code pass: `amt ≠ 0`, the new balance fits 120 bits, `idx` fits 128 bits,
-`(balance + amt) * idx` does not overflow, the accrued interest `rayMul(balance, idx) -
+(≥ 10^6, the rewards controller gets all but 1/64 of it; no upper bound); the user's slot is
+not slot 54; the checks of the code pass: `amt ≠ 0`, the new balance fits 120 bits, `idx` fits
+128 bits, `(balance + amt) * idx` does not overflow, the accrued interest `rayMul(balance, idx) -
 rayMul(balance, previousIndex)` is not negative, the new supply does not overflow; and the
 rewards controller is deployed (code of size in `(0, 2^256)`, not a precompile, no EIP-7702
 delegation), depth allows the call, and its `handleAction` behaves (`HandleActionOk`). -/
@@ -39,7 +39,7 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (harg2 : Bytes.toWord (readBytes m.frame.msg.data 68 32) = amt)
     (harg3 : Bytes.toWord (readBytes m.frame.msg.data 100 32) = idx)
     (hc : m.frame.msg.caller = pool)
-    (hg : 1000000 ≤ m.frame.gasLeft) (hgu : m.frame.gasLeft < 2 ^ 64)
+    (hg : 1000000 ≤ m.frame.gasLeft)
     (hslot : userStateSlot m.ctx.crypto u ≠ 54#256)
     (hamt : amt ≠ 0)
     (hnb : (scaledBalance m.ctx.crypto m.world m.frame.msg.currentTarget u).toNat + amt.toNat <
@@ -120,20 +120,9 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
   pwp_run_to 6240 [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3,
     hc', hW, hbal, hadd1, iszero_zero, hr1, hprev, hr2, hr3, hsub1, hc128, hc120,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self, Memory.read_64]
-  wp_abstract memory M hM
-  have hMs : M.size = 96 := by
-    rw [← hM]
-    simp only [Memory.size_storeWord, Memory.size_expand, Memory.size_empty,
-      Memory.wordsAfter, Memory.words, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv,
-      Nat.reduceLeDiff, Nat.reduceEqDiff, Nat.max_def, ↓reduceIte, Nat.zero_add]
-  have hMf : M.loadWord 64 = 128#256 := by
-    rw [← hM]
-    simp only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
-      Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide), Memory.loadWord_storeWord]
-  clear hM
+  wp_abstract_mem M
   wp_abstract gas g hgas
   have hg2 : 990000 ≤ g := by rw [← hgas]; evm_gas
-  have hgu2 : g ≤ m_gasLeft := by rw [← hgas]; omega
   clear hgas
   have ham := and_mask120_of_lt hamt'
   have hadd2 := ERC20.gt_add_self_eq_zero (x := T) (y := amt) (by omega)
@@ -150,28 +139,15 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (by rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by omega)]; omega) (by decide)
   simp only [Nat.reducePow, Nat.reduceSub] at hc120b
   -- the three writes (`_userState[u]` index, `_totalSupply`, `_userState[u]` balance)
-  pwp_run_to 8177 [hMs, hW, hMf, hT, hS, hc120, iszero_zero, ham, hadd2, hS2,
+  pwp_run_to 8177 [hW, hT, hS, hc120, iszero_zero, ham, hadd2, hS2,
     World.sload_sstore_self, hlow, hm1, hm2, hc120b, ofAddress_and_addressMask,
     addressMask_and_ofAddress, Memory.read_64]
-  wp_abstract memory M2 hM2
-  have hM2s : M2.size = 96 := by
-    rw [← hM2]
-    simp only [Memory.size_storeWord, Memory.size_expand,
-      Memory.wordsAfter, Memory.words, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv,
-      Nat.reduceLeDiff, Nat.reduceEqDiff, Nat.max_def, ↓reduceIte, Nat.zero_add,
-      hMs]
-  have hM2f : M2.loadWord 64 = 128#256 := by
-    rw [← hM2]
-    simp only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint _ 0 64 _ (by decide),
-      Memory.loadWord_storeWord_of_disjoint _ 32 64 _ (by decide), hMf]
-  clear hM2
+  wp_abstract_mem M2
   wp_abstract gas g2 hgas2
   have hg3 : 900000 ≤ g2 := by rw [← hgas2]; evm_gas
-  have hgu3 : g2 ≤ g := by rw [← hgas2]; omega
   clear hgas2
-  pwp_run_to 8307 [hM2s, hM2f, World.code_sstore]
-  have hrc : Word.toAddress 738707689404430392569646267577155488893963911115#256 = rewardsController := by
-    decide
+  have hrc : Word.toAddress 738707689404430392569646267577155488893963911115#256 =
+      rewardsController := by decide
   have hcs' : Word.iszero (ofNat (m_world.code rewardsController).size) = 0#256 := by
     apply iszero_of_ne
     intro h
@@ -179,58 +155,35 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
     simp only [ofNat, BitVec.toNat_ofNat] at this
     rw [Nat.mod_eq_of_lt hcs2] at this
     exact hcs this
-  have hacc := accessCost_le (m_sub.accessedAddresses.contains rewardsController)
-  apply WP.of_step
-  case h =>
-    refine step_extcodesize (by pcode_fact) rfl (by simp) ?_
-    access_bounds
-    evm_gas
-  case hs => same_frame
-  pwp_norm [hrc, hcs', World.code_sstore]
-  wp_abstract gas g3 hgas3
-  have hg4 : 890000 ≤ g3 := by
-    rw [← hgas3]
-    access_bounds
-    evm_gas
-  have hgu4 : g3 ≤ g2 := by rw [← hgas3]; omega
-  clear hgas3
-  pwp_run_to 8321 [hrc, hcs', World.code_sstore, hm2, ofAddress_and_addressMask,
+  -- `extcodesize(REWARDS_CONTROLLER)` (`pwp_xrun_to` steps it) and the call's arguments
+  pwp_xrun_to 8321 [World.code_sstore, hrc, hcs', hm2, ofAddress_and_addressMask,
     addressMask_and_ofAddress]
-  wp_abstract memory M3 hM3
-  have hM3s : M3.size = 256 := by
-    rw [← hM3]
-    simp only [Memory.size_storeWord, Memory.size_expand,
-      Memory.wordsAfter, Memory.words, Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv,
-      Nat.reduceLeDiff, Nat.reduceEqDiff, Nat.max_def, ↓reduceIte,
-      hM2s]
-  have hM3f : M3.loadWord 64 = 128#256 := by
-    rw [← hM3]
-    simp only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint _ 128 64 _ (by decide),
-      Memory.loadWord_storeWord_of_disjoint _ 132 64 _ (by decide),
-      Memory.loadWord_storeWord_of_disjoint _ 164 64 _ (by decide),
-      Memory.loadWord_storeWord_of_disjoint _ 196 64 _ (by decide), hM2f]
+  wp_abstract_mem M3 with hM3
+  wp_abstract gas g3 hgas3
+  have hg4 : 880000 ≤ g3 := by rw [← hgas3]; evm_gas
+  clear hgas3
+  -- the call's memory windows `[128, 228)` and `[128, 128)` are inside memory: no expansion
+  have hext : (Gas.extendMemory 256 [((128#256 : Word).toNat, (100#256 : Word).toNat),
+      ((128#256 : Word).toNat, (0#256 : Word).toNat)]).cost = 0 := by decide
+  have hext' : (Gas.extendMemory 256 [(128, 100), (128, 0)]).cost = 0 := by decide
   refine WP.call0 (by pcode_fact) rfl ?_ ?_ ?_ ?_ (hrcOk _ u T bal ?_ rfl rfl ?_ ?_ ?_ ?_ ?_) ?_
   · simp only [World.code_sstore, hrc]; exact hdel
-  · simp only [callCost, callGas, callExt, hrc, ofNat, BitVec.toNat_ofNat,
-      Nat.mod_eq_of_lt (show g3 - 27 < 2 ^ 256 by omega)]
-    simp only [Nat.reducePow, Nat.reduceMod]
-    access_bounds
-    rw [messageCallGas_zero (by evm_gas)]
-    simp only [Gas.maxMessageCallGas]
-    evm_gas
+  · exact callCost_le_gasLeft (c := 0)
+      (by simp only [callExt, M3_size, hext]; exact Nat.le_refl 0)
+      (by evm_gas)
   · simp only [Gas.stackDepthLimit]; omega
   · rw [hrc]; exact hpre
   · exact ⟨_, _, _, rfl, by simp only [childMsg, World.code_sstore, hrc]⟩
-  · dsimp only [Frame.init, childMsg, callMemory]
+  · -- the selector, read back from the stored word (`reduceErrorSelector`)
+    dsimp only [Frame.init, childMsg, callMemory]
     rw [← hM3]
     simp only [BitVec.reduceToNat, readBytes_bytes, Abi.selectorOf]
     rw [Memory.readBytes_read _ 128 100 0 4 (by decide)]
     simp only [Memory.read_expand, Nat.add_zero,
       Memory.read_storeWord_of_disjoint _ 196 128 4 _ (by decide),
       Memory.read_storeWord_of_disjoint _ 164 128 4 _ (by decide),
-      Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide),
-      Memory.read_storeWord_prefix _ _ 4 _ (by decide)]
-    kernel_decide
+      Memory.read_storeWord_of_disjoint _ 132 128 4 _ (by decide), reduceErrorSelector,
+      Abi.selectorBytes, Bytes.toNat_ofNatBE]
   · dsimp only [Frame.init, childMsg, callMemory]
     rw [← hM3]
     simp only [BitVec.reduceToNat, readBytes_bytes, Memory.size_read]
@@ -263,25 +216,15 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
     have hs3 : mf.originalWorld = m_originalWorld := hsame.originalWorld
     clear hsame
     simp only [hs1, hs2, hs3]
+    clear hM3
     dsimp only [call0Caller, callerFrame, callMemory, Frame.init, childMsg] at hst ⊢
-    wp_abstract memory M4 hM4
-    have hM4s : M4.size = 256 := by
-      rw [← hM4]
-      simp only [returnMemory, ByteArray.size_extract, Nat.sub_zero,
-        Nat.zero_le, Nat.min_eq_left, ↓reduceIte, Memory.size_expand, Memory.wordsAfter, Memory.words,
-        hM3s, BitVec.reduceToNat]
-      decide
-    have hM4f : M4.loadWord 64 = 128#256 := by
-      rw [← hM4]
-      simp only [returnMemory, ByteArray.size_extract, Nat.sub_zero,
-        Nat.zero_le, Nat.min_eq_left, ↓reduceIte, Memory.loadWord_expand, hM3f]
-    clear hM4
+    wp_abstract_mem M4
     wp_abstract gas g5 hgas5
+    -- the caller keeps 1/64 of its gas, whatever gas the `GAS` word asked for
     have hg5 : 13000 ≤ g5 := by
       rw [← hgas5]
-      simp only [callCost, callGas, callExt, hrc, ofNat, BitVec.toNat_ofNat,
-        Nat.mod_eq_of_lt (show g3 - 27 < 2 ^ 256 by omega), Nat.reducePow, Nat.reduceMod]
-      access_bounds
+      simp only [callCost, callGas, callExt, hrc, ofNat, BitVec.toNat_ofNat, M3_size,
+        Nat.reducePow, Nat.reduceMod, hext']
       rw [messageCallGas_zero (by evm_gas)]
       simp only [Gas.maxMessageCallGas]
       evm_gas
@@ -294,17 +237,13 @@ theorem mint_halts_ok (m : Machine) (hf : Fresh AToken.runtimeCode m)
         rw [toNat_rayMul hBA, toNat_rayMul hBP, BitVec.toNat_add, Nat.mod_eq_of_lt (by omega)]
         exact Nat.le_trans hinc (Nat.div_le_div_right
           (Nat.mul_le_mul_right _ (Nat.le_add_right _ _))))
-    pwp_steps [hM4s, hM4f, hsub2, iszero_zero]
-    pwp_codecopy
-    pwp_steps [hM4s, hM4f, ofAddress_and_addressMask, addressMask_and_ofAddress]
-    pwp_codecopy
-    pwp_steps [hM4s, hM4f, ofAddress_and_addressMask, addressMask_and_ofAddress]
+    -- the `Mint` event (two `CODECOPY`s of topics, stepped by `pwp_xsteps`) and the return
+    pwp_xsteps [hsub2, iszero_zero, ofAddress_and_addressMask, addressMask_and_ofAddress]
     refine ⟨?_, ?_⟩
     · rw [iszero_iszero_iszero, hbal2]
     · intro slot
       dsimp only [outputMachine]
       rw [hst slot]
       simp only [mintWorld, userWordIndexed, userWordMinted, userStateSlot, hW, hT, hbal2]
-
 
 end Examples.AaveV3.AToken

@@ -58,13 +58,13 @@ theorem callerMustBePool_mem : ("CallerMustBePool()", (0x54b39ce2 : UInt32)) ∈
 
 theorem callerMustBePool_eq : callerMustBePool = Abi.selectorBytes 0x54b39ce2 := by decide +kernel
 
-/-- The word solc stores for the error (`0x2a59ce71 << 225`): its first 4 bytes are the selector. -/
+/-- The word solc stores for the error (`0x54b39ce2 << 224`): its first 4 bytes are the selector
+(`reduceErrorSelector`, for any custom error). -/
 theorem read_callerMustBePool (mem : Memory) (off : Nat) :
     (mem.storeWord off
         38311627670967753522350073125268627061094447950948343943422773345822703616000#256).read
       off 4 = callerMustBePool := by
-  rw [Memory.read_storeWord_prefix _ _ _ _ (by decide)]
-  decide +kernel
+  simp only [reduceErrorSelector]; exact callerMustBePool_eq.symm
 
 /-! ## Postconditions -/
 

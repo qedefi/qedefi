@@ -45,10 +45,8 @@ theorem read_invalidMintAmount (mem : Memory) (off : Nat) :
     (mem.storeWord off
         92714969087459791759437094555211621909296636002608906789850377158154126360576#256).read
       off 4 = invalidMintAmount := by
-  rw [Memory.read_storeWord_prefix _ _ _ _ (by decide)]
-  decide +kernel
+  simp only [reduceErrorSelector]; decide +kernel
 
-set_option maxHeartbeats 0 in
 /-- **`mint` of a zero scaled amount by the Pool** reverts with `InvalidMintAmount()` and
 changes nothing. -/
 theorem mint_reverts_of_zero (m : Machine) (hf : Fresh AToken.runtimeCode m)
@@ -77,8 +75,6 @@ theorem mint_reverts_of_zero (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxRecDepth 10000 in
-set_option maxHeartbeats 0 in
 /-- **`mint` of a scaled amount ≥ 2^120 by the Pool reverts** (in a non-static frame, so that
 the index write before `toUint120` does not halt instead). -/
 theorem mint_reverts_of_cast (m : Machine) (hf : Fresh AToken.runtimeCode m)

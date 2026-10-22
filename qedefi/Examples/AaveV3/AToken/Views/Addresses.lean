@@ -16,7 +16,6 @@ open Examples.Solmate.ERC20 (lt_size_four)
 
 /-! ## Non-payable -/
 
-set_option maxHeartbeats 0 in
 /-- **Every function is non-payable**: with value, any calldata reverts (empty data) and
 changes nothing. -/
 theorem noEffect_of_value (m : Machine) (hf : Fresh AToken.runtimeCode m)
@@ -30,7 +29,6 @@ theorem noEffect_of_value (m : Machine) (hf : Fresh AToken.runtimeCode m)
 
 /-! ## Addresses -/
 
-set_option maxHeartbeats 0 in
 /-- **`POOL()`** returns the Pool proxy; nothing changes. -/
 theorem POOL_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0x7535d246)
@@ -47,7 +45,6 @@ theorem POOL_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`TREASURY()`** returns `treasury`; nothing changes. -/
 theorem TREASURY_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0x2d2c5565)
@@ -64,7 +61,6 @@ theorem TREASURY_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`RESERVE_TREASURY_ADDRESS()`** returns `treasury`; nothing changes. -/
 theorem RESERVE_TREASURY_ADDRESS_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xae167335)
@@ -81,7 +77,6 @@ theorem RESERVE_TREASURY_ADDRESS_halts (m : Machine) (hf : Fresh AToken.runtimeC
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`REWARDS_CONTROLLER()`** returns `rewardsController`; nothing changes. -/
 theorem REWARDS_CONTROLLER_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xcd086d45)
@@ -98,7 +93,6 @@ theorem REWARDS_CONTROLLER_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`UNDERLYING_ASSET_ADDRESS()`** returns `underlyingAsset`; nothing changes. -/
 theorem UNDERLYING_ASSET_ADDRESS_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xb16a19de)

@@ -120,7 +120,7 @@ theorem burn_halts_effect (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (harg3 : Bytes.toWord (readBytes m.frame.msg.data 100 32) = amt)
     (harg4 : Bytes.toWord (readBytes m.frame.msg.data 132 32) = idx)
     (hc : m.frame.msg.caller = pool)
-    (hg : 5000000 ≤ m.frame.gasLeft) (hgu : m.frame.gasLeft < 2 ^ 64)
+    (hg : 5000000 ≤ m.frame.gasLeft)
     (hrcOk : HandleActionOkCode (m.world.code rewardsController) m.frame.msg.currentTarget)
     (hcs : (m.world.code rewardsController).size ≠ 0)
     (hcs2 : (m.world.code rewardsController).size < 2 ^ 256)
@@ -147,7 +147,7 @@ theorem burn_halts_effect (m : Machine) (hf : Fresh AToken.runtimeCode m)
       (scaledBalance m.ctx.crypto m.world m.frame.msg.currentTarget u).toNat * idx.toNat /
         1000000000000000000000000000) :
     Halts m (BurnEffect u amt idx m) :=
-  (burn_halts_ok m hf hval hstatic hsel hsize hsize' harg0 harg1 harg2 harg3 harg4 hc hg hgu
+  (burn_halts_ok m hf hval hstatic hsel hsize hsize' harg0 harg1 harg2 harg3 harg4 hc hg
     hrcOk hcs hcs2 hdel hpre hdepth hr hslot61 hTok hdelU hpreU hamt hslot hle hsupLe hidx hmul
     hinc).mono
     fun _ _ _ h => h.effect hslot hle hidx hsupLe

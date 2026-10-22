@@ -133,7 +133,7 @@ theorem mint_halts_effect (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (harg2 : Bytes.toWord (readBytes m.frame.msg.data 68 32) = amt)
     (harg3 : Bytes.toWord (readBytes m.frame.msg.data 100 32) = idx)
     (hc : m.frame.msg.caller = pool)
-    (hg : 1000000 ≤ m.frame.gasLeft) (hgu : m.frame.gasLeft < 2 ^ 64)
+    (hg : 1000000 ≤ m.frame.gasLeft)
     (hslot : userStateSlot m.ctx.crypto u ≠ 54#256)
     (hamt : amt ≠ 0)
     (hnb : (scaledBalance m.ctx.crypto m.world m.frame.msg.currentTarget u).toNat + amt.toNat <
@@ -154,7 +154,7 @@ theorem mint_halts_effect (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hpre : m.precompiles.isPrecompile rewardsController = false)
     (hdepth : m.frame.msg.depth < 1024) :
     Halts m (MintEffect u amt idx m) :=
-  (mint_halts_ok m hf hval hstatic hsel hsize hsize' harg0 harg1 harg2 harg3 hc hg hgu hslot hamt
+  (mint_halts_ok m hf hval hstatic hsel hsize hsize' harg0 harg1 harg2 harg3 hc hg hslot hamt
     hnb hidx hmul hinc hsup hrcOk hcs hcs2 hdel hpre hdepth).mono
     fun _ _ _ h => h.effect hslot hnb hidx hsup
 

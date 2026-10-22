@@ -16,7 +16,6 @@ open Examples.Solmate.ERC20 (lt_size_four)
 
 /-! ## The scaled ledger -/
 
-set_option maxHeartbeats 0 in
 /-- **`scaledBalanceOf(a)`** returns `scaledBalance` of `a`; nothing changes. -/
 theorem scaledBalanceOf_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0x1da24f3e)
@@ -38,7 +37,6 @@ theorem scaledBalanceOf_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`scaledTotalSupply()`** returns slot 54; nothing changes. -/
 theorem scaledTotalSupply_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xb1bf962d)
@@ -54,7 +52,6 @@ theorem scaledTotalSupply_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
   dsimp only [outputMachine]
   evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`getScaledUserBalanceAndSupply(a)`** returns `(scaledBalance a, scaledTotalSupply)`;
 nothing changes. -/
 theorem getScaledUserBalanceAndSupply_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
@@ -78,7 +75,6 @@ theorem getScaledUserBalanceAndSupply_halts (m : Machine) (hf : Fresh AToken.run
   · dsimp only [outputMachine]
     evm_gas
 
-set_option maxHeartbeats 0 in
 /-- **`getPreviousIndex(a)`** returns `previousIndex` of `a`; nothing changes. -/
 theorem getPreviousIndex_halts (m : Machine) (hf : Fresh AToken.runtimeCode m)
     (hval : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xe0753986)
