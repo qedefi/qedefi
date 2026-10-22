@@ -1,0 +1,19 @@
+[
+  {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "attack",
+    "inputs": [
+      {
+        "name": "bank",
+        "type": "address",
+        "internalType": "contract IBank"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  }
+]

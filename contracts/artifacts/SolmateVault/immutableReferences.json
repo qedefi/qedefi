@@ -1,7 +1,7 @@
 [
   {
     "name": "INITIAL_CHAIN_ID",
-    "astId": 6370,
+    "astId": 7637,
     "offsets": [
       1831
     ],
@@ -10,7 +10,7 @@
   },
   {
     "name": "INITIAL_DOMAIN_SEPARATOR",
-    "astId": 6372,
+    "astId": 7639,
     "offsets": [
       1879
     ],
@@ -19,7 +19,7 @@
   },
   {
     "name": "asset",
-    "astId": 6762,
+    "astId": 8029,
     "offsets": [
       688,
       1170,
@@ -33,7 +33,7 @@
   },
   {
     "name": "decimals",
-    "astId": 6356,
+    "astId": 7623,
     "offsets": [
       623
     ],
