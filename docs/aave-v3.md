@@ -235,7 +235,7 @@ balance)` calldata, in any frame, its code `rc` succeeds and leaves `t`'s storag
 
 | Theorem | Statement |
 |---|---|
-| `mint_halts_ok` | Pool caller, no value, non-static frame, gas in `[10^6, 2^64)`, well-formed calldata `mint(c, u, amt, idx)`; `userStateSlot u ≠ 54`; `amt ≠ 0`, `scaledBalance u + amt < 2^120`, `idx < 2^128`, `(scaledBalance u + amt) · idx < 2^256`, `⌊scaledBalance u · previousIndex u / RAY⌋ ≤ ⌊scaledBalance u · idx / RAY⌋`, `scaledTotalSupply + amt < 2^256`; rewards controller: `HandleActionOk`, code size in `(0, 2^256)`, not a precompile, not EIP-7702-delegated, depth < 1024 → returns `iszero(scaledBalance u)`, and every slot of the executing account equals `mintWorld`'s (`MintOk`) |
+| `mint_halts_ok` | Pool caller, no value, non-static frame, gas ≥ `10^6` (no upper bound), well-formed calldata `mint(c, u, amt, idx)`; `userStateSlot u ≠ 54`; `amt ≠ 0`, `scaledBalance u + amt < 2^120`, `idx < 2^128`, `(scaledBalance u + amt) · idx < 2^256`, `⌊scaledBalance u · previousIndex u / RAY⌋ ≤ ⌊scaledBalance u · idx / RAY⌋`, `scaledTotalSupply + amt < 2^256`; rewards controller: `HandleActionOk`, code size in `(0, 2^256)`, not a precompile, not EIP-7702-delegated, depth < 1024 → returns `iszero(scaledBalance u)`, and every slot of the executing account equals `mintWorld`'s (`MintOk`) |
 | `mint_halts_effect` | the same → `MintEffect`: `scaledBalance u` and `scaledTotalSupply` both grow by `amt`, `previousIndex u = idx`, the delegation byte and every other slot unchanged |
 | `mint_reverts_of_zero` | Pool caller, no value, well-formed calldata with `scaledAmount = 0` → `RevertsWith invalidMintAmount 3000` (`InvalidMintAmount()`, `0xccfad018`) |
 | `mint_reverts_of_cast` | Pool caller, no value, non-static frame, gas ≥ 10^5, well-formed calldata with `scaledAmount ≥ 2^120` → the frame reverts (whichever check fails first: supply-side add, `rayMulFloor` guard, interest subtraction, `toUint128(index)`, `toUint120(amount)` after the index write) |
@@ -252,7 +252,7 @@ underlying's `transfer(receiver, amount)` through `GPv2SafeERC20.safeTransfer` (
 
 | Theorem | Statement |
 |---|---|
-| `burn_halts_ok` | Pool caller, no value, non-static frame, gas in `[5·10^6, 2^64)`, well-formed calldata `burn(u, r, amount, amt, idx)` with `r` ≠ the executing account; `userStateSlot u ∉ {54, 61}`; `amt ≠ 0`, `amt ≤ scaledBalance u`, `amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, interest not negative; rewards controller as for `mint` with `HandleActionOkCode`; underlying (`underlyingAddress`, slot 61) not a precompile, not delegated, `TransferOk` → returns `iszero(scaledBalance u - amt)`, storage = `burnWorld` (`BurnOk`); both event branches (`Mint` / `Burn`) |
+| `burn_halts_ok` | Pool caller, no value, non-static frame, gas ≥ `5·10^6` (no upper bound), well-formed calldata `burn(u, r, amount, amt, idx)` with `r` ≠ the executing account; `userStateSlot u ∉ {54, 61}`; `amt ≠ 0`, `amt ≤ scaledBalance u`, `amt ≤ scaledTotalSupply`, `idx < 2^128`, `scaledBalance u · idx < 2^256`, interest not negative; rewards controller as for `mint` with `HandleActionOkCode`; underlying (`underlyingAddress`, slot 61) not a precompile, not delegated, `TransferOk` → returns `iszero(scaledBalance u - amt)`, storage = `burnWorld` (`BurnOk`); both event branches (`Mint` / `Burn`) |
 | `burn_halts_effect` | the same → `BurnEffect`: `scaledBalance u` and `scaledTotalSupply` both shrink by `amt`, `previousIndex u = idx`, delegation byte and other slots unchanged |
 | `burnWorld_ledger` | `scaledBalance' u + supply = scaledBalance u + supply'` |
 
@@ -261,14 +261,21 @@ underlying's `transfer(receiver, amount)` through `GPv2SafeERC20.safeTransfer` (
 itself (no transfer); the revert cases of `burn`; `transfer`, `transferFrom`, `balanceOf`,
 `totalSupply` (they call the Pool's `getReserveNormalizedIncome` / `finalizeTransfer`, which
 need summaries of the Pool proxy and implementation); `permit`, `approve`, `initialize`,
-`rescueTokens` (calls the ACL manager). Build times (incremental, this machine): `Code` 6 s,
-each `Guard/*` 3–4 s, `Views/*` 5–6 s, `Mint/Success` 19 s, `Mint/Revert` 14 s, `Burn/Success`
-29 s, the rest about 1 s each.
+`rescueTokens` (calls the ACL manager). Build times (`lake env lean`, this machine, before →
+after the proof-machinery work of `aave/friction`): `Code` 6 s, each `Guard/*` 3–4 s, `Views/*`
+5–7 s, `Mint/Success` 18 s → 9 s, `Mint/Revert` 13 s → 11 s, `Burn/Success` 28 s → 17 s, the rest
+about 1 s each. No AToken proof sets `maxRecDepth` or `maxHeartbeats` (the aToken proxy's
+`Delegate`/`Forward` still raise `maxHeartbeats`).
 
-The generic proof tools first written for these proofs are in `EvmLogic`: `wp_abstract`
-(abstract the memory, gas, substate or world of a `WP` goal without `generalize`) and
-`access_bounds` (`Tactic/Abstract.lean`), `step_extcodesize` (`Program/Call.lean`),
-`step_returndatacopy` (`Solidity/Steps.lean`).
+The generic proof tools written for these proofs are in `EvmLogic` (`docs/proving.md`):
+`wp_abstract`, `wp_abstract_mem` (abstract memory keeping its size and free pointer),
+`access_bounds` (`Tactic/Abstract.lean`); `pwp_xsteps`/`pwp_xrun_to` with the `pwp_step_ext`
+extension point (`EXTCODESIZE`, `CODECOPY`, `CALLDATACOPY`, `RETURNDATACOPY`, `MCOPY`;
+`Tactic/StepExt.lean`); `wp_join` (`burn`'s two event branches share the `safeTransfer` tail);
+the gas lemmas of `Program/GasBound.lean` (`Halts.gas_le`, `callCost_le_gasLeft`: no upper bound
+on the gas is needed, so `mint_halts_ok`/`burn_halts_ok` and their `_effect` corollaries lost
+their `gas < 2^64` hypothesis); `BitField` (`Solidity/Layout.lean`: the packed `_userState`);
+`reduceErrorSelector` and `read_error₁/₂` (`Solidity/Steps.lean`: custom-error revert data).
 
 **Through the proxy** (`qedefi/Examples/AaveV3/ATokenProxy/`, namespace
 `Examples.AaveV3.ATokenProxy`), about the deployed proxy `ATokenProxy.runtimeCode` (the same

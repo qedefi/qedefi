@@ -78,6 +78,7 @@ need `ctx.fork < .prague ∨ ctx.tx.authorizations = []` (EIP-7702).
 | `run (k + n) m = …` | `evm_step(s)` | `sol_step(s)` | `psol_step(s)` |
 | `WP m Q H` (frame-local) | `wp_step(s)`, `wp_run_to`, `wp_intro` | `wp_steps` with code facts | `pwp_step(s)`, `pwp_run_to` |
 | with `MCOPY` | | `psol_msteps` | `pwp_msteps` |
+| with `EXTCODESIZE`, copies, extensions | | | `pwp_xsteps`, `pwp_xrun_to` |
 
 `sol_step` reads the opcode at `pc` itself and discharges code bytes, `PUSH` immediates
 (`reduceCodeImm`) and jump destinations by `decide +kernel` on list scans
@@ -89,6 +90,16 @@ destinations from a `JumpDestsAgree code base` hypothesis in context; reads insi
 `EvmLogic/Program/Code.lean` provides kernel-checked code facts (`codeFact`, `kernelFact`,
 `jdCheck`) so the elaborator never evaluates large code. To extend the search:
 ``macro_rules | `(tactic| evm_step_core) => `(tactic| evm_apply my_step_lemma)``.
+
+**Instructions outside the table** (`EvmLogic/Tactic/StepExt.lean`). `pwp_steps` stops at
+instructions its table has no lemma for. `pwp_xsteps [h, …]` / `pwp_xrun_to pc, … [h, …]` also
+try the extension point `pwp_step_ext`, which already steps `EXTCODESIZE` (access cost bounded by
+2600), `CODECOPY` (event topics), `CALLDATACOPY` and `RETURNDATACOPY` (empty or not, literal
+length) and `MCOPY`. Add an instruction with
+``macro_rules | `(tactic| pwp_step_ext [$extra,*]) => `(tactic| (apply WP.of_step; …; pwp_norm [$extra,*]))``
+(fail fast when it does not apply: start with the code byte, `pcode_fact`). The plain
+`pwp_steps`/`pwp_run_to` are unchanged, so proofs that step such an instruction by hand keep
+their goals.
 
 ## 3. The frame-local logic: `WP`, `Halts`, `Triple`
 
@@ -130,6 +141,32 @@ proxy's forwarding is summarised once for all implementations
 (`Program/PrecompileCall.lean`: `WP.staticcall_precompile`, and `WP.staticcall_ecrecover` for
 solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
 
+**Gas across a call** (`Program/GasBound.lean`). A frame never ends with more gas than it
+started with: `Halts.gas_le` adds `returnedGas mf o ≤ m.frame.gasLeft` to any `Halts m H` (refunds
+accrue in the substate, not in `gasLeft`), given `Nested.PrecompilesOk m.precompiles` (the
+machine's precompiles create no gas; true of `PrecompileImpl.standard`, so of every
+`processMessageCall`). `WP.call_gas_le`, `WP.call0_gas`, `WP.staticcall_gas`,
+`WP.delegatecall_gas` are the callee-summary rules whose continuation also knows that the caller
+resumes with at most the gas it had before the call. A summary stated for *any* machine (as the
+AToken theorems are) has no `PrecompilesOk`; it does not need an upper bound either: the
+requested gas is the word `GAS` pushed (`g mod 2²⁵⁶`), and whatever it is, the caller keeps at
+least 1/64 of its gas after the access and memory charges (`callCost_le_max`,
+`le_gasLeft_callerFrame`, `callCost_le_gasLeft`; after `messageCallGas_zero` the `min` with the
+requested amount is harmless to `omega`). So no `gas < 2^64` hypothesis is ever needed for a
+lower bound after a call (the AToken `mint`/`burn` theorems dropped theirs). Only a frame that
+must hand the child a *minimum* (the proxy's `forward_halts`) needs `gas < 2²⁵⁶`.
+
+**Join points** (`WP.join`, `WP.join_at` in `Program/Summary.lean`; `wp_join` in
+`Tactic/Abstract.lean`). When several paths reach the same pc in states that differ only in
+fields the rest does not inspect (memory written by different events, gas, logs), prove the tail
+once: run each branch to the join pc, abstract the differing fields under the **same names** in
+every branch (`wp_abstract gas g hg`, `wp_abstract_mem M with hM` plus the facts the tail reads,
+`wp_abstract sub s hs`), then `wp_join [M, M_size, …, g, hg, s]`. It reverts the named
+hypotheses in every open goal, checks the statements coincide (mentioning only hypotheses common
+to all branches), and replaces the goals by one. Use `case' pos => …` (which leaves the goal
+open) rather than `·` for the branches. `Examples/AaveV3/AToken/Burn/Success.lean`: the `Mint` and
+`Burn` event branches of `burn` join before `safeTransfer`'s call.
+
 ## 4. The Solidity layer (`EvmLogic/Solidity/`)
 
 - **Layout** (`Layout.lean`): `Field` (packed value types, `get`/`set`/`read`/`write`),
@@ -145,9 +182,22 @@ solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
   `balanceOf`, `allowance` through a `Layout` (`Layout.solmate`); `view_sstore_balanceSlot`
   updates it pointwise under `BalanceSlotOk` (the slot is fresh among address-keyed rows and
   is not the supply slot); `AllowanceSlotOk` for allowances.
+- **Bit fields** (`Layout.lean`): `BitField` is `width` bits at bit `offset` (neither needs to be
+  a numeral, so a field at a runtime index, e.g. `UserConfiguration`'s two bits per reserve, is a
+  `BitField` with a symbolic offset; `BitField.bit i`); `get`/`set` as solc's shift-and-mask;
+  `toNat_get` (`⌊v / 2^offset⌋ mod 2^width`), `getLsbD_get`/`getLsbD_set`, `get_set_self`,
+  `get_set_of_disjoint`, `toNat_get_set_self`, `get_bit`; `Valid`/`Disjoint` are decidable. Proved
+  bitwise, no `bv_decide`. The AToken's packed `_userState` (`uint120` balance, delegation byte,
+  `uint128` index: `balanceField`, `delegationField`, `indexField`) is stated on them.
 - **ABI** (`Abi.lean`): selectors are literal numbers from the compiler output, never computed
   with `crypto`; `encodeCall`, `size_encodeCall`, `calldataload_encodeCall`,
-  `shr_calldataload_zero`. Strings: `Abi.encodeString`, `stringAt` (`Strings.lean`).
+  `shr_calldataload_zero`.
+- **Custom errors** (`Steps.lean`): solc reverts with `E(a₁, …)` by `mstore(p, sel << 224)`,
+  `mstore(p + 4, a₁)`, …; `read_storeWord_selector` reads `Abi.selectorBytes sel` back for any
+  selector, `read_error₁`/`read_error₂` the data with one or two word arguments, and the simproc
+  `reduceErrorSelector` rewrites `(mem.storeWord p w).read p 4` for a literal `w` itself (no
+  per-error lemma, no `decide` on memory). The same layout is a call's ABI input (the selector of
+  a callee's `transfer`, as in `Burn/Success.lean`). Strings: `Abi.encodeString`, `stringAt` (`Strings.lean`).
 - **Dispatch** (`Dispatch.lean`): `Reaches code sel entry n cost` packages solc's
   dispatcher as a rewrite rule for every machine; proved per selector by `sol_dispatch` /
   `psol_dispatch`.
@@ -411,11 +461,32 @@ about 20 s; the multi-block layer adds no per-block or per-time work. `lake exe 
   parse; define the machine as a `def … where`.
 - **Large contexts**: clear hypotheses mentioning large code (`hcode`) before stepping to a
   `JUMP` with a symbolic target (`assumption` would unfold them); after a call, replace the
-  remaining gas by a variable with `wp_generalize_gas` + one `evm_gas` (or `wp_abstract gas`,
-  `wp_abstract memory`, whose cost does not grow with the goal); generalize big
-  postconditions (`generalize hQ : (fun m' => …) = Q`) before `pwp_steps`.
+  remaining gas by a variable with `wp_abstract gas g h` + one `evm_gas` (`wp_abstract` does not
+  `generalize`, so its cost does not grow with the goal), and the memory with
+  `wp_abstract_mem M`; generalize big postconditions (`generalize hQ : (fun m' => …) = Q`)
+  before `pwp_steps`.
+- **Abstracted memory**: `wp_abstract_mem M` keeps `M_size : M.size = n` and
+  `M_fp : M.loadWord 64 = v` (solc's free-memory pointer), computed from the old term and the
+  facts about earlier abstracted memories; the stepping tactics use such hypotheses by themselves,
+  so they are never passed by hand. `with h` keeps `h : <old term> = M` to read the contents later.
 - **Memory with symbolic size**: `evm_gas` does not handle it; state each expansion as
   `Gas.memoryCost new - Gas.memoryCost old`, generalize the atoms and let `omega` telescope.
   Copies of symbolic size: `step_calldatacopy_any` / `step_returndatacopy_any` (empty or not,
   memory `copyMemory`), `extendMemory_cost_le` / `extendMemory_cost_eq_zero` for the costs.
   `omega` can hit the recursion limit on `(n - k) * c`; write `c * (n - k)`.
+- **What made long runs slow, and the fixes** (measured on the AToken `mint`/`burn`, see
+  `docs/aave-v3.md`). (1) The fast stepper kept the gas as `G - (s + 2 + 3 + 3 + …)` once a
+  symbolic cost (`sloadCost`) entered, one numeral per instruction: `evm_gas`/`simp` hit the
+  recursion limit on the sum. It now folds the numeral tail (`G - (s + n)`) and evaluates closed
+  costs; `evm_gas` and the stepper bound access costs (`accessCost_le_2600`) by themselves.
+  (2) `wp_abstract` used to close the goal by `(fun x h => …) val rfl`, which `instantiateMVars`
+  beta-reduces: the abstraction vanished from the proof term and the kernel re-checked every
+  later step against the concrete memory, evaluating its bytes (`Array.push`, `List.concat` in
+  `set_option diagnostics true`'s kernel counts). It now applies a constant (`abstract_elim`).
+  (3) A run of hundreds of instructions was one nested proof term (kernel recursion depth, no
+  parallelism): over an abstracted memory, `pwp_steps`/`pwp_run_to`/`pwp_xsteps` cut a run longer
+  than 100 steps (option `pwp.chunk`, `0` to disable) into auxiliary theorems over the hypotheses
+  they use, checked by the kernel on their own and in parallel (over a concrete memory the kernel
+  would evaluate the memory again in each, so such runs stay one term). (4) Closed memory costs
+  are left to the size lemmas rather than evaluated by `rfl`. Together the AToken `mint`/`burn`
+  proofs need no `maxRecDepth`/`maxHeartbeats` option.
