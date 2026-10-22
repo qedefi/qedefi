@@ -43,13 +43,38 @@ def treasury : Address := 0x464C71f6c2F760DdA6093dCB91C24c39e5d6e18c
 /-- The rewards controller, the immutable `REWARDS_CONTROLLER`. -/
 def rewardsController : Address := 0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb
 
+/-! ## The packed `_userState` word as bit fields
+
+`_userState[a]` packs `uint120 balance` (bits 0–119), a delegation byte (bits 120–127) and
+`uint128 additionalData` (the previous index, bits 128–255): the bit fields `balanceField`,
+`delegationField`, `indexField` (`EvmLogic.Solidity.BitField`). -/
+
+/-- `_userState[a].balance`: the low 120 bits. -/
+def balanceField : BitField := ⟨0, 120⟩
+
+/-- The delegation-state byte above the balance (bits 120–127). -/
+def delegationField : BitField := ⟨120, 8⟩
+
+/-- `_userState[a].additionalData` (the previous index): the high 128 bits. -/
+def indexField : BitField := ⟨128, 128⟩
+
+theorem balanceField_valid : balanceField.Valid := by decide
+theorem indexField_valid : indexField.Valid := by decide
+theorem balance_index_disjoint : BitField.Disjoint balanceField indexField := by decide
+theorem balance_delegation_disjoint : BitField.Disjoint balanceField delegationField := by decide
+theorem index_balance_disjoint : BitField.Disjoint indexField balanceField := by decide
+theorem index_delegation_disjoint : BitField.Disjoint indexField delegationField := by decide
+
+/-- `1329…575 &&& v` (solc's `uint120` mask) is `balanceField.get v`. -/
+theorem mask120_and_eq_get (v : Word) :
+    1329227995784915872903807060280344575#256 &&& v = balanceField.get v := by
+  simp only [BitField.get, balanceField, BitField.mask, BitVec.ushiftRight_zero]
+  rw [BitVec.and_comm]
+
 theorem mask120_and (x : Word) :
     1329227995784915872903807060280344575#256 &&& x = BitVec.ofNat 256 (x.toNat % 2 ^ 120) := by
-  apply BitVec.eq_of_toNat_eq
-  rw [BitVec.toNat_and, Nat.and_comm,
-    show (1329227995784915872903807060280344575#256).toNat = 2 ^ 120 - 1 from rfl,
-    Nat.and_two_pow_sub_one_eq_mod, BitVec.toNat_ofNat]
-  omega
+  rw [mask120_and_eq_get, BitField.get_eq_ofNat _ (by decide)]
+  simp [balanceField]
 
 theorem mask128_and_div (x : Word) :
     340282366920938463463374607431768211455#256 &&&

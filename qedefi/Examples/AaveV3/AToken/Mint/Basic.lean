@@ -1,6 +1,8 @@
 import Examples.AaveV3.AToken.State
 import EvmLogic.Tactic.Abstract
 import EvmLogic.Tactic.Mcopy
+import EvmLogic.Tactic.StepExt
+import EvmLogic.Program.GasBound
 
 /-!
 # `AToken.mint`: word lemmas, the rewards-controller assumption, the postcondition
@@ -76,11 +78,11 @@ theorem iszero_iszero_iszero (x : Word) : Word.iszero (Word.iszero (Word.iszero 
   · subst h; decide
   · rw [iszero_of_ne h]; decide
 
-/-! ## The packed `_userState` word -/
+/-! ## The packed `_userState` word
 
-private theorem m120 : (1329227995784915872903807060280344575#256 : Word) = BitVec.ofNat 256 (2 ^ 120 - 1) := rfl
-private theorem m128 : (340282366920938463463374607431768211455#256 : Word) = BitVec.ofNat 256 (2 ^ 128 - 1) := rfl
-private theorem p128 : (340282366920938463463374607431768211456#256 : Word) = BitVec.twoPow 256 128 := by decide
+solc's two writes of the packed word (`State.lean`: `balanceField`, `delegationField`,
+`indexField`) are `indexField.set` and `balanceField.set` (`userWordIndexed_eq`,
+`userWordMinted_eq`); every fact below is a read-after-write law of `BitField`. -/
 
 /-- The user's word after `_userState[u].additionalData = index.toUint128()`: the old low 128
 bits (balance, delegation byte) and the index in the high 128 bits, as the code computes it. -/
@@ -88,21 +90,27 @@ def userWordIndexed (W idx : Word) : Word :=
   340282366920938463463374607431768211455#256 &&& W |||
     340282366920938463463374607431768211456#256 * (340282366920938463463374607431768211455#256 &&& idx)
 
+/-- solc's index write is `indexField.set`. -/
+theorem userWordIndexed_eq (W idx : Word) : userWordIndexed W idx = indexField.set W idx := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitField.getLsbD_set _ _ _ _ hi]
+  simp only [userWordIndexed, indexField]
+  rw [show (340282366920938463463374607431768211456#256 : Word) = BitVec.twoPow 256 128 by decide,
+    show (340282366920938463463374607431768211455#256 : Word) = BitVec.ofNat 256 (2 ^ 128 - 1)
+      from rfl, BitVec.mul_comm, ← BitVec.shiftLeft_eq_mul_twoPow]
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_ofNat,
+    Nat.testBit_two_pow_sub_one, hi, decide_true, Bool.true_and]
+  by_cases h : i < 128
+  · simp [h, show ¬ 128 ≤ i by omega]
+  · simp [h, show i - 128 < 128 by omega, show 128 ≤ i by omega, show i < 128 + 128 by omega,
+      show i - 128 < 256 by omega]
+
 theorem low120_userWordIndexed (W idx : Word) :
     1329227995784915872903807060280344575#256 &&& userWordIndexed W idx =
       1329227995784915872903807060280344575#256 &&& W := by
-  unfold userWordIndexed
-  rw [m120, m128, p128, BitVec.mul_comm, ← BitVec.shiftLeft_eq_mul_twoPow]
-  apply BitVec.eq_of_getLsbD_eq
-  intro i hi
-  simp only [BitVec.getLsbD_and, BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_ofNat,
-    Nat.testBit_two_pow_sub_one, hi, decide_true, Bool.true_and]
-  by_cases h1 : i < 120
-  · simp [h1, show i < 128 by omega]
-  · simp [h1]
-
-private theorem nm120 : (115792089237316195423570985008687907853268655437644779123584680200852849295360#256 : Word) =
-    ~~~(BitVec.ofNat 256 (2 ^ 120 - 1)) := by decide
+  rw [mask120_and_eq_get, mask120_and_eq_get, userWordIndexed_eq,
+    BitField.get_set_of_disjoint _ _ index_balance_disjoint]
 
 /-- The user's word after `_mint` writes the new balance `N` (`uint120`) into the indexed word,
 as the code computes it. -/
@@ -111,48 +119,64 @@ def userWordMinted (N W idx : Word) : Word :=
     115792089237316195423570985008687907853268655437644779123584680200852849295360#256 &&&
       userWordIndexed W idx
 
+/-- solc's balance write is `balanceField.set`. -/
+theorem userWordMinted_eq (N W idx : Word) :
+    userWordMinted N W idx = balanceField.set (userWordIndexed W idx) N := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitField.getLsbD_set _ _ _ _ hi]
+  simp only [userWordMinted, balanceField]
+  rw [show (1329227995784915872903807060280344575#256 : Word) = BitVec.ofNat 256 (2 ^ 120 - 1)
+      from rfl,
+    show (115792089237316195423570985008687907853268655437644779123584680200852849295360#256 :
+      Word) = ~~~(BitVec.ofNat 256 (2 ^ 120 - 1)) by decide]
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_and, BitVec.getLsbD_not, BitVec.getLsbD_ofNat,
+    Nat.testBit_two_pow_sub_one, hi, decide_true, Bool.true_and, Nat.zero_le, true_and,
+    Nat.zero_add, Nat.sub_zero]
+  by_cases h : i < 120 <;> simp [h]
+
 theorem getLsbD_userWordMinted (N W idx : Word) (i : Nat) :
     (userWordMinted N W idx).getLsbD i =
       if i < 120 then N.getLsbD i else if i < 128 then W.getLsbD i
       else (decide (i < 256) && idx.getLsbD (i - 128)) := by
-  unfold userWordMinted userWordIndexed
-  rw [m120, m128, p128, nm120, BitVec.mul_comm, ← BitVec.shiftLeft_eq_mul_twoPow]
-  simp only [BitVec.getLsbD_and, BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_ofNat,
-    BitVec.getLsbD_not, Nat.testBit_two_pow_sub_one]
-  by_cases h1 : i < 120
-  · simp [h1, show i < 128 by omega, show i < 256 by omega]
-  · by_cases h2 : i < 128
-    · simp [h1, h2, show i < 256 by omega]
-    · by_cases h3 : i < 256
-      · simp [h1, h2, h3]
-        exact fun _ => ⟨by omega, by omega⟩
-      · simp [h1, h2, h3]
+  by_cases hi : i < 256
+  · rw [userWordMinted_eq, BitField.getLsbD_set _ _ _ _ hi, userWordIndexed_eq,
+      BitField.getLsbD_set _ _ _ _ hi]
+    simp only [balanceField, indexField, Nat.zero_le, true_and, Nat.zero_add, Nat.sub_zero]
+    by_cases h1 : i < 120
+    · simp [h1]
+    · by_cases h2 : i < 128
+      · simp [h1, h2, show ¬ 128 ≤ i by omega]
+      · simp [h1, h2, show 128 ≤ i by omega, hi]
+  · simp [BitVec.getLsbD_of_ge _ _ (Nat.le_of_not_lt hi), show ¬ i < 120 by omega,
+      show ¬ i < 128 by omega, hi]
 
 theorem toNat_userWordMinted_mod (N W idx : Word) :
     (userWordMinted N W idx).toNat % 2 ^ 120 = N.toNat % 2 ^ 120 := by
-  apply Nat.eq_of_testBit_eq; intro i
-  simp only [Nat.testBit_mod_two_pow, BitVec.testBit_toNat, getLsbD_userWordMinted]
-  by_cases h : i < 120 <;> simp [h]
+  have := BitField.toNat_get_set_self balanceField balanceField_valid (userWordIndexed W idx) N
+  rw [BitField.toNat_get _ (by decide), ← userWordMinted_eq] at this
+  simpa [balanceField] using this
 
 theorem toNat_userWordMinted_div (N W idx : Word) :
     (userWordMinted N W idx).toNat / 2 ^ 128 = idx.toNat % 2 ^ 128 := by
-  apply Nat.eq_of_testBit_eq; intro i
-  simp only [Nat.testBit_mod_two_pow, Nat.testBit_div_two_pow, BitVec.testBit_toNat, getLsbD_userWordMinted]
-  simp only [show ¬(i + 128 < 120) by omega, show ¬(i + 128 < 128) by omega, ↓reduceIte,
-    Nat.add_sub_cancel]
-  by_cases h : i < 128
-  · simp [h, show i + 128 < 256 by omega]
-  · simp [h]
-    intro; omega
+  have hL : (indexField.get (userWordMinted N W idx)).toNat = idx.toNat % 2 ^ 128 := by
+    rw [userWordMinted_eq, BitField.get_set_of_disjoint _ _ balance_index_disjoint,
+      userWordIndexed_eq, BitField.toNat_get_set_self _ indexField_valid]; rfl
+  have hR := BitField.toNat_get indexField (by decide) (userWordMinted N W idx)
+  have hlt : (userWordMinted N W idx).toNat / 2 ^ 128 < 2 ^ 128 := by
+    have := (userWordMinted N W idx).isLt; omega
+  rw [hL] at hR
+  simp only [indexField] at hR
+  rw [hR, Nat.mod_eq_of_lt hlt]
 
 theorem toNat_userWordMinted_deleg (N W idx : Word) :
     (userWordMinted N W idx).toNat / 2 ^ 120 % 2 ^ 8 = W.toNat / 2 ^ 120 % 2 ^ 8 := by
-  apply Nat.eq_of_testBit_eq; intro i
-  simp only [Nat.testBit_mod_two_pow, Nat.testBit_div_two_pow, BitVec.testBit_toNat, getLsbD_userWordMinted]
-  by_cases h : i < 8
-  · simp only [show ¬(i + 120 < 120) by omega, show i + 120 < 128 by omega, ↓reduceIte, h,
-      decide_true, Bool.true_and]
-  · simp [h]
+  have hL : delegationField.get (userWordMinted N W idx) = delegationField.get W := by
+    rw [userWordMinted_eq, BitField.get_set_of_disjoint _ _ balance_delegation_disjoint,
+      userWordIndexed_eq, BitField.get_set_of_disjoint _ _ index_delegation_disjoint]
+  have := congrArg BitVec.toNat hL
+  rw [BitField.toNat_get _ (by decide), BitField.toNat_get _ (by decide)] at this
+  exact this
 
 /-! ## The rewards controller (modelling assumption) -/
 

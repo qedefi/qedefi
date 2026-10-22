@@ -147,6 +147,178 @@ theorem get_of_full (f : Field) (h0 : f.offset = 0) (h32 : f.size = 32) (v : Wor
 
 end Field
 
+/-! ## Bit fields
+
+`Field` is byte-granular. Solidity packs narrower values too: `uint120`/`uint128` halves of a
+word (Aave's `_userState`), bit ranges of a configuration word (Aave's `ReserveConfiguration`:
+16-bit percentages, 36-bit caps, 1-bit flags), and bits at a **runtime index**
+(`UserConfiguration`: two bits per reserve at `2 * reserveIndex`). A `BitField` is `width` bits
+at bit `offset` of a word; neither needs to be a numeral, so a field at a symbolic index is just
+a `BitField` with a symbolic offset. `get`/`set` are solc's shift-and-mask; the lemmas give the
+value as a number (`toNat_get`), bit by bit (`getLsbD_get`, `getLsbD_set`), and the
+read-after-write laws (`get_set_self`, `get_set_of_disjoint`), all proved bitwise. -/
+
+/-- `width` bits at bit `offset` (from the least significant end) of a word. -/
+structure BitField where
+  offset : Nat
+  width : Nat
+
+namespace BitField
+open EvmLean
+
+/-- The field fits in a word. -/
+def Valid (f : BitField) : Prop := f.offset + f.width ≤ 256
+
+/-- Two fields do not overlap. -/
+def Disjoint (f g : BitField) : Prop :=
+  f.offset + f.width ≤ g.offset ∨ g.offset + g.width ≤ f.offset
+
+instance (f : BitField) : Decidable f.Valid := inferInstanceAs (Decidable (_ ≤ _))
+
+instance (f g : BitField) : Decidable (f.Disjoint g) := inferInstanceAs (Decidable (_ ∨ _))
+
+/-- The low `width` bits set. -/
+def mask (f : BitField) : Word := BitVec.ofNat 256 (2 ^ f.width - 1)
+
+/-- The field's value in the word `v`: `(v >> offset) & mask`. -/
+def get (f : BitField) (v : Word) : Word := (v >>> f.offset) &&& f.mask
+
+/-- The word `v` with the field replaced by `x` (truncated to the width):
+`(v & ~(mask << offset)) | ((x & mask) << offset)`. -/
+def set (f : BitField) (v x : Word) : Word :=
+  (v &&& ~~~(f.mask <<< f.offset)) ||| ((x &&& f.mask) <<< f.offset)
+
+/-- The single bit `i` (a `bool` flag; `UserConfiguration`'s bits at a runtime index). -/
+def bit (i : Nat) : BitField := ⟨i, 1⟩
+
+theorem getLsbD_mask (f : BitField) (i : Nat) :
+    f.mask.getLsbD i = (decide (i < 256) && decide (i < f.width)) := by
+  simp only [mask, BitVec.getLsbD_ofNat, Nat.testBit_two_pow_sub_one]
+
+theorem toNat_mask (f : BitField) (hw : f.width ≤ 256) : f.mask.toNat = 2 ^ f.width - 1 := by
+  simp only [mask, BitVec.toNat_ofNat]
+  apply Nat.mod_eq_of_lt
+  have := Nat.pow_le_pow_right (show 0 < 2 by decide) hw
+  have := Nat.one_le_two_pow (n := f.width)
+  omega
+
+/-- The field as a number: `⌊v / 2^offset⌋ mod 2^width`. -/
+theorem toNat_get (f : BitField) (hf : f.width ≤ 256) (v : Word) :
+    (f.get v).toNat = v.toNat / 2 ^ f.offset % 2 ^ f.width := by
+  rw [get, BitVec.toNat_and, toNat_mask f hf, Nat.and_two_pow_sub_one_eq_mod,
+    BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+
+theorem get_eq_ofNat (f : BitField) (hf : f.width ≤ 256) (v : Word) :
+    f.get v = BitVec.ofNat 256 (v.toNat / 2 ^ f.offset % 2 ^ f.width) := by
+  apply BitVec.eq_of_toNat_eq
+  have h : v.toNat / 2 ^ f.offset % 2 ^ f.width < 2 ^ 256 :=
+    calc v.toNat / 2 ^ f.offset % 2 ^ f.width ≤ v.toNat / 2 ^ f.offset := Nat.mod_le _ _
+      _ ≤ v.toNat := Nat.div_le_self _ _
+      _ < 2 ^ 256 := v.isLt
+  rw [toNat_get f hf, BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
+
+theorem getLsbD_get (f : BitField) (v : Word) (i : Nat) :
+    (f.get v).getLsbD i = (decide (i < f.width) && v.getLsbD (f.offset + i)) := by
+  simp only [get, BitVec.getLsbD_and, BitVec.getLsbD_ushiftRight, getLsbD_mask]
+  by_cases h1 : i < 256
+  · simp only [h1, decide_true, Bool.true_and]
+    cases decide (i < f.width) <;> simp
+  · simp only [h1, decide_false, Bool.false_and, Bool.and_false]
+    by_cases h2 : i < f.width
+    · simp only [h2, decide_true, Bool.true_and]
+      exact (BitVec.getLsbD_of_ge v _ (by omega)).symm
+    · simp [h2]
+
+theorem getLsbD_set (f : BitField) (v x : Word) (i : Nat) (hi : i < 256) :
+    (f.set v x).getLsbD i =
+      if f.offset ≤ i ∧ i < f.offset + f.width then x.getLsbD (i - f.offset)
+      else v.getLsbD i := by
+  simp only [set, BitVec.getLsbD_or, BitVec.getLsbD_and, BitVec.getLsbD_not,
+    BitVec.getLsbD_shiftLeft, getLsbD_mask, hi, decide_true, Bool.true_and]
+  by_cases h1 : i < f.offset
+  · have : ¬ (f.offset ≤ i ∧ i < f.offset + f.width) := by omega
+    simp [h1, this]
+  · by_cases h2 : i < f.offset + f.width
+    · have h3 : i - f.offset < f.width := by omega
+      have h4 : i - f.offset < 256 := by omega
+      have : f.offset ≤ i ∧ i < f.offset + f.width := by omega
+      simp [h1, h3, h4, this]
+    · have h3 : ¬ i - f.offset < f.width := by omega
+      have : ¬ (f.offset ≤ i ∧ i < f.offset + f.width) := by omega
+      simp [h1, h3, this]
+
+/-- **Read after write, same field**: the written value, truncated to the width. -/
+theorem get_set_self (f : BitField) (hf : f.Valid) (v x : Word) :
+    f.get (f.set v x) = x &&& f.mask := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [getLsbD_get, BitVec.getLsbD_and, getLsbD_mask]
+  by_cases h : i < f.width
+  · have hf2 : f.offset + f.width ≤ 256 := hf
+    rw [getLsbD_set f v x _ (by omega)]
+    have : f.offset ≤ f.offset + i ∧ f.offset + i < f.offset + f.width := by omega
+    simp [h, this, hi]
+  · simp [h]
+
+/-- The written value as a number: `x mod 2^width`. -/
+theorem toNat_get_set_self (f : BitField) (hf : f.Valid) (v x : Word) :
+    (f.get (f.set v x)).toNat = x.toNat % 2 ^ f.width := by
+  have hw : f.width ≤ 256 := by have : f.offset + f.width ≤ 256 := hf; omega
+  rw [get_set_self f hf, BitVec.toNat_and, toNat_mask f hw, Nat.and_two_pow_sub_one_eq_mod]
+
+/-- **Neighbours are not disturbed**: writing `f` leaves a disjoint field `g` unchanged. -/
+theorem get_set_of_disjoint (f g : BitField) (hd : Disjoint f g) (v x : Word) :
+    g.get (f.set v x) = g.get v := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [getLsbD_get, getLsbD_get]
+  by_cases h : i < g.width
+  · by_cases h2 : g.offset + i < 256
+    · rw [getLsbD_set f v x _ h2]
+      have : ¬ (f.offset ≤ g.offset + i ∧ g.offset + i < f.offset + f.width) := by
+        unfold Disjoint at hd; omega
+      simp [this]
+    · simp [BitVec.getLsbD_of_ge _ _ (Nat.le_of_not_lt h2)]
+  · simp [h]
+
+/-- The value of a disjoint field as a number, after a write. -/
+theorem toNat_get_set_of_disjoint (f g : BitField) (hg : g.width ≤ 256) (hd : Disjoint f g)
+    (v x : Word) : (g.get (f.set v x)).toNat = v.toNat / 2 ^ g.offset % 2 ^ g.width := by
+  rw [get_set_of_disjoint f g hd, toNat_get g hg]
+
+/-- Bit `i` of a word is `get (bit i)`: `1` if set, `0` otherwise (solc's
+`(v >> i) & 1`). -/
+theorem get_bit (v : Word) (i : Nat) :
+    (bit i).get v = if v.getLsbD i then 1#256 else 0#256 := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro j hj
+  rw [getLsbD_get]
+  simp only [bit]
+  by_cases h : j = 0
+  · subst h
+    cases v.getLsbD i <;> simp
+  · have : ¬ j < 1 := by omega
+    have h1 : Nat.testBit 1 j = false := Nat.testBit_lt_two_pow (Nat.one_lt_two_pow h)
+    cases v.getLsbD i <;> simp [this, BitVec.getLsbD_ofNat, h1]
+
+/-- Bit `i` after writing bit `j ≠ i`. -/
+theorem getLsbD_set_bit_of_ne (v x : Word) {i j : Nat} (h : i ≠ j) :
+    (BitField.set (bit j) v x).getLsbD i = v.getLsbD i := by
+  by_cases hi : i < 256
+  · rw [getLsbD_set _ v x i hi]
+    simp only [bit]
+    have : ¬ (j ≤ i ∧ i < j + 1) := by omega
+    simp [this]
+  · simp [BitVec.getLsbD_of_ge _ _ (Nat.le_of_not_lt hi)]
+
+/-- Bit `i` after writing bit `i` with `x`: the low bit of `x` (for `i < 256`). -/
+theorem getLsbD_set_bit_self (v x : Word) {i : Nat} (hi : i < 256) :
+    (BitField.set (bit i) v x).getLsbD i = x.getLsbD 0 := by
+  rw [getLsbD_set _ v x i hi]
+  simp [bit]
+
+end BitField
+
 end EvmLogic.Solidity
 
 /-! ## Storage layouts in compiler output -/
