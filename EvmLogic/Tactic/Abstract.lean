@@ -118,6 +118,59 @@ elab_rules : tactic | `(tactic| wp_abstract_mem $M:ident $[with $k]?) => withMai
       else unless closed rhs do
         replaceMainGoal [← (← getMainGoal).clear decl.fvarId]
 
+/-- **Join point.** `wp_join [x₁, …, xₖ]` merges the open goals (two or more, e.g. the branches
+of a `by_cases` that both reached the same pc, with the differing fields abstracted by
+`wp_abstract`/`wp_abstract_mem` under the same names): in each goal the hypotheses `xᵢ` are
+reverted, the resulting statements must coincide (`∀ x₁ … xₖ, WP m Q H`, mentioning only
+hypotheses common to all goals), and all goals are closed by **one** new goal, the shared
+tail, with the `xᵢ` introduced again. The tail is elaborated and checked once (`WP.join`,
+docs/proving.md "Join points"). -/
+elab "wp_join " "[" xs:ident,* "]" : tactic => do
+  let goals ← getGoals
+  unless goals.length ≥ 2 do throwError "wp_join: needs at least two open goals"
+  let names := xs.getElems.map (·.getId)
+  -- revert the named hypotheses in every goal
+  let mut reverted : Array (Array FVarId × MVarId) := #[]
+  for g in goals do
+    let fvs ← g.withContext do
+      names.mapM fun n => do
+        let some d := (← getLCtx).findFromUserName? n
+          | throwError "wp_join: no hypothesis {n} in a goal"
+        return d.fvarId
+    let (fvs', g') ← g.revert fvs (preserveOrder := true)
+    unless fvs'.size == fvs.size do
+      throwError "wp_join: other hypotheses depend on {names}; abstract or clear them first"
+    reverted := reverted.push (fvs', g')
+  let (_, g₀) := reverted[0]!
+  let t₀ ← instantiateMVars (← g₀.getType)
+  -- the hypotheses every goal has
+  let common ← g₀.withContext do
+    let mut keep : Array FVarId := #[]
+    for d in ← getLCtx do
+      let mut inAll := true
+      for (_, g) in reverted do
+        unless (← g.getDecl).lctx.contains d.fvarId do inAll := false
+      if inAll then keep := keep.push d.fvarId
+    return keep
+  for (_, g) in reverted do
+    let t ← instantiateMVars (← g.getType)
+    let ok ← g.withContext (isDefEq t t₀)
+    unless ok do
+      throwError
+        "wp_join: the goals differ after reverting {names}:{indentExpr t}\nvs{indentExpr t₀}"
+  -- one new goal in the common context
+  let toClear ← g₀.withContext do
+    return (← getLCtx).foldl (init := #[]) fun acc d =>
+      if common.contains d.fvarId then acc else acc.push d.fvarId
+  let tail ← g₀.withContext do mkFreshExprSyntheticOpaqueMVar t₀ (← g₀.getTag)
+  let tailG ← tail.mvarId!.tryClearMany toClear
+  if (← instantiateMVars (← tailG.getType)).hasAnyFVar (fun f => toClear.contains f) then
+    throwError "wp_join: the shared goal mentions a hypothesis of only one branch"
+  for (_, g) in reverted do
+    g.assign (mkMVar tailG)
+  let (_, tailG') ← tailG.introNP names.size
+  setGoals [tailG']
+
 /-- Add `Gas.accessCost b ≤ 2600` for every access cost `Gas.accessCost b` in the goal (the
 warm set after a few storage accesses is a large term; `evm_gas` does not bound it). -/
 elab "access_bounds" : tactic => withMainContext do
