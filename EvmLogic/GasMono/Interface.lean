@@ -4,9 +4,9 @@ import EvmLogic.Program.Logic
 # Gas monotonicity: shared interface
 
 Code predicates for the gas lockstep (`GasMono/Lockstep.lean`): if every `GAS` feeds the next
-`CALL`/`STATICCALL` (`GasFeedsCall`), execution stays below a final `INVALID` (`RegionOk`), and a
-failed call makes the frame fail (`FailureReverts`), then a successful low-gas frame does exactly
-what the same frame does with more gas.
+`CALL`/`STATICCALL`/`DELEGATECALL` (`GasFeedsCall`), execution stays below a final `INVALID`
+(`RegionOk`), and a failed call makes the frame fail (`FailureReverts`), then a successful
+low-gas frame does exactly what the same frame does with more gas.
 -/
 
 namespace EvmLogic.GasMono
@@ -24,11 +24,12 @@ def boundariesFrom (code : ByteArray) : (fuel p : Nat) → List Nat
 /-- The instruction boundaries of `code` (fuel `code.size` suffices: each step advances). -/
 def boundaries (code : ByteArray) : List Nat := boundariesFrom code code.size 0
 
-/-- Every `GAS` (`0x5a`) at a boundary below `n` is immediately followed by `CALL` (`0xf1`) or
-`STATICCALL` (`0xfa`). -/
+/-- Every `GAS` (`0x5a`) at a boundary below `n` is immediately followed by `CALL` (`0xf1`),
+`STATICCALL` (`0xfa`) or `DELEGATECALL` (`0xf4`). -/
 def GasFeedsCall (code : ByteArray) (n : Nat) : Prop :=
   ∀ q ∈ boundaries code, q < n → Bytes.getD code q = 0x5a →
-    Bytes.getD code (q + 1) = 0xf1 ∨ Bytes.getD code (q + 1) = 0xfa
+    Bytes.getD code (q + 1) = 0xf1 ∨ Bytes.getD code (q + 1) = 0xfa ∨
+      Bytes.getD code (q + 1) = 0xf4
 
 instance (code : ByteArray) (n : Nat) : Decidable (GasFeedsCall code n) :=
   inferInstanceAs (Decidable (∀ q ∈ boundaries code, _))

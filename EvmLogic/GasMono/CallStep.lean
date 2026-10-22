@@ -3,10 +3,11 @@ import EvmLogic.GasMono.Bump
 /-!
 # Gas monotonicity: the `CALL` step
 
-`execCall_call_mono`, `execCall_staticcall_mono`: from `withTop b (bump d x ps m)` with the low
-request `a ≤ b ≤ a + d` (the relation after `GAS`), if the low `CALL`/`STATICCALL` succeeds so
-does the high one, with related actions and a bumped caller (`CallRel`). The arithmetic is
-`mcg_mono`: EIP-150's all-but-1/64 is monotone.
+`execCall_call_mono`, `execCall_staticcall_mono`, `execCall_delegatecall_mono`: from
+`withTop b (bump d x ps m)` with the low request `a ≤ b ≤ a + d` (the relation after `GAS`), if
+the low `CALL`/`STATICCALL`/`DELEGATECALL` succeeds so does the high one, with related actions
+and a bumped caller (`CallRel`). The arithmetic is `mcg_mono`: EIP-150's all-but-1/64 is
+monotone.
 -/
 
 namespace EvmLogic.GasMono
@@ -100,6 +101,21 @@ theorem execCall_staticcall_mono (m : Machine) (b : Word) (d x : Nat) (ps : List
     (a : Word) (s : List Word) (hs : m.frame.stack = a :: s) (hab : a.toNat ≤ b.toNat)
     (hbd : b.toNat ≤ a.toNat + d) :
     Wp (execCall .staticcall) (fun act m' => Twp (execCall .staticcall)
+      (fun act' m'' => CallRel x ps act act' m' m'') (withTop b (bump d x ps m))) m := by
+  simp [execCall, withTop, bump, hs, memoryExpansion, expandMemory, readMemory,
+    setReturnData, genericCall]
+  intro x1 xs h1 x2 xs2 h2 x3 xs3 h3 x4 xs4 h4 x5 xs5 h5
+  subst h1 h2 h3 h4 h5
+  simp only [CallRel, BumpOf, bump, CallRequest.withGas, Machine.mk.injEq, Frame.mk.injEq,
+    Message.mk.injEq, CallRequest.mk.injEq, true_and, and_true]
+  callrel_solve
+
+set_option maxHeartbeats 4000000 in
+/-- `DELEGATECALL` from the related high machine. -/
+theorem execCall_delegatecall_mono (m : Machine) (b : Word) (d x : Nat) (ps : List Frame)
+    (a : Word) (s : List Word) (hs : m.frame.stack = a :: s) (hab : a.toNat ≤ b.toNat)
+    (hbd : b.toNat ≤ a.toNat + d) :
+    Wp (execCall .delegatecall) (fun act m' => Twp (execCall .delegatecall)
       (fun act' m'' => CallRel x ps act act' m' m'') (withTop b (bump d x ps m))) m := by
   simp [execCall, withTop, bump, hs, memoryExpansion, expandMemory, readMemory,
     setReturnData, genericCall]

@@ -27,6 +27,7 @@ bytecode").
 | Byte-granular `Field`s only | `Solidity/Layout.lean` | `ReserveConfiguration` bit fields, `UserConfiguration` 2 bits per reserve at a runtime index, `uint120`/`uint128` packing in `_userState` (hand lemmas in the AToken proofs) | S–M |
 | ABI: static arguments and strings only | `Solidity/Abi.lean` | `flashLoan`, `multicall(bytes[])`, `getReservesList` | M |
 | `pwp_step`'s table not extensible (`EXTCODESIZE`, `CALLDATACOPY`, `RETURNDATACOPY`, calls are stepped by hand); no join combinator for shared tails | `Tactic/WpStep.lean` (`stepLemmasFor`) | every external call site | S |
+| Summaries used through a proxy must bound their output: the proxy copies it back (`RETURNDATACOPY`), so `forward_halts` needs a bound `B` (`hB`); `NoEffect`, `Returns` and the other postconditions state the data but not its size, so each needs a bounded variant (done for the guards: `NoEffectOut`); the Pool's library `DELEGATECALL`s (`WP.delegatecall`) are not composed yet | `Examples/AaveV3/ATokenProxy/Forward.lean` | every statement about a call to a token or Pool address | S |
 | Symbolic memory size and gas terms blow up (`wp_generalize_*`, `evm_gas` > 3 min, max recursion); the callee `Halts` gives no upper bound on returned gas | worked around by `wp_abstract`, `access_bounds` (AToken `Tactic.lean`), `maxRecDepth` raised | two sequential external calls force gas ≥ 5·10⁶ hypotheses; proofs of 20–30 s per function | M |
 
 ## Models (QEDefi)

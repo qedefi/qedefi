@@ -144,10 +144,10 @@ section
 /-!
 ## The lockstep theorem
 
-Cases along the high run: an instruction not reading the gas (`exec_bump`); `GAS` and the call
-it feeds; a `CALL`/`STATICCALL` (`call_case`) that is not made, runs a precompile, or starts a
-child (`Exit.split`, `MonoFrom S'`, `resumeAfter_bump`). A failed low call makes the low frame
-fail (`FailureReverts`).
+Cases along the high run: an instruction not reading the gas (`exec_bump`); `GAS` and the call it
+feeds; a `CALL`/`STATICCALL`/`DELEGATECALL` (`call_case`) that is not made, runs a precompile, or
+starts a child (`Exit.split`, `MonoFrom S'`, `resumeAfter_bump`). A failed low call makes the low
+frame fail (`FailureReverts`).
 -/
 
 namespace EvmLogic.GasMono
@@ -188,9 +188,10 @@ theorem halts_of_failedCall {code : ByteArray} {n : Nat} (hc : CodeOk code n) {R
     Halts R (Post mfh oh) :=
   halts_post_of_failed (hc.reverts _ hret R hcode rfl hs)
 
-theorem decode_call (fork : Fork) {b : UInt8} (h : b = 0xf1 ∨ b = 0xfa) :
-    Opcode.decode fork b = .call ∨ Opcode.decode fork b = .staticcall := by
-  rcases h with rfl | rfl <;> cases fork <;> simp [Opcode.decode]
+theorem decode_call (fork : Fork) {b : UInt8} (h : b = 0xf1 ∨ b = 0xfa ∨ b = 0xf4) :
+    Opcode.decode fork b = .call ∨ Opcode.decode fork b = .staticcall ∨
+      Opcode.decode fork b = .delegatecall := by
+  rcases h with rfl | rfl | rfl <;> cases fork <;> simp [Opcode.decode]
 
 theorem launchCall_none {m : Machine} {req : CallRequest}
     (h : precompileOf m.precompiles req.msg = none) : launchCall m req = pushCall m req := by
@@ -201,14 +202,16 @@ theorem sameFrame_withTop_bump {ml R : Machine} (h : SameFrame ml R) (b : Word) 
   ⟨h.ctx, h.precompiles, h.originalWorld, rfl, by simp [bump, withTop, h.msg], h.code,
     h.jumpDests, h.kind, h.snapshot⟩
 
-theorem exec_call_mono {fork : Fork} {byte : UInt8} (hbyte : byte = 0xf1 ∨ byte = 0xfa)
+theorem exec_call_mono {fork : Fork} {byte : UInt8}
+    (hbyte : byte = 0xf1 ∨ byte = 0xfa ∨ byte = 0xf4)
     (m : Machine) (b : Word) (d x : Nat) (ps : List Frame) (a : Word) (s : List Word)
     (hs : m.frame.stack = a :: s) (hab : a.toNat ≤ b.toNat) (hbd : b.toNat ≤ a.toNat + d) :
     Wp (exec (Opcode.decode fork byte)) (fun act m' => Twp (exec (Opcode.decode fork byte))
       (fun act' m'' => CallRel x ps act act' m' m'') (withTop b (bump d x ps m))) m := by
-  rcases decode_call fork hbyte with h | h <;> rw [h]
+  rcases decode_call fork hbyte with h | h | h <;> rw [h]
   · exact execCall_call_mono m b d x ps a s hs hab hbd
   · exact execCall_staticcall_mono m b d x ps a s hs hab hbd
+  · exact execCall_delegatecall_mono m b d x ps a s hs hab hbd
 
 theorem sameFrame_resumeAfter {ml ml' mfl : Machine} {req : CallRequest} {o : Outcome}
     (hf : SameFrame ml ml') (hs : SameFrame (pushCall ml' req) mfl) :
@@ -219,16 +222,17 @@ theorem sameFrame_resumeAfter {ml ml' mfl : Machine} {req : CallRequest} {o : Ou
     hf.snapshot⟩
 
 set_option maxHeartbeats 1000000 in
-/-- **The call macro-step.** From a low machine at a `CALL`/`STATICCALL` and the high machine
-with `d` more gas and a requested gas `b` with `a ≤ b ≤ a + d` (`a` the low request), the low
-frame fails or reaches a machine related to the high frame's, after the call. -/
+/-- **The call macro-step.** From a low machine at a `CALL`/`STATICCALL`/`DELEGATECALL` and the
+high machine with `d` more gas and a requested gas `b` with `a ≤ b ≤ a + d` (`a` the low
+request), the low frame fails or reaches a machine related to the high frame's, after the call. -/
 theorem call_case {code : ByteArray} {n : Nat} (hc : CodeOk code n) {S' : Machine → Prop}
     (hS' : MonoFrom S') {N : Nat} (ih : LockIH code n S' N)
     {ml : Machine} {a b : Word} {s : List Word} {d x : Nat} {ps : List Frame}
     (hstk : ml.frame.stack = a :: s) (hab : a.toNat ≤ b.toNat) (hbd : b.toNat ≤ a.toNat + d)
     (hcode : ml.frame.code = code) (hjd : ml.frame.jumpDests = validJumpDests code)
     (hpc : PcOk code n ml.frame.pc)
-    (hbyte : Bytes.getD code ml.frame.pc = 0xf1 ∨ Bytes.getD code ml.frame.pc = 0xfa)
+    (hbyte : Bytes.getD code ml.frame.pc = 0xf1 ∨ Bytes.getD code ml.frame.pc = 0xfa ∨
+      Bytes.getD code ml.frame.pc = 0xf4)
     (hret : ml.frame.pc + 1 ∈ callReturnPoints code n)
     (hgas : ml.frame.gasLeft + d < 2 ^ 256)
     (hpreOk : PrecompilesOk ml.precompiles) (hpreMono : PreMono ml.precompiles)
@@ -501,13 +505,13 @@ theorem lockstep {code : ByteArray} {n : Nat} (hc : CodeOk code n) {S' : Machine
             rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
             omega
           · rw [hg1]; simp only [Gas.base]; omega
-      · -- a member of the `CALL` or `CREATE` family: `CALL` or `STATICCALL`
+      · -- a member of the `CALL` or `CREATE` family: `CALL`, `STATICCALL` or `DELEGATECALL`
         obtain ⟨hcall, hret⟩ := callsFed_call hc.feed hc.fed hpc.1 hpc.2 hother
         cases hstk : ml.frame.stack with
         | nil =>
           have hw : Wp (exec (Opcode.decode ml.ctx.fork (Bytes.getD code ml.frame.pc)))
               (fun _ _ => False) ml := by
-            rcases decode_call ml.ctx.fork hcall with h | h <;> rw [h] <;>
+            rcases decode_call ml.ctx.fork hcall with h | h | h <;> rw [h] <;>
               simp [exec, execCall, hstk]
           cases hrun : (exec (Opcode.decode ml.ctx.fork (Bytes.getD code ml.frame.pc))).run ml with
           | error e =>
