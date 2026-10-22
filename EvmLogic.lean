@@ -75,6 +75,7 @@ import EvmLogic.Tactic.Mcopy
 import EvmLogic.Tactic.Patched
 import EvmLogic.Tactic.PrefixStep
 import EvmLogic.Tactic.SolStep
+import EvmLogic.Tactic.StepExt
 import EvmLogic.Tactic.WpStep
 import EvmLogic.Word
 
