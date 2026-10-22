@@ -611,3 +611,100 @@ theorem returnMemory_zero_facts {mem M : Memory} {out : ByteArray}
 end EvmLogic.Program
 
 end
+
+section
+
+/-! ## `EXTCODESIZE` (solc checks the callee's code size before a `CALL` that returns nothing) -/
+
+namespace EvmLogic.Program
+open EvmLean EvmLean.Interpreter
+
+variable {m : Machine} {x : Word} {rest : List Word}
+
+/-- **`EXTCODESIZE`**: pushes the code size of the address, charging the EIP-2929 access cost
+and warming the address. -/
+theorem step_extcodesize (hcode : m.frame.code[m.frame.pc]? = some 0x3b)
+    (hstk : m.frame.stack = x :: rest) (hlen : rest.length < 1024)
+    (hgas : Gas.accessCost (m.frame.sub.accessedAddresses.contains (Word.toAddress x)) ≤
+      m.frame.gasLeft) :
+    step m = .running { m with frame := { m.frame with
+      stack := ofNat (m.world.code (Word.toAddress x)).size :: rest,
+      gasLeft := m.frame.gasLeft -
+        Gas.accessCost (m.frame.sub.accessedAddresses.contains (Word.toAddress x)),
+      sub := m.frame.sub.warmAddr (Word.toAddress x),
+      pc := m.frame.pc + 1 } } := by
+  have hg := Nat.not_lt.mpr hgas
+  have hl : ¬ Gas.stackLimit ≤ rest.length := Nat.not_le.mpr hlen
+  rw [step_eq_of_code hcode, show Opcode.decode m.ctx.fork 0x3b = .extcodesize by
+    cases m.ctx.fork <;> rfl]
+  simp only [exec, popAddress, pop, getFrame, modifyFrame, StateT.run_bind, hstk, StateT.run_get,
+    StateT.run_pure, StateT.run_modify, pure_bind]
+  rw [run_accessAddress]
+  simp only [pure_bind, charge, push, advance, getFrame, modifyFrame, StateT.run_bind,
+    StateT.run_get, StateT.run_pure, StateT.run_modify, hg, hl, ite_false]
+  rfl
+
+end EvmLogic.Program
+
+end
+
+section
+
+/-! ## `DELEGATECALL` with named child and caller (`WP.delegatecall`) -/
+
+namespace EvmLogic.Program
+open EvmLean EvmLean.Interpreter
+
+variable {m : Machine} {gas toW inOff inSize outOff outSize : Word} {rest : List Word}
+
+/-- The child machine of a `DELEGATECALL` (see `step_delegatecall`): a fresh frame running the
+code of `toW` at the caller's address (so on the caller's storage), with the caller's `CALLER`
+and `CALLVALUE`, the input window as calldata, and no value moved. -/
+abbrev delegateChild (m : Machine) (gas toW inOff inSize outOff outSize : Word)
+    (rest : List Word) : Machine :=
+  { m with
+    frame := Frame.init
+      (childMsg m m.frame.msg.caller m.frame.msg.currentTarget (Word.toAddress toW)
+        m.frame.msg.value
+        (callGas m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff outSize).subCall false false
+        inOff inSize outOff outSize)
+      (.call outOff.toNat outSize.toNat) (m.world, m.transient)
+    parents := callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff
+      outSize) (Word.toAddress toW) inOff inSize outOff outSize :: m.parents }
+
+/-- The suspended caller frame of a `DELEGATECALL`. -/
+abbrev delegateCaller (m : Machine) (gas toW inOff inSize outOff outSize : Word)
+    (rest : List Word) : Frame :=
+  callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff outSize)
+    (Word.toAddress toW) inOff inSize outOff outSize
+
+/-- The child of a `DELEGATECALL` is a fresh frame running the target's code. -/
+theorem fresh_delegateChild (m : Machine) (gas toW inOff inSize outOff outSize : Word)
+    (rest : List Word) :
+    Fresh (m.world.code (Word.toAddress toW))
+      (delegateChild m gas toW inOff inSize outOff outSize rest) :=
+  ⟨_, _, _, rfl, rfl⟩
+
+/-- **Callee-summary rule for `DELEGATECALL`** (`step_delegatecall` + `WP.call`): if the child
+frame (`delegateChild`: the target's code in the caller's context) `Halts` with `Hc`, the caller
+continues from `resumeAfter` of every end `Hc` allows (`resumeAfter_success`/`_revert`/`_halt`). -/
+theorem WP.delegatecall {Q : Machine → Prop} {H Hc : Machine → Outcome → Prop}
+    (hcode : m.frame.code[m.frame.pc]? = some 0xf4)
+    (hstk : m.frame.stack = gas :: toW :: inOff :: inSize :: outOff :: outSize :: rest)
+    (hdel : m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (Word.toAddress toW)) = none)
+    (hgas : callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff outSize ≤
+      m.frame.gasLeft)
+    (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
+    (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
+    (hcallee : Halts (delegateChild m gas toW inOff inSize outOff outSize rest) Hc)
+    (k : ∀ mf o, Hc mf o → SameFrame (delegateChild m gas toW inOff inSize outOff outSize rest) mf →
+      WP (resumeAfter (delegateCaller m gas toW inOff inSize outOff outSize rest) m.parents mf o)
+        Q H) :
+    WP m Q H :=
+  WP.call (step_delegatecall hcode hstk hdel hgas hdepth hpre) rfl
+    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ hcallee
+    (fun mf o hs hc => k mf o hc hs)
+
+end EvmLogic.Program
+
+end

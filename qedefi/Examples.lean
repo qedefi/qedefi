@@ -14,9 +14,14 @@ import Examples.AaveV3.AToken.Mint.Effect
 import Examples.AaveV3.AToken.Mint.Revert
 import Examples.AaveV3.AToken.Mint.Success
 import Examples.AaveV3.AToken.State
-import Examples.AaveV3.AToken.Tactic
 import Examples.AaveV3.AToken.Views.Addresses
 import Examples.AaveV3.AToken.Views.Ledger
+import Examples.AaveV3.ATokenProxy.Admin
+import Examples.AaveV3.ATokenProxy.Basic
+import Examples.AaveV3.ATokenProxy.Code
+import Examples.AaveV3.ATokenProxy.Delegate
+import Examples.AaveV3.ATokenProxy.Forward
+import Examples.AaveV3.ATokenProxy.Guard
 import Examples.AaveV3.Contracts.AToken
 import Examples.AaveV3.Contracts.ATokenProxy
 import Examples.AaveV3.Contracts.BorrowLogic

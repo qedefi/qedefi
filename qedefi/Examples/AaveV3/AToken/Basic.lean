@@ -18,8 +18,9 @@ the treasury), so the literal-code executors apply (`pwp_steps` with the kernel 
 * `pool`, its word as pushed by the code, and `poolWord_eq_caller` (a non-Pool caller fails the
   `onlyPool` comparison);
 * `callerMustBePool`: the 4-byte revert data of the custom error `CallerMustBePool()`;
-* `Unchanged`, `RevertsWith`, `NoEffect`: postconditions of a frame that reverts having changed
-  nothing (world, transient storage, created accounts, logs), with a gas bound;
+* `Unchanged`, `RevertsWith`, `NoEffect`, `NoEffectOut`: postconditions of a frame that reverts
+  having changed nothing (world, transient storage, created accounts, logs), with a gas bound
+  (and, for `NoEffectOut`, a bound on the revert data);
 * calldata facts for the ABI decoder's size checks and address validation.
 -/
 
@@ -83,6 +84,20 @@ def NoEffect (g : Nat) (m mf : Machine) (o : Outcome) : Prop :=
 theorem RevertsWith.noEffect {out : ByteArray} {g : Nat} {m mf : Machine} {o : Outcome}
     (h : RevertsWith out g m mf o) : NoEffect g m mf o :=
   ⟨⟨out, h.1⟩, h.2⟩
+
+/-- `NoEffect` with revert data of at most `n` bytes (what a caller copying the data back, such
+as the aToken proxy, needs to bound its gas). -/
+def NoEffectOut (g n : Nat) (m mf : Machine) (o : Outcome) : Prop :=
+  (∃ out, o = .revert out ∧ out.size ≤ n) ∧ Unchanged m mf ∧
+    m.frame.gasLeft ≤ mf.frame.gasLeft + g
+
+theorem NoEffectOut.noEffect {g n : Nat} {m mf : Machine} {o : Outcome}
+    (h : NoEffectOut g n m mf o) : NoEffect g m mf o :=
+  ⟨let ⟨out, ho, _⟩ := h.1; ⟨out, ho⟩, h.2⟩
+
+theorem RevertsWith.noEffectOut {out : ByteArray} {g n : Nat} {m mf : Machine} {o : Outcome}
+    (h : RevertsWith out g m mf o) (hn : out.size ≤ n) : NoEffectOut g n m mf o :=
+  ⟨⟨out, h.1, hn⟩, h.2⟩
 
 /-! ## Calldata -/
 

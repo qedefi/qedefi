@@ -13,7 +13,7 @@ bytecode").
 |---|---|
 | Semantics vs. mainnet | 364/364 snapshot calls equal `eth_call`; a 25-step supply/borrow/accrue/repay/withdraw/liquidation sequence on an anvil fork equals the interpreter in status, output, 79 logs, 518 slots, balances, nonces and gas used |
 | Model (`QEDefi.Aave`) | ray/wad/percentage math exact; indexes monotone; Σ scaled balances = scaled supply for every entry point; backing preserved exactly between accruals, ≤ ~½ wei slack per accrual under `RateSound`; health factor ≥ 1 after borrow/withdraw/transfer, < 1 before a liquidation |
-| Bytecode (AToken) | the five Pool-only entry points revert with no effect for any non-Pool caller; views exact; `mint`/`burn` by the Pool change scaled balance and scaled supply by the same amount |
+| Bytecode (AToken) | the five Pool-only entry points revert with no effect for any non-Pool caller, also through the aToken proxy (`proxy_poolOnly_noEffect`, composing the proxy's EIP-1967 forwarding summary with the implementation's); views exact; `mint`/`burn` by the Pool change scaled balance and scaled supply by the same amount |
 | Findings | exact backing cannot survive accrual (proved counterexample); live WETH and USDC reserves are under-backed by ~1.18 WETH / ~287 USDC against the model's invariant at block 26,243,228 (pre-existing, not reachable by the v3.7 operations modelled) |
 
 ## Proof machinery (EvmLogic)
@@ -21,15 +21,13 @@ bytecode").
 | Gap | Where | Why it matters | Effort |
 |---|---|---|---|
 | No rule for calls into **unknown code** from a protected frame, and no **reentrancy** into it: every call rule needs a proved callee summary; the nested (any-transaction) machinery allows only the outermost protected frame | `Program/Call.lean` (`WP.call`, `WP.staticcall`), `Program/Nested/Run.lean` (`FrameInv.safe`, `DangerStart`) | flash-loan receivers, underlying tokens, oracles, the rewards controller are arbitrary code; Aave has no reentrancy guard. The AToken proofs take the rewards controller and the underlying's `transfer` as hypotheses (`HandleActionOk`, `TransferOk`) | L |
-| **DELEGATECALL** has only a step lemma, no `WP.delegatecall`; gas monotonicity accepts `GAS` only before `CALL`/`STATICCALL` | `Program/Call.lean` (`step_delegatecall`), `GasMono/CodeScan.lean`, `Lockstep.lean` | every Pool call is proxy → implementation → library (≈15 library sites, `multicall`); AToken summaries are composed with the proxy by hand | M |
 | **Scale**: largest contract proved before was 5.2 kB | — | Pool 21 kB + five libraries (7–12 kB each) + debt token + strategy; `GenericLogic`'s reserve loop calls the oracle per iteration (loop invariant with calls) | L |
 | Storage-chosen, upgradeable call targets: the invariant may only depend on protected accounts, the abstract interpreter knows constants/immutables only | `Nested/Run.lean` (`GoodOk`), `AbsInt/Domain.lean` | aToken/debt token/strategy addresses come from storage; oracle and ACL from the addresses provider; admins can upgrade | M–L |
 | `try/catch` violates gas monotonicity's `FailureReverts` | `GasMono/Interface.lean` | `supplyWithPermit`, `repayWithPermit` | M |
 | Byte-granular `Field`s only | `Solidity/Layout.lean` | `ReserveConfiguration` bit fields, `UserConfiguration` 2 bits per reserve at a runtime index, `uint120`/`uint128` packing in `_userState` (hand lemmas in the AToken proofs) | S–M |
 | ABI: static arguments and strings only | `Solidity/Abi.lean` | `flashLoan`, `multicall(bytes[])`, `getReservesList` | M |
-| Missing step lemmas `EXTCODESIZE`, `RETURNDATACOPY`; `pwp_step`'s table not extensible; no join combinator for shared tails | added locally in `Examples/AaveV3/AToken/Tactic.lean` | every external call site | S |
+| `pwp_step`'s table not extensible (`EXTCODESIZE`, `CALLDATACOPY`, `RETURNDATACOPY`, calls are stepped by hand); no join combinator for shared tails | `Tactic/WpStep.lean` (`stepLemmasFor`) | every external call site | S |
 | Symbolic memory size and gas terms blow up (`wp_generalize_*`, `evm_gas` > 3 min, max recursion); the callee `Halts` gives no upper bound on returned gas | worked around by `wp_abstract`, `access_bounds` (AToken `Tactic.lean`), `maxRecDepth` raised | two sequential external calls force gas ≥ 5·10⁶ hypotheses; proofs of 20–30 s per function | M |
-| Generic helpers live in `Examples` | `Examples/AaveV3/AToken/Tactic.lean` | should move to `EvmLogic` | S |
 
 ## Models (QEDefi)
 

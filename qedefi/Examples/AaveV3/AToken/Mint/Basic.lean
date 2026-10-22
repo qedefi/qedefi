@@ -1,5 +1,6 @@
 import Examples.AaveV3.AToken.State
-import Examples.AaveV3.AToken.Tactic
+import EvmLogic.Tactic.Abstract
+import EvmLogic.Tactic.Mcopy
 
 /-!
 # `AToken.mint`: word lemmas, the rewards-controller assumption, the postcondition

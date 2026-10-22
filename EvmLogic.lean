@@ -52,6 +52,7 @@ import EvmLogic.Step.Memory
 import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage
+import EvmLogic.Tactic.Abstract
 import EvmLogic.Tactic.EvmStep
 import EvmLogic.Tactic.FastStep
 import EvmLogic.Tactic.KernelRfl

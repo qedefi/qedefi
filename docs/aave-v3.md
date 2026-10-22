@@ -181,8 +181,9 @@ top-level fact and a callee summary at once. `Code.lean` adds the kernel code ta
 
 Postconditions (`Basic.lean`): `Unchanged m mf` (world, transient storage, created accounts and
 logs as in `m`); `RevertsWith out g m` (`REVERT` with data `out`, `Unchanged`, at most `g` gas);
-`NoEffect g m` (`REVERT` with some data, `Unchanged`, at most `g` gas). `callerMustBePool` is the
-revert data `0x54b39ce2` of `CallerMustBePool()`.
+`NoEffect g m` (`REVERT` with some data, `Unchanged`, at most `g` gas); `NoEffectOut g n m`
+(`NoEffect` with at most `n` bytes of revert data). `callerMustBePool` is the revert data
+`0x54b39ce2` of `CallerMustBePool()`.
 
 **Access control** (`Guard/<Function>.lean`, `Guard.lean`). solc runs the ABI decoder before the
 `onlyPool` modifier, and every AToken function is non-payable.
@@ -195,7 +196,9 @@ revert data `0x54b39ce2` of `CallerMustBePool()`.
 | `transferOnLiquidation_reverts_of_not_pool` | the same for `0x353b7b9a`, ≥ 164 bytes, two address words |
 | `transferUnderlyingTo_reverts_of_not_pool` | the same for `0x4efecaa5`, ≥ 68 bytes, one address word |
 | `<f>_noEffect_of_not_pool` (each of the five) | selector of `f`, any further calldata, any value, caller ≠ `pool` → `NoEffect 3000` (short calldata, dirty address words and value revert with empty data) |
+| `<f>_noEffectOut_of_not_pool` (each of the five) | the same → `NoEffectOut 3000 4` (revert data is `CallerMustBePool()` or empty); `<f>_noEffect_of_not_pool` is its corollary |
 | `poolOnly_noEffect` | selector ∈ `poolOnlySelectors` (the five), caller ≠ `pool` → `NoEffect 3000` |
+| `poolOnly_noEffectOut` | the same → `NoEffectOut 3000 4` |
 | `poolOnly_sload_unchanged` | the same → revert, and every slot of the executing account (`_totalSupply` 54, `_userState` rows) unchanged |
 
 `poolOnlySelectors_abi` ties the five selectors to the verified ABI.
@@ -262,9 +265,33 @@ need summaries of the Pool proxy and implementation); `permit`, `approve`, `init
 each `Guard/*` 3–4 s, `Views/*` 5–6 s, `Mint/Success` 19 s, `Mint/Revert` 14 s, `Burn/Success`
 29 s, the rest about 1 s each.
 
-Proof tools added in `Tactic.lean` (generic, candidates for `EvmLogic`): `wp_abstract`
-(abstract the memory, gas, substate or world of a `WP` goal without `generalize`),
-`access_bounds`, `step_extcodesize`, `step_returndatacopy`.
+The generic proof tools first written for these proofs are in `EvmLogic`: `wp_abstract`
+(abstract the memory, gas, substate or world of a `WP` goal without `generalize`) and
+`access_bounds` (`Tactic/Abstract.lean`), `step_extcodesize` (`Program/Call.lean`),
+`step_returndatacopy` (`Solidity/Steps.lean`).
+
+**Through the proxy** (`qedefi/Examples/AaveV3/ATokenProxy/`, namespace
+`Examples.AaveV3.ATokenProxy`), about the deployed proxy `ATokenProxy.runtimeCode` (the same
+bytes as `VariableDebtTokenProxy`). `implementation w a` is the address in `a`'s EIP-1967 slot
+`implSlot`; `admin` the PoolConfigurator. `DelegatedFrom m mc`: `mc` is the implementation's
+frame of the proxy frame `m` (same world, transient storage, created accounts, caller, address,
+value, calldata, static flag; depth + 1). `Forwarded m K mc mcf oc mf o`: after the
+implementation's frame (started `mc`, ended `mcf` with `oc`), the proxy ends with the same
+success or revert data (an exceptional halt becomes an empty revert), with the implementation's
+world, transient storage and logs after success and its own otherwise, using at most `K` gas
+of its own.
+
+| Theorem | Statement (hypotheses beyond `Fresh ATokenProxy.runtimeCode m`, calldata size < 2^64) |
+|---|---|
+| `delegate_halts` (`Delegate.lean`) | the delegation block from pc 1129 (calldata copy, `DELEGATECALL`, copy back, return/revert) → `Forwarded` for every end of the implementation's frame |
+| `forward_halts` (`Forward.lean`) | calldata < 4 bytes or selector ∉ `proxySelectors`, caller ≠ `admin`, implementation not a precompile or delegated, depth < 1024, gas ≥ `2G + 64·(copy + memory cost of B bytes) + calldata copy cost + 11000` and < 2^256, the implementation's frame `Halts` with `Hc` from ≥ `G` gas with ≤ `B` bytes of output → `Forwarded` (at most `6000 +` the copy costs) |
+| `admin_reverts` (`Admin.lean`) | the same calldata, caller = `admin`, gas ≥ 2000 → `Reverted 2000` (`_willFallback`'s revert, nothing changed) |
+| `proxy_poolOnly_noEffect` (`Guard.lean`) | `implementation`'s code is `AToken.runtimeCode`, not a precompile; selector ∈ `poolOnlySelectors`, caller ≠ `pool`, depth < 1024, gas ≥ `18000 +` calldata copy cost and < 2^256 → `NoEffect (10000 + calldata copy cost)` |
+| `proxy_poolOnly_sload_unchanged` | the same → revert, every slot of the proxy account unchanged |
+
+`proxy_poolOnly_noEffect` composes `forward_halts` with `poolOnly_noEffectOut`: the copy-back
+needs the bound on the revert data (with unbounded output the proxy's `RETURNDATACOPY` can run
+out of gas). Build times: `Delegate` 32 s, `Forward` 11 s, `Admin` 7 s, the rest about 1 s.
 
 ## Reproducibility
 

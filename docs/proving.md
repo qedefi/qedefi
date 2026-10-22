@@ -120,10 +120,13 @@ return).
 
 **Calls** (`Program/Call.lean`). `step_call`, `step_staticcall`, `step_delegatecall` push the
 child with the exact charges (`callCost`: access cost, all-but-1/64, stipend, memory).
-`WP.call` / `WP.staticcall` are the callee-summary rules: given `Halts` of the fresh child
-frame (e.g. a `FunctionSummary` of the callee), the caller continues from
-`resumeAfter_success` / `_revert` / `_halt` (flag pushed, output copied, unused gas returned,
-world or snapshot, logs merged on success). Precompile calls run within one step
+`WP.call` / `WP.staticcall` / `WP.delegatecall` are the callee-summary rules: given `Halts` of
+the fresh child frame (e.g. a `FunctionSummary` of the callee; for `DELEGATECALL` the child
+`delegateChild` runs the target's code at the caller's address, with the caller's `CALLER` and
+`CALLVALUE`), the caller continues from `resumeAfter_success` / `_revert` / `_halt` (flag
+pushed, output copied, unused gas returned, world or snapshot, logs merged on success). A
+proxy's forwarding is summarised once for all implementations
+(`Examples/AaveV3/ATokenProxy/Forward.lean`, `forward_halts`). Precompile calls run within one step
 (`Program/PrecompileCall.lean`: `WP.staticcall_precompile`, and `WP.staticcall_ecrecover` for
 solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
 
@@ -168,7 +171,7 @@ gas never increases.
 
 **`EvmLogic/GasMono/`.** Every instruction except `GAS`, `CALL*`, `CREATE*` commutes with
 adding gas (`exec_bump`). `monoFrom_of_code`: under code conditions `CodeOk` — `GasFeedsCall`
-(each `GAS` is immediately followed by a call), `RegionOk` (execution stays below the final
+(each `GAS` is immediately followed by `CALL`, `STATICCALL` or `DELEGATECALL`), `RegionOk` (execution stays below the final
 `INVALID`), `FailureReverts` at each call return point (a failed call makes the frame fail),
 and every child gas-monotone (`CallsTo`) — a frame with less gas fails or ends exactly as with
 more. `depth_lockstep`: at depth 1024 a frame runs in lockstep with itself one level up until
@@ -200,8 +203,11 @@ for all immutables at once.
   parse; define the machine as a `def … where`.
 - **Large contexts**: clear hypotheses mentioning large code (`hcode`) before stepping to a
   `JUMP` with a symbolic target (`assumption` would unfold them); after a call, replace the
-  remaining gas by a variable with `wp_generalize_gas` + one `evm_gas`; generalize big
+  remaining gas by a variable with `wp_generalize_gas` + one `evm_gas` (or `wp_abstract gas`,
+  `wp_abstract memory`, whose cost does not grow with the goal); generalize big
   postconditions (`generalize hQ : (fun m' => …) = Q`) before `pwp_steps`.
 - **Memory with symbolic size**: `evm_gas` does not handle it; state each expansion as
   `Gas.memoryCost new - Gas.memoryCost old`, generalize the atoms and let `omega` telescope.
+  Copies of symbolic size: `step_calldatacopy_any` / `step_returndatacopy_any` (empty or not,
+  memory `copyMemory`), `extendMemory_cost_le` / `extendMemory_cost_eq_zero` for the costs.
   `omega` can hit the recursion limit on `(n - k) * c`; write `c * (n - k)`.

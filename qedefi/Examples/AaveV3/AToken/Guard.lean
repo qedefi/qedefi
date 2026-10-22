@@ -51,6 +51,21 @@ theorem poolOnly_noEffect (m : Machine) (hf : Fresh AToken.runtimeCode m)
   · exact transferOnLiquidation_noEffect_of_not_pool m hf h hsize' hc hg
   · exact transferUnderlyingTo_noEffect_of_not_pool m hf h hsize' hc hg
 
+/-- `poolOnly_noEffect` with the revert data bounded (at most 4 bytes: `CallerMustBePool()` or
+empty), as a caller that copies it back needs (the aToken proxy's `RETURNDATACOPY`). -/
+theorem poolOnly_noEffectOut (m : Machine) (hf : Fresh AToken.runtimeCode m)
+    (hsel : Abi.selectorOf m.frame.msg.data ∈ poolOnlySelectors)
+    (hsize' : m.frame.msg.data.size < 2 ^ 64)
+    (hc : m.frame.msg.caller ≠ pool) (hg : 3000 ≤ m.frame.gasLeft) :
+    Halts m (NoEffectOut 3000 4 m) := by
+  simp only [poolOnlySelectors, List.mem_cons, List.not_mem_nil, or_false] at hsel
+  rcases hsel with h | h | h | h | h
+  · exact mint_noEffectOut_of_not_pool m hf h hsize' hc hg
+  · exact burn_noEffectOut_of_not_pool m hf h hsize' hc hg
+  · exact mintToTreasury_noEffectOut_of_not_pool m hf h hsize' hc hg
+  · exact transferOnLiquidation_noEffectOut_of_not_pool m hf h hsize' hc hg
+  · exact transferUnderlyingTo_noEffectOut_of_not_pool m hf h hsize' hc hg
+
 /-- **No storage write by a non-Pool caller.** Under the hypotheses of `poolOnly_noEffect`, the
 frame reverts and every storage slot of the executing account (the proxy, under
 `DELEGATECALL`), among them `_totalSupply` (slot 54) and the `_userState` rows (slot 52), holds

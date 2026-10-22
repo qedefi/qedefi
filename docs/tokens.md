@@ -591,8 +591,8 @@ slot numbers, Solidity mapping derivation only). Proposed shape:
 ## Later, separately: proxies and upgradeable tokens (USDC, …)
 
 Not prepared here. Needed: `DELEGATECALL` semantics in the frame logic (code of the
-implementation, storage and `ADDRESS`/`CALLER`/`CALLVALUE` of the proxy: `step_delegatecall`
-exists, a `WP.delegatecall` callee-summary rule does not); the EIP-1967 slots (implementation
+implementation, storage and `ADDRESS`/`CALLER`/`CALLVALUE` of the proxy: `WP.delegatecall`,
+and Aave's aToken proxy as a worked forwarding summary, `Examples/AaveV3/ATokenProxy/`); the EIP-1967 slots (implementation
 `keccak("eip1967.proxy.implementation") − 1`, admin `keccak("eip1967.proxy.admin") − 1`,
 beacon) or the token's own scheme (USDC's `FiatTokenProxy` uses the older
 `org.zeppelinos.proxy.implementation` slot); the admin's privileges as part of the threat
