@@ -96,6 +96,9 @@ theorem chain_sub (G k s : Nat) (l : List Nat) (h : l.sum + k = s) :
 theorem sub_sub_lit (G n k s : Nat) (h : n + k = s) : G - n - k = G - s := by
   rw [Nat.sub_sub, h]
 
+theorem sub_add_lit (G Y c k s : Nat) (h : c + k = s) : G - (Y + c) - k = G - (Y + s) := by
+  rw [Nat.sub_sub, Nat.add_assoc, h]
+
 theorem length_lt_of_tail {α : Type} (pre rest : List α) {K k : Nat} (h : rest.length ≤ K)
     (hk : Nat.ble (pre.length + K + 1) k = true) : (pre ++ rest).length < k := by
   have := Nat.le_of_ble_eq_true hk
@@ -119,9 +122,18 @@ structure Cfg where
   rather than keep the chain `G - a₁ - … - aₖ` (that of `sol_step`). -/
   foldGas : Bool := true
 
-/-- The value of a closed gas cost (`Gas.veryLow`, `if 2 = 0 then … else …`, …). -/
-def closedNat? (c : Expr) : MetaM (Option Nat) := do
+/-- Does `e` mention memory or byte arrays? Such closed terms are not evaluated (their `rfl`
+proofs would make the kernel evaluate the memory's bytes); their size lemmas normalize them. -/
+def mentionsMemory (e : Expr) : Bool :=
+  e.getUsedConstants.any fun c =>
+    (`EvmLean.Memory).isPrefixOf c || (`ByteArray).isPrefixOf c || c == ``EvmLean.Bytes.ofWord ||
+      c == ``EvmLean.Bytes.ofNatBE || c == ``EvmLean.Interpreter.readBytes
+
+/-- The value of a closed gas cost (`Gas.veryLow`, `if 2 = 0 then … else …`, …); not of costs
+over a memory (`mentionsMemory`). -/
+def closedNat? (c : Expr) (allowMemory := false) : MetaM (Option Nat) := do
   if c.hasFVar || c.hasMVar then return none
+  if !allowMemory && mentionsMemory c then return none
   if let some n ← (evalNat c).run then return some n
   let r ← withTransparency .default <| reduce c
   (evalNat r).run
@@ -136,6 +148,8 @@ def costBound (norm : Expr → MetaM (Option (Expr × Option Expr))) :
       return some (e, mkApp (mkConst ``Nat.le_refl) e)
     match_expr e with
     | sloadCost w => return some (mkNatLit 2100, mkApp (mkConst ``sloadCost_le) w)
+    | Gas.accessCost b =>
+      return some (mkNatLit 2600, mkApp (mkConst ``EvmLogic.Tactic.accessCost_le_2600) b)
     | Prod.fst _ _ p =>
       match_expr p with
       | sstoreCostRefund m x y =>
@@ -150,7 +164,8 @@ def costBound (norm : Expr → MetaM (Option (Expr × Option Expr))) :
     | _ =>
       -- memory expansion and the like: normalize the cost alone to a numeral
       let some (v, p) ← norm e | return none
-      let some _ ← closedNat? v | return none
+      -- what the size lemmas leave of a closed memory is evaluated (by the kernel, too)
+      let some _ ← closedNat? v (allowMemory := true) | return none
       match p with
       | some p => return some (v, ← mkAppM ``Nat.le_of_eq #[p])
       | none => return some (v, mkApp (mkConst ``Nat.le_refl) v)
@@ -216,7 +231,7 @@ def termBound (bound : Expr → MetaM (Option (Expr × Nat))) (X : Expr) :
   | none =>
     -- `l - b ≤ H - a` for a bounded cost `a ≤ b`
     let some (b, pa) ← costBound (fun _ => pure none) 4096 a | return none
-    let some bv ← closedNat? b | return none
+    let some bv ← closedNat? b (allowMemory := true) | return none
     let pf := mkAppN (mkConst ``sub_le_sub_of) #[mkNatLit l, H, a, b, pH, pa]
     return some (← mkExpectedTypeHint pf (← mkLE (mkNatLit (l - bv)) X), l - bv)
 
@@ -260,10 +275,10 @@ def gasFact? (norm : Expr → MetaM (Option (Expr × Option Expr))) (t gas : Exp
   let some (bc, hc) ← costBound norm 4096 c | return none
   let some (G, subs, bs, hb) ← gasChain norm gas | return none
   let some (hL, L) ← gasBound G | return none
-  let some bcv ← closedNat? bc | return none
+  let some bcv ← closedNat? bc (allowMemory := true) | return none
   let mut total := bcv
   for b in bs do
-    let some v ← closedNat? b | return none
+    let some v ← closedNat? b (allowMemory := true) | return none
     total := total + v
   let need := if isLt then total + 1 else total
   unless need ≤ L do return none
@@ -604,6 +619,11 @@ def normStack (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr)
     pf := p
   return (raw, new, pf)
 
+/-- `(a, b)` if `e` is `a + b`. -/
+def addArgs? (e : Expr) : Option (Expr × Expr) :=
+  let e := e.consumeMData
+  if e.isAppOfArity ``HAdd.hAdd 6 then some (e.getArg! 4, e.getArg! 5) else none
+
 /-- The new gas `old - k`: the cost `k` normalized alone, then `G - n - k` folded to `G - s`
 (`foldGas`) or the chain kept. -/
 def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) := do
@@ -614,6 +634,17 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
   let_expr HSub.hSub _ _ _ _ g k := v' | fallback
   unless g == old do return ← fallback
   let (k', pk) ← normField cfg m k
+  -- a closed cost the simp set leaves (`Gas.keccak256Cost 64`, `c + 0`): evaluate it
+  let (k', pk) ← do
+    if (← (evalNat k').run).isNone && !k'.hasFVar && !k'.hasMVar then
+      if let some v ← closedNat? k' then
+        let e ← mkExpectedTypeHint (← mkEqRefl (mkNatLit v)) (← mkEq k' (mkNatLit v))
+        let pk' ← match pk with
+          | some p => mkEqTrans p e
+          | none => pure e
+        pure (mkNatLit v, some pk')
+      else pure (k', pk)
+    else pure (k', pk)
   let sub (a b : Expr) := mkApp6 (mkConst ``HSub.hSub [0, 0, 0]) (mkConst ``Nat) (mkConst ``Nat)
     (mkConst ``Nat) (mkApp2 (mkConst ``instHSub [0]) (mkConst ``Nat) (mkConst ``instSubNat)) a b
   let subOld := mkApp5 (mkConst ``HSub.hSub [0, 0, 0]) (mkConst ``Nat) (mkConst ``Nat)
@@ -621,6 +652,9 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
   -- `old - k = old - k'`
   let p1 ← pk.mapM (mkCongrArg subOld ·)
   if !cfg.foldGas then return (v', sub old k', p1)
+  let trans (p2 : Expr) : MetaM Expr := match p1 with
+    | some p => mkEqTrans p p2
+    | none => pure p2
   let some kv ← (evalNat k').run | fallback
   let some (G, n) ← gasShape old | do
     -- a chain `G - a₁ - … - aₖ` of closed costs (the `sol_step` normal form): fold it
@@ -637,14 +671,20 @@ def normGas (cfg : Cfg) (m old v : Expr) : MetaM (Expr × Expr × Option Expr) :
         | some p => mkEqTrans p p2
         | none => pure p2
       return (v', sub G (mkNatLit tot), some pf)
-    -- `G - A - k = G - (A + k)` (`Nat.sub_sub`, as `wp_step`'s simp set leaves it)
     let_expr HSub.hSub _ _ _ _ G A := old.consumeMData | fallback
     unless G.isFVar do return ← fallback
+    -- `G - (Y + c) - k = G - (Y + (c + k))`: fold the numeral tail
+    if let some (Y, c) := addArgs? A then
+      if let some cv ← (evalNat c).run then
+        let s := cv + kv
+        let h ← mkEqRefl (mkNatLit s)
+        let p2 ← mkExpectedTypeHint
+          (mkAppN (mkConst ``sub_add_lit) #[G, Y, mkNatLit cv, k', mkNatLit s, h])
+          (← mkEq (sub old k') (sub G (← mkAdd Y (mkNatLit s))))
+        return (v', sub G (← mkAdd Y (mkNatLit s)), some (← trans p2))
+    -- `G - A - k = G - (A + k)` (`Nat.sub_sub`, as `wp_step`'s simp set leaves it)
     let p2 := mkApp3 (mkConst ``Nat.sub_sub) G A k'
-    let pf ← match p1 with
-      | some p => mkEqTrans p p2
-      | none => pure p2
-    return (v', sub G (← mkAdd A k'), some pf)
+    return (v', sub G (← mkAdd A k'), some (← trans p2))
   if n == 0 then return (v', sub G (mkNatLit kv), p1)
   let s := n + kv
   let h ← mkEqRefl (mkNatLit s)

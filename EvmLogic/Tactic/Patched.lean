@@ -366,10 +366,29 @@ def pwpDisch : TacticM Unit := withMainContext do
 /-- `pwp_disch`: see `pwpDisch`. -/
 elab "pwp_disch" : tactic => pwpDisch
 
+/-- The hypotheses `Memory.size M = n` (numeral `n`) and `Memory.loadWord M off = v` (closed `v`)
+about memory variables, as simp lemmas: an abstracted memory's size (and solc's free-memory
+pointer) are tracked through the steps without being passed by hand. -/
+def memSizeLemmas : TacticM (Array (TSyntax `Lean.Parser.Tactic.simpLemma)) := withMainContext do
+  let mut out := #[]
+  for decl in ← getLCtx do
+    if decl.isImplementationDetail then continue
+    let ty ← instantiateMVars decl.type
+    let some (_, lhs, rhs) := ty.eq? | continue
+    let size := lhs.isAppOfArity ``Memory.size 1 && lhs.appArg!.isFVar &&
+      (← (evalNat rhs).run).isSome
+    let word := lhs.isAppOfArity ``Memory.loadWord 2 && lhs.appFn!.appArg!.isFVar &&
+      !rhs.hasFVar && !rhs.hasMVar
+    unless size || word do continue
+    let t ← Term.exprToSyntax decl.toExpr
+    out := out.push (← `(Lean.Parser.Tactic.simpLemma| $t:term))
+  return out
+
 /-- `wpStep` for literal or patched code. A `PUSH32` of a patched word uses `step_pushN`; the
 caller rewrites it with a per-contract lemma (`pwp_steps [h, …]`). -/
 def pwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool :=
   withMainContext do
+  let extra := extra ++ (← memSizeLemmas)
   let g ← getMainGoal
   let some m ← wpGoalMachine? g | return false
   let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
@@ -446,9 +465,11 @@ def pwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bo
   return false
 
 /-- The fast stepper's configuration for the main goal `WP m Q H` (`none` if the code is not
-known): the normalization of `pwpStep` and its code facts. -/
+known): the normalization of `pwpStep` and its code facts. Hypotheses `Memory.size M = n` in
+context join the normalization (`memSizeLemmas`). -/
 def pwpFastCfg (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
     TacticM (Option FastStep.Cfg) := withMainContext do
+  let extra := extra ++ (← memSizeLemmas)
   let g ← getMainGoal
   let some m ← wpGoalMachine? g | return none
   let code ← whnfR (mkApp (mkConst ``Frame.code) (← whnfR (mkApp (mkConst ``Machine.frame) m)))
@@ -488,16 +509,121 @@ elab_rules : tactic
 /-- Repeat `pwp_step` while it succeeds (at most `n` times if a bound is given). -/
 syntax "pwp_steps" (ppSpace num)? (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
 
+/-- Steps per auxiliary theorem in the stepping loops (`runChunked`); `0`: one proof term. -/
+register_option pwp.chunk : Nat := {
+  defValue := 100
+  descr := "pwp_steps/pwp_run_to: close every n steps as an auxiliary theorem (0: never)" }
+
+/-- Close the proof `pf` of `g0` (in which `g1`, the goal left open, occurs) as an auxiliary
+theorem `∀ xs, T₁ → T₀` over the hypotheses `xs` it uses (and those their types use), and assign
+`g0 := aux xs ?g1`. `false` (nothing assigned) if that is not possible (a `let` among them,
+metavariables left). -/
+def closeAsAux (g0 g1 : MVarId) (pf : Expr) : TacticM Bool := g0.withContext do
+  let t0 ← instantiateMVars (← g0.getType)
+  let t1 ← instantiateMVars (← g1.getType)
+  if t0.hasMVar || t1.hasMVar || pf.hasLevelMVar then return false
+  withLocalDeclD `k t1 fun k => do
+    let mctx ← getMCtx
+    g1.assign k
+    let pf' ← instantiateMVars pf
+    setMCtx mctx
+    if pf'.hasExprMVar then return false
+    -- the hypotheses used, closed under the dependencies of their types
+    let lctx ← getLCtx
+    let mut used : CollectFVars.State := {}
+    used := collectFVars (collectFVars (collectFVars used pf') t0) t1
+    let mut todo := used.fvarIds
+    while !todo.isEmpty do
+      let mut next : Array FVarId := #[]
+      for fv in todo do
+        let some d := lctx.find? fv | continue
+        if d.isLet then return false
+        let s' := collectFVars used (← instantiateMVars d.type)
+        for x in s'.fvarIds do
+          unless used.fvarSet.contains x do next := next.push x
+        used := s'
+      todo := next
+    let decls := lctx.foldl (init := #[]) fun acc d =>
+      if used.fvarSet.contains d.fvarId && d.fvarId != k.fvarId! then acc.push d else acc
+    if decls.any (·.isImplementationDetail) then return false
+    let fvars := decls.map (·.toExpr)
+    let ty ← instantiateMVars (← mkForallFVars (fvars.push k) t0)
+    let val ← instantiateMVars (← mkLambdaFVars (fvars.push k) pf')
+    if ty.hasFVar || val.hasFVar || ty.hasMVar || val.hasMVar then return false
+    let pcS := match ← wpGoalPc? g0 with | some p => toString p | none => "x"
+    let name ← mkAuxDeclName (kind := Name.mkSimple ("pwp_chunk_pc" ++ pcS))
+    -- the kernel's recursion through a chunk can exceed the default depth (it does not in the
+    -- elaborator's own checks); this limits resources only, the check is the same
+    withOptions (fun o => maxRecDepth.set o (max (maxRecDepth.get o) 4096)) do
+      addDecl (.thmDecl { name, levelParams := [], type := ty, value := val })
+    g0.assign (mkAppN (mkConst name) (fvars.push (mkMVar g1)))
+    return true
+
+/-- Is the memory of the goal's machine concrete: writes and expansions of a literal memory
+(rather than of an abstracted memory variable, `wp_abstract_mem`)? -/
+def closedMemory (g : MVarId) : MetaM Bool := do
+  let some m ← wpGoalMachine? g | return false
+  let m ← instantiateMVars m
+  unless m.isAppOfArity ``Machine.mk 8 do return false
+  let fr := m.getArg! 6
+  unless fr.isAppOfArity ``Frame.mk 11 do return false
+  -- the memory the writes start from
+  let mut mem := fr.getArg! 5
+  for _ in [0:100000] do
+    let mem' := mem.consumeMData
+    match mem'.getAppFn.constName? with
+    | some n =>
+      if (`EvmLean.Memory).isPrefixOf n && mem'.getAppNumArgs ≥ 1 &&
+          n != ``EvmLean.Memory.mk then
+        mem := mem'.getArg! 0
+      else return !mem'.hasFVar
+    | none => return !mem'.isFVar
+  return false
+
+/-- Run `body i` (one step each; `false` stops) on the main goal, closing every `chunk` steps
+(option `pwp.chunk`) as an **auxiliary theorem** `∀ ctx, WP m' Q H → WP m Q H`
+(`closeAsAux`). The goals are unchanged; the proof term is a chain of applications of these
+lemmas instead of one nested chain of `WP.of_step`, so the kernel checks each chunk on its own
+(shallow, against opaque hypotheses, in parallel with elaboration) and the elaborator never
+instantiates one huge term. -/
+def runChunked (body : Nat → TacticM Bool) (limit : Nat := 1000000) : TacticM Unit := do
+  let chunk := pwp.chunk.get (← getOptions)
+  let mut i := 0
+  while i < limit do
+    let (g0 :: rest) ← getGoals | return
+    let g0' ← g0.withContext do
+      mkFreshExprSyntheticOpaqueMVar (← g0.getType) (← g0.getTag)
+    setGoals [g0'.mvarId!]
+    let mut n := 0
+    let mut more := true
+    while more && (chunk == 0 || n < chunk) && i < limit do
+      if ← body i then
+        n := n + 1
+        i := i + 1
+      else more := false
+    let gs ← getGoals
+    let closed ← match gs with
+      | [g1] =>
+        -- a run shorter than one chunk stays one term (an auxiliary theorem costs a separate
+        -- kernel check of its statement, which only pays off for long runs); a long run is cut
+        -- into chunks entirely, its last partial chunk included
+        -- a chunk over a concrete memory is not cut either: the kernel evaluates such a
+        -- memory when it checks the steps, and would do so again in every auxiliary theorem
+        if chunk == 0 || n == 0 || (n < chunk && i == n) || (← closedMemory g0) then pure false
+        else closeAsAux g0 g1 (← instantiateMVars g0')
+      | _ => pure false
+    unless closed do g0.assign g0'
+    setGoals (gs ++ rest)
+    unless more do return
+
 elab_rules : tactic
   | `(tactic| pwp_steps $[$n]? $[[$extra,*]]?) => do
     let extra := (extra.map (·.getElems)).getD #[]
     let limit := (n.map (·.getNat)).getD 1000000
     -- the first step normalizes the whole goal (as every step of `pwpStep` does), the rest
     -- only what they change
-    let mut cfg : Option FastStep.Cfg := none
-    for i in [0:limit] do
-      if i == 0 then cfg ← pwpFastCfg extra
-      unless ← pwpStepFast cfg extra (normAll := i == 0) do return
+    let cfg ← pwpFastCfg extra
+    runChunked (limit := limit) fun i => pwpStepFast cfg extra (normAll := i == 0)
 
 /-- `wp_run_to` for literal or patched code. -/
 syntax "pwp_run_to " num,+ (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
@@ -506,14 +632,12 @@ elab_rules : tactic
   | `(tactic| pwp_run_to $pcs,* $[[$extra,*]]?) => do
     let extra := (extra.map (·.getElems)).getD #[]
     let pcs := pcs.getElems.toList.map (·.getNat)
-    let mut cfg : Option FastStep.Cfg := none
-    for i in [0:1000000] do
-      let g ← getMainGoal
+    let cfg ← pwpFastCfg extra
+    runChunked fun i => do
       if i > 0 then
-        if let some pc ← wpGoalPc? g then
-          if pcs.contains pc then return
-      if i == 0 then cfg ← pwpFastCfg extra
-      unless ← pwpStepFast cfg extra (normAll := i == 0) do return
+        if let some pc ← wpGoalPc? (← getMainGoal) then
+          if pcs.contains pc then return false
+      pwpStepFast cfg extra (normAll := i == 0)
 
 end EvmLogic.Program
 

@@ -246,13 +246,11 @@ elab_rules : tactic
   | `(tactic| pwp_msteps $[$n]? $[[$extra,*]]?) => do
     let extraA := (extra.map (·.getElems)).getD #[]
     let limit := (n.map (·.getNat)).getD 1000000
-    let mut cfg : Option FastStep.Cfg := none
-    for i in [0:limit] do
-      if i == 0 then cfg ← pwpFastCfg extraA
-      if ← pwpStepFast cfg extraA (normAll := i == 0) then continue
-      if ← tryTac (evalTactic (← `(tactic| pwp_mcopy [$extraA,*]))) then continue
-      if ← tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*]))) then continue
-      return
+    let cfg ← pwpFastCfg extraA
+    runChunked (limit := limit) fun i => do
+      if ← pwpStepFast cfg extraA (normAll := i == 0) then return true
+      if ← tryTac (evalTactic (← `(tactic| pwp_mcopy [$extraA,*]))) then return true
+      tryTac (evalTactic (← `(tactic| pwp_mcopy_zero [$extraA,*])))
 
 /-- Discharge `x.toNat + n ≤ size` / `size % 32 = 0` of a memory access using the facts `hs`. -/
 syntax "mem_in_disch" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
