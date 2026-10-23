@@ -1,0 +1,19 @@
+{
+  "note": "solc 0.7.6 storageLayout output of the verified source (compiled with the Sourcify settings by scripts/build-contracts.sh, which checks the runtime code byte for byte).",
+  "storage": [
+    {
+      "label": "singleton",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "contracts/proxies/SafeProxy.sol:SafeProxy"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    }
+  }
+}

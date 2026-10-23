@@ -1,3 +1,15 @@
+import Examples.Actor.Bytecode.Certify
+import Examples.Actor.Bytecode.MiniSafeFrame
+import Examples.Actor.Bytecode.MiniSafeLoop
+import Examples.Actor.Bytecode.ProxyGuard
+import Examples.Actor.Bytecode.ProxyGuardTrace
+import Examples.Actor.Bytecode.SafeGuard
+import Examples.Actor.Contracts.MiniSafe
+import Examples.Actor.Contracts.MiniSafeData
+import Examples.Actor.RoleOracle
+import Examples.Actor.SafeProxyAdmin
+import Examples.Actor.SafeProxyAdminLib
+import Examples.Actor.Timelock
 import Examples.Basic.AddStore
 import Examples.Basic.Mcopy
 import Examples.Basic.Sum
@@ -51,6 +63,26 @@ import Examples.Reentrancy.Solvency.Guarded
 import Examples.Reentrancy.Solvency.Model
 import Examples.Reentrancy.Solvency.WETH9
 import Examples.Reentrancy.Solvency.WETH9Backed
+import Examples.Safe.Bytecode.Code
+import Examples.Safe.Bytecode.Defs
+import Examples.Safe.Bytecode.Guard
+import Examples.Safe.Bytecode.Proxy
+import Examples.Safe.Bytecode.Singleton.CopyLoop
+import Examples.Safe.Bytecode.Singleton.Ctx
+import Examples.Safe.Bytecode.Singleton.Digest
+import Examples.Safe.Bytecode.Singleton.Exec
+import Examples.Safe.Bytecode.Singleton.Frame
+import Examples.Safe.Bytecode.Singleton.Lists
+import Examples.Safe.Bytecode.Singleton.Revert
+import Examples.Safe.Bytecode.Singleton.SigTx
+import Examples.Safe.Bytecode.Singleton.SigTxContract
+import Examples.Safe.Bytecode.Singleton.SigTxEcdsa
+import Examples.Safe.Bytecode.Singleton.SigTxLoop
+import Examples.Safe.Bytecode.Singleton.SigView
+import Examples.Safe.Bytecode.Singleton.SigViews
+import Examples.Safe.Bytecode.Singleton.Simple
+import Examples.Safe.Contracts.SafeProxy
+import Examples.Safe.Contracts.SafeSingleton
 import Examples.Solady.Contracts.SoladyToken
 import Examples.Solady.Contracts.SoladyTokenData
 import Examples.Solmate.Contracts.Deploy
@@ -150,7 +182,8 @@ import Examples.WeirdERC20.ZRX.Contracts.ZRX
 
 Worked examples: small demos (`Examples.Basic`), the Solmate vault and asset verified
 end to end (`Examples.Solmate`), the OpenZeppelin contracts and the bytecode refinement of OpenZeppelin's `ERC20`
-(`Examples.OpenZeppelin`),
+(`Examples.OpenZeppelin`), actor models and the upgrade guard on bytecode (`Examples.Actor`),
+the upgrade guard with Safe 1.5.0 as the ProxyAdmin's owner, on its bytecode (`Examples.Safe`),
 and differential testing against anvil (`Examples.Differential`). The `#guard` tests of the
 contract constants are in the separate `QEDefiTest` library (`lake test`).
 -/

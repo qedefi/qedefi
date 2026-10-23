@@ -1,0 +1,6 @@
+{
+  "note": "State the constructor leaves: threshold = 1, so the singleton itself cannot be set up.",
+  "storage": [
+    {"label": "threshold", "slot": "0x4", "value": "0x1"}
+  ]
+}

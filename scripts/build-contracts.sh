@@ -17,6 +17,8 @@
 #   contracts/mainnet/<Name>/{methodIdentifiers.json, events.json, errors.json}
 #   qedefi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}{,Data}.lean
 #   qedefi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}{,Data}.lean
+#   qedefi/Examples/OpenZeppelin/Contracts/{OzTransparentProxy,OzProxyAdmin,ActorImpl}{,Data}.lean
+#   qedefi/Examples/Actor/Contracts/MiniSafe{,Data}.lean
 #   qedefi/Examples/Solady/Contracts/SoladyToken{,Data}.lean
 #   qedefi/Examples/Time/Contracts/VestingWallet{,Data}.lean
 #   qedefi/Examples/Reentrancy/Contracts/{VulnerableBank,CEIBank,GuardedBank,Attacker}{,Data}.lean
@@ -47,6 +49,21 @@ SOLMATE_VAULT_NAME="Solmate Vault"
 SOLMATE_VAULT_SYMBOL="svSAST"
 # OpenZeppelin `VestingWallet(beneficiary, startTimestamp, durationSeconds)`.
 VESTING_ARGS=("constructor(address,uint64,uint64)" 0x2000000000000000000000000000000000000000 1700000000 31536000)
+# OpenZeppelin transparent proxy: `TransparentUpgradeableProxy(ActorImpl, PROXY_OWNER,
+# set(PROXY_INIT_VALUE))`. The owner of the ProxyAdmin the constructor deploys is alice of the
+# differential tester (`0xA11CE`). v5.7.0's `ERC1967Proxy` reverts on empty `_data`
+# (`ERC1967ProxyUninitialized`), so the proxy is initialised by delegatecalling `set(1)`.
+PROXY_OWNER=0x00000000000000000000000000000000000A11CE
+PROXY_INIT_VALUE=1
+# ERC-1967 slots (`bytes32(uint256(keccak256("eip1967.proxy.<name>")) - 1)`), checked against
+# the vendored `ERC1967Utils.sol` below.
+ERC1967_IMPLEMENTATION_SLOT=0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc
+ERC1967_ADMIN_SLOT=0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103
+ERC1967_BEACON_SLOT=0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50
+# MiniSafe (threshold multisig): `MiniSafe(MINISAFE_OWNERS, MINISAFE_THRESHOLD)`, owners alice,
+# bob and carol of the differential tester.
+MINISAFE_OWNERS="[0x00000000000000000000000000000000000A11CE,0x0000000000000000000000000000000000000B0B,0x00000000000000000000000000000000000CA401]"
+MINISAFE_THRESHOLD=2
 
 SOLC="$HOME/.svm/0.8.28/solc-0.8.28"
 "$SOLC" --version | grep -q '0.8.28+commit.7893614a' || { echo "error: need solc 0.8.28 at $SOLC" >&2; exit 1; }
@@ -67,6 +84,10 @@ declare -A SRC=(
   [GuardedBank]="out/Banks.sol/GuardedBank.json"
   [Attacker]="out/Banks.sol/Attacker.json"
   [OnceAttacker]="out/Banks.sol/OnceAttacker.json"
+  [ActorImpl]="out/ActorImpl.sol/ActorImpl.json"
+  [OzTransparentProxy]="out/TransparentUpgradeableProxy.sol/TransparentUpgradeableProxy.json"
+  [OzProxyAdmin]="out/ProxyAdmin.sol/ProxyAdmin.json"
+  [MiniSafe]="out/MiniSafe.sol/MiniSafe.json"
 )
 declare -A SOLNAME=(
   [SolmateAsset]="lib/solmate/src/test/utils/mocks/MockERC20.sol:MockERC20"
@@ -81,9 +102,14 @@ declare -A SOLNAME=(
   [GuardedBank]="src/reentrancy/Banks.sol:GuardedBank"
   [Attacker]="src/reentrancy/Banks.sol:Attacker"
   [OnceAttacker]="src/reentrancy/Banks.sol:OnceAttacker"
+  [ActorImpl]="src/ActorImpl.sol:ActorImpl"
+  [OzTransparentProxy]="lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"
+  [OzProxyAdmin]="lib/openzeppelin-contracts/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin"
+  [MiniSafe]="src/MiniSafe.sol:MiniSafe"
 )
 TARGETS=(SolmateAsset SolmateVault OzAsset OzVault OzVaultOffset SoladyToken
-  VulnerableBank CEIBank GuardedBank Attacker OnceAttacker VestingWallet)
+  VulnerableBank CEIBank GuardedBank Attacker OnceAttacker VestingWallet
+  ActorImpl OzTransparentProxy OzProxyAdmin MiniSafe)
 REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
@@ -100,6 +126,10 @@ declare -A LEANNS=(
   [GuardedBank]="Examples.Reentrancy.Contracts"
   [Attacker]="Examples.Reentrancy.Contracts"
   [OnceAttacker]="Examples.Reentrancy.Contracts"
+  [ActorImpl]="Examples.OpenZeppelin.Contracts"
+  [OzTransparentProxy]="Examples.OpenZeppelin.Contracts"
+  [OzProxyAdmin]="Examples.OpenZeppelin.Contracts"
+  [MiniSafe]="Examples.Actor.Contracts"
 )
 declare -A LEANDIR=(
   [SolmateAsset]="$ROOT/qedefi/Examples/Solmate/Contracts"
@@ -114,11 +144,16 @@ declare -A LEANDIR=(
   [GuardedBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [Attacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [OnceAttacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
+  [ActorImpl]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [OzTransparentProxy]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [OzProxyAdmin]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
+  [MiniSafe]="$ROOT/qedefi/Examples/Actor/Contracts"
 )
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
 # (its directory mirrors the namespace).
-MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy GUSD GUSDImpl GUSDStore YAMV2 LEND ZRX)
+MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy GUSD GUSDImpl GUSDStore YAMV2 LEND ZRX SafeSingleton
+  SafeProxy)
 declare -A MNS=(
   [WETH9]="Examples.WETH9.Contracts"
   [USDT]="Examples.WeirdERC20.USDT.Contracts"
@@ -132,7 +167,14 @@ declare -A MNS=(
   [YAMV2]="Examples.WeirdERC20.YAMV2.Contracts"
   [LEND]="Examples.WeirdERC20.LEND.Contracts"
   [ZRX]="Examples.WeirdERC20.ZRX.Contracts"
+  [SafeSingleton]="Examples.Safe.Contracts"
+  [SafeProxy]="Examples.Safe.Contracts"
 )
+# Mainnet targets whose runtime code is also rebuilt here from the verified source, with the
+# compiler and settings Sourcify records (svm layout, ~/.svm/<version>/solc-<version>), and
+# checked byte for byte (metadata included): Safe v1.5.0 (safe-global/safe-smart-account tag
+# v1.5.0, solc 0.7.6, optimizer off, Istanbul).
+REPRODUCE=(SafeSingleton SafeProxy)
 
 # Names of all immutables, by AST id (forge artifacts carry each source's AST).
 IMM_NAMES=$(find "$C/out" -name '*.json' -not -path '*/build-info/*' -print0 \
@@ -213,9 +255,62 @@ for t in "${REENTRANCY[@]}"; do
   CODE[$t]=$(cast code --rpc-url "$RPC" "${ADDR[$t]}" | strip0x)
 done
 
+# OpenZeppelin transparent proxy: `ActorImpl` at deployer nonce 0, the proxy at nonce 1. The
+# proxy's constructor deploys the `ProxyAdmin` (`CREATE` from the proxy at its nonce 1), records
+# it as the immutable `_admin` and in the ERC-1967 admin slot, and delegatecalls `set(1)` into
+# the implementation (the proxy's slot 0 becomes 1; the implementation's storage stays empty).
+for v in IMPLEMENTATION ADMIN BEACON; do
+  sl="ERC1967_${v}_SLOT"
+  grep -q "bytes32 internal constant ${v}_SLOT = ${!sl};" \
+    "$C/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol" \
+    || { echo "error: ERC-1967 ${v} slot differs from ERC1967Utils.sol" >&2; exit 1; }
+done
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+ARGS[ActorImpl]=""
+ADDR[ActorImpl]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[ActorImpl]}")")
+PROXY_INIT_DATA=$(cast calldata "set(uint256)" "$PROXY_INIT_VALUE" | strip0x)
+ARGS[OzTransparentProxy]=$(cast abi-encode "constructor(address,address,bytes)" \
+  "${ADDR[ActorImpl]}" "$PROXY_OWNER" "0x$PROXY_INIT_DATA" | strip0x)
+ADDR[OzTransparentProxy]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[OzTransparentProxy]}")${ARGS[OzTransparentProxy]}")
+ADDR[OzProxyAdmin]=$(cast parse-bytes32-address \
+  "$(cast storage --rpc-url "$RPC" "${ADDR[OzTransparentProxy]}" "$ERC1967_ADMIN_SLOT")")
+ARGS[OzProxyAdmin]=$(cast abi-encode "constructor(address)" "$PROXY_OWNER" | strip0x)
+PROXY_OWNER=$(cast to-check-sum-address "$PROXY_OWNER")
+for t in ActorImpl OzTransparentProxy OzProxyAdmin; do CODE[$t]=$(cast code --rpc-url "$RPC" "${ADDR[$t]}" | strip0x); done
+[ "${ADDR[OzProxyAdmin]}" = "$(cast compute-address "${ADDR[OzTransparentProxy]}" --nonce 1 | sed 's/.*: *//')" ] \
+  || { echo "error: ProxyAdmin is not the proxy's CREATE at nonce 1" >&2; exit 1; }
+[ "$(cast parse-bytes32-address "$(cast storage --rpc-url "$RPC" "${ADDR[OzTransparentProxy]}" "$ERC1967_IMPLEMENTATION_SLOT")")" = "${ADDR[ActorImpl]}" ] \
+  || { echo "error: proxy implementation slot is not ActorImpl" >&2; exit 1; }
+[ "$(cast to-dec "$(cast storage --rpc-url "$RPC" "${ADDR[OzTransparentProxy]}" 0)")" = "$PROXY_INIT_VALUE" ] \
+  && [ "$(cast to-dec "$(cast storage --rpc-url "$RPC" "${ADDR[ActorImpl]}" 0)")" = 0 ] \
+  || { echo "error: proxy initialisation did not set the proxy's slot 0" >&2; exit 1; }
+[ "$(cast call --rpc-url "$RPC" "${ADDR[OzProxyAdmin]}" "owner()(address)")" = "$PROXY_OWNER" ] \
+  || { echo "error: ProxyAdmin owner is not $PROXY_OWNER" >&2; exit 1; }
+case "$(jq -r .bytecode.object "$C/${SRC[OzTransparentProxy]}")" in
+  *"$(jq -r .bytecode.object "$C/${SRC[OzProxyAdmin]}" | strip0x)"*) ;;
+  *) echo "error: the proxy's creation code does not embed ProxyAdmin's" >&2; exit 1 ;;
+esac
+
+# MiniSafe: a fresh chain, deployer nonce 0.
+cast rpc --rpc-url "$RPC" anvil_reset >/dev/null
+fund
+ARGS[MiniSafe]=$(cast abi-encode "constructor(address[],uint256)" "$MINISAFE_OWNERS" \
+  "$MINISAFE_THRESHOLD" | strip0x)
+ADDR[MiniSafe]=$(deploy "$(jq -r .bytecode.object "$C/${SRC[MiniSafe]}")${ARGS[MiniSafe]}")
+CODE[MiniSafe]=$(cast code --rpc-url "$RPC" "${ADDR[MiniSafe]}" | strip0x)
+[ "$(cast call --rpc-url "$RPC" "${ADDR[MiniSafe]}" "threshold()(uint256)")" = "$MINISAFE_THRESHOLD" ] \
+  && [ "$(cast call --rpc-url "$RPC" "${ADDR[MiniSafe]}" "nonce()(uint256)")" = 0 ] \
+  || { echo "error: MiniSafe: threshold or nonce differ from the canonical deployment" >&2; exit 1; }
+for o in $(tr -d '[]' <<<"$MINISAFE_OWNERS" | tr ',' ' '); do
+  [ "$(cast call --rpc-url "$RPC" "${ADDR[MiniSafe]}" "isOwner(address)(bool)" "$o")" = true ] \
+    || { echo "error: MiniSafe: $o is not an owner" >&2; exit 1; }
+done
+
 [ "${ADDR[SolmateAsset]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[SolmateVault]}" = "${ADDR[OzVault]}" ] \
   && [ "$oz3asset" = "${ADDR[OzAsset]}" ] && [ "${ADDR[OzVaultOffset]}" = "${ADDR[OzVault]}" ] \
   && [ "${ADDR[SoladyToken]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[VestingWallet]}" = "${ADDR[OzAsset]}" ] \
+  && [ "${ADDR[ActorImpl]}" = "${ADDR[OzAsset]}" ] && [ "${ADDR[OzTransparentProxy]}" = "${ADDR[OzVault]}" ] \
   || { echo "error: deployment addresses differ between families" >&2; exit 1; }
 
 # ---------------------------------------------------------------- Lean helpers
@@ -229,6 +324,7 @@ lean_bytes() {
 imm_field() {
   case "$1" in
     asset|_asset) echo "asset" ;;
+    _admin) echo "admin" ;;
     decimals) echo "decimals" ;;
     _underlyingDecimals) echo "underlyingDecimals" ;;
     INITIAL_CHAIN_ID) echo "initialChainId" ;;
@@ -238,8 +334,8 @@ imm_field() {
     *) echo "error: unknown immutable $1" >&2; exit 1 ;;
   esac
 }
-imm_type() { case "$1" in asset|_asset) echo "Address" ;; *) echo "Word" ;; esac; }
-imm_toword() { case "$1" in asset|_asset) echo "Word.ofAddress i.$2" ;; *) echo "i.$2" ;; esac; }
+imm_type() { case "$1" in asset|_asset|_admin) echo "Address" ;; *) echo "Word" ;; esac; }
+imm_toword() { case "$1" in asset|_asset|_admin) echo "Word.ofAddress i.$2" ;; *) echo "i.$2" ;; esac; }
 
 # Lean expression of a solc storage type, recursively through the `types` table.
 JQ_TYPE='def ty($types; t): $types[t] as $x
@@ -281,6 +377,128 @@ lean_meta() {
     | join(",\n")' "$d/storageLayout.json"
   echo "]"
   echo
+}
+
+# Documentation of the canonical deployment of target $1 in its data module.
+deploy_doc() {
+  case "$1" in
+    ActorImpl) cat <<DOC
+Canonical deployment (\`Examples.Deployment.deployer\`, \`Examples.Deployment.chainId\`): deployer
+\`${DEPLOYER}\` (nonce 0), chain id ${CHAIN_ID}, this contract at
+\`${ADDR[ActorImpl]}\`: the implementation of
+\`OzTransparentProxy\` (deployer nonce 1, at \`proxy\`). The proxy's constructor delegatecalls
+\`set(${PROXY_INIT_VALUE})\`, so \`value\` is ${PROXY_INIT_VALUE} in the proxy's storage; this contract's own
+storage stays empty.
+DOC
+    ;;
+    OzTransparentProxy) cat <<DOC
+Canonical deployment (\`Examples.Deployment.deployer\`, \`Examples.Deployment.chainId\`): deployer
+\`${DEPLOYER}\` (nonce 1, after \`ActorImpl\` at nonce 0), chain id
+${CHAIN_ID}, this contract at \`${ADDR[OzTransparentProxy]}\`, constructed as
+\`TransparentUpgradeableProxy(implementation, initialOwner, initData)\`. The constructor deploys
+the \`ProxyAdmin\` (\`OzProxyAdmin\`, owned by \`initialOwner\`) at \`proxyAdmin\` (\`CREATE\` from
+this contract at nonce 1), keeps it in the immutable \`_admin\` and in the ERC-1967 admin slot,
+stores \`implementation\` in the ERC-1967 implementation slot and delegatecalls \`initData\` into
+it (OpenZeppelin v5.7.0's \`ERC1967Proxy\` rejects empty data). Canonical storage of the proxy:
+implementation slot \`implementation\`, admin slot \`proxyAdmin\`, slot 0 (\`ActorImpl.value\`) ${PROXY_INIT_VALUE}.
+DOC
+    ;;
+    OzProxyAdmin) cat <<DOC
+Canonical deployment (\`Examples.Deployment.chainId\`): created by the constructor of
+\`OzTransparentProxy\` (\`CREATE\` from the proxy
+\`${ADDR[OzTransparentProxy]}\` at its nonce 1), chain id ${CHAIN_ID}, owner
+\`initialOwner\`; this contract at \`${ADDR[OzProxyAdmin]}\`. \`constructorArgs\` is
+the owner, as the proxy passes it.
+DOC
+    ;;
+    MiniSafe) cat <<DOC
+Canonical deployment (\`Examples.Deployment.deployer\`, \`Examples.Deployment.chainId\`): deployer
+\`${DEPLOYER}\` (nonce 0, on a fresh chain), chain id ${CHAIN_ID}, this contract at
+\`${ADDR[MiniSafe]}\`, constructed as \`MiniSafe(owners, ${MINISAFE_THRESHOLD})\` with the owners
+\`initialOwners\` (\`isOwner\` true for each, threshold ${MINISAFE_THRESHOLD}, nonce 0).
+DOC
+    ;;
+    *) cat <<DOC
+Canonical deployment (\`Examples.Deployment.deployer\`, \`Examples.Deployment.chainId\`): deployer
+\`${DEPLOYER}\`, chain id ${CHAIN_ID}, this contract at
+\`${ADDR[$1]}\`.
+DOC
+    ;;
+  esac
+}
+
+# Slot of the state variable $2 in the storage layout of target $1.
+lean_slot() { jq -r --arg l "$2" '.storage[] | select(.label == $l) | .slot' "$ART/$1/storageLayout.json"; }
+
+# Extra definitions of target $1 in its data module (canonical parameters, slots).
+lean_extra() {
+  case "$1" in
+    OzTransparentProxy) cat <<DOC
+/-- ERC-1967 implementation slot, \`keccak256("eip1967.proxy.implementation") - 1\`. -/
+def implementationSlot : Word := ${ERC1967_IMPLEMENTATION_SLOT}
+
+/-- ERC-1967 admin slot, \`keccak256("eip1967.proxy.admin") - 1\`. -/
+def adminSlot : Word := ${ERC1967_ADMIN_SLOT}
+
+/-- ERC-1967 beacon slot, \`keccak256("eip1967.proxy.beacon") - 1\` (unused by this proxy). -/
+def beaconSlot : Word := ${ERC1967_BEACON_SLOT}
+
+/-- The implementation of the canonical deployment (\`ActorImpl\`, deployer nonce 0). -/
+def implementation : Address := ${ADDR[ActorImpl]}
+
+/-- The owner of the \`ProxyAdmin\` in the canonical deployment (\`initialOwner\`). -/
+def initialOwner : Address := ${PROXY_OWNER}
+
+/-- The \`ProxyAdmin\` deployed by the canonical constructor (\`OzProxyAdmin\`). -/
+def proxyAdmin : Address := ${ADDR[OzProxyAdmin]}
+
+/-- The constructor's initialisation calldata: \`set(${PROXY_INIT_VALUE})\` of \`ActorImpl\`. -/
+def initData : ByteArray := ⟨⟨
+    $(lean_bytes "$PROXY_INIT_DATA")⟩⟩
+
+DOC
+    ;;
+    OzProxyAdmin) cat <<DOC
+/-- The owner of the canonical deployment (the proxy's \`initialOwner\`). -/
+def initialOwner : Address := ${PROXY_OWNER}
+
+/-- The proxy whose constructor deploys this contract (\`OzTransparentProxy\`). -/
+def proxy : Address := ${ADDR[OzTransparentProxy]}
+
+/-- Storage slot of \`Ownable._owner\` (from \`storageLayout\`). -/
+def ownerSlot : Nat := $(lean_slot OzProxyAdmin _owner)
+
+DOC
+    ;;
+    MiniSafe) cat <<DOC
+/-- The owners of the canonical deployment (the constructor's \`owners\`). -/
+def initialOwners : List Address := [
+  $(tr -d '[]' <<<"$MINISAFE_OWNERS" | sed 's/,/,\n  /g')]
+
+/-- The threshold of the canonical deployment. -/
+def initialThreshold : Nat := ${MINISAFE_THRESHOLD}
+
+/-- Storage slot of \`threshold\` (from \`storageLayout\`). -/
+def thresholdSlot : Nat := $(lean_slot MiniSafe threshold)
+
+/-- Storage slot of \`nonce\` (from \`storageLayout\`). -/
+def nonceSlot : Nat := $(lean_slot MiniSafe nonce)
+
+/-- Storage slot of the mapping \`isOwner\` (from \`storageLayout\`). -/
+def isOwnerSlot : Nat := $(lean_slot MiniSafe isOwner)
+
+DOC
+    ;;
+    ActorImpl) cat <<DOC
+/-- The proxy of the canonical deployment (\`OzTransparentProxy\`), whose storage holds \`value\`. -/
+def proxy : Address := ${ADDR[OzTransparentProxy]}
+
+/-- Storage slot of \`value\` (from \`storageLayout\`). -/
+def valueSlot : Nat := $(lean_slot ActorImpl value)
+
+DOC
+    ;;
+  esac
 }
 
 TMP=$(mktemp -d)
@@ -337,9 +555,7 @@ Generated by \`scripts/build-contracts.sh\` from
 (solc 0.8.28, optimizer 200 runs, Cancun, no via-IR, no metadata). Do not edit; rerun the
 script. Raw artifacts: \`contracts/artifacts/$t/\`.
 
-Canonical deployment (\`Examples.Deployment.deployer\`, \`Examples.Deployment.chainId\`): deployer
-\`${DEPLOYER}\`, chain id ${CHAIN_ID}, this contract at
-\`${ADDR[$t]}\`.
+$(deploy_doc "$t")
 -/
 
 namespace ${LEANNS[$t]}.$t
@@ -364,6 +580,7 @@ def runtimeCode : ByteArray := ⟨⟨
 def address : Address := ${ADDR[$t]}
 
 EOF
+    lean_extra "$t"
     if [ "$nimm" -gt 0 ]; then
       echo "/-- The immutables of the contract (solc fills them into the runtime code at deployment). -/"
       echo "structure Immutables where"
@@ -454,6 +671,10 @@ EOF
   } > "$TMP/$t.lean"
   mv "$TMP/$t.lean" "$f"
 done
+# The proxy's only immutable is `_admin`, the ProxyAdmin its constructor deployed.
+[ "$(jq -r 'map(.name) | join(" ")' "$ART/OzTransparentProxy/immutableReferences.json")" = _admin ] \
+  && [ "$(cast parse-bytes32-address "$(jq -r '.[0].value' "$ART/OzTransparentProxy/immutableReferences.json")")" = "${ADDR[OzProxyAdmin]}" ] \
+  || { echo "error: OzTransparentProxy: immutable _admin is not the ProxyAdmin" >&2; exit 1; }
 
 # ---------------------------------------------------------------- mainnet targets
 # ABI signature of an ABI entry (tuples expanded).
@@ -480,6 +701,28 @@ genesis_slot() {
   fi
   cast to-uint256 "$slot"
 }
+# Rebuild the runtime code of mainnet target $1 from contracts/mainnet/$1/source.
+reproduce() {
+  local d="$C/mainnet/$1" ver solc fq file name
+  ver=$(jq -r '.compilation.compilerVersion' "$d/sourcify.json" | sed 's/+.*//')
+  solc="$HOME/.svm/$ver/solc-$ver"
+  [ -x "$solc" ] || { echo "error: $1: need solc $ver at $solc" >&2; exit 1; }
+  fq=$(jq -r '.compilation.fullyQualifiedName' "$d/sourcify.json")
+  file=${fq%:*}; name=${fq##*:}
+  ( cd "$d/source" && find . -name '*.sol' | sed 's|^\./||' | sort ) | while read -r p; do
+    jq -n --arg p "$p" --rawfile c "$d/source/$p" '{($p): {content: $c}}'
+  done | jq -s --slurpfile s "$d/sourcify.json" \
+    '{language: "Solidity", sources: add,
+      settings: ($s[0].compilation.compilerSettings
+        + {outputSelection: {"*": {"*": ["evm.deployedBytecode.object"]}}})}' \
+    > "$TMP/$1.input.json"
+  "$solc" --standard-json < "$TMP/$1.input.json" > "$TMP/$1.output.json"
+  [ "$(jq -r --arg f "$file" --arg n "$name" '.contracts[$f][$n].evm.deployedBytecode.object' \
+      "$TMP/$1.output.json")" = "$(cat "$d/runtime.hex")" ] \
+    || { echo "error: $1: solc $ver does not reproduce runtime.hex" >&2; exit 1; }
+}
+for t in "${REPRODUCE[@]}"; do reproduce "$t"; done
+
 declare -A MADDR MSIZE
 for t in "${MAINNET[@]}"; do
   d="$C/mainnet/$t"
@@ -578,6 +821,12 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
   --arg vw "${ADDR[VestingWallet]}" --arg vwArgs "${ARGS[VestingWallet]}" \
   --arg vb "${ADDR[VulnerableBank]}" --arg cb "${ADDR[CEIBank]}" --arg gb "${ADDR[GuardedBank]}" \
   --arg at "${ADDR[Attacker]}" --arg oa2 "${ADDR[OnceAttacker]}" \
+  --arg ai "${ADDR[ActorImpl]}" --arg tp "${ADDR[OzTransparentProxy]}" --arg tpArgs "${ARGS[OzTransparentProxy]}" \
+  --arg pa "${ADDR[OzProxyAdmin]}" --arg paArgs "${ARGS[OzProxyAdmin]}" --arg owner "$PROXY_OWNER" \
+  --arg initData "0x$PROXY_INIT_DATA" --argjson initValue "$PROXY_INIT_VALUE" \
+  --arg implSlot "$ERC1967_IMPLEMENTATION_SLOT" --arg adminSlot "$ERC1967_ADMIN_SLOT" --arg beaconSlot "$ERC1967_BEACON_SLOT" \
+  --arg ms "${ADDR[MiniSafe]}" --arg msArgs "${ARGS[MiniSafe]}" --argjson msOwners "$(tr -d '[]' <<<"$MINISAFE_OWNERS" | jq -R 'split(",")')" \
+  --argjson msThreshold "$MINISAFE_THRESHOLD" \
   --argjson mainnet "$(for t in "${MAINNET[@]}"; do jq -c --arg t "$t" '{($t): {address, block, codeHash, codeSize}}' "$C/mainnet/$t/meta.json"; done | jq -s 'add // {}')" \
   '{chainId: $chainId, deployer: $deployer, evmVersion: "cancun", solc: "0.8.28+commit.7893614a",
     note: "Each family is deployed on its own fresh chain: the asset at deployer nonce 0, the vault at nonce 1.",
@@ -596,6 +845,14 @@ jq -n --arg deployer "$DEPLOYER" --argjson chainId "$CHAIN_ID" \
                  guardedBank: {contract: "GuardedBank", address: $gb},
                  attacker: {contract: "Attacker", address: $at},
                  onceAttacker: {contract: "OnceAttacker", address: $oa2}},
+    openzeppelinTransparentProxy: {
+      note: "ActorImpl at deployer nonce 0, the proxy at nonce 1; the proxy constructor deploys the ProxyAdmin (CREATE from the proxy at nonce 1) and delegatecalls initData (set(1)) into the implementation.",
+      implementation: {contract: "ActorImpl", address: $ai, args: [], argsHex: ""},
+      proxy: {contract: "TransparentUpgradeableProxy", address: $tp, args: [$ai, $owner, $initData], argsHex: $tpArgs},
+      proxyAdmin: {contract: "ProxyAdmin", address: $pa, deployer: $tp, args: [$owner], argsHex: $paArgs},
+      initialOwner: $owner, initValue: $initValue,
+      erc1967: {implementationSlot: $implSlot, adminSlot: $adminSlot, beaconSlot: $beaconSlot}},
+    miniSafe: {contract: "MiniSafe", address: $ms, args: [$msOwners, $msThreshold], argsHex: $msArgs},
     mainnetNote: "Mainnet targets have no creation code: their runtime code is installed at their mainnet address with genesis.json storage.",
     mainnet: $mainnet}' \
   > "$ART/deployment.json"

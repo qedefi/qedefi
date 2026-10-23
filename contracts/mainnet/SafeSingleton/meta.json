@@ -1,0 +1,20 @@
+{
+  "name": "SafeSingleton",
+  "address": "0xFf51A5898e281Db6DfC7855790607438dF2ca44b",
+  "chainId": 1,
+  "block": 26255445,
+  "blockHash": "0xf73b7eea9dcfc8e2c86ba4615bcc90703f5f02a2bac1b23927a044afc88f211e",
+  "codeHash": "0xdda019cbd7c867a533a2a86e5c53434fdc50b13122b5a5ddb4a8df61b31c20f2",
+  "codeSize": 21451,
+  "contractName": "Safe",
+  "compiler": "0.7.6+commit.7338295f",
+  "optimizer": {
+    "runs": 200,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "exact_match",
+    "runtimeMatch": "exact_match",
+    "creationMatch": "exact_match"
+  }
+}

@@ -1,3 +1,14 @@
+import QEDefi.Actor.Action
+import QEDefi.Actor.Config
+import QEDefi.Actor.Delay
+import QEDefi.Actor.Derive
+import QEDefi.Actor.Lib.AccessControl
+import QEDefi.Actor.Lib.Ownable
+import QEDefi.Actor.Lib.Ownable2Step
+import QEDefi.Actor.Lib.Safe
+import QEDefi.Actor.Lib.Sys
+import QEDefi.Actor.Lib.Timelock
+import QEDefi.Actor.Trace
 import QEDefi.ERC20.Permit
 import QEDefi.ERC20.Rep
 import QEDefi.ERC20.RepOz
@@ -32,6 +43,8 @@ import QEDefi.Vesting.Model
 
 Reusable DeFi verification kits (Mathlib): `uint256` arithmetic (`QEDefi.Math`), ERC-20 ledgers
 and their word-level representation (`QEDefi.ERC20`), the Solmate and OpenZeppelin ERC-4626
-vault models with their properties (`QEDefi.ERC4626`), and EVM-independent lifting of per-call
-refinement to traces (`QEDefi.Trace`).
+vault models with their properties (`QEDefi.ERC4626`), EVM-independent lifting of per-call
+refinement to traces (`QEDefi.Trace`), and the actor model: who can cause an effect, through
+roles, relays, thresholds, configuration changes and delays (`QEDefi.Actor`,
+`docs/access-control.md`).
 -/

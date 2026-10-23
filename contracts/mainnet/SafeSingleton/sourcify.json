@@ -1,0 +1,46 @@
+{
+  "address": "0xFf51A5898e281Db6DfC7855790607438dF2ca44b",
+  "chainId": "1",
+  "match": "exact_match",
+  "runtimeMatch": "exact_match",
+  "creationMatch": "exact_match",
+  "verifiedAt": "2025-07-03T11:47:13Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.7.6+commit.7338295f",
+    "compilerSettings": {
+      "metadata": {
+        "bytecodeHash": "ipfs",
+        "useLiteralContent": true
+      },
+      "libraries": {},
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      },
+      "evmVersion": "istanbul",
+      "remappings": []
+    },
+    "name": "Safe",
+    "fullyQualifiedName": "contracts/Safe.sol:Safe"
+  },
+  "deployment": {
+    "transactionHash": "0xc39c8ef6e6146a2d38d3b1a6bc50965345c5802b19712827dbd85ef2208fcbd7",
+    "blockNumber": "22838493",
+    "transactionIndex": "131",
+    "deployer": "0xa611a4B78BeD437ff569E34Ce790c9C758d00d5a"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa26469706673582212209a2e21511303be354f644bd2370dafe8bffb1ce6653c5075c9142ccc42d1534464736f6c63430007060033",
+      "offset": 21398
+    }
+  }
+}

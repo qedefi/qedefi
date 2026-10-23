@@ -1,0 +1,9 @@
+{
+  "AddressEmptyCode(address)": "9996b315",
+  "ERC1967InvalidAdmin(address)": "62e77ba2",
+  "ERC1967InvalidImplementation(address)": "4c9c8ce3",
+  "ERC1967NonPayable()": "b398979f",
+  "ERC1967ProxyUninitialized()": "c28a273c",
+  "FailedCall()": "d6bda275",
+  "ProxyDeniedAdminAccess()": "d2b576ec"
+}

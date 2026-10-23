@@ -1,0 +1,20 @@
+{
+  "name": "SafeProxy",
+  "address": "0xeD921313b818dc96d3Af083Ac54321ea628D34AF",
+  "chainId": 1,
+  "block": 26255445,
+  "blockHash": "0xf73b7eea9dcfc8e2c86ba4615bcc90703f5f02a2bac1b23927a044afc88f211e",
+  "codeHash": "0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f",
+  "codeSize": 123,
+  "contractName": "SafeProxy",
+  "compiler": "0.7.6+commit.7338295f",
+  "optimizer": {
+    "runs": 200,
+    "enabled": false
+  },
+  "sourcify": {
+    "match": "match",
+    "runtimeMatch": "match",
+    "creationMatch": "match"
+  }
+}

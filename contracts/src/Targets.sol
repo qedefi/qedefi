@@ -8,6 +8,9 @@ pragma solidity 0.8.28;
 //   Solady: SoladyToken (below; Solady's ERC20 vendored, unmodified)
 //   Time: OpenZeppelin VestingWallet (vendored, unmodified)
 //   Reentrancy demonstrators: VulnerableBank, CEIBank, GuardedBank, Attacker (reentrancy/Banks.sol)
+//   OpenZeppelin proxy: ActorImpl (implementation, below), TransparentUpgradeableProxy and
+//     the ProxyAdmin its constructor deploys -- vendored, unmodified
+//   MiniSafe (below): a minimal Safe-style threshold multisig
 // WETH9 and the mainnet tokens are not compiled here: their targets are the deployed mainnet
 // bytecode (contracts/mainnet/).
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -18,3 +21,7 @@ import {OzVaultOffset} from "./OzVaultOffset.sol";
 import {SoladyToken} from "./SoladyToken.sol";
 import {VestingWallet} from "@openzeppelin/contracts/finance/VestingWallet.sol";
 import {VulnerableBank, CEIBank, GuardedBank, Attacker} from "./reentrancy/Banks.sol";
+import {ActorImpl} from "./ActorImpl.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {MiniSafe} from "./MiniSafe.sol";

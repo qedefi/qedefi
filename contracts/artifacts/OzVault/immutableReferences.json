@@ -1,7 +1,7 @@
 [
   {
     "name": "_asset",
-    "astId": 1516,
+    "astId": 2124,
     "offsets": [
       556,
       896,
@@ -13,7 +13,7 @@
   },
   {
     "name": "_underlyingDecimals",
-    "astId": 1518,
+    "astId": 2126,
     "offsets": [
       1276
     ],

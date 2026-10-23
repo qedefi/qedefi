@@ -1,0 +1,6 @@
+{
+  "note": "State the constructor leaves: singleton = the Safe v1.5.0 singleton (SafeSingleton).",
+  "storage": [
+    {"label": "singleton", "slot": "0x0", "value": "0xff51a5898e281db6dfc7855790607438df2ca44b"}
+  ]
+}

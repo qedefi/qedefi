@@ -21,6 +21,16 @@ targets in [docs/tokens.md](../docs/tokens.md).
 |---|---|
 | `VestingWallet` | OpenZeppelin `finance/VestingWallet.sol` (vendored, unmodified): linear vesting of ETH and ERC-20 balances by `block.timestamp` ([proofs](../qedefi/Examples/Time/)) |
 
+| Proxy target | Kind | Source |
+|---|---|---|
+| `OzTransparentProxy` | compiled | OpenZeppelin `TransparentUpgradeableProxy` (vendored, unmodified); immutable `_admin` |
+| `OzProxyAdmin` | compiled | OpenZeppelin `ProxyAdmin` (vendored, unmodified; `Ownable`), deployed by the proxy's constructor |
+| `ActorImpl` | compiled | `src/ActorImpl.sol`: `uint256 public value` (slot 0) and an unrestricted `set(uint256)`; the proxy's implementation |
+
+| Multisig target | Kind | Source |
+|---|---|---|
+| `MiniSafe` | compiled | `src/MiniSafe.sol`: a minimal Safe-style threshold multisig (owners, threshold, nonce; ECDSA `checkNSignatures`), the owner of the ProxyAdmin in `qedefi/Examples/Actor/Bytecode/SafeGuard.lean` |
+
 `src/Targets.sol` is the compilation root.
 
 ## Pinned versions
@@ -38,7 +48,9 @@ targets in [docs/tokens.md](../docs/tokens.md).
 Vendored files in `lib/` are byte-for-byte copies at their upstream paths, licence headers
 and `LICENSE` files kept (Solmate AGPL-3.0-only, OpenZeppelin MIT, Solady MIT): Solmate's
 `ERC20`, `ERC4626`, `FixedPointMathLib`, `SafeTransferLib`, `MockERC20`, `MockERC4626`; the
-import closure of OpenZeppelin's `ERC4626`, `ERC20Mock` and `VestingWallet`; Solady's `ERC20` (no imports).
+import closure of OpenZeppelin's `ERC4626`, `ERC20Mock`, `VestingWallet`,
+`proxy/transparent/TransparentUpgradeableProxy` and `proxy/transparent/ProxyAdmin`; Solady's
+`ERC20` (no imports).
 Adding sources to the compilation shifts the AST ids recorded in `immutableReferences.json`
 (`astId`); the bytecode does not change.
 
@@ -69,6 +81,10 @@ code equals the template outside the immutable positions, and generates the Lean
 | `OzVaultOffset` | 4,411 B | 5,105 B |
 | `SoladyToken` | 2,278 B | 2,306 B |
 | `VestingWallet` | 2,264 B | 2,608 B |
+| `ActorImpl` | 116 B | 142 B |
+| `OzTransparentProxy` (`TransparentUpgradeableProxy`) | 1,005 B | 3,339 B (embeds `ProxyAdmin`'s) |
+| `OzProxyAdmin` (`ProxyAdmin`) | 964 B | 1,200 B |
+| `MiniSafe` | 1,303 B | 1,921 B |
 
 ## Canonical deployment
 
@@ -77,12 +93,32 @@ Each family is deployed on its own fresh chain (chain id 1, Cancun) by
 δ = 3 family likewise (`OzVaultOffset` at the vault address), `SoladyToken` alone at nonce 0
 (the asset address), `VestingWallet` alone at nonce 0 (the asset address) with beneficiary
 `0x2000000000000000000000000000000000000000`, start `1700000000`, duration `31536000` (one
-year).
+year). The proxy family: `ActorImpl` at nonce 0 (the asset address), then
+`TransparentUpgradeableProxy(ActorImpl, initialOwner, set(1))` at nonce 1 (the vault address);
+its constructor deploys the `ProxyAdmin` (owner `initialOwner`) by `CREATE` from the proxy at
+the proxy's nonce 1, stores it in the immutable `_admin` and the ERC-1967 admin slot, and
+delegatecalls `set(1)` into the implementation (OpenZeppelin v5.7.0's `ERC1967Proxy` reverts
+with `ERC1967ProxyUninitialized` on empty data). The script checks the ProxyAdmin's address
+against the admin slot, the `CREATE` address and the immutable, the implementation slot, the
+proxy's slot 0 (`value = 1`) and `owner()`. `MiniSafe` alone on a fresh chain at nonce 0 (the
+asset address), constructed with owners alice, bob and carol and threshold 2; the script checks
+`threshold()`, `nonce()` and `isOwner` of each.
 
 | | Address | Constructor arguments |
 |---|---|---|
 | asset | `0x13136008B64FF592819B2FA6d43F2835C452020e` | Solmate `("Solmate Asset", "SAST", 18)`; OZ none (`"ERC20Mock"`, `"E20M"`, 18 decimals) |
 | vault | `0x7c5a2c91b22d7A9226523D4Ba717DB6afB741ebd` | Solmate `(asset, "Solmate Vault", "svSAST")`; OZ `(asset)` (`"OZ Vault"`, `"ozVLT"`) |
+| `ActorImpl` | `0x13136008B64FF592819B2FA6d43F2835C452020e` | none |
+| `OzTransparentProxy` | `0x7c5a2c91b22d7A9226523D4Ba717DB6afB741ebd` | `(ActorImpl, initialOwner, set(1))`, data `0x60fe47b1 ‖ 1` |
+| `OzProxyAdmin` | `0x1FA0a9a904481F866eF5EfDa01f2c8F4B8090c1A` | `(initialOwner)`, passed by the proxy's constructor |
+| `initialOwner` | `0x00000000000000000000000000000000000A11cE` | alice (`0xA11CE`, as in `difftest`), owner of the ProxyAdmin |
+| `MiniSafe` | `0x13136008B64FF592819B2FA6d43F2835C452020e` | `([0xA11CE, 0xB0B, 0xCA401], 2)` |
+
+ERC-1967 slots (`keccak256("eip1967.proxy.<name>") − 1`, checked against the vendored
+`ERC1967Utils.sol`): implementation
+`0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc`, admin
+`0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103`, beacon (unused)
+`0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50`.
 
 ## Immutables
 
@@ -104,8 +140,10 @@ constructor. Byte offsets of the values in the runtime code:
 | | `_underlyingDecimals` | 1277 | 18 (`asset.decimals()`) |
 | VestingWallet | `_start` | 1198 | 1700000000 |
 | | `_duration` | 295, 1236, 1458 | 31536000 |
+| OzTransparentProxy | `_admin` | 16 | ProxyAdmin address `0x1FA0a9a9…8090c1A` |
 
-`SoladyToken`, `OzAsset` and the mainnet targets have no immutables.
+`SoladyToken`, `OzAsset`, `ActorImpl`, `OzProxyAdmin` and the mainnet targets have no
+immutables.
 
 The runtime code of other deployments is obtained either by running the creation code
 (`creationCode ++ constructorArgs`; `difftest` does this in evm-lean and anvil) or by
@@ -145,10 +183,19 @@ checks that every selector is pushed by the dispatcher, and generates the Lean m
 | YAMV2 (`YAMv2`, 24 decimals) | `0xAba8cAc6866B83Ae4eec97DD07ED254282f6aD8A` | `0xba80d2f3d66c1c11fe204b02db121186e3113415910213bbe355db422dc595b1` | 3,683 B | 26,236,997 | 0.6.12+commit.27d51765, optimizer 50,000 (istanbul) |
 | LEND (`EthLendToken`) | `0x80fB784B7eD66730e8b1DBd9820aFD29931aab03` | `0xb9ac5542f3276a4ee6be31d235c3f0736f37c1f0182c4369a07b8de2d1f23f1f` | 6,872 B | 26,236,997 | 0.4.16+commit.d7661dd9, optimizer off |
 | ZRX (`ZRXToken`) | `0xE41d2489571d322189246DaFA5ebDe1F4699F498` | `0x44d31e602fd21d6ca2e92923b0a6626c47c1986a92e1abc87bea9ae71e553229` | 2,946 B | 26,236,997 | 0.4.11+commit.68ef5810, optimizer off |
+| SafeSingleton (Safe v1.5.0 `Safe`) | `0xFf51A5898e281Db6DfC7855790607438dF2ca44b` | `0xdda019cbd7c867a533a2a86e5c53434fdc50b13122b5a5ddb4a8df61b31c20f2` | 21,451 B | 26,255,445 (`0xf73b7eea…`) | 0.7.6+commit.7338295f, optimizer off |
+| SafeProxy (a Safe v1.5.0 proxy) | `0xeD921313b818dc96d3Af083Ac54321ea628D34AF` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` | 123 B | 26,255,445 | 0.7.6+commit.7338295f, optimizer off |
 
-Every Sourcify match above except GUSDImpl's is *partial* (`"match"`: the code equals the
-recompilation except the metadata hash in the trailer), so those are not byte-reproducible
-from source; GUSDImpl's is exact. The code hash is the pin. `layout-check.txt` (USDT, BNB,
+The two Safe v1.5.0 targets are also reproduced from source: `build-contracts.sh` compiles
+`safe-global/safe-smart-account` tag `v1.5.0` (`source/`) with its pinned settings (solc
+0.7.6, optimizer off, Istanbul) and checks the runtime code byte for byte, metadata included
+(`REPRODUCE`; `mainnet/SafeProxy/notes.md` explains why the proxy's source is the tag's file).
+They are used by `qedefi/Examples/Safe/Bytecode/` (the upgrade guard with a Safe owner).
+
+Every Sourcify match above except GUSDImpl's and SafeSingleton's is *partial* (`"match"`: the
+code equals the recompilation except the metadata hash in the trailer), so those are not
+byte-reproducible from Sourcify's sources (SafeProxy is, from the tag's file, above);
+GUSDImpl's and SafeSingleton's are exact. The code hash is the pin. `layout-check.txt` (USDT, BNB,
 STA, AMPL, GUSD, GUSDImpl, GUSDStore, YAMV2, LEND, ZRX) records the check of the
 hand-derived layout against mainnet: every slot of the static layout and mapping rows of
 known holders read with `eth_getStorageAt` and compared with the public getters
@@ -191,18 +238,24 @@ slots 0–2 (`name`, `symbol`, `decimals`) equal `genesis.json`.
 ## Lean API
 
 Namespaces `Examples.Solmate.Contracts.{SolmateAsset, SolmateVault}`,
-`Examples.OpenZeppelin.Contracts.{OzAsset, OzVault, OzVaultOffset}` and
+`Examples.OpenZeppelin.Contracts.{OzAsset, OzVault, OzVaultOffset, OzTransparentProxy,
+OzProxyAdmin, ActorImpl}` and
 `Examples.Solady.Contracts.SoladyToken`, each with `creationCode`,
 `constructorArgs`, `runtimeCode` (a literal `ByteArray` that reduces in the kernel),
 `address`, `size_runtimeCode`/`size_creationCode`, `selectors`, `events` (topic 0), `errors`,
 `storageLayout`, `immutableRefs` and, with immutables, `Immutables`, `deployment`,
-`runtimeCodeWith`. Shared: `Examples.Deployment.chainId`, `deployer`;
+`runtimeCodeWith`. The proxy family also has `OzTransparentProxy.{implementationSlot,
+adminSlot, beaconSlot, implementation, initialOwner, proxyAdmin, initData}`,
+`OzProxyAdmin.{initialOwner, proxy, ownerSlot}` and `ActorImpl.{proxy, valueSlot}`. Shared:
+`Examples.Deployment.chainId`, `deployer`;
 `EvmLogic.Solidity.slotOf?`, `selector?`, `patchWords`, `eq_of_data_toList_eq` (compare code
 in the kernel via `.data.toList`: `ByteArray`'s `DecidableEq` does not reduce well).
 
 Storage slots: Solmate `name 0, symbol 1, totalSupply 2, balanceOf 3, allowance 4, nonces 5`
 (vault also `beforeWithdrawHookCalledCounter 6, afterDepositHookCalledCounter 7`);
-OpenZeppelin `_balances 0, _allowances 1, _totalSupply 2, _name 3, _symbol 4`. Mappings:
+OpenZeppelin `_balances 0, _allowances 1, _totalSupply 2, _name 3, _symbol 4`; `ProxyAdmin`
+`_owner 0`; `ActorImpl` `value 0` (in the proxy's storage when called through it; the proxy
+itself has no Solidity state, only the ERC-1967 slots). Mappings:
 `m[k]` at `keccak(k ‖ slot)`, `allowance[o][s]` at `keccak(s ‖ keccak(o ‖ slot))`. Solady
 (no Solidity state): `totalSupply` at `0x05345cdf77eb68f44c`, `balanceOf(o)` at
 `keccak(o₂₀ ‖ 0⁸ ‖ 0x87a211a2)`, `allowance(o, s)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x7f5e9f20 ‖ s₂₀)`,

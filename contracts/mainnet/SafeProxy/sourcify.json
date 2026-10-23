@@ -1,0 +1,49 @@
+{
+  "address": "0xeD921313b818dc96d3Af083Ac54321ea628D34AF",
+  "chainId": "1",
+  "match": "match",
+  "runtimeMatch": "match",
+  "creationMatch": "match",
+  "verifiedAt": "2026-10-22T20:11:27Z",
+  "compilation": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.7.6+commit.7338295f",
+    "compilerSettings": {
+      "metadata": {
+        "useLiteralContent": true
+      },
+      "optimizer": {
+        "runs": 200,
+        "enabled": false
+      }
+    },
+    "name": "SafeProxy",
+    "fullyQualifiedName": "contracts/proxies/SafeProxy.sol:SafeProxy"
+  },
+  "deployment": {
+    "transactionHash": "0x0f88dac796e6fc02c60f035698b8719caa7a0fe440af4a0f89dc1142d7ad04c8",
+    "blockNumber": "26250460",
+    "transactionIndex": "48",
+    "deployer": "0xBe0B407782a7599380Fa726db315340126d62229"
+  },
+  "proxyResolution": {
+    "isProxy": false,
+    "proxyType": null,
+    "implementations": []
+  },
+  "runtimeTransformations": [
+    {
+      "id": "1",
+      "type": "replace",
+      "offset": 70,
+      "reason": "cborAuxdata"
+    }
+  ],
+  "runtimeCborAuxdata": {
+    "1": {
+      "value": "0xa26469706673582212203fad3a1954e0e504166e7bdcd87cc9df0c1f3f5ced6e3679e81661a81316f0f664736f6c63430007060033",
+      "offset": 70
+    }
+  }
+}
