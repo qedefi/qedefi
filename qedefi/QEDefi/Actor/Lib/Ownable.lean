@@ -3,7 +3,7 @@ import QEDefi.Actor.Lib.Sys
 /-!
 # Component: OpenZeppelin `Ownable` (v5.7.0)
 
-`docs/access-control/oz-access.md` §1. One principal, the owner (`none` is `address(0)`, after
+`access/Ownable.sol`. One principal, the owner (`none` is `address(0)`, after
 `renounceOwnership`). `onlyOwner` functions act when called by the owner; `transferOwnership(n)`
 (owner only, `n ≠ address(0)`: the address type `A` has no zero) sets the owner; renouncing is
 absorbing. Solmate `Owned` and Solady `Ownable` (without handover) have the same authority.

@@ -5,3 +5,8 @@
 conformance-results.txt
 /tests/fixtures-eest
 .env
+CLAUDE.local.md
+.claude/worktrees/
+# Snapshots carry third-party sources and chain state: commit only the hand-written targets.
+/contracts/snapshots/*/*
+!/contracts/snapshots/*/targets.json

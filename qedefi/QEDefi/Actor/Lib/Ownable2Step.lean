@@ -3,7 +3,7 @@ import QEDefi.Actor.Lib.Sys
 /-!
 # Component: OpenZeppelin `Ownable2Step` (v5.7.0)
 
-`docs/access-control/oz-access.md` §2. Two principals, the owner and the pending owner (`none` is
+`access/Ownable2Step.sol`. Two principals, the owner and the pending owner (`none` is
 `address(0)`):
 
 - `transferOwnership(n)` (owner only, no zero check: `none` cancels) sets the pending owner;

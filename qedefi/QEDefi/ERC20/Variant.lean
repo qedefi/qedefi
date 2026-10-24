@@ -5,7 +5,7 @@ public import QEDefi.ERC20.Token
 /-!
 # ERC-20 variants
 
-One parameterised token model for the deviations recorded in `docs/tokens.md`. A `Variant A`
+One parameterised token model for the deviations of the token targets in `docs/tokens.md`. A `Variant A`
 is a record of policies (data, not code): the return-data convention per entry point, how a
 failing check ends the call (`REVERT`, `INVALID`, or returning `false`), zero-address and
 zero-value checks, the USDT approve race guard, how infinite allowances are treated, a

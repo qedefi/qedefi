@@ -4,9 +4,8 @@ Who can cause an effect, through roles, contracts that hold roles, thresholds, s
 configuration changes and delays, stated so that it is checked rather than assumed. The library
 is EVM-independent (`qedefi/QEDefi/Actor/`), works on the model level like the rest of `QEDefi`,
 and transfers to bytecode through `QEDefi.Trace.Lift`. Three worked examples are in
-`qedefi/Examples/Actor/`, reusable components in `qedefi/QEDefi/Actor/Lib/` (§7). The
-source-level specifications of the systems surveyed are in
-[access-control/](access-control/) (§6).
+`qedefi/Examples/Actor/`, reusable components in `qedefi/QEDefi/Actor/Lib/` (§6); the bytecode
+results are in [actor-bytecode.md](actor-bytecode.md).
 
 ## 1. What it gives you
 
@@ -64,9 +63,9 @@ answers for. None of these rules is written by hand, so none can be forgotten.
 
 **Soundness: rules cannot under-approximate.** If a model's rules miss a path to authority (an
 escalation, an open initialiser, a relay, a stored approval), `Stable` or `Guards` fails to be
-provable. While writing the Safe example, the first rule set had no rule for executing an
-approved hash that transfers ProxyAdmin ownership. Stability failed, and the gap was real:
-anyone can execute such a hash, and the new owner can then upgrade. Rules may *over*-approximate
+provable. For example, a Safe rule set without a rule for executing an approved hash that
+transfers ProxyAdmin ownership fails `Stable`, and the gap is real: anyone can execute such a
+hash, and the new owner can then upgrade. Rules may *over*-approximate
 (ignore delays, ignore which digest a signature is for): the theorems stay sound, only less
 precise.
 
@@ -110,8 +109,7 @@ All three are model-level. Only the three standard axioms are used (`propext`,
 
 ## 5. Catalogue: each system in the model
 
-Versions and exact semantics are in the specs of §6, which cite file and line. "Rules" lists
-base rules, "Changes" configuration changes, "Facts" empty-premise rules, and "Delayed" the
+The semantics are those of the upstream sources at the versions named. "Rules" lists base rules, "Changes" configuration changes, "Facts" empty-premise rules, and "Delayed" the
 uses of `Delayed`.
 
 | System | Rules | Changes / Facts / Delayed | Sharp edges the model must keep |
@@ -151,27 +149,7 @@ uses of `Delayed`.
 service but grants nothing. Off-chain identity (whether five signers are five people), custody,
 and cross-chain message endpoints enter as hypotheses about who acts, or as assumed relay rules.
 
-## 6. Source-level specifications (`access-control/`)
-
-Read-only studies of the sources, with file:line and commit for every claim, written to define
-the rules above precisely:
-
-- [oz-access.md](access-control/oz-access.md): OZ v5.7.0 Ownable, Ownable2Step, AccessControl
-  (+Enumerable, DefaultAdminRules), AccessManager/AccessManaged, Multicall, ERC-2771,
-  Initializable (with 4.9 and 5.0 differences).
-- [oz-gov-proxy.md](access-control/oz-gov-proxy.md): TimelockController, Governor and
-  extensions, Votes, ERC-1967, transparent, UUPS and beacon proxies.
-- [safe-zodiac.md](access-control/safe-zodiac.md): Safe 1.5.0, 1.4.1 and 1.3.0, Zodiac
-  Roles v2, Delay, and the June 2026 advisory.
-- [solmate-solady-maker-compound.md](access-control/solmate-solady-maker-compound.md):
-  Solmate Auth/Roles, Solady Ownable/OwnableRoles/TimedRoles, DappHub, Maker Vat, DSPause and
-  DSChief, Compound Timelock, Bravo and Comptroller.
-- [hats-aragon-aave-evc-aa.md](access-control/hats-aragon-aave-evc-aa.md): Hats, Aragon ACL,
-  Aave v3 ACL, Euler EVC, ERC-4337 v0.7/v0.8, ERC-7579, EIP-7702, Permit2.
-- [strata.md](access-control/strata.md): the actor model of the `contracts/snapshots/StrataUSDe`
-  snapshot. It lists the slots and calls to add so that role membership is known.
-
-## 7. Components and the bytecode bridge
+## 6. Components and the bytecode bridge
 
 **Components** (`qedefi/QEDefi/Actor/Lib/`): `Ownable`, `Ownable2Step`, `AccessControl`, `Safe`
 and `Timelock` (TimelockController). Each provides its configuration fragment, `Base`/`Chg`
@@ -180,58 +158,14 @@ messages (`Sys`), its `run_sound`, and a "who can" lemma (`no_act`, `no_call`), 
 the converse (`owner_can`, `admin_can`, `owners_can`). `Examples/Actor/SafeProxyAdminLib.lean`
 re-derives the Safe example from the components with the same headline statement.
 
-**Relays on bytecode** (`EvmLogic/Program/Nested/Relay.lean`, `Guard.lean`; see
-[actor-bytecode.md](actor-bytecode.md)):
-- `processMessageCall_issues`: in any transaction, every call issued by a frame running a
-  relay's own code satisfies that relay's issuance predicate.
-- `processMessageCall_guard`: a world invariant over the relays' storage holds at the end of a
-  transaction in which some principals do not act (idle EOAs).
-- `EvmLogic/AbsInt/Guard/`: a path-sensitive certified abstract interpreter. It shows that a
-  frame whose sender is not the owner (or the admin) never takes the guarded branch.
+**On bytecode** ([actor-bytecode.md](actor-bytecode.md)). `EvmLogic/Program/Nested/Relay.lean`
+and `Guard.lean` prove, for any transaction, that every call a relay issues satisfies its
+issuance predicate and that a world invariant over the relays' storage survives when some
+principals do not act; `EvmLogic/AbsInt/Guard/` decides which branch an access check takes. The
+instances:
 
-**The upgrade guard on bytecode** (`qedefi/Examples/Actor/Bytecode/ProxyGuard.lean`). For the
-compiled OpenZeppelin v5.7.0 `TransparentUpgradeableProxy` and its `ProxyAdmin`:
-- `Dep.impl_kept`: **no transaction not sent by the owner (an EOA) changes the
-  implementation slot or ProxyAdmin's owner**. This holds for any calldata, depth and reentrancy.
-- It is Ownable's `no_act` with `T = {sender}`, proved for every reachable EVM machine.
-- `Example.world_ok` shows that the hypotheses are satisfiable.
-
-**A Safe owner on bytecode** (`qedefi/Examples/Actor/Bytecode/SafeGuard.lean`). The same proxy
-and ProxyAdmin, owned by `MiniSafe`, a minimal Safe-style threshold multisig (ECDSA
-`checkNSignatures`):
-- `Dep.impl_kept`: **no transaction whose signers include fewer than `threshold` owners changes
-  the implementation slot, ProxyAdmin's owner, or the Safe's threshold and owners**. The signers
-  are a hypothesis in the style of `SigUnforgeable` (`Signers`: every owner `ecrecover` recovers
-  from a digest of this Safe on this chain is a signer).
-- The Safe's frames are proved by symbolic execution of its bytecode (`Own`,
-  `EvmLogic/Program/Nested/Own.lean`): every path reverts before the final `CALL`. The signature
-  loop counts distinct owners among the signers.
-- It is `Safe`'s `Closes.outsider` (fewer than `thr` owners among the keys, no module).
-
-**Safe 1.5.0 on bytecode** (`qedefi/Examples/Safe/Bytecode/`). The same proxy and ProxyAdmin,
-owned by the real Safe: `SafeProxy` and the v1.5.0 singleton, byte for byte from the tagged
-release (`contracts/README.md`):
-- `Examples.Safe.Guard.Dep.impl_kept`: **no transaction whose signers include fewer than
-  `threshold` owners changes the implementation slot, ProxyAdmin's owner, or the Safe's
-  configuration** (singleton, threshold, owners, modules, guards, fallback handler, and the
-  non-signers' approvals), with the Safe's every entry point explored on its bytecode,
-  including `simulateAndRevert` (a doomed `DELEGATECALL`, `EvmLogic/Program/Nested/Sandbox.lean`)
-  and all four signature kinds of `checkNSignatures` (ECDSA, `eth_sign`, approved hash,
-  EIP-1271 contract signature).
-- Hashing enters only as a run-level hypothesis (`Rw`: the Safe's nonce and approval writes in
-  this transaction miss the protected slots) and initial-state facts kept by `G`; no keccak
-  injectivity is assumed. Details and every hypothesis: [actor-bytecode.md](actor-bytecode.md)
-  §6.
-
-## 8. Next
-
-- **Contract owners on bytecode.** An owner that is a Safe is one more relay. Its `GuardInv`
-  says it calls ProxyAdmin only with threshold signatures (an issuance predicate over
-  `ecrecover`). That gives the bytecode form of the Safe → ProxyAdmin → proxy example.
-- **Traces of transactions.** Compose `processMessageCall_guard` along a sequence of
-  transactions, with the transaction layer as environment steps, as in `QEDefi.Trace.Lift`.
-- **Snapshots.** Evaluate the configuration from fetched state (owners, role members via the
-  slots or `hasRole` calls, pending owners, scheduled operations) and report who controls
-  each effect at a block. The Strata spec lists what to fetch.
-- **Weighted authority.** Votes at a past snapshot are stable; votes over current balances
-  (DSChief) are stable only once flash lenders are modelled as relays.
+| Theorem | System | Statement |
+|---|---|---|
+| `Examples.Actor.ProxyGuard.Dep.impl_kept` | OZ v5.7.0 transparent proxy and `ProxyAdmin`, owned by an EOA | no transaction not sent by the owner changes the implementation slot or ProxyAdmin's owner (any calldata, depth, reentrancy); `Dep.trace_impl_kept` (`ProxyGuardTrace.lean`) along any sequence of transactions. Ownable's `no_act` with `T = {sender}` |
+| `Examples.Actor.SafeGuard.Dep.impl_kept` | the same, owned by `MiniSafe` (ECDSA threshold multisig) | no transaction signed by fewer than `threshold` owners changes the implementation, the owner, or the Safe's owners and threshold. `Safe`'s `Closes.outsider` |
+| `Examples.Safe.Guard.Dep.impl_kept` | the same, owned by Safe v1.5.0 (mainnet bytecode) | as above, for the Safe's whole configuration, every entry point and all four signature kinds |

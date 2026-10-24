@@ -4,7 +4,7 @@ import QEDefi.Actor.Delay
 /-!
 # Component: OpenZeppelin `TimelockController` (v5.6.0, unchanged in 5.7.0)
 
-`docs/access-control/oz-gov-proxy.md` §1. An `AccessControl` contract `tl` (the
+`governance/TimelockController.sol`. An `AccessControl` contract `tl` (the
 `AccessControl` component at `tl`, through the lens `acL`) with operations `k : K`. Operation ids
 are content-addressed: `calls k` (targets and calldata) and `pred k` (predecessor) are functions of
 the id. `ts k` is `_timestamps[id]` exactly: `0` unset, `1` done, otherwise the ready time.

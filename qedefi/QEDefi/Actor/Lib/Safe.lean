@@ -3,7 +3,7 @@ import QEDefi.Actor.Lib.Sys
 /-!
 # Component: Safe (v1.5.0; 1.3.0 and 1.4.1 have the same authority)
 
-`docs/access-control/safe-zodiac.md` §1. A Safe `sf` with owners, a threshold, modules and
+`safe-global/safe-smart-account`, `contracts/Safe.sol`. A Safe `sf` with owners, a threshold, modules and
 approved hashes. Parameters: the Safe's address, the embedding `ι` of its messages into the host's
 (`Msg A M H` carries host messages: the Safe relays them), and the digest `dig t m` of a Safe
 transaction calling `t` with `m` (nonce and gas parameters abstracted: an over-approximation).

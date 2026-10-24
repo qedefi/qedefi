@@ -5,7 +5,7 @@ model of a system of contracts. `Guards.lift` moves such a theorem to bytecode f
 through `System.Refinement`. A system with **relays** (a ProxyAdmin calling its proxy, a Safe
 executing a transaction, a timelock executing an operation) needs one more fact: each relay's
 frames issue calls only as its model rules say. This document describes that fact, proved in
-`EvmLogic/Program/Nested/Relay.lean` (core and Std only), and the plan for connecting it to
+`EvmLogic/Program/Nested/Relay.lean` (core and Std only), its instances, and how it connects to
 `QEDefi.Actor.Derives`.
 
 ## 1. The frame condition
@@ -176,15 +176,17 @@ This covers any calldata, any value, calls at any depth, reentrancy, and reverts
 standard axioms are used.
 
 In the terms of `QEDefi.Actor`, this is Ownable's `no_act` with `T = {sender}`, now a fact about
-every reachable EVM machine.
+every reachable EVM machine. `ProxyGuardTrace.lean` lifts it to traces: along every sequence of
+transactions not sent by the owner, interleaved with environment steps that leave the deployment
+alone (a transaction's nonce increment and fee payment among them), the implementation and the
+owner never change (`Dep.trace_impl_kept`), and the owner's first transaction starts from the
+original ones (`Dep.trace_impl_until_owner`).
 
 **Limits.**
 
 - The owner is an EOA. §5 replaces it with a threshold multisig, a further relay.
 - The implementation is part of the trusted code. Its certificate says it never writes the
   implementation slot. An implementation that could would itself be an upgrade path.
-- One message call. Between transactions, the transaction layer (nonce, fees) changes only
-  balances and nonces. Composing with `QEDefi.Trace.Lift`-style traces is the next step.
 
 ## 5. A Safe owner: threshold signatures on bytecode
 
@@ -195,15 +197,8 @@ owners signed the transaction digest, checked as Safe 1.5.0's `checkNSignatures`
 signatures (65-byte `r ‖ s ‖ v`, signers recovered by `ecrecover`, strictly increasing, each an
 owner). The digest is `keccak256(abi.encode(chainid, this, to, value, keccak256(data), nonce))`.
 
-**Why not Safe 1.5.0 itself (here).** §6 does Safe 1.5.0; this section is the smaller first
-step. Its `simulateAndRevert` `DELEGATECALL`s arbitrary code from a
-non-static Safe frame without any signature, and then always reverts. Such code can call the
-ProxyAdmin as the Safe; the effect is rolled back, but the step-local simulation (`G` on the
-current world at every step, `Iss` for every relay request) cannot express "arbitrary effects
-inside a frame that will revert". Supporting it needs a "doomed frame" extension of `Guard.lean`
-(§6, `Sandbox.lean`).
-Safe also has a fallback handler (a `CALL` with the Safe as sender to a configured address),
-modules, guards, EIP-1271 and `approveHash` signatures, which MiniSafe leaves out.
+MiniSafe leaves out what makes Safe 1.5.0 harder (§6): `simulateAndRevert`, the fallback
+handler, modules, guards, and EIP-1271 and `approveHash` signatures.
 
 **Frames that end safely (`EvmLogic/Program/Nested/Own.lean`).** The Safe's frame invariant must
 know that the final `CALL` of `execTransaction` is unreachable when fewer than `threshold` owners
@@ -261,8 +256,7 @@ signer, a stand-in `Crypto`). Only the standard axioms are used.
 In the terms of `QEDefi.Actor.Lib.Safe` (`Examples.Actor.SafeProxyAdminLib`): `Closes.outsider`
 with fewer than `thr` owners among the keys and no module (MiniSafe has none), on bytecode.
 
-**Limits.** A minimal multisig, not Safe 1.5.0 (§6 does the real one). The signature hypothesis is about
-digests of 192 bytes starting with the chain id and the Safe; the theorem says nothing about
+**Limits.** The signature hypothesis is about digests of 192 bytes starting with the chain id and the Safe; the theorem says nothing about
 transactions that do reach `thr` signatures (the converse, that `thr` owners can upgrade, is
 `upgrade_by_owners` in the model only).
 
@@ -355,15 +349,13 @@ slot colliding with another protected slot, or an approval written over one.
 owned by the Safe, the Safe configured as `SafeOk`), every top-level message call (before
 Prague or without EIP-7702 authorizations) whose signers `T` include fewer than `thr` owners
 ends with the same implementation, the same ProxyAdmin owner and the same Safe configuration.
-`SafeGuard.Dep.impl_kept` (MiniSafe, §5) is unchanged. Only the standard axioms are used.
+Only the standard axioms are used.
 
 **How it is checked.** `own_explore`/`sg_explore` run the bytecode symbolically. The
-dispatcher and the 33 functions take a few minutes in all; the signature loop of
-`execTransaction` (`SigTxLoop.lean`) about six. The `ecrecover` continuations are tactic
-scripts (`tx_ecdsa_close`, `tx_ethSign_close`) run on the explored states: restating those
-states (kilobytes of memory terms) as lemma hypotheses makes `exact` unify them against the
-explored terms, which differ in instance arguments (`Word` against `BitVec 256`) and was too
-slow. `tx_contract` instead states its stack and memory as variables.
+`ecrecover` continuations are tactic scripts (`tx_ecdsa_close`, `tx_ethSign_close`) run on the
+explored states rather than lemmas: restating those states (kilobytes of memory terms) as
+hypotheses makes `exact` unify terms that differ in instance arguments (`Word` against
+`BitVec 256`), which is slow. `tx_contract` instead states its stack and memory as variables.
 
 **Limits.** The fallback handler is assumed unset or not a relay (CompatibilityFallbackHandler
 qualifies), and modules, guard and module guard unset; the theorem says nothing about Safes with
@@ -373,10 +365,9 @@ proved only in the model.
 
 ## 7. Connecting to `QEDefi.Actor.Derives`
 
-
-The vocabulary `call/delegate/sign/act` was chosen to match frames. The plan is to prove, on
+Open. The vocabulary `call/delegate/sign/act` matches frames, so the goal is to prove, on
 bytecode, that every capability a transaction *exercises* is derivable in the model from the
-transaction's keys. `Guards`-style theorems then hold on the concrete system.
+transaction's keys; `Guards`-style theorems then hold on the concrete system. The route:
 
 1. **Observed actions.** In `qedefi/QEDefi/Actor/Bytecode.lean` (Mathlib side), define the
    actions of a reached frame from its message and its parent:
@@ -414,10 +405,9 @@ transaction's keys. `Guards`-style theorems then hold on the concrete system.
    it derivable from `T`. This is the bytecode form of `Guards.derives_of_not_keep`, for
    multi-contract systems.
 
-**Order of work.** First the EvmLogic lemma `Reaches.frame_origin`. Then
-`QEDefi.Actor.Bytecode` (steps 1–3) on a toy two-contract system (an `Ownable` relay calling a
-guarded counter, compiled with the existing build script). Then the configuration invariant
-(step 4). Then `SafeProxyAdmin`, whose ProxyAdmin is a `relay` and whose Safe is a `quorum`.
+A good order: the `EvmLogic` lemma `Reaches.frame_origin`; steps 1–3 on a toy two-contract
+system (an `Ownable` relay calling a guarded counter); the configuration invariant (step 4); then
+`SafeProxyAdmin`, whose ProxyAdmin is a `relay` and whose Safe is a `quorum`.
 
 ## 8. Limits
 
@@ -429,5 +419,3 @@ guarded counter, compiled with the existing build script). Then the configuratio
 - `J` must hold after an arbitrary child, so a relay whose safety depends on a reentrancy guard
   needs the guard's storage in `J` together with the fact that only `r`'s own frames can change
   it. That fact comes from the `Danger` simulation, not from this module.
-- `Relay.lean`, `Guard.lean`, `Idle.lean`, `Storage.lean`, `Own.lean`, `OwnG.lean`,
-  `Sandbox.lean`, `Tactic/OwnStep.lean` and `AbsInt/Guard/*` are imported by `EvmLogic.lean`.

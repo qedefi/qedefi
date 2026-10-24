@@ -309,12 +309,8 @@ fits a word (`solvent_credit_unchecked`); `transferFrom` is `solvent_move` (debi
 The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots crypto 3)`: no
 `allowance[a][b]` slot is a `balanceOf` slot (two finite families, not Keccak injectivity).
 `weth_covers` needs no induction: the stipend call cannot reach WETH9 again.
-Pitfalls met there: compare literal slots as `3#256` (the simp normal form) so `with_reducible`
-matching works; look up branch hypotheses with `with_reducible assumption` (at default
-transparency a failed match unfolds Keccak slots); close a long list of goals with one bullet
-each, not `first | …` over all goals (failed alternatives on deep terms are slow).
 
-## Time and multiple blocks
+## 8. Time and multiple blocks
 
 Modules: `EvmLogic/Program/Time.lean` (block environments), `qedefi/QEDefi/Trace/Time.lean`
 (EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
@@ -413,3 +409,40 @@ about 20 s; the multi-block layer adds no per-block or per-time work. `lake exe 
 - **Memory with symbolic size**: `evm_gas` does not handle it; state each expansion as
   `Gas.memoryCost new - Gas.memoryCost old`, generalize the atoms and let `omega` telescope.
   `omega` can hit the recursion limit on `(n - k) * c`; write `c * (n - k)`.
+- **Keccak slots under `apwp_steps`**: compare literal slots as `3#256` (the simp normal form) so
+  `with_reducible` matching works; look up branch hypotheses with `with_reducible assumption` (at
+  default transparency a failed match unfolds Keccak slots); close a long list of goals with one
+  bullet each, not `first | …` over all goals (failed alternatives on deep terms are slow).
+
+## Proof performance
+
+A clean build of `QEDefi` and `Examples` takes about two minutes on a 12-core machine; symbolic
+execution costs about 8 ms per instruction (`deposit`: 611 instructions in 5 s), plus about
+20 ms of kernel checking. What keeps it there:
+
+- **Code tables** (`EvmLogic/Program/CodeTable.lean`, the `code_table` command): each contract
+  gets a binary trie of its bytes and jump destinations, checked once (`CodeTable.Ok`, by
+  `Eq.refl`). Code facts are read off the trie (`table_decide`, `codeFact`, `wordFact`,
+  `bytesFact`, `jumpDestMem?`) instead of being decided on a list-backed `ByteArray`, which
+  costs O(size + pc) per fact.
+- **The fast stepper** (`EvmLogic/Tactic/FastStep.lean`, behind `sol_steps`, `psol_steps`,
+  `pwp_steps`, `pwp_msteps`, `psol_msteps`): each step's proof is built from the step lemmas
+  and only the changed fields are normalised; gas side conditions are discharged by proved
+  bounds (`le_sub_chain`, `BoundedBy`, `sloadCost_le`, `sstoreCost_le`). Unexpected shapes fall
+  back to the generic step tactic.
+- **Proof terms inline**: `kernel_rfl`, `kernel_decide` and the tactics' internal decides add no
+  auxiliary declarations, which would make the file's elaboration wait on the kernel.
+- **Parallel modules**: the kernel checks one module's theorems in sequence, and a definition
+  placed after a theorem waits for that theorem's check. Put definitions first, split modules
+  along what their importers use (generated contracts are `<Name>Data`, without the code
+  table, and `<Name>`), split per-opcode case analyses into group lemmas, and import only what
+  a module uses, from Mathlib too (never `import Mathlib`: loading it costs each importing
+  module seconds).
+
+Measure with `scripts/bench-build.sh OUTDIR` (clean build, per-file times),
+`scripts/bench-symexec.sh` (time per symbolically executed instruction, from the
+`trace.EvmLean.symStep` count) and `scripts/profile-file.sh FILE` (one file). The largest
+remaining costs are the kernel time of `SharesCode`, `SharesFrame`, `LowGas/Certify` and
+`Basic/TwoContracts` (20–30 s each; they would need further splitting), single proofs such as
+`assetLongTail_wp` (16 s; they would need block summaries), and the chain of case analyses over
+every opcode that bounds the `EvmLogic` build.

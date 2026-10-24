@@ -8,7 +8,7 @@ description: How to write, debug and speed up Lean proofs in this repo (evm-lean
 Two Lake packages: the root `evm-lean` (core + Std: `EvmLean` semantics, `EvmLogic` proof
 library, `EvmTest`, `Conformance`) and `qedefi/` (Mathlib v4.35.0 + evm-lean: `QEDefi` models,
 `Examples` incl. the Solmate verification, `QEDefiTest`). Toolchain:
-`export PATH="$HOME/.elan/bin:$PATH"`. Background: `docs/proving.md`, `docs/conventions.md`.
+`export PATH="$HOME/.elan/bin:$PATH"`. Background: `docs/proving.md`, `docs/conventions.md`, `CONTRIBUTING.md`.
 
 ## Interactive first: the `lean-lsp` MCP tools
 
@@ -34,10 +34,10 @@ Without the MCP: `lake env lean <file>` from the package directory that owns the
 - Incremental only: `lake build <Module>` for what you changed; never delete `.lake/build`
   unless you are taking a deliberate clean measurement (`scripts/bench-build.sh`).
 - Clean builds: root about 1 min, `qedefi` about 2 min. Run anything over 2 minutes in the
-  background. Run at most one heavy build at a time (12 cores); side work uses `nice -n 19`.
+  background. Run at most one heavy build at a time; side work uses `nice -n 19`.
 - Parallel agents: one git worktree each (`git worktree add -b <branch> <path> main`), then
   clone the caches with `cp -cR .lake <wt>/.lake && cp -cR qedefi/.lake <wt>/qedefi/.lake`
-  (APFS copy-on-write: instant, so builds stay incremental). Use a scratch folder named after
+  (copy-on-write on APFS, so instant; builds stay incremental). Use a scratch folder named after
   the task, never a shared `brief.md` or `bench/`.
 - Generated files (`*/Contracts/*.lean`): edit `scripts/build-contracts.sh`, then
   `scripts/build-contracts.sh --check`.

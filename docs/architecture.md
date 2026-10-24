@@ -77,8 +77,8 @@ header roots.
 | | `EvmTest` | `EvmLean`, `EvmLogic`, `Conformance.Hex` | `#guard` unit tests (`lake test`) |
 | | `Conformance` | `EvmLean` | `lake exe conform` |
 | | `Snapshot` | `EvmLean`, `Conformance.Hex` | `lake exe snapshot`: deployed contracts at a pinned block ([contracts/README.md](../contracts/README.md#snapshots)) |
-| `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | reusable kits: `Math` (`uint256` `mulDiv`), `ERC20` ledgers, `ERC4626` models and properties, `Trace` lifting |
-| | `Examples` | `QEDefi` | `Basic` demos, `Solmate` and `OpenZeppelin` targets, `Differential` (`lake exe difftest`) |
+| `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | models and their theorems: `Math` (`uint256` `mulDiv`), `ERC20` ledgers and variants, `ERC4626` vaults, `Actor` (access control), `Trace` lifting |
+| | `Examples` | `QEDefi` | `Basic` demos; verified `Solmate`, `OpenZeppelin`, `Actor` and `Safe` targets; mainnet token data; `Differential` (`lake exe difftest`) |
 | | `QEDefiTest` | `Examples` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
 
 Rules: the root package never depends on Mathlib or on `qedefi/`; `EvmLean` never imports
@@ -102,7 +102,7 @@ README).
   Fixtures: `ethereum/tests` @ `08839f54` (`scripts/fetch-fixtures.sh`), the suite
   EVMYulLean reports against (it passes 22,267 / 22,302 there); execution-spec-tests v5.4.0
   (`scripts/fetch-eest-fixtures.sh`). Transition networks (`<A>To<B>AtTime15k`) switch fork
-  per block by timestamp. Results are in the [README](../README.md#results).
+  per block by timestamp. Results are in the [README](../README.md#the-semantics).
 - **Differential** (`qedefi/Examples/Differential/`): `lake exe difftest` deploys the compiled
   ERC-4626 targets in evm-lean and in anvil and compares random call sequences
   ([contracts/README.md](../contracts/README.md#differential-testing)).

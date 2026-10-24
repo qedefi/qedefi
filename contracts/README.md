@@ -207,8 +207,7 @@ pause, deprecation, blacklist; empty allowances) are consistent but not strong e
 
 Recorded, not targets (read at block 26,236,588): USDC
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` and PAXG `0x45804880De22913dAFE09f4980848ECE6EcbAf78`
-(zos-slot proxies; PAXG's current implementation no longer charges a transfer fee). LEND, GUSD
-and YAM-V2, recorded here before, are now targets.
+(zos-slot proxies; PAXG's current implementation no longer charges a transfer fee).
 
 AMPL is the one proxied target: the token address holds the proxy, whose storage holds the
 token state (`AMPLProxy/genesis.json`: zos implementation slot → the implementation address,
@@ -219,7 +218,7 @@ GUSD is a three-contract token without `DELEGATECALL`: the token address holds `
 (0.4.21), which forwards every ERC-20 call by `CALL` to `erc20Impl` with `msg.sender` as an
 argument (`transferWithSender` …) and emits the events when the implementation asks it to
 (`emitTransfer`/`emitApproval`, implementation only); `ERC20Impl` (0.8.30, deployed at
-block 26,155,545 on 2026-10-09: the current implementation is recent) keeps balances, allowances and
+block 26,155,545) keeps balances, allowances and
 the supply in `ERC20Store` (0.4.21) through setters callable by the implementation only.
 The implementation's immutables `erc20Proxy` and `erc20Store` are the mainnet addresses, so
 all three are installed at their mainnet addresses, each with its own `genesis.json`
@@ -231,7 +230,7 @@ file). `requestPrint` and the 0.4.21 `generateLockId` hash `BLOCKHASH(number −
 match is partial (`"match"`): recompiling with 0.4.19 gives the deployed code except the
 metadata swarm hash in the 43-byte trailer at offset 3,081, so the deployed bytes cannot be
 reproduced exactly from the published source by any compiler; up to the trailer they can,
-with solc 0.4.19 (not installed here; the installed 0.4.26 gives different code). The check
+with solc 0.4.19 (0.4.26 gives different code). The check
 is therefore the code hash plus Sourcify's verification, not a local recompilation. Mainnet
 slots 0–2 (`name`, `symbol`, `decimals`) equal `genesis.json`.
 
@@ -308,7 +307,8 @@ is detected (`State.missing`) instead of reading zeros. The fork comes from the 
 Ethereum mainnet and must be set in `targets.json` elsewhere (L2-specific EVM behaviour is not
 modelled).
 
-Snapshots are fetched locally and not committed (they carry third-party sources). Tested on:
+Only `targets.json` is committed: the fetched files carry third-party sources and chain state, and
+are gitignored. Tested on:
 
 | Snapshot | Chain | Block | Accounts | Slots | Calls reproduced |
 |---|---|---|---|---|---|
@@ -348,23 +348,17 @@ proxy plus implementation) the token, check its getters against the installed st
 fixed scenario of its quirks, check `balanceOf`/`allowance`/`totalSupply` against reads of the
 documented slots, and run random sequences over its whole ABI (weighted; ether to payable
 functions and fallbacks; ether balances compared for WETH9 and BNB). Details in
-[docs/tokens.md](../docs/tokens.md). Result of `lake exe difftest --seed 2026 --family all
---sequences 30 --length 40`: 13,358 transactions (7,924 successful on both sides), **0
-mismatches** over all 11 families (510 s).
+[docs/tokens.md](../docs/tokens.md#differential-testing).
 
-Campaign of 2026-10-21 (all 16 families, 200 × 50 plus an edge-case pass of 100 × 50 with
-`--edge --low-gas 15`, fresh per-family seeds): **240,460 transactions** (144,245 successful on
-both sides, 7,486 exceptional halts, 19,842 with lowered gas limits), **0 mismatches**; per
-family tables in [docs/tokens.md](../docs/tokens.md#differential-campaign).
+Over all 16 families, 200 sequences of 50 calls with `--low-gas 5`, then 100 of 50 with
+`--edge --low-gas 15` (per-family seeds, each run reproducible with `lake exe difftest --seed S --family F`): **240,460
+transactions** (144,245 successful on both sides, 7,486 exceptional halts, 19,842 with lowered
+gas limits), **0 mismatches**. The vault families also check that deployments from two
+deployers agree on code, storage and gas.
 
 A fixed first-depositor scenario runs first (alice deposits 1 wei, donates 10¹⁸, bob
 deposits 2·10¹⁸ − 1, alice redeems): both sides agree; on Solmate alice ends with
 1.5·10¹⁸ (bob holds 1 share), on OpenZeppelin with 0.6·10¹⁸ (bob holds 3 shares).
-
-Result of `lake exe difftest --seed 2026 --sequences 200 --length 50`: **20,008
-transactions** (11,400 successful on both sides), **0 mismatches**, for both families;
-deployments from both deployers agree on code, storage and gas (651 s, dominated by JSON-RPC
-round trips).
 
 ## a16z ERC-4626 property suite
 

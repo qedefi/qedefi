@@ -3,7 +3,7 @@ import QEDefi.Actor.Lib.Sys
 /-!
 # Component: OpenZeppelin `AccessControl` (v5.7.0)
 
-`docs/access-control/oz-access.md` §3. Roles `R` held by addresses (`has r a`), each with an
+`access/AccessControl.sol`. Roles `R` held by addresses (`has r a`), each with an
 admin role (`adminOf r`; `DEFAULT_ADMIN_ROLE` administers itself by default, which is just a
 value of `adminOf`):
 

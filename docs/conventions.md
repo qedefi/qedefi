@@ -1,48 +1,19 @@
 # Conventions
 
-Lean style and contribution workflow for evm-lean, distilled from Lean core/Std, the Mathlib
-style and naming guides, Cedar-Lean and LNSym, checked against Lean v4.35.0.
-
-## Toolchain
-
-```bash
-export PATH="$HOME/.elan/bin:$PATH"
-lake build EvmLean EvmLogic        # semantics and program logic
-lake test                          # EvmTest (#guard)
-lake exe conform tests/fixtures    # after scripts/fetch-fixtures.sh
-(cd qedefi && lake exe cache get && lake build && lake test)   # lake test: QEDefiTest
-```
-
-Lean v4.35.0. The root package uses core + Std only; `qedefi/` adds Mathlib v4.35.0. Do not add
-dependencies.
+Lean style for this repository, distilled from Lean core/Std, the Mathlib style and naming
+guides, Cedar-Lean and LNSym. The workflow and the checks to run are in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Trust rules
 
 - Allowed axioms: `propext`, `Classical.choice`, `Quot.sound` (check with `#print axioms`).
-- Everywhere: no `sorry`, `axiom`, `native_decide`, `bv_decide` (it adds `Lean.ofReduceBool`).
+- Everywhere: no `sorry`, `axiom`, `native_decide`, `bv_decide` (it adds `Lean.ofReduceBool`), and
+  no option that skips the kernel.
 - In the semantics (`EvmLean/`) additionally: no `opaque`, `partial`, `unsafe`, `@[extern]`,
   `@[implemented_by]`, `panic!`, `!`-indexing, `get!`, `.get!`, `head!`, `getLast!`, no `IO`.
 - Hash, signature and other cryptographic facts are hypotheses of the theorems that use them,
   stated for finitely many values; never global injectivity
   ([proving.md](proving.md#4-the-solidity-layer-evmlogicsolidity)).
-
-## Before you commit
-
-- `lake build` and `lake test` are green with no warnings in your files (CI builds both
-  packages with `--wfail`); also `(cd qedefi && lake build)` if you touched `EvmLogic` or
-  `qedefi/`.
-- `scripts/check-trust.sh`: no trust escape hatch (comments and backtick spans are ignored).
-- `scripts/check-comment-only.py <base-rev> [paths…]`: for documentation-only changes to Lean
-  files, checks that only comments, whitespace and `open` lines changed.
-- `scripts/build-contracts.sh --check` if you touched `contracts/` or the generated
-  `Contracts` modules.
-- `scripts/dump-statements.sh OUT.tsv` before and after a refactor, then
-  `scripts/compare-statements.py BEFORE.tsv AFTER.tsv`: no theorem missing, no statement or
-  axiom changed.
-- AI agents: use the `lean-evm` skill (`.claude/skills/lean-evm/SKILL.md`) and the `lean-lsp`
-  MCP server configured in `.mcp.json` (goals, per-file diagnostics, name search without
-  builds).
-- Commit early and often on a branch; imperative summary line, body explaining why.
 
 ## Organisation
 
