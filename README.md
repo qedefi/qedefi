@@ -108,11 +108,12 @@ EvmLogic/       program logic: step lemmas, frame-local WP logic, calls, Solidit
                 gas monotonicity (GasMono), certified abstract interpretation (AbsInt), tactics
 EvmTest/        #guard unit tests
 Conformance/    fixture runner (lake exe conform)
+Snapshot/       deployed contracts at a pinned block: code, sources, state (lake exe snapshot)
 qedefi/         Lake package QEDefi (Mathlib + evm-lean)
   QEDefi/       reusable kits: Math, ERC20, ERC4626 models and theorems, Trace lifting
   Examples/     Basic demos, Solmate (refinement and invariants), OpenZeppelin (contracts),
                 Differential (lake exe difftest), Tests
-contracts/      pinned Solidity sources, build configuration, compiled artifacts
+contracts/      pinned Solidity sources, build configuration, compiled artifacts, snapshots
 scripts/        fixtures, contract build, trust and comment-only checks
 docs/           documentation (below)
 ```

@@ -1,6 +1,6 @@
 name = "evm-lean"
 version = "0.1.0"
-defaultTargets = ["EvmLean", "EvmLogic", "Conformance", "conform"]
+defaultTargets = ["EvmLean", "EvmLogic", "Conformance", "conform", "Snapshot", "snapshot"]
 testDriver = "EvmTest"
 
 [leanOptions]
@@ -28,4 +28,14 @@ name = "Conformance"
 [[lean_exe]]
 name = "conform"
 root = "Conformance.Main"
+supportInterpreter = false
+
+# Snapshots of deployed contracts: code, verified sources and reachable state at one block,
+# fetched once over JSON-RPC and replayed offline (`lake exe snapshot`).
+[[lean_lib]]
+name = "Snapshot"
+
+[[lean_exe]]
+name = "snapshot"
+root = "Snapshot.Main"
 supportInterpreter = false

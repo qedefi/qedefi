@@ -215,6 +215,53 @@ have `runtimeCode`, `size_runtimeCode`, `address` (mainnet), `codeHash`, `fetchB
 `genesisStorage`, `immutableRefs = []`, `selectors`, `events`, `errors`, `storageLayout`; no
 creation code.
 
+## Snapshots
+
+A snapshot is a deployed system at one pinned block, fetched once and used offline: the code,
+the verified sources and the part of the chain state that a set of calls reads, as an
+`EvmLean.World` with its block environment. `snapshots/<Name>/targets.json` (hand-written)
+names the chain, the contracts and optional extra calls; the block is pinned at fetch time
+unless given.
+
+```bash
+lake exe snapshot fetch contracts/snapshots/<Name>                 # network, read-only
+lake exe snapshot check contracts/snapshots/<Name> [--verbose]     # offline
+```
+
+`fetch` (any JSON-RPC archive endpoint via `--rpc URL`, or Alchemy with `ALCHEMY_KEY` from the
+environment or from a gitignored `.env` in the working directory; the URL is never printed or
+saved) uses only `eth_get*`/`eth_call`, no `debug_*` tracing. The state
+is found with the Lean interpreter as the tracer: seed calls (the given ones, plus every
+argument-free view of each target and of its EIP-1967/ZeppelinOS/beacon implementation) run
+on the state fetched so far, `Snapshot.runObserved` records every account, slot and
+`BLOCKHASH` they read (reverted frames included), the reads the snapshot does not determine
+are fetched at the pinned block, and this repeats until nothing new is read. Sources come
+from Sourcify, else the chain's public Blockscout, for every contract read (paths
+sanitized). It writes:
+
+| File | Contents |
+|---|---|
+| `state.json` | chain id, block and hash, fork, block environment, accounts (nonce, balance, code hash, every fetched slot, zeros included) |
+| `code/<keccak>.hex` | runtime code by hash; `check` rehashes every file |
+| `calls.json` | the seed calls with the node's `eth_call` result at the block |
+| `contracts/<address>/` | `source/`, `abi.json`, `verification.json` (provider, name, compiler, settings) |
+| `meta.json` | summary: counts, discovery rounds, verified contracts, RPC host |
+
+`check` replays every recorded call in the interpreter: it passes iff the call reads only
+state the snapshot determines and returns exactly the node's success flag and output bytes.
+Lean code loads a snapshot with `Snapshot.State.load` (`State.world`, `State.context`) and runs
+calls with `Snapshot.simulate`, which also returns the reads, so a run that leaves the snapshot
+is detected (`State.missing`) instead of reading zeros. The fork comes from the timestamp on
+Ethereum mainnet and must be set in `targets.json` elsewhere (L2-specific EVM behaviour is not
+modelled).
+
+Snapshots are fetched locally and not committed (they carry third-party sources). Tested on:
+
+| Snapshot | Chain | Block | Accounts | Slots | Calls reproduced |
+|---|---|---|---|---|---|
+| Strata's USDe market (tranches, CDO, accounting, strategy, APR feed, cooldowns) | 1 | 26,239,549 | 27 | 160 | 162 / 162 |
+| USDC on Base (proxy and implementation) | 8453 | 52,889,654 | 3 | 15 | 19 / 19 |
+
 ## Differential testing
 
 `lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]] [--edge]

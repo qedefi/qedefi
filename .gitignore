@@ -4,3 +4,4 @@
 .DS_Store
 conformance-results.txt
 /tests/fixtures-eest
+.env
