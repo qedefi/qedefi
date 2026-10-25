@@ -1,5 +1,6 @@
 import EvmLogic.AbsInt.Check
 import EvmLogic.AbsInt.Code
+import EvmLogic.AbsInt.CodeDeleg
 import EvmLogic.AbsInt.Domain
 import EvmLogic.AbsInt.Effect
 import EvmLogic.AbsInt.Frame
@@ -59,6 +60,7 @@ import EvmLogic.Program.Reentrancy.Value
 import EvmLogic.Program.Reentrancy.World
 import EvmLogic.Program.Run
 import EvmLogic.Program.Summary
+import EvmLogic.Program.SummaryDeleg
 import EvmLogic.Program.Time
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Call
