@@ -33,12 +33,16 @@ outcome that calls out and continues, and frame summaries with untrusted callees
 
 namespace QEDefi.ERC20
 
-/-- An event of the ERC-20 interface, with `ℕ` amounts. -/
+/-- An event a token emits: the two of the ERC-20 interface, with `ℕ` amounts, or any other. -/
 inductive Event (A : Type) where
   /-- `Transfer(src, dst, v)`. -/
   | transfer (src dst : A) (v : ℕ)
   /-- `Approval(owner, spender, v)`. -/
   | approval (owner spender : A) (v : ℕ)
+  /-- Any other event (WETH9's `Deposit(dst, wad)`, LEND's `LogBuy`): its topics (topic 0 the
+  event signature as a number) and its data words; `Sum.inl a` is the address word of `a`,
+  `Sum.inr n` the word of `n`. -/
+  | log (topics : List (A ⊕ ℕ)) (data : List (A ⊕ ℕ))
   deriving DecidableEq
 
 /-- **A token model**: states `σ`, accounts `A`, other operations `E`. -/

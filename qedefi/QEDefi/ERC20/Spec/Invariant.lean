@@ -2,6 +2,7 @@ import QEDefi.ERC20.Spec.TopLevel
 import QEDefi.ERC20.VariantProps
 import EvmLogic.Program.Reentrancy.Deleg
 import EvmLogic.Tx.Guard
+import QEDefi.Solvency.Tx
 
 /-!
 # The model invariant across transactions, nested calls included
@@ -37,6 +38,11 @@ What this needs beyond `ERC20Spec` and `M.WFInvariant`, as hypotheses:
   does not read the balance (`etherFree_of_read`).
 * the hash hypotheses `abs.Sound crypto Act`, and the token's code is real code (not empty, no
   EIP-7702 designator).
+* all ether below `2²⁵⁶` before the first transaction (`TokGood`; true on any real chain, and
+  kept by every transaction: `QEDefi.Solvency.process_keeps_ether_7702`). `Start` needs it: a
+  frame with value starts from a snapshot where the token's balance plus the value does not wrap.
+  A token frame the simulation reaches is never a call with value from the token to itself
+  (its caller is not the token: the token's own calls are inside the spec's summaries).
 
 The crypto is fixed along a sequence of transactions: `abs.read` depends on it, and
 `EvmLogic.Tx.Steps` lets every transaction use a different one.
@@ -49,6 +55,9 @@ the hypothesis that it holds before says that the actors hold every token.
 namespace QEDefi.ERC20.Spec
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Program.Nested
   EvmLogic.Program.Reentrancy EvmLogic.Tx EvmLogic.Solidity
+open QEDefi.Solvency (supply add_le_sum supply_sstore supply_incrementNonce supply_moveEther
+  supply_setAccountBalance_zero supply_setCode supply_prefixWorld process_keeps_ether_7702
+  processMessageCall_supply_le_7702)
 
 variable {σ E : Type}
 
@@ -307,28 +316,50 @@ abbrev Prot (a : Address) : Address → Prop := fun p => p = a
 /-- The context of the transactions: the crypto `abs` is read with. -/
 abbrev Ctx (crypto : Crypto) : Context → Prop := fun ctx => ctx.crypto = crypto
 
+/-- **The invariant of the simulation**: the token's invariant, and all ether below `2²⁵⁶`
+(which bounds the token's balance plus any value sent to it). -/
+def TokGood (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E) (crypto : Crypto)
+    (Act : Finset Address) (a : Address) (w : World) : Prop :=
+  TokInv code abs M crypto Act a w ∧ supply w < 2 ^ 256
+
 /-- **The invariant is closed under everything other code can do** (`GoodOps`), for real code. -/
 theorem goodOps (hE : EtherFree abs M) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) :
-    GoodOps (Prot a) (TokInv code abs M crypto Act a) where
-  code w hw p hp := by subst hp; rw [hw.1]; exact hreal
-  deleg w hw p hp := by subst hp; rw [hw.1]; exact hdel
-  sstore w b k v hw hb := hw.keep hE (keep_sstore fun e => hb e.symm)
-  nonce w b hw := hw.keep hE (keep_incrementNonce (by rw [hw.1]; exact hreal))
-  move w src dst v hw _ _ := hw.keep hE (keep_moveEther (by rw [hw.1]; exact hreal))
-  burn w b hw _ := hw.keep hE (keep_setAccountBalance (by rw [hw.1]; exact hreal))
-  setCode w b c hw hb := hw.keep hE (keep_setCode fun e => hb e.symm)
+    GoodOps (Prot a) (TokGood code abs M crypto Act a) where
+  code w hw p hp := by subst hp; rw [hw.1.1]; exact hreal
+  deleg w hw p hp := by subst hp; rw [hw.1.1]; exact hdel
+  sstore w b k v hw hb :=
+    ⟨hw.1.keep hE (keep_sstore fun e => hb e.symm), by rw [supply_sstore]; exact hw.2⟩
+  nonce w b hw := ⟨hw.1.keep hE (keep_incrementNonce (by rw [hw.1.1]; exact hreal)),
+    by rw [supply_incrementNonce]; exact hw.2⟩
+  move w src dst v hw hv _ := ⟨hw.1.keep hE (keep_moveEther (by rw [hw.1.1]; exact hreal)),
+    by rw [supply_moveEther hv hw.2]; exact hw.2⟩
+  burn w b hw _ := ⟨hw.1.keep hE (keep_setAccountBalance (by rw [hw.1.1]; exact hreal)),
+    lt_of_le_of_lt (supply_setAccountBalance_zero w b) hw.2⟩
+  setCode w b c hw hb :=
+    ⟨hw.1.keep hE (keep_setCode fun e => hb e.symm), by rw [supply_setCode]; exact hw.2⟩
 
 /-! ## Frames of the token -/
 
-/-- **An explained frame of the token's code keeps the invariant**: from `Start`, the world it
-hands back (the frame's world on success, its snapshot on failure) satisfies `TokInv`. -/
+/-- A successful frame of the token changes no balance (`FrameKeeps`), so it keeps all ether. -/
+theorem supply_frameKeeps {crypto : Crypto} {t : Address} {w w' : World}
+    (h : FrameKeeps abs crypto Act t w w') : supply w' = supply w := by
+  unfold supply
+  refine Finset.sum_congr rfl fun b _ => ?_
+  by_cases hb : b = t
+  · subst hb; rw [h.balance]
+  · simp only [World.balance, h.others b hb]
+
+/-- **An explained frame of the token's code keeps the invariant**: from `Start`, with all ether
+below `2²⁵⁶` in its snapshot and its world, the world it hands back (the frame's world on
+success, its snapshot on failure) satisfies `TokGood`. -/
 theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size ≠ 0)
     {m : Machine} (hs : Start code abs M Act m) (hX : Halts m (Explained abs M ops opAddrs Act m))
     (hk : ∃ o s, m.frame.kind = .call o s)
-    (hsnap : m.frame.snapshot.1.code m.frame.msg.currentTarget = code) :
+    (hsnap : m.frame.snapshot.1.code m.frame.msg.currentTarget = code)
+    (hsupS : supply m.frame.snapshot.1 < 2 ^ 256) (hsupW : supply m.world < 2 ^ 256) :
     Halts m (fun mf o =>
-      TokInv code abs M m.ctx.crypto Act m.frame.msg.currentTarget (frameResult mf o).2.1) := by
+      TokGood code abs M m.ctx.crypto Act m.frame.msg.currentTarget (frameResult mf o).2.1) := by
   obtain ⟨ko, ks, hk⟩ := hk
   set t := m.frame.msg.currentTarget
   have hsnapInv : TokInv code abs M m.ctx.crypto Act t m.frame.snapshot.1 := ⟨hsnap, hs.wf⟩
@@ -339,19 +370,20 @@ theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size
   have hkf : mf.frame.kind = .call ko ks := hsf.kind.trans hk
   have hsn : mf.frame.snapshot = m.frame.snapshot := hsf.snapshot
   match o with
-  | .revert out => rw [frameResult_revert, hsn]; exact hsnapInv
-  | .halt e => rw [frameResult_halt, hsn]; exact hsnapInv
+  | .revert out => rw [frameResult_revert, hsn]; exact ⟨hsnapInv, hsupS⟩
+  | .halt e => rw [frameResult_halt, hsn]; exact ⟨hsnapInv, hsupS⟩
   | .success out =>
     rw [frameResult_success_call hkf]
-    show TokInv code abs M m.ctx.crypto Act t mf.world
+    show TokGood code abs M m.ctx.crypto Act t mf.world
     rcases hx with hx | ⟨hw, -⟩ | ⟨c, -, hc⟩ | ⟨-, e, -, -, hop⟩
     · exact hx.elim
-    · rw [hw]; exact hmInv
+    · rw [hw]; exact ⟨hmInv, hsupW⟩
     · revert hc
       cases hres : M.call (pre abs Act m) m.frame.msg.caller c with
       | ok s' ret =>
         rintro ⟨-, hread, hfk, -⟩
-        exact ⟨hfk.code.trans hmInv.1, hread ▸ hW.1 _ _ _ _ _ hs.wf hres⟩
+        exact ⟨⟨hfk.code.trans hmInv.1, hread ▸ hW.1 _ _ _ _ _ hs.wf hres⟩,
+          by rw [supply_frameKeeps hfk]; exact hsupW⟩
       | halt h =>
         cases h with
         | revert => rintro ⟨_, ho⟩; cases ho
@@ -361,7 +393,8 @@ theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size
       cases hres : M.op (pre abs Act m) e with
       | some s' =>
         rintro ⟨-, hread, hfk, -⟩
-        exact ⟨hfk.code.trans hmInv.1, hread ▸ hW.2 _ _ _ hs.wf hres⟩
+        exact ⟨⟨hfk.code.trans hmInv.1, hread ▸ hW.2 _ _ _ hs.wf hres⟩,
+          by rw [supply_frameKeeps hfk]; exact hsupW⟩
       | none => intro hf; exact hf.elim
 
 /-! ## Message calls and transactions -/
@@ -374,30 +407,31 @@ def FramesTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Addres
     (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto) (Act : Finset Address) (a : Address)
     (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
   ∀ m, Reaches ctx w tr msg m →
-    DStartV (Prot a) (TokInv code abs M crypto Act a) (Ctx crypto) msg.gas m →
+    DStartV (Prot a) (TokGood code abs M crypto Act a) (Ctx crypto) msg.gas m →
     m.frame.msg.data.size < 2 ^ 64 ∧ m.frame.msg.caller ∈ Act ∧
       WellFormed sel ops opAddrs perm Act m.frame.msg ∧ (perm.isSome → EcrecoverPlain m)
 
 /-- **A top-level message call keeps the invariant**, whatever it calls (the token or anything
 calling it, at any depth), for any transaction type: a message from an unprotected caller
 (`TopOk`) that moves its value, in the context of `crypto`, all of whose token frames touch
-only actors, with less than `2⁶⁴` gas for a token with `permit` (its frames then have less). -/
+only actors, with less than `2⁶⁴` gas for a token with `permit` (its frames then have less),
+from a world satisfying `TokGood` (the invariant, all ether below `2²⁵⁶`). -/
 theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult}
-    (hw : TokInv code abs M crypto Act a w) (hmsg : TopOk (Prot a) w msg)
+    (hw : TokGood code abs M crypto Act a w) (hmsg : TopOk (Prot a) w msg)
     (hv : msg.shouldTransferValue = true) (hC : ctx.crypto = crypto)
     (htouch : FramesTouch code abs M sel ops opAddrs perm crypto Act a ctx w tr msg)
     (hgas : perm.isSome → msg.gas < 2 ^ 64)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
-    TokInv code abs M crypto Act a r.world := by
+    TokGood code abs M crypto Act a r.world := by
   refine processMessageCall_good_reach (C := Ctx crypto) (goodOps hE hreal hdel) hw hmsg hv hC
     (fun m hreach hd => ?_) hr
   obtain ⟨hsize, hcaller, hwfd, hecr⟩ := htouch m hreach hd
   have ht : m.frame.msg.currentTarget = a := hd.danger.1
-  have hsnap : m.frame.snapshot.1.code a = code := hd.snapshot.1
+  have hsnap : m.frame.snapshot.1.code a = code := hd.snapshot.1.1
   have hwcode : m.world.code a = code := ((hd.keep a rfl).code).trans hsnap
   obtain ⟨ko, ks, hfr⟩ := hd.fresh
   have hfresh : Fresh code m := by
@@ -407,17 +441,35 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
   have hstart : Start code abs M Act m :=
     { fresh := hfresh
       launched := hd.world_eq
-      value := .inl hd.transfers
+      value := by
+        by_cases hv0 : m.frame.msg.value = 0
+        · exact .inl hv0
+        · refine .inr ⟨hd.transfers, fun he => hd.caller (he.trans ht), ?_⟩
+          have haff := hd.afford hd.transfers hv0
+          have hle := add_le_sum (fun b => (m.frame.snapshot.1.balance b).toNat)
+            (a := a) (b := m.frame.msg.caller) (fun e => hd.caller e.symm)
+          have hs := hd.snapshot.2
+          unfold supply at hs
+          rw [ht]
+          omega
       precompiles := hd.pre
       size := hsize
       caller := hcaller
       sound := by rw [hd.context]; exact hsound
       wf := by
         show M.wf (abs.read m.ctx.crypto Act m.frame.snapshot.1 m.frame.msg.currentTarget)
-        rw [hd.context, ht]; exact hd.snapshot.2 }
+        rw [hd.context, ht]; exact hd.snapshot.1.2 }
+  have hsupW : supply m.world < 2 ^ 256 := by
+    rw [hd.world_eq]
+    unfold transferValue
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      rw [supply_moveEther (hd.afford hc.1 hc.2) hd.snapshot.2]; exact hd.snapshot.2
+    · exact hd.snapshot.2
   have h := frame_inv hW hE hreal hstart (explained_of_spec hspec hpermit hstart hwfd
     fun hp => ⟨hecr hp, by have := hd.gas; have := hgas hp; rw [hfr]; show m.frame.msg.gas < _; omega⟩)
-    ⟨ko, ks, by rw [hfr]; rfl⟩ (by rw [ht]; exact hsnap)
+    ⟨ko, ks, by rw [hfr]; rfl⟩ (by rw [ht]; exact hsnap) hd.snapshot.2 hsupW
   rw [hd.context, ht] at h
   exact h
 
@@ -441,21 +493,31 @@ def TxTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
 
 /-- **A successful transaction keeps the invariant**: any type, recipient, calldata, value and
 authorizations, any fork and block, with the crypto `abs` is read with, all of whose token
-frames touch only actors. -/
+frames touch only actors; all ether stays below `2²⁵⁶`. -/
 theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {i : Input} {w : World} {out : EvmLean.Tx.TxOutput}
-    (hw : TokInv code abs M crypto Act a w) (h : i.run w = .ok out)
+    (hw : TokGood code abs M crypto Act a w) (h : i.run w = .ok out)
     (htouch : TxTouch code abs M sel ops opAddrs perm crypto Act a i w out) :
-    TokInv code abs M crypto Act a out.world := by
+    TokGood code abs M crypto Act a out.world := by
   obtain ⟨hcr, htg, htouch⟩ := htouch
+  -- all ether does not grow
+  have hsupOut := (process_keeps_ether_7702 (P := fun _ => False)
+    (Inv := fun w => supply w < 2 ^ 256) (fun _ _ _ h => h.elim) (fun _ h => h)
+    (fun _ _ _ _ hw₁ hm hr => lt_of_le_of_lt
+      (processMessageCall_supply_le_7702 hw₁ hm.top.depth hm.top.target hm.transfers hr) hw₁)
+    (fun _ _ _ _ h => h) hw.2 h).2
   obtain ⟨intr, c, r, gu, hv, hc, hr, -, hout, -, -⟩ := process_ok h
   have hP : ∀ p, Prot a p → RealCode (w.code p) := fun p hp => by
-    subst hp; rw [hw.1]; exact realCode_of_deleg hreal hdel
+    subst hp; rw [hw.1.1]; exact realCode_of_deleg hreal hdel
+  have hfee : upfrontFee i.fork i.env i.tx c ≤ (w.account c.sender).balance.toNat := by
+    have := (check_ok hc).2.2.2.1; omega
+  have hs1 := supply_prefixWorld hfee
   set w₁ := prefixWorld w c.sender
     (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee i.fork i.env i.tx c))
-  have hw₁ : TokInv code abs M crypto Act a w₁ := hw.keep hE (keep_prefixWorld _ _ _ a)
+  have hw₁ : TokGood code abs M crypto Act a w₁ :=
+    ⟨hw.1.keep hE (keep_prefixWorld _ _ _ a), by have := hw.2; omega⟩
   have htop := topOk_prepareMessage hP hc
     (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee i.fork i.env i.tx c))
     (w.account c.sender).nonce (i.tx.gas - intr.regular)
@@ -468,19 +530,21 @@ theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
       · have h24 := (validate_ok hv).2.2.2 (show Fork.osaka.toNat ≤ i.fork.toNat from
           Nat.not_lt.mp ho)
         simp only [EvmLean.Tx.txMaxGasLimit] at h24; omega) hr
-  obtain ⟨hd, hs⟩ := processMessageCall_realCode hr (by rw [hw₁.1]; exact realCode_of_deleg hreal hdel)
+  obtain ⟨hd, hs⟩ := processMessageCall_realCode hr
+    (by rw [hw₁.1.1]; exact realCode_of_deleg hreal hdel)
+  refine ⟨?_, lt_of_le_of_lt hsupOut hw.2⟩
   rw [hout]
-  exact hrw.keep hE (keep_suffixWorld hs hd _ _ _ _)
+  exact hrw.1.keep hE (keep_suffixWorld hs hd _ _ _ _)
 
 /-- **The invariant holds after any sequence of successful transactions** using `crypto`, all
-of whose token frames touch only actors. -/
+of whose token frames touch only actors, from a world with all ether below `2²⁵⁶`. -/
 theorem txSteps_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {w w' : World}
-    (hw : TokInv code abs M crypto Act a w)
+    (hw : TokGood code abs M crypto Act a w)
     (h : TxSteps (TxTouch code abs M sel ops opAddrs perm crypto Act a) w w') :
-    TokInv code abs M crypto Act a w' :=
+    TokGood code abs M crypto Act a w' :=
   h.keeps (fun _ _ _ hv hr ht => process_inv hspec hpermit hW hE hsound hreal hdel hv hr ht) hw
 
 /-! ## Variants: the supply is the sum of the actors' balances -/
@@ -504,7 +568,8 @@ theorem variant_wfInvariant {A : Type} [DecidableEq A] [Zero A] {V : Variant A}
 /-- **The supply is the sum of the actors' balances and frozen balances, after any sequence of
 transactions**, for a token proved to be a `Sane` variant with a stored supply that does not
 rebase (OpenZeppelin, Solady, … as variants), when it was before (the actors hold every token)
-and every token frame of the transactions touches only actors (`TxTouch`). -/
+with all ether below `2²⁵⁶`, and every token frame of the transactions touches only actors
+(`TxTouch`). -/
 theorem variant_conserved {V : Variant Address} (hV : V.Sane) (hr : V.rebasing = false)
     (hsup : V.supply = .stored) {ev : VState Address → Address → Call Address → List (Event Address)}
     {abs : TokenAbs (VState Address)} {ops : Address → ByteArray → ℕ → Option (Variant.Op Address)}
@@ -513,12 +578,12 @@ theorem variant_conserved {V : Variant Address} (hV : V.Sane) (hr : V.rebasing =
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs (V.model ev) gp r)
     (hE : EtherFree abs (V.model ev)) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {w w' : World}
-    (hw : TokInv code abs (V.model ev) crypto Act a w)
+    (hw : TokGood code abs (V.model ev) crypto Act a w)
     (h : TxSteps (TxTouch code abs (V.model ev) sel ops opAddrs perm crypto Act a) w w') :
     total (abs.read crypto Act w' a).bal + total (abs.read crypto Act w' a).frozen =
       (abs.read crypto Act w' a).supply := by
   have hi := txSteps_inv hspec hpermit (variant_wfInvariant hV ev) hE hsound hreal hdel hw h
-  have := hi.2
+  have := hi.1.2
   simp only [Variant.model_wf, Variant.WF, hr, hsup, Bool.false_eq_true, ↓reduceIte,
     reduceCtorEq] at this
   exact this.1

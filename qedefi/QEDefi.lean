@@ -32,6 +32,7 @@ import QEDefi.ERC20.Spec.Instances.Oz
 import QEDefi.ERC20.Spec.Instances.STA
 import QEDefi.ERC20.Spec.Instances.Solady
 import QEDefi.ERC20.Spec.Instances.Solmate
+import QEDefi.ERC20.Spec.Instances.WETH9
 import QEDefi.ERC20.Spec.Instances.YAMV2
 import QEDefi.ERC20.Spec.Instances.ZRX
 import QEDefi.ERC20.Spec.Invariant

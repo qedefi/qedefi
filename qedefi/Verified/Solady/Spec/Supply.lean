@@ -52,18 +52,20 @@ theorem total_balances (crypto : Crypto) (Act : Finset Address) (w : World) (a :
 /-- **SoladySupplySum: `totalSupply = Σ balanceOf` after any transactions without `permit`.**
 For the compiled `SoladyToken` at `a` and a finite set of actors `Act` whose storage rows are
 distinct (`SoladySound`): if the actors' balance rows add up to the supply slot in `w` (the
-actors hold every token), they do after any sequence of successful transactions using `crypto`
-whose token frames touch only actors and make no `permit` call. -/
+actors hold every token) and all ether is below `2²⁵⁶`, they do after any sequence of
+successful transactions using `crypto` whose token frames touch only actors and make no
+`permit` call. -/
 theorem solady_supply_eq_sum {crypto : Crypto} {Act : Finset Address} {a : Address}
     {w w' : World} (hsound : SoladySound crypto Act)
     (hw : TokInv SoladyToken.runtimeCode soladyAbs M crypto Act a w)
+    (hsup : QEDefi.Solvency.supply w < 2 ^ 256)
     (h : TxSteps (TxTouch SoladyToken.runtimeCode soladyAbs M sel ops opAddrs none crypto
       Act a) w w') :
     ∑ b ∈ Act, (w'.sload a (balSlot crypto b)).toNat = (w'.sload a supplySlot).toNat := by
   have := variant_conserved (V := Variant.solady PERMIT2) (ev := soladyEvents)
     (Variant.solady_sane PERMIT2) rfl rfl solady_spec (fun _ _ h => by cases h)
     soladyAbs_etherFree hsound (by rw [SoladyToken.size_runtimeCode]; decide)
-    delegatedAddress?_soladyCode hw h
+    delegatedAddress?_soladyCode ⟨hw, hsup⟩ h
   simp only [soladyAbs, read, total_balances] at this
   simpa [total, readSlot] using this
 

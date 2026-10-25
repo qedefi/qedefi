@@ -107,7 +107,7 @@ theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenMode
     Start code abs M Act (startMachine ctx w tr msg) where
   fresh := hcode ▸ fresh_startMachine ctx w tr msg
   launched := (transferValue_zero w msg hval).symm
-  value := .inr hval
+  value := .inl hval
   precompiles := rfl
   size := hsize
   caller := hcaller
