@@ -967,20 +967,81 @@ theorem pwp_sstore_any {x y : Word} {rest : List Word}
     WP m Q H := by
   by_cases hst : m.frame.msg.isStatic = false
   · exact pwp_sstore hsnap hcode hstk hst (hrec hst)
-  · have hst' : m.frame.msg.isStatic = true := by simpa using hst
-    cases he : (exec (Opcode.decode m.ctx.fork 0x55)).run m with
-    | error e => exact wp_fail_of_error hsnap hcode he
-    | ok r =>
-      exfalso
-      rw [show Opcode.decode m.ctx.fork 0x55 = .sstore by cases m.ctx.fork <;> rfl] at he
+  have hst' : m.frame.msg.isStatic = true := by simpa using hst
+  have hdec : Opcode.decode m.ctx.fork 0x55 = .sstore := by cases m.ctx.fork <;> rfl
+  by_cases hsp : Gas.callStipend < m.frame.gasLeft
+  · have hs : ¬ m.frame.gasLeft ≤ Gas.callStipend := Nat.not_le.mpr hsp
+    by_cases hg : (sstoreCostRefund m x y).1 ≤ m.frame.gasLeft
+    · have hg' := Nat.not_lt.mpr hg
+      simp only [sstoreCostRefund] at hg'
+      refine wp_fail_of_error (e := .writeInStaticContext) hsnap hcode ?_
+      rw [hdec]
       simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
-        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind] at he
-      split at he
-      · simp [throw, throwThe, MonadExceptOf.throw, StateT.run, StateT.lift, ExceptT.mk] at he
-        all_goals sorry
-      · sorry
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_false]
+      simp only [run_accessStorageKey, StateT.run_bind, pure_bind, modifySub, modifyFrame,
+        StateT.run_modify, charge, getFrame, StateT.run_get, StateT.run_pure]
+      simp only [hg', ite_false, requireNonStatic, getFrame, StateT.run_bind, StateT.run_get,
+        StateT.run_pure, pure_bind, hst', ite_true, StateT.run_modify]
+      rfl
+    · have hg' := Nat.lt_of_not_le hg
+      simp only [sstoreCostRefund] at hg'
+      refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_false,
+        run_accessStorageKey, modifySub, charge, hg', ite_true]
+      rfl
+  · have hs : m.frame.gasLeft ≤ Gas.callStipend := Nat.le_of_not_lt hsp
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [hdec]
+    simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+      StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_true]
+    rfl
 
-/-- `LOG3` in any frame (a static frame fails). -/
+/-- `LOGn` in any frame (a static frame fails). -/
+theorem pwp_log (n : Fin 5) (topics : List Word) (htop : topics.length = n.val) {x y : Word}
+    {rest : List Word}
+    (hsnap : FailH H) (hcode : m.frame.code[m.frame.pc]? = some (0xa0 + n.val).toUInt8)
+    (hstk : m.frame.stack = x :: y :: (topics ++ rest))
+    (hrec : m.frame.msg.isStatic = false → Gas.logCost y.toNat n.val + (Gas.extendMemory
+      m.frame.memory.size [(x.toNat, y.toNat)]).cost ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with
+        stack := rest,
+        memory := m.frame.memory.expand x.toNat y.toNat,
+        gasLeft := m.frame.gasLeft - (Gas.logCost y.toNat n.val + (Gas.extendMemory
+          m.frame.memory.size [(x.toNat, y.toNat)]).cost),
+        sub := { m.frame.sub with logs := m.frame.sub.logs.push (logEntry m x y topics) },
+        pc := m.frame.pc + 1 } } Q H) :
+    WP m Q H := by
+  by_cases hg : Gas.logCost y.toNat n.val + (Gas.extendMemory
+      m.frame.memory.size [(x.toNat, y.toNat)]).cost ≤ m.frame.gasLeft
+  · have hg' := Nat.not_lt.mpr hg
+    by_cases hst : m.frame.msg.isStatic = false
+    · exact WP.of_step (step_log n topics htop hcode hstk hst hg)
+        ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩ (hrec hst hg)
+    · have hst' : m.frame.msg.isStatic = true := by simpa using hst
+      refine wp_fail_of_error (e := .writeInStaticContext) hsnap hcode ?_
+      rw [decode_log]
+      simp only [exec, execLog, popNat, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+        StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ← htop]
+      rw [run_popN topics rest _ rfl]
+      simp only [pure_bind, memoryExpansion, charge, getFrame, StateT.run_bind, StateT.run_get,
+        StateT.run_pure, pure_bind, hg', ite_false, StateT.run_modify, expandMemory, List.foldl,
+        requireNonStatic, hst', ite_true, htop]
+      simp only [modifyFrame, StateT.run_modify, StateT.run_bind, pure_bind, requireNonStatic,
+        getFrame, StateT.run_get, hst', ite_true]
+      rfl
+  · have hg' := Nat.lt_of_not_le hg
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [decode_log]
+    simp only [exec, execLog, popNat, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+      StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ← htop]
+    rw [run_popN topics rest _ rfl]
+    simp only [pure_bind, memoryExpansion, charge, getFrame, StateT.run_bind, StateT.run_get,
+      StateT.run_pure, pure_bind, htop, hg', ite_true]
+    rfl
+
+/-- `LOG3` in any frame. -/
 theorem pwp_log3 {x y t0 t1 t2 : Word} {rest : List Word}
     (hsnap : FailH H) (hcode : m.frame.code[m.frame.pc]? = some 0xa3)
     (hstk : m.frame.stack = x :: y :: ([t0, t1, t2] ++ rest))
@@ -993,13 +1054,7 @@ theorem pwp_log3 {x y t0 t1 t2 : Word} {rest : List Word}
           m.frame.memory.size [(x.toNat, y.toNat)]).cost),
         sub := { m.frame.sub with logs := m.frame.sub.logs.push (logEntry m x y [t0, t1, t2]) },
         pc := m.frame.pc + 1 } } Q H) :
-    WP m Q H := by
-  by_cases hst : m.frame.msg.isStatic = false
-  · by_cases hg : Gas.logCost y.toNat 3 + (Gas.extendMemory
-        m.frame.memory.size [(x.toNat, y.toNat)]).cost ≤ m.frame.gasLeft
-    · exact WP.of_step (step_log3 hcode hstk hst hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
-        (hrec hst hg)
-    · sorry
-  · sorry
+    WP m Q H :=
+  pwp_log 3 [t0, t1, t2] rfl hsnap hcode hstk hrec
 
 end Verified.Solady.Spec.AnyGas

@@ -23,13 +23,11 @@ The model fields the token does not have are constants (`scale = 1`, no admin, n
 blacklisted or frozen, no fee); `ether` is the token's ether balance (it never changes: every
 entry point is non-payable).
 
-**Hash hypotheses** (`SoladySound`): distinct addresses have distinct balance rows and distinct
-nonce rows, and the four families (balance rows, nonce rows, allowance rows, the supply slot)
-are pairwise disjoint. They concern `2 · 2¹⁶⁰` 32-byte preimages that must hash injectively,
-outside the supply slot and the image of the `2³²⁰` allowance preimages: some `Crypto`
-satisfies all of them (map the address-keyed preimages injectively into a set of `2¹⁶¹` slots
-and every other input outside it), and Keccak is believed to. Injectivity of the allowance rows
-is **not** assumed: by pigeonhole no `Crypto` has it (`2³²⁰` pairs, `2²⁵⁶` slots).
+**Actors** (`QEDefi.ERC20.Spec.Bytecode`). The model state is the token as a finite set of
+actors `Act` sees it: their balances, the allowances between them and their nonces (zero for
+everyone else), and the supply. `SoladySound crypto Act`: the actors' rows are pairwise
+distinct and none is the supply slot, a hypothesis about finitely many hashes (plausible for
+Keccak; no hypothesis is made about the rows of other accounts, which do collide).
 -/
 
 namespace Verified.Solady.Spec
@@ -70,20 +68,32 @@ def nonceSlot (crypto : Crypto) (o : Address) : Word :=
 
 /-! ## The abstraction -/
 
-/-- The balances, as a finitely supported function. -/
-noncomputable def balances (crypto : Crypto) (w : World) (token : Address) : Address →₀ ℕ :=
-  Finsupp.equivFunOnFinite.symm fun a => (w.sload token (balSlot crypto a)).toNat
+/-- The actors' balances (zero for every other account). -/
+noncomputable def balances (crypto : Crypto) (Act : Finset Address) (w : World)
+    (token : Address) : Address →₀ ℕ :=
+  Finsupp.onFinset Act
+    (fun a => if a ∈ Act then (w.sload token (balSlot crypto a)).toNat else 0)
+    (fun a h => by by_contra ha; simp [ha] at h)
 
-/-- The nonces, as a finitely supported function. -/
-noncomputable def nonceMap (crypto : Crypto) (w : World) (token : Address) : Address →₀ ℕ :=
-  Finsupp.equivFunOnFinite.symm fun a => (w.sload token (nonceSlot crypto a)).toNat
+/-- The actors' nonces (zero for every other account). -/
+noncomputable def nonceMap (crypto : Crypto) (Act : Finset Address) (w : World)
+    (token : Address) : Address →₀ ℕ :=
+  Finsupp.onFinset Act
+    (fun a => if a ∈ Act then (w.sload token (nonceSlot crypto a)).toNat else 0)
+    (fun a h => by by_contra ha; simp [ha] at h)
 
-/-- The model state of the Solady token at `token`. -/
-noncomputable def read (crypto : Crypto) (w : World) (token : Address) : VState Address where
+/-- The allowances between actors (zero for every other pair). -/
+def allowances (crypto : Crypto) (Act : Finset Address) (w : World) (token : Address)
+    (o sp : Address) : ℕ :=
+  if o ∈ Act ∧ sp ∈ Act then (w.sload token (allowSlot crypto o sp)).toNat else 0
+
+/-- The model state of the Solady token at `token`, as the actors `Act` see it. -/
+noncomputable def read (crypto : Crypto) (Act : Finset Address) (w : World) (token : Address) :
+    VState Address where
   self := token
-  bal := balances crypto w token
+  bal := balances crypto Act w token
   supply := readSlot w token supplySlot
-  allowance o sp := (w.sload token (allowSlot crypto o sp)).toNat
+  allowance := allowances crypto Act w token
   scale := 1
   admin := 0
   paused := false
@@ -92,44 +102,60 @@ noncomputable def read (crypto : Crypto) (w : World) (token : Address) : VState 
   feeMax := 0
   ether := (w.balance token).toNat
   frozen := 0
-  nonces := nonceMap crypto w token
+  nonces := nonceMap crypto Act w token
 
-/-- The slots `read` depends on. -/
-def Footprint (crypto : Crypto) (k : Word) : Prop :=
-  k = supplySlot ∨ (∃ a, k = balSlot crypto a) ∨ (∃ o sp, k = allowSlot crypto o sp) ∨
-    ∃ a, k = nonceSlot crypto a
+/-- The slots `read` depends on: the supply slot and the actors' rows. -/
+def Footprint (crypto : Crypto) (Act : Finset Address) (k : Word) : Prop :=
+  k = supplySlot ∨ (∃ a ∈ Act, k = balSlot crypto a) ∨
+    (∃ o ∈ Act, ∃ sp ∈ Act, k = allowSlot crypto o sp) ∨ ∃ a ∈ Act, k = nonceSlot crypto a
 
-/-- **The hash hypotheses** (see the module docstring for why they are satisfiable). -/
-structure SoladySound (crypto : Crypto) : Prop where
-  /-- Distinct addresses have distinct balance rows. -/
-  bal_inj : ∀ a b, balSlot crypto a = balSlot crypto b → a = b
-  /-- Distinct addresses have distinct nonce rows. -/
-  nonce_inj : ∀ a b, nonceSlot crypto a = nonceSlot crypto b → a = b
+/-- **The hash hypotheses, for the actors**: the actors' balance, allowance and nonce rows are
+pairwise distinct (different keys or families, different slots) and none is the supply slot.
+Finitely many rows, so plausible for Keccak (as `ActorRows` for Solidity mappings; Solady's
+rows are not `mappingSlot`s, hence this structure). -/
+structure SoladySound (crypto : Crypto) (Act : Finset Address) : Prop where
+  /-- Distinct actors have distinct balance rows. -/
+  bal_inj : ∀ a ∈ Act, ∀ b ∈ Act, balSlot crypto a = balSlot crypto b → a = b
+  /-- Distinct pairs of actors have distinct allowance rows. -/
+  allow_inj : ∀ o ∈ Act, ∀ sp ∈ Act, ∀ o' ∈ Act, ∀ sp' ∈ Act,
+    allowSlot crypto o sp = allowSlot crypto o' sp' → o = o' ∧ sp = sp'
+  /-- Distinct actors have distinct nonce rows. -/
+  nonce_inj : ∀ a ∈ Act, ∀ b ∈ Act, nonceSlot crypto a = nonceSlot crypto b → a = b
   /-- No balance row is a nonce row. -/
-  bal_nonce : ∀ a b, balSlot crypto a ≠ nonceSlot crypto b
-  /-- No balance row is the supply slot. -/
-  bal_supply : ∀ a, balSlot crypto a ≠ supplySlot
-  /-- No nonce row is the supply slot. -/
-  nonce_supply : ∀ a, nonceSlot crypto a ≠ supplySlot
+  bal_nonce : ∀ a ∈ Act, ∀ b ∈ Act, balSlot crypto a ≠ nonceSlot crypto b
   /-- No allowance row is a balance row. -/
-  allow_bal : ∀ o sp a, allowSlot crypto o sp ≠ balSlot crypto a
+  allow_bal : ∀ o ∈ Act, ∀ sp ∈ Act, ∀ a ∈ Act, allowSlot crypto o sp ≠ balSlot crypto a
   /-- No allowance row is a nonce row. -/
-  allow_nonce : ∀ o sp a, allowSlot crypto o sp ≠ nonceSlot crypto a
+  allow_nonce : ∀ o ∈ Act, ∀ sp ∈ Act, ∀ a ∈ Act, allowSlot crypto o sp ≠ nonceSlot crypto a
+  /-- No balance row is the supply slot. -/
+  bal_supply : ∀ a ∈ Act, balSlot crypto a ≠ supplySlot
   /-- No allowance row is the supply slot. -/
-  allow_supply : ∀ o sp, allowSlot crypto o sp ≠ supplySlot
+  allow_supply : ∀ o ∈ Act, ∀ sp ∈ Act, allowSlot crypto o sp ≠ supplySlot
+  /-- No nonce row is the supply slot. -/
+  nonce_supply : ∀ a ∈ Act, nonceSlot crypto a ≠ supplySlot
 
-theorem read_congr (crypto : Crypto) (w w' : World) (token : Address)
-    (h : ∀ k, Footprint crypto k → w'.sload token k = w.sload token k)
-    (hb : w'.balance token = w.balance token) : read crypto w' token = read crypto w token := by
-  have hbal : ∀ a, w'.sload token (balSlot crypto a) = w.sload token (balSlot crypto a) :=
-    fun a => h _ (.inr (.inl ⟨a, rfl⟩))
-  have hnon : ∀ a, w'.sload token (nonceSlot crypto a) = w.sload token (nonceSlot crypto a) :=
-    fun a => h _ (.inr (.inr (.inr ⟨a, rfl⟩)))
-  have hall : ∀ o sp, w'.sload token (allowSlot crypto o sp) =
-      w.sload token (allowSlot crypto o sp) := fun o sp => h _ (.inr (.inr (.inl ⟨o, sp, rfl⟩)))
+theorem read_congr (crypto : Crypto) (Act : Finset Address) (w w' : World) (token : Address)
+    (h : ∀ k, Footprint crypto Act k → w'.sload token k = w.sload token k)
+    (hb : w'.balance token = w.balance token) :
+    read crypto Act w' token = read crypto Act w token := by
+  have hbal : balances crypto Act w' token = balances crypto Act w token := by
+    ext a; simp only [balances, Finsupp.onFinset_apply]
+    split
+    · rename_i ha; rw [h _ (.inr (.inl ⟨a, ha, rfl⟩))]
+    · rfl
+  have hnon : nonceMap crypto Act w' token = nonceMap crypto Act w token := by
+    ext a; simp only [nonceMap, Finsupp.onFinset_apply]
+    split
+    · rename_i ha; rw [h _ (.inr (.inr (.inr ⟨a, ha, rfl⟩)))]
+    · rfl
+  have hall : allowances crypto Act w' token = allowances crypto Act w token := by
+    funext o sp; simp only [allowances]
+    split
+    · rename_i ha; rw [h _ (.inr (.inr (.inl ⟨o, ha.1, sp, ha.2, rfl⟩)))]
+    · rfl
   have hsup : readSlot w' token supplySlot = readSlot w token supplySlot :=
     readSlot_congr (h _ (.inl rfl))
-  simp only [read, balances, nonceMap, hbal, hnon, hall, hsup, hb]
+  simp only [read, hbal, hnon, hall, hsup, hb]
 
 /-- **The storage abstraction of `SoladyToken`.** -/
 noncomputable def soladyAbs : TokenAbs (VState Address) where
@@ -167,7 +193,13 @@ def ops (caller : Address) (data : ByteArray) (value : ℕ) : Option (Variant.Op
     (addrArg (argWord data 0)).map fun a => .burn caller a (argWord data 1).toNat
   else none
 
+/-- The accounts an operation names (`mint`'s recipient, `burn`'s holder). -/
+def opAddrs : Variant.Op Address → List Address
+  | .mint _ a _ => [a]
+  | .burn _ a _ => [a]
+  | _ => []
+
 /-- **The bytecode spec of `SoladyToken`.** -/
-abbrev soladySpec : Prop := ERC20Spec SoladyToken.runtimeCode soladyAbs M g₀ sel ops
+abbrev soladySpec : Prop := ERC20Spec SoladyToken.runtimeCode soladyAbs M g₀ sel ops opAddrs
 
 end Verified.Solady.Spec

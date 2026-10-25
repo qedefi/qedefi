@@ -1,0 +1,134 @@
+import Verified.Solady.Spec.Abs
+import EvmLogic.Step.Memory
+import EvmLogic.Solidity.Steps
+import Mathlib.Tactic.IntervalCases
+
+/-!
+# Solady's rows in scratch memory
+
+Solady hashes its storage rows from scratch memory that two `mstore`s assemble: the seed word at
+`0x0c` and the owner word at `0x00`, so that `[0x0c, 0x2c)` holds `o₂₀ ‖ 0⁸ ‖ seed₄`
+(`rowWord o seed`); the allowance row appends the spender's 20 bytes from the word at `0x20`.
+`read_row` reads that window back as the row word, from the two half-reads `[0x00, 0x20)`
+and `[0x20, 0x2c)` that the normalization of `apwp_norm` computes; `read_storeWord_slice`
+computes the second.
+-/
+
+namespace Verified.Solady.Spec
+open EvmLean EvmLogic EvmLean.Bytes
+
+theorem toUInt8_congr {a b : Nat} (h : a % 256 = b % 256) : a.toUInt8 = b.toUInt8 := by
+  apply UInt8.toNat_inj.mp
+  simp only [Nat.toUInt8]
+  exact h
+
+theorem getD_ofWord (w : Word) (j : Nat) (h : j < 32) :
+    getD (ofWord w) j = (w.toNat >>> (8 * (31 - j))).toUInt8 := by
+  rw [ofWord, EvmLean.Memory.getD_ofNatBE 32 _ j h]
+
+theorem rowWord_toNat (o : Address) {seed : Word} (hs : seed.toNat < 2 ^ 96) :
+    (rowWord o seed).toNat = o.toNat * 2 ^ 96 + seed.toNat := by
+  have ho : o.toNat < 2 ^ 160 := o.isLt
+  have hlt : o.toNat * 2 ^ 96 < 2 ^ 256 := by
+    calc o.toNat * 2 ^ 96 < 2 ^ 160 * 2 ^ 96 := Nat.mul_lt_mul_of_pos_right ho (by positivity)
+      _ = 2 ^ 256 := by norm_num
+  simp only [rowWord, BitVec.toNat_or, BitVec.toNat_shiftLeft, Word.ofAddress,
+    BitVec.toNat_setWidth]
+  rw [Nat.mod_eq_of_lt (show o.toNat < 2 ^ 256 by omega), Nat.shiftLeft_eq,
+    Nat.mod_eq_of_lt hlt, ← Nat.shiftLeft_eq, ← Nat.shiftLeft_add_eq_or_of_lt hs,
+    Nat.shiftLeft_eq]
+
+/-- Bytes `[k, k + n)` of a stored word. -/
+theorem read_storeWord_slice (M : Memory) (off k n : Nat) (w : Word) (hk : k + n ≤ 32) :
+    (M.storeWord off w).read (off + k) n = (ofWord w).extract k (k + n) := by
+  apply ext_getD (by rw [Memory.read, size_readPadded, ByteArray.size_extract, size_ofWord]; omega)
+  intro j hj
+  rw [Memory.read, size_readPadded] at hj
+  have h1 : off ≤ off + k + j ∧ off + k + j < off + (ofWord w).size := by
+    rw [size_ofWord]; omega
+  simp only [Memory.read, Memory.storeWord, getD_readPadded, hj, ↓reduceIte,
+    Memory.getD_bytes_write, h1, and_self, getD_extract, show k + j < k + n by omega]
+  congr 1
+  omega
+
+theorem read_storeWord_slice' (M : Memory) (off k n p : Nat) (w : Word) (hk : k + n ≤ 32)
+    (hp : off + k = p) : (M.storeWord off w).read p n = (ofWord w).extract k (k + n) := by
+  subst hp; exact read_storeWord_slice M off k n w hk
+
+/-- **The row window** `[0x0c, 0x2c)`, read back as `rowWord`. -/
+theorem read_row (M : Memory) (o : Address) (seed : Word) (hs : seed.toNat < 2 ^ 96)
+    (h1 : M.read 0 32 = ofWord (Word.ofAddress o))
+    (h2 : M.read 32 12 = (ofWord seed).extract 20 32) :
+    M.read 12 32 = ofWord (rowWord o seed) := by
+  apply ext_getD (by rw [Memory.read, size_readPadded, size_ofWord])
+  intro j hj
+  rw [Memory.read, size_readPadded] at hj
+  have ho : o.toNat < 2 ^ 160 := o.isLt
+  have hoa : (Word.ofAddress o).toNat = o.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  rw [getD_ofWord _ _ hj, rowWord_toNat o hs]
+  simp only [Memory.read, getD_readPadded, hj, ↓reduceIte]
+  by_cases hj20 : j < 20
+  · have e := congrArg (fun b => getD b (12 + j)) h1
+    simp only [Memory.read, getD_readPadded, show 12 + j < 32 by omega, ↓reduceIte,
+      Nat.zero_add] at e
+    rw [e, getD_ofWord _ _ (by omega), hoa]
+    apply toUInt8_congr
+    simp only [Nat.shiftRight_eq_div_pow]
+    interval_cases j <;> omega
+  · have e := congrArg (fun b => getD b (j - 20)) h2
+    simp only [Memory.read, getD_readPadded, show j - 20 < 12 by omega, ↓reduceIte,
+      getD_extract, show 20 + (j - 20) < 32 by omega] at e
+    rw [show 12 + j = 32 + (j - 20) by omega, e, getD_ofWord _ _ (by omega),
+      show 20 + (j - 20) = j by omega]
+    apply toUInt8_congr
+    simp only [Nat.shiftRight_eq_div_pow]
+    interval_cases j <;> omega
+
+theorem ofWord_ofAddress_extract (a : Address) :
+    (ofWord (Word.ofAddress a)).extract 12 32 = ofAddress a := by
+  apply ext_getD (by simp [ByteArray.size_extract, size_ofWord, size_ofAddress])
+  intro j hj
+  rw [ByteArray.size_extract, size_ofWord] at hj
+  have ho : a.toNat < 2 ^ 160 := a.isLt
+  have hoa : (Word.ofAddress a).toNat = a.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  rw [getD_extract, ite_eq_left_iff.mpr (fun h => absurd (by omega) h), getD_ofWord _ _ (by omega), ofAddress,
+    EvmLean.Memory.getD_ofNatBE 20 _ j (by omega), hoa]
+  congr 2
+  omega
+
+/-- **The allowance window** `[0x0c, 0x40)`: the row word, then the spender's 20 bytes. -/
+theorem read_allowRow (M : Memory) (o sp : Address) (seed : Word) (hs : seed.toNat < 2 ^ 96)
+    (h1 : M.read 0 32 = ofWord (Word.ofAddress o))
+    (h2 : M.read 32 12 = (ofWord seed).extract 20 32)
+    (h3 : M.read 44 20 = (ofWord (Word.ofAddress sp)).extract 12 32) :
+    M.read 12 52 = ofWord (rowWord o seed) ++ ofAddress sp := by
+  rw [show (52 : Nat) = 32 + 20 from rfl, Memory.read_add, read_row M o seed hs h1 h2,
+    show 12 + 32 = 44 from rfl, h3, ofWord_ofAddress_extract]
+
+/-- Solady's Permit2 test `(sp & mask) + ~(PERMIT2 − 1) = 0`, normalized. -/
+theorem permit2_test (sp : Address) :
+    Word.ofAddress sp +
+      115792089237316195423570985008687907853269803818564352520799939062701070251101#256 = 0 ↔
+      sp = PERMIT2 := by
+  have ho : sp.toNat < 2 ^ 160 := sp.isLt
+  have hoa : (Word.ofAddress sp).toNat = sp.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  constructor
+  · intro h
+    have h' := congrArg BitVec.toNat h
+    rw [BitVec.toNat_add, hoa] at h'
+    have e1 : (115792089237316195423570985008687907853269803818564352520799939062701070251101#256
+      : Word).toNat = 115792089237316195423570985008687907853269803818564352520799939062701070251101
+      := rfl
+    have e2 : (0 : Word).toNat = 0 := rfl
+    have e3 : PERMIT2.toNat = 180847076211518657644945212059388835 := rfl
+    rw [e1, e2] at h'
+    apply BitVec.eq_of_toNat_eq
+    rw [e3]
+    omega
+  · rintro rfl
+    decide
+
+end Verified.Solady.Spec
