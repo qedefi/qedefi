@@ -18,6 +18,8 @@ frame ends (`REVERT`, `INVALID`, `STOP`, `RETURN`) and `SSTORE`/`LOG3` in a poss
 frame are new. `hwp_steps` (`Verified.Solady.Spec.AnyGasTactic`) drives them.
 -/
 
+set_option linter.unusedSimpArgs false
+
 namespace Verified.Solady.Spec.AnyGas
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program
 

@@ -1,7 +1,6 @@
 import Verified.Solady.Spec.Abs
 import EvmLogic.Step.Memory
 import EvmLogic.Solidity.Steps
-import Mathlib.Tactic.IntervalCases
 
 /-!
 # Solady's rows in scratch memory
@@ -27,6 +26,19 @@ theorem toUInt8_congr {a b : Nat} (h : a % 256 = b % 256) : a.toUInt8 = b.toUInt
   apply UInt8.toNat_inj.mp
   simp only [Nat.toUInt8]
   exact h
+
+theorem byte_hi {o s j : Nat} (hs : s < 2 ^ 96) (hj : j < 20) :
+    o / 2 ^ (8 * (31 - (12 + j))) % 256 = (o * 2 ^ 96 + s) / 2 ^ (8 * (31 - j)) % 256 := by
+  have e1 : 8 * (31 - j) = 96 + 8 * (31 - (12 + j)) := by omega
+  rw [e1, Nat.pow_add, ← Nat.div_div_eq_div_mul, Nat.add_comm (o * _),
+    Nat.add_mul_div_right _ _ (by positivity), Nat.div_eq_of_lt hs, Nat.zero_add]
+
+theorem byte_lo {o s j : Nat} (hj : 20 ≤ j) (hj' : j < 32) :
+    s / 2 ^ (8 * (31 - j)) % 256 = (o * 2 ^ 96 + s) / 2 ^ (8 * (31 - j)) % 256 := by
+  have e1 : (2 : Nat) ^ 96 = 2 ^ (88 - 8 * (31 - j)) * 256 * 2 ^ (8 * (31 - j)) := by
+    rw [show (256 : Nat) = 2 ^ 8 from rfl, ← Nat.pow_add, ← Nat.pow_add]; congr 1; omega
+  rw [e1, ← Nat.mul_assoc, Nat.add_comm (o * _ * _), Nat.add_mul_div_right _ _ (by positivity),
+    ← Nat.mul_assoc, Nat.add_mul_mod_self_right]
 
 theorem getD_ofWord (w : Word) (j : Nat) (h : j < 32) :
     getD (ofWord w) j = (w.toNat >>> (8 * (31 - j))).toUInt8 := by
@@ -81,7 +93,7 @@ theorem read_row (M : Memory) (o : Address) (seed : Word) (hs : seed.toNat < 2 ^
     rw [e, getD_ofWord _ _ (by omega), hoa]
     apply toUInt8_congr
     simp only [Nat.shiftRight_eq_div_pow]
-    interval_cases j <;> omega
+    exact byte_hi hs hj20
   · have e := congrArg (fun b => getD b (j - 20)) h2
     simp only [Memory.read, getD_readPadded, show j - 20 < 12 by omega, ↓reduceIte,
       getD_extract, show 20 + (j - 20) < 32 by omega] at e
@@ -89,7 +101,7 @@ theorem read_row (M : Memory) (o : Address) (seed : Word) (hs : seed.toNat < 2 ^
       show 20 + (j - 20) = j by omega]
     apply toUInt8_congr
     simp only [Nat.shiftRight_eq_div_pow]
-    interval_cases j <;> omega
+    exact byte_lo (by omega) hj
 
 theorem ofWord_ofAddress_extract (a : Address) :
     (ofWord (Word.ofAddress a)).extract 12 32 = ofAddress a := by
@@ -269,8 +281,7 @@ theorem rowWord_tail (o : Address) {s : Word} (hs : s.toNat < 2 ^ 96) :
   · rw [ite_pos' h, ite_pos' h, getD_ofWord _ _ h, getD_ofWord _ _ h, rowWord_toNat o hs]
     apply toUInt8_congr
     simp only [Nat.shiftRight_eq_div_pow]
-    have : j < 12 := by omega
-    interval_cases j <;> omega
+    exact (byte_lo (by omega) h).symm
   · rw [ite_neg' h, ite_neg' h]
 
 theorem rowWord_bal_tail (o : Address) :
