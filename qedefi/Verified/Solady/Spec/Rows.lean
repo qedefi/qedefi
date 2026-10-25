@@ -17,6 +17,12 @@ computes the second.
 namespace Verified.Solady.Spec
 open EvmLean EvmLogic EvmLean.Bytes
 
+theorem ite_pos' {p : Prop} [Decidable p] {α : Sort _} {a b : α} (h : p) :
+    (if p then a else b) = a := by simp [h]
+
+theorem ite_neg' {p : Prop} [Decidable p] {α : Sort _} {a b : α} (h : ¬ p) :
+    (if p then a else b) = b := by simp [h]
+
 theorem toUInt8_congr {a b : Nat} (h : a % 256 = b % 256) : a.toUInt8 = b.toUInt8 := by
   apply UInt8.toNat_inj.mp
   simp only [Nat.toUInt8]
@@ -238,5 +244,104 @@ theorem iszero_gt_of_le {v b : Word} (h : v.toNat ≤ b.toNat) : Word.iszero (Wo
 theorem iszero_gt_of_lt {v b : Word} (h : b.toNat < v.toNat) : Word.iszero (Word.gt v b) = 0 := by
   have hu : BitVec.ult b v = true := by simp [BitVec.ult]; omega
   simp [Word.iszero, Word.gt, Word.ofBool, hu]
+
+theorem shl_or_rowWord (o : Address) (s : Word) :
+    Word.shl 96#256 (Word.ofAddress o) ||| s = rowWord o s := by
+  simp only [Word.shl, rowWord]
+  rfl
+
+theorem shl_or_balRow (o : Address) :
+    Word.shl 96#256 (Word.ofAddress o) ||| 2275545506#256 = rowWord o balSeed :=
+  shl_or_rowWord o _
+
+theorem shl_or_allowRow (o : Address) :
+    Word.shl 96#256 (Word.ofAddress o) ||| 2136907552#256 = rowWord o allowSeed :=
+  shl_or_rowWord o _
+
+/-- The low twelve bytes of a row word are the seed's. -/
+theorem rowWord_tail (o : Address) {s : Word} (hs : s.toNat < 2 ^ 96) :
+    (ofWord (rowWord o s)).extract 20 32 = (ofWord s).extract 20 32 := by
+  apply ext_getD (by simp [ByteArray.size_extract, size_ofWord])
+  intro j hj
+  simp only [ByteArray.size_extract, size_ofWord] at hj
+  rw [getD_extract, getD_extract]
+  by_cases h : 20 + j < 32
+  · rw [ite_pos' h, ite_pos' h, getD_ofWord _ _ h, getD_ofWord _ _ h, rowWord_toNat o hs]
+    apply toUInt8_congr
+    simp only [Nat.shiftRight_eq_div_pow]
+    have : j < 12 := by omega
+    interval_cases j <;> omega
+  · rw [ite_neg' h, ite_neg' h]
+
+theorem rowWord_bal_tail (o : Address) :
+    (ofWord (rowWord o balSeed)).extract 20 32 = (ofWord 2275545506#256).extract 20 32 :=
+  rowWord_tail o (by decide)
+
+/-- The allowance window after `mstore(0x0c, row)`: the row word, then `[0x2c, 0x40)`. -/
+theorem read_allow_of (M : Memory) (w : Word) :
+    (M.storeWord 12 w).read 12 52 = ofWord w ++ M.read 44 20 := by
+  rw [show (M.storeWord 12 w).read 12 52 = (M.storeWord 12 w).read 12 32 ++
+    (M.storeWord 12 w).read 44 20 from Memory.read_add _ 12 32 20, Memory.read_storeWord,
+    Memory.read_storeWord_of_disjoint _ _ _ _ _ (by omega)]
+
+theorem shr_shl_addr (o : Address) : Word.shr 96#256 (Word.shl 96#256 (Word.ofAddress o)) =
+    Word.ofAddress o := by
+  have hs : o.toNat < 2 ^ 160 := o.isLt
+  apply BitVec.eq_of_toNat_eq
+  simp only [Word.shr, Word.shl]
+  change ((if (96#256 : Word).toNat < 256 then Word.ofAddress o <<< (96#256 : Word).toNat
+    else 0) >>> (96 : Nat)).toNat = _
+  simp only [show (96#256 : Word).toNat = 96 from rfl, show (96 : Nat) < 256 by norm_num,
+    ↓reduceIte]
+  rw [BitVec.toNat_ushiftRight, BitVec.toNat_shiftLeft]
+  have hoa : (Word.ofAddress o).toNat = o.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  rw [hoa, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+  rw [Nat.mod_eq_of_lt (by
+    calc o.toNat * 2 ^ 96 < 2 ^ 160 * 2 ^ 96 := Nat.mul_lt_mul_of_pos_right hs (by positivity)
+      _ = 2 ^ 256 := by norm_num)]
+  rw [Nat.mul_div_cancel _ (by positivity)]
+
+theorem eq_permit2_zero {c : Address} :
+    (Word.ofAddress c).eq 180847076211518657644945212059388835#256 = 0 ↔ c ≠ PERMIT2 := by
+  have hx : Word.ofAddress c = 180847076211518657644945212059388835#256 ↔ c = PERMIT2 := by
+    constructor
+    · intro h
+      apply BitVec.eq_of_toNat_eq
+      have := congrArg BitVec.toNat h
+      simp only [Word.ofAddress, BitVec.toNat_setWidth] at this
+      have hs : c.toNat < 2 ^ 160 := c.isLt
+      rw [show PERMIT2.toNat = 180847076211518657644945212059388835 from rfl]
+      rw [show (180847076211518657644945212059388835#256 : Word).toNat =
+        180847076211518657644945212059388835 from rfl] at this
+      omega
+    · rintro rfl; decide
+  by_cases h : c = PERMIT2
+  · subst h; simp [Word.eq, Word.ofBool]; decide
+  · have h' : ¬ Word.ofAddress c = 180847076211518657644945212059388835#256 := fun e => h (hx.mp e)
+    simp [Word.eq, Word.ofBool, h', h]
+
+theorem iszero_not_eq_zero {a : Word} : (~~~a).iszero = 0 ↔ a ≠ ~~~0 := by
+  have hB : ~~~a = 0 ↔ a = ~~~0 := by
+    constructor
+    · intro h; rw [← h, BitVec.not_not]
+    · intro h; rw [h, BitVec.not_not]
+  by_cases hx : ~~~a = 0
+  · simp [Word.iszero, Word.ofBool, hB.mp hx]
+  · simp only [Word.iszero, Word.ofBool]
+    have h1 : (~~~a == 0) = false := by simpa using hx
+    rw [h1]
+    exact ⟨fun _ e => hx (hB.mpr e), fun _ => rfl⟩
+
+theorem read_addr32 (M : Memory) (a : Address) :
+    (M.storeWord 32 (Word.ofAddress a)).read 44 20 = ofAddress a :=
+  read_addr_of_store M 32 a
+
+theorem eq_permit2_ne {c : Address}
+    (h : (Word.ofAddress c).eq 180847076211518657644945212059388835#256 ≠ 0) : c = PERMIT2 := by
+  by_contra hc; exact h (eq_permit2_zero.mpr hc)
+
+theorem iszero_not_ne {a : Word} (h : (~~~a).iszero ≠ 0) : a = ~~~0 := by
+  by_contra ha; exact h (iszero_not_eq_zero.mpr ha)
 
 end Verified.Solady.Spec
