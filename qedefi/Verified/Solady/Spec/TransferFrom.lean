@@ -249,4 +249,139 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
     · exact hM
     exact ⟨fun _ => ⟨_, rfl⟩, fun h => absurd h hB⟩
 
+/-! ## The obligation -/
+
+/-- The allowance step of the model. -/
+def spent (s : VState Address) (c src : Address) (v : ℕ) : VState Address :=
+  if c = PERMIT2 ∨ s.allowance src c = QEDefi.Math.MAX then s
+  else s.setAllowance src c (s.allowance src c - v)
+
+theorem solady_call_transferFrom (s : VState Address) (c src dst : Address) (v : ℕ) :
+    M.call s c (.transferFrom src dst v) =
+      if c ≠ PERMIT2 ∧ s.allowance src c ≠ QEDefi.Math.MAX ∧ s.allowance src c < v then
+        .halt .revert
+      else if s.bal src < v then .halt .revert
+      else .ok { spent s c src v with bal := s.bal - Finsupp.single src v + Finsupp.single dst v }
+        (.word true) := by
+  simp only [M, Solady.soladyModel, Variant.model_call, Variant.call, Variant.step,
+    Variant.transferFrom, Variant.spend, Variant.move, Variant.moveOk, Variant.units,
+    Variant.feeOverflow, Variant.feeOf, Variant.credit, Variant.solady, Variant.standard,
+    Variant.failKind, Variant.guardOk, Variant.overflows, Variant.failWith, Variant.retData,
+    Infinite.test, spent]
+  by_cases hP : c = PERMIT2
+  · subst hP
+    by_cases hb : s.bal src < v <;> simp [hb]
+  · have hP' : ¬ some PERMIT2 = some c := fun e => hP (Option.some.inj e).symm
+    by_cases hM : s.allowance src c = QEDefi.Math.MAX
+    · by_cases hb : s.bal src < v <;> simp [hP, hP', hM, hb]
+    · by_cases ha : s.allowance src c < v
+      · simp [hP, hP', hM, ha]
+      · by_cases hb : s.bal src < v
+        · simp [hP, hP', hM, ha, hb, VState.setAllowance]
+        · simp [hP, hP', hM, ha, hb, VState.setAllowance]
+
+theorem sload_allowWorld_bal {Act : Finset Address} {m : Machine} {src a : Address} {v : Word}
+    (hS : SoladySound m.ctx.crypto Act) (hs : src ∈ Act) (hc : m.frame.msg.caller ∈ Act)
+    (ha : a ∈ Act) :
+    (allowWorld m src v).sload m.frame.msg.currentTarget (balSlot m.ctx.crypto a) =
+      m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto a) := by
+  unfold allowWorld
+  split
+  · rfl
+  · rw [World.sload_sstore_ne_key _ _ _ (hS.allow_bal src hs _ hc a ha).symm]
+
+/-- **`transferFrom(src, dst, v)`**: `InsufficientAllowance` or `InsufficientBalance` reverts, or
+the allowance step (none for Permit2 or an infinite allowance) and the move. -/
+theorem call_transferFrom (src dst : Address) (v : ℕ) :
+    CallSpec SoladyToken.runtimeCode soladyAbs M g₀ (.transferFrom src dst v) := by
+  intro Act m hs hc haddr
+  obtain ⟨hv256, hd⟩ := hc
+  have hsA : src ∈ Act := haddr src (by simp [Call.addrs])
+  have hdA : dst ∈ Act := haddr dst (by simp [Call.addrs])
+  have hcA := hs.caller
+  have hS := hs.sound
+  refine halts_split' (G := Normal g₀ m)
+    (fun hG => transferFrom_high m src dst (word v) hs.fresh hd hs.size hG.2.2 hG.2.1 hG.1)
+    (transferFrom_low m src dst (word v) hs.fresh hd hs.size) ?_
+  rintro mf o ⟨hrevA, hmove⟩
+  have hwv := toNat_word hv256
+  -- the code-level facts, as numbers
+  have hmax : allowOf m src = ~~~0 ↔ (allowOf m src).toNat = QEDefi.Math.MAX := by
+    constructor
+    · intro h; rw [h]; rfl
+    · intro h; apply BitVec.eq_of_toNat_eq; rw [h]; rfl
+  by_cases hrev : m.frame.msg.caller ≠ PERMIT2 ∧ allowOf m src ≠ ~~~0 ∧ (allowOf m src).toNat < v
+  · obtain ⟨out, rfl⟩ := hrevA hrev.1 hrev.2.1 (by rw [hwv]; exact hrev.2.2)
+    by_cases hG : Normal g₀ m
+    · left
+      have hpre := pre_eq hs hG.2.2
+      have hal : (pre soladyAbs Act m).allowance src m.frame.msg.caller = (allowOf m src).toNat := by
+        rw [hpre]; simp [read, allowances, hsA, hcA, allowOf]
+      rw [solady_call_transferFrom, hal, ite_pos' ⟨hrev.1, fun h => hrev.2.1 (hmax.mpr h), hrev.2.2⟩]
+      exact ⟨out, rfl⟩
+    · exact .inr ⟨trivial, hG⟩
+  have hok : m.frame.msg.caller ≠ PERMIT2 → allowOf m src ≠ ~~~0 →
+      (word v).toNat ≤ (allowOf m src).toNat := by
+    intro h1 h2; rw [hwv]; by_contra h3; exact hrev ⟨h1, h2, Nat.lt_of_not_le h3⟩
+  obtain ⟨hrevB, hsucc⟩ := hmove hok
+  have hbsrc := sload_allowWorld_bal (v := word v) hS hsA hcA hsA
+  by_cases hb : (m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto src)).toNat < v
+  · obtain ⟨out, rfl⟩ := hrevB (by rw [hbsrc, hwv]; exact hb)
+    by_cases hG : Normal g₀ m
+    · left
+      have hpre := pre_eq hs hG.2.2
+      have hal : (pre soladyAbs Act m).allowance src m.frame.msg.caller = (allowOf m src).toNat := by
+        rw [hpre]; simp [read, allowances, hsA, hcA, allowOf]
+      have hbal : (pre soladyAbs Act m).bal src =
+          (m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto src)).toNat := by
+        rw [hpre]; simp [read, balances, hsA]
+      rw [solady_call_transferFrom, hal, ite_neg' (by
+        rintro ⟨h1, h2, h3⟩; exact hrev ⟨h1, fun h => h2 (hmax.mp h), h3⟩), hbal, ite_pos' hb]
+      exact ⟨out, rfl⟩
+    · exact .inr ⟨trivial, hG⟩
+  left
+  have hle : (word v).toNat ≤ ((allowWorld m src (word v)).sload m.frame.msg.currentTarget
+      (balSlot m.ctx.crypto src)).toNat := by rw [hbsrc, hwv]; omega
+  obtain ⟨hv, -, ho, hw, ht, hcr, hl⟩ := hsucc hle
+  have hpre := pre_eq hs hv
+  have hal : (pre soladyAbs Act m).allowance src m.frame.msg.caller = (allowOf m src).toNat := by
+    rw [hpre]; simp [read, allowances, hsA, hcA, allowOf]
+  have hbal : ∀ a ∈ Act, (pre soladyAbs Act m).bal a =
+      (m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto a)).toNat := by
+    intro a ha; rw [hpre]; simp [read, balances, ha]
+  rw [solady_call_transferFrom, hal, ite_neg' (by
+    rintro ⟨h1, h2, h3⟩; exact hrev ⟨h1, fun h => h2 (hmax.mp h), h3⟩), hbal src hsA,
+    ite_neg' hb]
+  -- the state after the allowance step, through the abstraction
+  have hspent : read m.ctx.crypto Act (allowWorld m src (word v)) m.frame.msg.currentTarget =
+      spent (pre soladyAbs Act m) m.frame.msg.caller src v := by
+    unfold allowWorld spent
+    rw [hal]
+    by_cases hc : m.frame.msg.caller = PERMIT2 ∨ allowOf m src = ~~~0
+    · rw [ite_pos' hc, ite_pos' (hc.imp id hmax.mp), hpre]
+    · rw [ite_neg' hc, ite_neg' (fun h => hc (h.imp id hmax.mpr)),
+        read_sstore_allow hS hsA hcA, hpre]
+      have hkv := hok (fun h => hc (.inl h)) (fun h => hc (.inr h))
+      congr 1
+      rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def]; omega), hwv]
+  refine ⟨by rw [ho]; rfl, ?_, ?_, ht, hcr, ?_⟩
+  · show read _ _ _ _ = _
+    rw [hw, moveWorld, read_moveWorld hS hsA hdA hle, hspent, hwv]
+    · simp only [spent]
+      split <;> rfl
+    · intro hsd
+      have h1 := bal_add_lt hs.wf hsd
+      rw [hbal src hsA, hbal dst hdA] at h1
+      try rw [sload_allowWorld_bal hS hsA hcA hdA]
+      rw [hwv]
+      omega
+  · rw [hw, moveWorld]
+    refine FrameKeeps.sstore (bal_mem _ hdA) (FrameKeeps.sstore (bal_mem _ hsA) ?_)
+    unfold allowWorld
+    split
+    · exact frameKeeps_refl
+    · exact FrameKeeps.sstore (allow_mem _ _ hsA hcA) frameKeeps_refl
+  · rw [hl]
+    simp [M, Solady.soladyModel, Solady.soladyEvents, Spec.eventLog]
+
 end Verified.Solady.Spec
