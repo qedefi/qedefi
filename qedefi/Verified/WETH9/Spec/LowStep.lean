@@ -44,7 +44,11 @@ def onGoal (p : Expr → MetaM Bool) (what : String) (t : TacticM Unit) : Tactic
 
 def lowNorm (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Unit := do
   evalTactic (← `(tactic| try evm_norm [EvmLogic.Tactic.SolStep.reduceCodeImm, sol_norm,
-    Nat.reduceMod, Nat.reducePow, Nat.reduceLT, $extra,*]))
+    Nat.reduceMod, Nat.reducePow, Nat.reduceLT, Nat.sub_sub, Memory.loadWord_expand,
+    Memory.read_expand, Memory.loadWord_storeWord, Memory.read_storeWord,
+    Memory.loadWord_storeWord_of_disjoint, Memory.read_storeWord_of_disjoint,
+    EvmLogic.Program.reduceClosedWord, Bytes.size_ofWord, Bytes.toWord_ofWord,
+    EvmLogic.Solidity.iszero_zero, EvmLogic.Solidity.iszero_one, $extra,*]))
 
 /-- One `low_step`; `false` if no rule applies (a `JUMPI` on an undecided condition, …). -/
 def lowStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : TacticM Bool := do
