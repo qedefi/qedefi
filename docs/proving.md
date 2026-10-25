@@ -365,8 +365,8 @@ The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots cr
 
 ## 8. Time and multiple blocks
 
-Modules: `EvmLogic/Program/Time.lean` (block environments), `qedefi/QEDefi/Trace/Time.lean`
-(EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
+Modules: `EvmLogic/Program/Time.lean` (block environments), `EvmLogic/Chain/` (the block
+function), `qedefi/QEDefi/Trace/Time.lean` (EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
 `qedefi/Verified/OpenZeppelin/VestingWallet/` and `qedefi/Verified/Solmate/ERC4626/Time.lean`
 (Solmate across blocks).
 
@@ -381,6 +381,21 @@ hypotheses on the list:
   `nextBlock_stateTransition` checks them against the semantics: the environments in which
   `Block.stateTransition` runs two consecutive valid blocks are `NextBlock`.
   `BlockChain.timestamp_lt`, `number_eq`, `chainId_eq` are what proofs use.
+
+**The block layer** (`EvmLogic/Chain/`). The real block function, not an assumed step:
+`stateTransition_bodyRun` factors a valid block (`Block.stateTransition`) into its worlds
+(`BodyRun`): the EIP-4788 system call, from Prague the EIP-2935 one, each transaction through
+`Tx.process` with the gas still available (`TxRun`), the withdrawals, and from Prague the
+EIP-7002/7251 checked system calls. Withdrawals are balance credits (`balance_applyWithdrawals`:
+each account gains exactly its credits, mod 2²⁵⁶; nonces and code never change; only an
+account left empty is erased). A system call is the `TopOk` message `systemMessage` from
+`SYSTEM_ADDRESS` (`systemCall_ok`, `topOk_systemMessage`); to a contract without code it changes
+nothing but erasing an empty target (`systemCall_of_code_empty`). A world invariant kept by
+system calls, transactions (the transaction layer's obligation) and credits
+(`BlockPreserves`) holds after every valid block (`stateTransition_preserves`) and along any
+chain of them (`Applies.preserves`), whose environments are a `BlockChain`
+(`Applies.blockChain`); `blockPreserves_good` discharges the system-call and credit obligations
+for the nested simulation's `GoodOk` predicates.
 
 **Time-indexed models** (`QEDefi.Trace.Time`). The model step is `step now s op`; behaviour
 over time is a closed form in `now` (e.g. `Vesting.Schedule.vested total t`), proved
