@@ -2,6 +2,7 @@ import EvmLogic.Tactic.WpStep
 import EvmLogic.Solidity.Memory
 import EvmLogic.Tactic.SolStep
 import EvmLogic.Program.Reentrancy.PrefixOps
+import EvmLogic.Program.Reentrancy.PrefixEnv
 
 /-!
 # `apwp_step` / `apwp_steps`: symbolic execution of a prefix, for any gas
@@ -47,11 +48,11 @@ def ruleFor (b : Nat) : Option Rule :=
     (0x17, ``pwp_or), (0x18, ``pwp_xor), (0x1a, ``pwp_byte), (0x1b, ``pwp_shl),
     (0x1c, ``pwp_shr), (0x1d, ``pwp_sar), (0x15, ``pwp_iszero), (0x19, ``pwp_not),
     (0x20, ``pwp_keccak256), (0x35, ``pwp_calldataload), (0x51, ``pwp_mload_val),
-    (0x54, ``pwp_sload)]
+    (0x54, ``pwp_sload), (0x3b, ``pwp_extcodesize)]
   let pv : List (Nat × Name) := [(0x30, ``pwp_address), (0x33, ``pwp_caller),
     (0x34, ``pwp_callvalue), (0x36, ``pwp_calldatasize), (0x38, ``pwp_codesize),
     (0x3d, ``pwp_returndatasize), (0x47, ``pwp_selfbalance), (0x58, ``pwp_pc),
-    (0x59, ``pwp_msize), (0x5a, ``pwp_gas)]
+    (0x59, ``pwp_msize), (0x5a, ``pwp_gas), (0x46, ``pwp_chainid), (0x42, ``pwp_timestamp)]
   match bin.lookup b with
   | some l => some { lemma := l }
   | none =>
@@ -137,6 +138,28 @@ def closeBranch (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) : Tactic
   for t in tacs do
     if ← attempt (evalTactic t) then return
 
+/-- The last hypothesis is a bound `g ≤ e` of a new gas variable `g` by the previous one `e`: if
+the context bounds `e ≤ B`, replace both by `g ≤ B` (and drop `e`), so that later steps keep a
+bound of the gas (`generalizeGas`). -/
+def chainLastBound : TacticM Unit := withMainContext do
+  let some d := (← getLCtx).lastDecl | return
+  let ty ← instantiateMVars d.type
+  let some (_, _, _, rhs) := ty.app4? ``LE.le | return
+  let rhs ← whnfR rhs
+  if !rhs.isFVar then return
+  for decl in ← getLCtx do
+    if decl.isImplementationDetail || decl.fvarId == d.fvarId then continue
+    let t ← instantiateMVars decl.type
+    if let some (_, _, l2, _) := t.app4? ``LE.le then
+      if l2 == rhs then
+        let h1 ← Term.exprToSyntax (mkFVar d.fvarId)
+        let h2 ← Term.exprToSyntax (mkFVar decl.fvarId)
+        let hn := mkIdent (← mkFreshUserName `hgas)
+        evalTactic (← `(tactic| have $hn:ident := Nat.le_trans $h1 $h2))
+        try evalTactic (← `(tactic| clear $h1 $h2)) catch _ => pure ()
+        try evalTactic (← `(tactic| clear $(← Term.exprToSyntax rhs))) catch _ => pure ()
+        return
+
 /-- One step of the main goal. `none`: no rule applies (the goal is unchanged); `some gs`: the
 new goals. -/
 def apwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
@@ -185,10 +208,15 @@ def apwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
     return ← run (← `(tactic| refine pwp_swap ⟨$nS, by decide⟩ ‹_› $hb rfl rfl ?_)) 1
   if bn = 0x39 then
     return ← run (← `(tactic| refine pwp_codecopy ‹_› $hb rfl (by decide) ?_)) 1
-  if bn = 0x3e then
+  if bn = 0x3e ∨ bn = 0x37 ∨ bn = 0x5e then
+    let lS := mkIdent (if bn = 0x3e then ``pwp_returndatacopy_le
+      else if bn = 0x37 then ``pwp_calldatacopy else ``pwp_mcopy)
     if ← attempt (do
-        evalTactic (← `(tactic| refine pwp_returndatacopy ‹_› $hb rfl ?_))
-        evalTactic (← `(tactic| intro _ _))
+        evalTactic (← `(tactic| refine $lS ‹_› $hb rfl ?_))
+        evalTactic (← `(tactic| intro _ _ hcopy))
+        evalTactic (← `(tactic| dsimp only at hcopy))
+        evalTactic (← `(tactic| simp only [EvmLogic.Program.Reentrancy.memGasNext]))
+        chainLastBound
         norm) then
       return some (← getGoals)
     return none

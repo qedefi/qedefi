@@ -70,7 +70,7 @@ theorem insns_eq (code : ByteArray) : insns code = (boundaries code).map (insnIn
 
 /-- `GAS` feeds a call, over the scan. -/
 def GasFeedsCallL (l : List (Nat × UInt8 × UInt8)) (n : Nat) : Prop :=
-  ∀ t ∈ l, t.1 < n → t.2.1 = 0x5a → t.2.2 = 0xf1 ∨ t.2.2 = 0xfa
+  ∀ t ∈ l, t.1 < n → t.2.1 = 0x5a → t.2.2 = 0xf1 ∨ t.2.2 = 0xfa ∨ t.2.2 = 0xf4
 
 instance (l : List (Nat × UInt8 × UInt8)) (n : Nat) : Decidable (GasFeedsCallL l n) :=
   inferInstanceAs (Decidable (∀ t ∈ l, _))

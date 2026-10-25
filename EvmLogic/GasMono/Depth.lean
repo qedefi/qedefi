@@ -251,13 +251,14 @@ theorem isCallByte_of_readsDepth (fork : Fork) {b : UInt8}
   all_goals (subst h5; decide)
 
 set_option maxHeartbeats 1000000 in
-/-- **A call at the depth limit fails at once**: `CALL`/`STATICCALL` from a frame at the limit
-continue with `0` on the stack. -/
-theorem execCall_limit (k : CallKind) (hk : k = .call ∨ k = .staticcall) (m : Machine)
+/-- **A call at the depth limit fails at once**: `CALL`/`STATICCALL`/`DELEGATECALL` from a frame
+at the limit continue with `0` on the stack. -/
+theorem execCall_limit (k : CallKind) (hk : k = .call ∨ k = .staticcall ∨ k = .delegatecall)
+    (m : Machine)
     (hd : Gas.stackDepthLimit < m.frame.msg.depth + 1) :
     Wp (execCall k) (fun a m' => a = .next ∧ m'.frame.pc = m.frame.pc + 1 ∧
       m'.frame.stack.head? = some 0) m := by
-  rcases hk with rfl | rfl <;>
+  rcases hk with rfl | rfl | rfl <;>
   simp [execCall, memoryExpansion, expandMemory, readMemory, setReturnData, genericCall, hd]
 
 /-- How the frame at the limit ends against the frame one level up: it fails, or ends with the
@@ -338,11 +339,13 @@ theorem depth_lockstep {code : ByteArray} {n : Nat} (hc : CodeOk code n) {d : Na
     have hw : Wp (exec (Opcode.decode (setDepth d mh).ctx.fork (Bytes.getD code mh.frame.pc)))
         (fun a m' => a = .next ∧ m'.frame.pc = (setDepth d mh).frame.pc + 1 ∧
           m'.frame.stack.head? = some 0) (setDepth d mh) := by
-      rcases decode_call mh.ctx.fork hcs with hop | hop
+      rcases decode_call mh.ctx.fork hcs with hop | hop | hop
       · rw [show (setDepth d mh).ctx = mh.ctx from rfl, hop]
         exact execCall_limit .call (.inl rfl) _ hdl
       · rw [show (setDepth d mh).ctx = mh.ctx from rfl, hop]
-        exact execCall_limit .staticcall (.inr rfl) _ hdl
+        exact execCall_limit .staticcall (.inr (.inl rfl)) _ hdl
+      · rw [show (setDepth d mh).ctx = mh.ctx from rfl, hop]
+        exact execCall_limit .delegatecall (.inr (.inr rfl)) _ hdl
     cases hl : (exec (Opcode.decode (setDepth d mh).ctx.fork
         (Bytes.getD code mh.frame.pc))).run (setDepth d mh) with
     | error e =>

@@ -1,0 +1,9 @@
+{
+  "executeGetUserAccountData(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.CalculateUserAccountDataParams)": "26ec273f",
+  "executeInitReserve(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,DataTypes.InitReserveParams)": "69fc1bdf",
+  "executeMintToTreasury(mapping(address => DataTypes.ReserveData) storage,address[])": "48c2ca8c",
+  "executeRescueTokens(address,address,uint256)": "87b322b2",
+  "executeSetLiquidationGracePeriod(mapping(address => DataTypes.ReserveData) storage,address,uint40)": "6ae43813",
+  "executeSyncIndexesState(DataTypes.ReserveData storage)": "d4934153",
+  "executeSyncRatesState(DataTypes.ReserveData storage,address,address)": "41a8c05e"
+}

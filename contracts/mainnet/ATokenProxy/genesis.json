@@ -1,0 +1,61 @@
+{
+  "note": "Storage of the aEthWETH proxy (InitializableImmutableAdminUpgradeabilityProxy) with the AToken state of an initialized revision-5 aToken, test parameters: EIP-1967 implementation slot -> the mainnet ATokenInstance (0xadC45Df3\u20267AdA); the proxy admin is an immutable (PoolConfigurator 0x64b761D8\u2026bB27), not storage. AToken state (layout: AToken/storageLayout.json): lastInitializedRevision = 5, name/symbol/decimals as on mainnet, _underlyingAsset = WETH, _domainSeparator for chain id 1 and the proxy address (equal to mainnet's DOMAIN_SEPARATOR()); POOL, TREASURY, REWARDS_CONTROLLER, the addresses provider and the chain id are immutables of the implementation code (mainnet values). Test balances: alice 100e18 and bob 50e18 scaled, each with previous index 1 ray (UserState.additionalData), _totalSupply = 150e18 scaled; no allowances, nonces zero. balanceOf/transfer read the liquidity index from the Pool (POOL.getReserveNormalizedIncome), which is not part of this storage.",
+  "storage": [
+    {
+      "label": "implementation (EIP-1967 slot)",
+      "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "value": "0xadc45df3cf1584624c97338bef33363bf5b97ada"
+    },
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0x0",
+      "value": "0x5"
+    },
+    {
+      "label": "_userState[alice] (scaled balance 100e18, index 1 ray)",
+      "mapping": "52",
+      "keys": [
+        "0x00000000000000000000000000000000000A11CE"
+      ],
+      "value": "0x33b2e3c9fd0803ce800000000000000000000056bc75e2d63100000"
+    },
+    {
+      "label": "_userState[bob] (scaled balance 50e18, index 1 ray)",
+      "mapping": "52",
+      "keys": [
+        "0x0000000000000000000000000000000000000B0B"
+      ],
+      "value": "0x33b2e3c9fd0803ce80000000000000000000002b5e3af16b1880000"
+    },
+    {
+      "label": "_totalSupply (scaled)",
+      "slot": "0x36",
+      "value": "0x821ab0d4414980000"
+    },
+    {
+      "label": "_name",
+      "slot": "0x37",
+      "value": "0x4161766520457468657265756d20574554480000000000000000000000000024"
+    },
+    {
+      "label": "_symbol",
+      "slot": "0x38",
+      "value": "0x6145746857455448000000000000000000000000000000000000000000000010"
+    },
+    {
+      "label": "_decimals",
+      "slot": "0x39",
+      "value": "0x12"
+    },
+    {
+      "label": "_domainSeparator",
+      "slot": "0x3b",
+      "value": "0x95dd139b8dfc106f18b6335b54dc46200ab6f6e03f30aa3fb445346667e89ddc"
+    },
+    {
+      "label": "_underlyingAsset",
+      "slot": "0x3d",
+      "value": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+    }
+  ]
+}

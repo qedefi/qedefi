@@ -1,0 +1,7 @@
+{
+  "CLOSE_FACTOR_HF_THRESHOLD()": "a18964a5",
+  "MIN_BASE_MAX_CLOSE_FACTOR_THRESHOLD()": "64e377d0",
+  "MIN_LEFTOVER_BASE()": "1a00fd00",
+  "executeEliminateDeficit(mapping(address => DataTypes.ReserveData) storage,DataTypes.UserConfigurationMap storage,DataTypes.ExecuteEliminateDeficitParams)": "7e9e608c",
+  "executeLiquidationCall(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(address => DataTypes.UserConfigurationMap) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.ExecuteLiquidationCallParams)": "83c1087d"
+}

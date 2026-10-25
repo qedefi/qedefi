@@ -1,0 +1,7 @@
+{
+  "executeFinalizeTransfer(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,mapping(address => DataTypes.UserConfigurationMap) storage,DataTypes.FinalizeTransferParams)": "8a5dadd1",
+  "executeSetUserEMode(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,mapping(address => uint8) storage,DataTypes.UserConfigurationMap storage,address,address,uint8)": "1eb87a9c",
+  "executeSupply(mapping(address => DataTypes.ReserveData) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.UserConfigurationMap storage,DataTypes.ExecuteSupplyParams)": "66656e4e",
+  "executeUseReserveAsCollateral(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.UserConfigurationMap storage,address,address,bool,address,uint8)": "d2309641",
+  "executeWithdraw(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.UserConfigurationMap storage,DataTypes.ExecuteWithdrawParams)": "186dea44"
+}

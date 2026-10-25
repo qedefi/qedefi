@@ -1,0 +1,56 @@
+{
+  "address": "0x52Da0ce88202D1542543598D1e1e27F0d344726A",
+  "chainId": "1",
+  "provider": "blockscout",
+  "name": "BorrowLogic",
+  "filePath": "src/contracts/protocol/libraries/logic/BorrowLogic.sol",
+  "compilerVersion": "0.8.27+commit.40a35a09",
+  "compilerSettings": {
+    "evmVersion": "shanghai",
+    "libraries": {
+      "src/contracts/protocol/libraries/logic/BorrowLogic.sol": {
+        "BorrowLogic": "0x52Da0ce88202D1542543598D1e1e27F0d344726A"
+      }
+    },
+    "metadata": {
+      "appendCBOR": true,
+      "bytecodeHash": "none",
+      "useLiteralContent": false
+    },
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "outputSelection": {
+      "*": {
+        "": [
+          "*"
+        ],
+        "*": [
+          "*"
+        ]
+      }
+    },
+    "remappings": [
+      "solidity-utils/=lib/solidity-utils/src/",
+      "forge-std/=lib/forge-std/src/",
+      "ds-test/=lib/forge-std/lib/ds-test/src/",
+      "openzeppelin-contracts-upgradeable/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/",
+      "openzeppelin-contracts/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/",
+      "@openzeppelin/contracts-upgradeable/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/contracts/",
+      "@openzeppelin/contracts/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+      "erc4626-tests/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/erc4626-tests/",
+      "halmos-cheatcodes/=lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/halmos-cheatcodes/src/"
+    ],
+    "viaIR": false
+  },
+  "externalLibraries": [
+    {
+      "name": "src/contracts/protocol/libraries/logic/BorrowLogic.sol:BorrowLogic",
+      "address_hash": "0x52Da0ce88202D1542543598D1e1e27F0d344726A"
+    }
+  ],
+  "isFullyVerified": false,
+  "isPartiallyVerified": true,
+  "verifiedAt": "2026-06-01T11:38:52.447999Z"
+}

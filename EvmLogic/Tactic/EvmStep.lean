@@ -52,13 +52,20 @@ dsimproc_decl reduceByteArrayGetElem (_) := fun e => do
 
 /-! ## Gas side conditions -/
 
-/-- Add `sstoreCost_le` / `sloadCost_le` for every symbolic cost occurring in the goal. -/
+/-- An EIP-2929 account access costs at most 2600. -/
+theorem accessCost_le_2600 (warm : Bool) : Gas.accessCost warm ≤ 2600 := by
+  cases warm <;> decide
+
+/-- Add `sstoreCost_le` / `sloadCost_le` / `accessCost_le_2600` for every symbolic cost occurring
+in the goal. -/
 elab "evm_gas_bounds" : tactic => withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   let found ← IO.mkRef (#[] : Array Expr)
   forEachExpr t fun e => do
     match_expr e with
     | sloadCost w => found.modify (·.push (mkApp (mkConst ``sloadCost_le) w))
+    | Gas.accessCost b =>
+      unless b.hasLooseBVars do found.modify (·.push (mkApp (mkConst ``accessCost_le_2600) b))
     | Prod.fst _ _ p =>
       match_expr p with
       | sstoreCostRefund m x y =>

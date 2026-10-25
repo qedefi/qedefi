@@ -1,0 +1,45 @@
+{
+  "note": "Storage of the variableDebtEthWETH proxy (InitializableImmutableAdminUpgradeabilityProxy) with the VariableDebtToken state of an initialized revision-5 debt token, test parameters: EIP-1967 implementation slot -> the mainnet VariableDebtTokenInstance (0xb27C52c7\u2026E330); admin immutable (PoolConfigurator). State (layout: VariableDebtToken/storageLayout.json): lastInitializedRevision = 5, name (a 32-byte string: long encoding, 2*32+1 at slot 59 and the bytes at keccak256(pad32(59))), symbol, decimals as on mainnet, _underlyingAsset = WETH, _domainSeparator for chain id 1 and the proxy address (equal to mainnet's DOMAIN_SEPARATOR()); no debt, no borrow allowances.",
+  "storage": [
+    {
+      "label": "implementation (EIP-1967 slot)",
+      "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "value": "0xb27c52c7f84819e3157993489741cb60786ae330"
+    },
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0x0",
+      "value": "0x5"
+    },
+    {
+      "label": "_domainSeparator",
+      "slot": "0x35",
+      "value": "0x2a3251424f10e627845b963db1912737e4031ea76009638193beac54ccae6c83"
+    },
+    {
+      "label": "_underlyingAsset",
+      "slot": "0x37",
+      "value": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+    },
+    {
+      "label": "_name (long string: 2*32+1)",
+      "slot": "0x3b",
+      "value": "0x41"
+    },
+    {
+      "label": "_name bytes (keccak256(pad32(59)))",
+      "slot": "0xbbe3212124853f8b0084a66a2d057c2966e251e132af3691db153ab65f0d1a4d",
+      "value": "0x4161766520457468657265756d205661726961626c6520446562742057455448"
+    },
+    {
+      "label": "_symbol",
+      "slot": "0x3c",
+      "value": "0x7661726961626c65446562744574685745544800000000000000000000000026"
+    },
+    {
+      "label": "_decimals",
+      "slot": "0x3d",
+      "value": "0x12"
+    }
+  ]
+}

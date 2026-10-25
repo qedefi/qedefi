@@ -1,0 +1,13 @@
+{
+  "AddressEmptyCode(address)": "9996b315",
+  "AssetNotListed()": "b77e1e0f",
+  "CallerNotAToken()": "93b9ef1f",
+  "CallerNotPoolAdmin()": "cdd36a97",
+  "CallerNotPoolConfigurator()": "44ff885f",
+  "CallerNotPositionManager()": "abd80224",
+  "CallerNotUmbrella()": "c45a7cdd",
+  "EModeCategoryReserved()": "92842113",
+  "FailedCall()": "d6bda275",
+  "InvalidAddressesProvider()": "3b175b87",
+  "ZeroAddressNotValid()": "3bf95ba7"
+}

@@ -1,0 +1,395 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (PoolInstance \u2192 Pool is VersionedInitializable, PoolStorage, IPool, Multicall): VersionedInitializable 0\u201351, PoolStorage 52\u201360; equal to solc 0.8.27's storageLayout output for the verified standard-JSON input (AST ids dropped) and checked against the Pool proxy's storage (layout-check.txt). ADDRESSES_PROVIDER and RESERVE_INTEREST_RATE_STRATEGY are immutables. ReserveData is 10 slots.",
+  "storage": [
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "initializing",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_bool",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "______gap",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "_reserves",
+      "slot": "52",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_struct(ReserveData))",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_usersConfig",
+      "slot": "53",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_struct(UserConfigurationMap))",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_reservesList",
+      "slot": "54",
+      "offset": 0,
+      "type": "t_mapping(t_uint256,t_address)",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_eModeCategories",
+      "slot": "55",
+      "offset": 0,
+      "type": "t_mapping(t_uint8,t_struct(EModeCategory))",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_usersEModeCategory",
+      "slot": "56",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint8)",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "__DEPRECATED_bridgeProtocolFee",
+      "slot": "57",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_flashLoanPremium",
+      "slot": "58",
+      "offset": 0,
+      "type": "t_uint128",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "__DEPRECATED_flashLoanPremiumToProtocol",
+      "slot": "58",
+      "offset": 16,
+      "type": "t_uint128",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "__DEPRECATED_maxStableRateBorrowSizePercent",
+      "slot": "59",
+      "offset": 0,
+      "type": "t_uint64",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_reservesCount",
+      "slot": "59",
+      "offset": 8,
+      "type": "t_uint16",
+      "contract": "PoolStorage"
+    },
+    {
+      "label": "_positionManager",
+      "slot": "60",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_bool))",
+      "contract": "PoolStorage"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_array(t_uint256)50_storage": {
+      "encoding": "inplace",
+      "label": "uint256[50]",
+      "numberOfBytes": "1600",
+      "base": "t_uint256"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_bool)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => bool)",
+      "numberOfBytes": "32",
+      "value": "t_bool"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_bool))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => bool))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_bool)"
+    },
+    "t_mapping(t_address,t_struct(ReserveData))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct DataTypes.ReserveData)",
+      "numberOfBytes": "32",
+      "value": "t_struct(ReserveData)"
+    },
+    "t_mapping(t_address,t_struct(UserConfigurationMap))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct DataTypes.UserConfigurationMap)",
+      "numberOfBytes": "32",
+      "value": "t_struct(UserConfigurationMap)"
+    },
+    "t_mapping(t_address,t_uint8)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint8)",
+      "numberOfBytes": "32",
+      "value": "t_uint8"
+    },
+    "t_mapping(t_uint256,t_address)": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => address)",
+      "numberOfBytes": "32",
+      "value": "t_address"
+    },
+    "t_mapping(t_uint8,t_struct(EModeCategory))": {
+      "encoding": "mapping",
+      "key": "t_uint8",
+      "label": "mapping(uint8 => struct DataTypes.EModeCategory)",
+      "numberOfBytes": "32",
+      "value": "t_struct(EModeCategory)"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_struct(EModeCategory)": {
+      "encoding": "inplace",
+      "label": "struct DataTypes.EModeCategory",
+      "numberOfBytes": "96",
+      "members": [
+        {
+          "label": "ltv",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint16"
+        },
+        {
+          "label": "liquidationThreshold",
+          "slot": "0",
+          "offset": 2,
+          "type": "t_uint16"
+        },
+        {
+          "label": "liquidationBonus",
+          "slot": "0",
+          "offset": 4,
+          "type": "t_uint16"
+        },
+        {
+          "label": "collateralBitmap",
+          "slot": "0",
+          "offset": 6,
+          "type": "t_uint128"
+        },
+        {
+          "label": "isolated",
+          "slot": "0",
+          "offset": 22,
+          "type": "t_bool"
+        },
+        {
+          "label": "label",
+          "slot": "1",
+          "offset": 0,
+          "type": "t_string_storage"
+        },
+        {
+          "label": "borrowableBitmap",
+          "slot": "2",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "ltvzeroBitmap",
+          "slot": "2",
+          "offset": 16,
+          "type": "t_uint128"
+        }
+      ]
+    },
+    "t_struct(ReserveConfigurationMap)": {
+      "encoding": "inplace",
+      "label": "struct DataTypes.ReserveConfigurationMap",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "data",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_struct(ReserveData)": {
+      "encoding": "inplace",
+      "label": "struct DataTypes.ReserveData",
+      "numberOfBytes": "320",
+      "members": [
+        {
+          "label": "configuration",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_struct(ReserveConfigurationMap)"
+        },
+        {
+          "label": "liquidityIndex",
+          "slot": "1",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "currentLiquidityRate",
+          "slot": "1",
+          "offset": 16,
+          "type": "t_uint128"
+        },
+        {
+          "label": "variableBorrowIndex",
+          "slot": "2",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "currentVariableBorrowRate",
+          "slot": "2",
+          "offset": 16,
+          "type": "t_uint128"
+        },
+        {
+          "label": "deficit",
+          "slot": "3",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "lastUpdateTimestamp",
+          "slot": "3",
+          "offset": 16,
+          "type": "t_uint40"
+        },
+        {
+          "label": "id",
+          "slot": "3",
+          "offset": 21,
+          "type": "t_uint16"
+        },
+        {
+          "label": "liquidationGracePeriodUntil",
+          "slot": "3",
+          "offset": 23,
+          "type": "t_uint40"
+        },
+        {
+          "label": "aTokenAddress",
+          "slot": "4",
+          "offset": 0,
+          "type": "t_address"
+        },
+        {
+          "label": "__deprecatedStableDebtTokenAddress",
+          "slot": "5",
+          "offset": 0,
+          "type": "t_address"
+        },
+        {
+          "label": "variableDebtTokenAddress",
+          "slot": "6",
+          "offset": 0,
+          "type": "t_address"
+        },
+        {
+          "label": "__deprecatedInterestRateStrategyAddress",
+          "slot": "7",
+          "offset": 0,
+          "type": "t_address"
+        },
+        {
+          "label": "accruedToTreasury",
+          "slot": "8",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "virtualUnderlyingBalance",
+          "slot": "8",
+          "offset": 16,
+          "type": "t_uint128"
+        },
+        {
+          "label": "__deprecatedIsolationModeTotalDebt",
+          "slot": "9",
+          "offset": 0,
+          "type": "t_uint128"
+        },
+        {
+          "label": "__deprecatedVirtualUnderlyingBalance",
+          "slot": "9",
+          "offset": 16,
+          "type": "t_uint128"
+        }
+      ]
+    },
+    "t_struct(UserConfigurationMap)": {
+      "encoding": "inplace",
+      "label": "struct DataTypes.UserConfigurationMap",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "data",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_uint128": {
+      "encoding": "inplace",
+      "label": "uint128",
+      "numberOfBytes": "16"
+    },
+    "t_uint16": {
+      "encoding": "inplace",
+      "label": "uint16",
+      "numberOfBytes": "2"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint40": {
+      "encoding": "inplace",
+      "label": "uint40",
+      "numberOfBytes": "5"
+    },
+    "t_uint64": {
+      "encoding": "inplace",
+      "label": "uint64",
+      "numberOfBytes": "8"
+    },
+    "t_uint8": {
+      "encoding": "inplace",
+      "label": "uint8",
+      "numberOfBytes": "1"
+    }
+  }
+}

@@ -19,6 +19,7 @@ hold them. Pinning, layouts and the build are in [contracts/README.md](../contra
 | YAMv2 | mainnet `0xAba8…aD8A` | `Examples.WeirdERC20.YAMV2.Contracts.YAMV2` | `yamv2` | — |
 | LEND (`EthLendToken`) | mainnet `0x80fB…ab03` | `Examples.WeirdERC20.LEND.Contracts.LEND` | `lend`, `lendico` | — |
 | ZRX (`ZRXToken`) | mainnet `0xE41d…F498` | `Examples.WeirdERC20.ZRX.Contracts.ZRX` | `zrx` | — |
+| Aave V3 aEthWETH (`AToken` rev. 5 behind its proxy) | mainnet `0x4d5F…14E8` / `0xadC4…7AdA` | `Examples.AaveV3.Contracts.{ATokenProxy,AToken}` | — | bytecode, partly ([aave-v3.md](aave-v3.md)) |
 
 The weird tokens come from the Trail of Bits token-integration checklist and
 `d-xo/weird-erc20`. Tests and proofs install mainnet code at its mainnet address with the
@@ -295,5 +296,6 @@ always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`N
 - **Generic layouts**: `EvmLogic.Solidity.ERC20.Layout` covers Solidity mapping layouts; WETH9
   (no supply slot), Solady (hashed slots, constant supply slot) and rebasing tokens need the
   layout, the supply relation and the freshness predicate as parameters.
-- **Upgradeable tokens** (USDC): a `WP.delegatecall` callee-summary rule, the proxy's dispatch
-  theorem (every non-admin call delegates), and theorems that hold until an admin transaction.
+- **Upgradeable tokens** (USDC): the proxy's dispatch theorem (every non-admin call delegates)
+  and theorems that hold until an admin transaction. `WP.delegatecall` and Aave's aToken proxy
+  (`Examples/AaveV3/ATokenProxy/`, `forward_halts`) are the worked pattern.

@@ -50,10 +50,12 @@ over 16 contract families, 0 mismatches.
 | WETH9 | mainnet bytecode | ether backs the tokens after any transaction (`Σ balanceOf ≤ address(this).balance`); `withdraw` refines the model for any gas, depth and recipient | `qedefi/Examples/Reentrancy/Solvency/` |
 | Reentrancy demonstrators: `CEIBank`, `GuardedBank`, `VulnerableBank` | compiled | the two defended banks stay solvent after any transaction, through arbitrary reentrant callees; the attack drains the vulnerable one | `qedefi/Examples/Reentrancy/` |
 | OpenZeppelin `VestingWallet` | compiled | the schedule, views and `release` refine a time-indexed model; released ≤ vested over any sequence of blocks | `qedefi/Examples/Time/` |
+| Aave V3 aEthWETH (`AToken` rev. 5 behind its proxy) | mainnet bytecode | the Pool-only entry points have no effect for any other caller, also through the proxy; `mint`/`burn` by the Pool keep the scaled ledger balanced; views exact | `qedefi/Examples/AaveV3/` |
 | OpenZeppelin `ERC4626` (decimals offset 0 and 3) | compiled | model level: EIP-4626 properties, inflation-attack bounds | `qedefi/QEDefi/ERC4626/` |
 | USDT, BNB, STA, AMPL, Solady `ERC20` | mainnet / compiled | model level: each token's quirks, ledger invariants, how they break vaults that hold them | `qedefi/QEDefi/ERC20/Variant*.lean` |
 | GUSD, YAMv2, LEND, ZRX | mainnet | bytecode pinned and difftested; proofs open | `qedefi/Examples/WeirdERC20/` |
 | Synthetix `StakingRewards` | model | solvency at every time and no dilution; bytecode open | `qedefi/QEDefi/Staking/` |
+| Aave V3 Pool (v3.7) | model | ray math exact, indexes monotone, reserve backing within half a wei per accrual, health-factor guarantees; a proved counterexample to exact backing, and the live reserves' backing gap traced to its cause | `qedefi/QEDefi/Aave/` |
 
 **ERC-4626, the headline.** For the deployed bytecode of Solmate `MockERC4626` over `MockERC20`,
 with any immutables (`qedefi/Examples/Solmate/ERC4626/LowGas/AnyGas.lean`):
@@ -129,11 +131,12 @@ EvmLogic/       program logic: step lemmas, frame-local WP logic, calls, Solidit
                 interpretation, tactics
 EvmTest/        #guard unit tests
 Conformance/    fixture runner (lake exe conform)
-Snapshot/       deployed contracts at a pinned block, fetched once, replayed offline (lake exe snapshot)
+Snapshot/       deployed contracts at a pinned block, fetched once, replayed offline; transaction
+                sequences against an anvil fork (lake exe snapshot)
 qedefi/
-  QEDefi/       models and their theorems: Math, ERC20, ERC4626, Actor (access control),
+  QEDefi/       models and their theorems: Math, ERC20, ERC4626, Aave, Actor (access control),
                 Vesting, Staking, Trace (incl. time-indexed lifting)
-  Examples/     verified contracts (Solmate, OpenZeppelin, Actor, Safe, Reentrancy, Time),
+  Examples/     verified contracts (Solmate, OpenZeppelin, Actor, Safe, Reentrancy, Time, AaveV3),
                 mainnet token data, Basic demos, Differential (lake exe difftest)
   QEDefiTest/   #guard tests of the contract data
 contracts/      pinned Solidity sources, build configuration, artifacts, mainnet bytecode
@@ -162,6 +165,8 @@ tests are the evidence; [docs/architecture.md](docs/architecture.md) maps each d
 | [docs/proving.md](docs/proving.md) | writing proofs with `EvmLogic`: tactics, untrusted callees and reentrancy, time and multiple blocks, pitfalls, performance |
 | [docs/erc4626/](docs/erc4626/README.md) | the ERC-4626 case study: theorems, hypotheses, findings, property catalogue |
 | [docs/tokens.md](docs/tokens.md) | ERC-20 targets, their quirks, the variant model and integration theorems |
+| [docs/aave-v3.md](docs/aave-v3.md) | Aave V3 mainnet targets and what is proved on their bytecode |
+| [docs/aave-v3-model.md](docs/aave-v3-model.md) | the Aave v3.7 accounting model: theorems, findings, scope |
 | [docs/access-control.md](docs/access-control.md) | the actor model: who can cause an effect |
 | [docs/actor-bytecode.md](docs/actor-bytecode.md) | access control on bytecode: relays, the proxy and Safe upgrade guards |
 | [contracts/README.md](contracts/README.md) | pinned targets, build, deployments, snapshots, differential testing |
@@ -171,4 +176,4 @@ tests are the evidence; [docs/architecture.md](docs/architecture.md) maps each d
 
 Apache-2.0 ([LICENSE](LICENSE)). Vendored and fetched contract sources under `contracts/` keep
 their own licenses (Solmate AGPL-3.0-only, OpenZeppelin and Solady MIT, mainnet sources as
-published); they are inputs to the build, not part of the Lean libraries.
+published, among them Aave's BUSL-1.1); they are inputs to the build, not part of the Lean libraries.

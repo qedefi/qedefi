@@ -1,0 +1,9 @@
+# Layout validation of VariableDebtTokenProxy (InitializableImmutableAdminUpgradeabilityProxy) (own storage; getters called from the admin) at 0xeA51d7853EEFb32b6ee06b1C12E6dcCA88Be0fFE, block 26243102 (0xe693119359426ae5d99800942599b05bedaa70e2419b934885764735301cb623)
+# slot values via eth_getStorageAt, getter values via eth_call, both at that block;
+# value = the 32-byte slot, decoded = the field at [offset, offset+size) from the low-order end
+# mapping slots: m[k] at keccak256(pad32(k) ++ pad32(slot)); nested: keccak256(pad32(k2) ++ m[k1])
+
+OK   implementation (EIP-1967 slot) [off 0, 20 B] slot=0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc  value=0x000000000000000000000000b27c52c7f84819e3157993489741cb60786ae330  decoded=0xb27c52c7f84819e3157993489741cb60786ae330  getter implementation() from admin=0xb27c52c7f84819e3157993489741cb60786ae330
+OK   _admin (immutable, not in storage)           slot=-  value=-  decoded=0x64b761d848206f447fe2dd461b0c635ec39ebb27  getter admin() from admin=0x64b761d848206f447fe2dd461b0c635ec39ebb27
+
+# 2 OK, 0 CMP (no getter: checked by hand), 0 FAIL

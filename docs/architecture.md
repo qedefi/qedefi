@@ -77,8 +77,8 @@ header roots.
 | | `EvmTest` | `EvmLean`, `EvmLogic`, `Conformance.Hex` | `#guard` unit tests (`lake test`) |
 | | `Conformance` | `EvmLean` | `lake exe conform` |
 | | `Snapshot` | `EvmLean`, `Conformance.Hex` | `lake exe snapshot`: deployed contracts at a pinned block ([contracts/README.md](../contracts/README.md#snapshots)) |
-| `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | models and their theorems: `Math` (`uint256` `mulDiv`), `ERC20` ledgers and variants, `ERC4626` vaults, `Actor` (access control), `Trace` lifting |
-| | `Examples` | `QEDefi` | `Basic` demos; verified `Solmate`, `OpenZeppelin`, `Actor` and `Safe` targets; mainnet token data; `Differential` (`lake exe difftest`) |
+| `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | models and their theorems: `Math` (`uint256` `mulDiv`), `ERC20` ledgers and variants, `ERC4626` vaults, `Aave` (v3.7 accounting), `Actor` (access control), `Vesting`, `Staking`, `Trace` lifting (also time-indexed) |
+| | `Examples` | `QEDefi` | `Basic` demos; verified `Solmate`, `OpenZeppelin`, `Actor`, `Safe`, `Reentrancy`, `Time` and `AaveV3` targets; mainnet token data; `Differential` (`lake exe difftest`) |
 | | `QEDefiTest` | `Examples` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
 
 Rules: the root package never depends on Mathlib or on `qedefi/`; `EvmLean` never imports

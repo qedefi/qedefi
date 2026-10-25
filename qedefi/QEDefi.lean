@@ -1,3 +1,12 @@
+import QEDefi.Aave.Accrual
+import QEDefi.Aave.Frame
+import QEDefi.Aave.Health
+import QEDefi.Aave.Invariants
+import QEDefi.Aave.MathUtils
+import QEDefi.Aave.Pool
+import QEDefi.Aave.Reserve
+import QEDefi.Aave.ScaledToken
+import QEDefi.Aave.WadRayMath
 import QEDefi.Actor.Action
 import QEDefi.Actor.Config
 import QEDefi.Actor.Delay
@@ -41,7 +50,8 @@ import QEDefi.Vesting.Model
 /-!
 # QEDefi
 
-Reusable DeFi verification kits (Mathlib): `uint256` arithmetic (`QEDefi.Math`), ERC-20 ledgers
+Reusable DeFi verification kits (Mathlib): `uint256` arithmetic (`QEDefi.Math`), the Aave v3.7
+Pool's core accounting with its invariants (`QEDefi.Aave`), ERC-20 ledgers
 and their word-level representation (`QEDefi.ERC20`), the Solmate and OpenZeppelin ERC-4626
 vault models with their properties (`QEDefi.ERC4626`), EVM-independent lifting of per-call
 refinement to traces (`QEDefi.Trace`), and the actor model: who can cause an effect, through

@@ -86,8 +86,12 @@ Each of these is a self-contained piece of work; the documents linked give the d
 - **Actor model to bytecode**: every capability a transaction exercises is derivable from its
   keys, for multi-contract systems ([docs/actor-bytecode.md](docs/actor-bytecode.md#7-connecting-to-qedefiactorderives)).
 - **Safe with modules and guards**, and contract owners as further relays.
-- **Proxies** (USDC, UUPS, beacons): a `WP.delegatecall` callee-summary rule and the proxy's
-  dispatch theorem.
+- **Proxies** (USDC, UUPS, beacons): the dispatch theorem of each proxy kind, following Aave's
+  aToken proxy (`forward_halts`, composed with the implementation's summaries by
+  `WP.delegatecall`).
+- **Aave V3 end to end**: `FrameOk` for the remaining AToken functions, then the Pool and its
+  libraries against `QEDefi.Aave`, so that reserve backing holds on the deployed bytecode
+  ([docs/aave-v3.md](docs/aave-v3.md#open-work)).
 - **Snapshots**: evaluate the actor configuration from fetched chain state and report who
   controls each effect of a deployed system at a block.
 - **The transaction layer**: prove, rather than state, that nonce, gas purchase and refund

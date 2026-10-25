@@ -153,7 +153,8 @@ declare -A LEANDIR=(
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
 # (its directory mirrors the namespace).
 MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy GUSD GUSDImpl GUSDStore YAMV2 LEND ZRX SafeSingleton
-  SafeProxy)
+  SafeProxy AToken ATokenProxy VariableDebtToken VariableDebtTokenProxy Pool PoolProxy
+  InterestRateStrategy PoolLogic SupplyLogic BorrowLogic FlashLoanLogic LiquidationLogic)
 declare -A MNS=(
   [WETH9]="Examples.WETH9.Contracts"
   [USDT]="Examples.WeirdERC20.USDT.Contracts"
@@ -170,6 +171,10 @@ declare -A MNS=(
   [SafeSingleton]="Examples.Safe.Contracts"
   [SafeProxy]="Examples.Safe.Contracts"
 )
+for t in AToken ATokenProxy VariableDebtToken VariableDebtTokenProxy Pool PoolProxy InterestRateStrategy \
+    PoolLogic SupplyLogic BorrowLogic FlashLoanLogic LiquidationLogic; do
+  MNS[$t]="Examples.AaveV3.Contracts"
+done
 # Mainnet targets whose runtime code is also rebuilt here from the verified source, with the
 # compiler and settings Sourcify records (svm layout, ~/.svm/<version>/solc-<version>), and
 # checked byte for byte (metadata included): Safe v1.5.0 (safe-global/safe-smart-account tag
@@ -732,6 +737,14 @@ for t in "${MAINNET[@]}"; do
   MADDR[$t]=$(jq -r .address "$d/meta.json")
   MSIZE[$t]=$(( ${#code} / 2 ))
   abi_table "$d/abi.json" function sig > "$d/methodIdentifiers.json"
+  # Library functions with storage-pointer parameters are not in the ABI, and their selectors
+  # hash solc's internal signatures (`mapping(address => DataTypes.ReserveData) storage`, …):
+  # hand-copied from solc's methodIdentifiers into librarySelectors.json, checked below like
+  # the others.
+  if [ -f "$d/librarySelectors.json" ]; then
+    jq -S -s '.[0] + .[1]' "$d/methodIdentifiers.json" "$d/librarySelectors.json" > "$TMP/sel.json"
+    mv "$TMP/sel.json" "$d/methodIdentifiers.json"
+  fi
   abi_table "$d/abi.json" event keccak > "$d/events.json"
   abi_table "$d/abi.json" error sig > "$d/errors.json"
   # Every ABI selector must be pushed by the dispatcher (PUSHn of the selector without its
@@ -754,6 +767,75 @@ for t in "${MAINNET[@]}"; do
     genesis+="${entries[$i]}"
   done
 
+  # Immutables: names hand-written in immutables.json (AST id → name), offsets from Sourcify's
+  # bytecode transformations, values read from the code (the same word at every offset).
+  # Without immutables.json they are not tracked (the code is installed as deployed).
+  imm_lean="/-- Not tracked for mainnet code: it is installed as deployed, immutables (if any) filled in. -/
+def immutableRefs : List ImmutableRef := []"
+  if [ -f "$d/immutables.json" ]; then
+    imms=$(jq -c --slurpfile s "$d/sourcify.json" '[.[] as $i | {name: $i.name, id: $i.id,
+      offsets: ([$s[0].runtimeTransformations[] | select(.reason == "immutable" and .id == $i.id) | .offset] | sort)}]' \
+      "$d/immutables.json")
+    [ "$(jq -c '[.[].id] | sort' <<<"$imms")" = "$(jq -c '[.runtimeTransformations[] | select(.reason == "immutable") | .id] | unique' "$d/sourcify.json")" ] \
+      || { echo "error: $t: immutables.json does not name exactly Sourcify's immutables" >&2; exit 1; }
+    refs=(); vals=()
+    while read -r name offs; do
+      v=""
+      for o in $offs; do
+        w=${code:$((o*2)):64}
+        [ -z "$v" ] && v=$w
+        [ "$w" = "$v" ] || { echo "error: $t: immutable $name differs between offsets" >&2; exit 1; }
+      done
+      refs+=("  { name := \"$name\", offsets := [$(printf '%s' "$offs" | sed 's/ /, /g')] }")
+      vals+=("  (\"$name\", 0x$v)")
+    done < <(jq -r '.[] | "\(.name) \(.offsets | map(tostring) | join(" "))"' <<<"$imms")
+    imm_lean="/-- The immutables of the deployed code: names (\`immutables.json\`) and byte offsets of their 32-byte
+slots (Sourcify's bytecode transformations). Their mainnet values are part of \`runtimeCode\`. -/
+def immutableRefs : List ImmutableRef := [
+$(IFS=$'\n'; printf '%s' "${refs[*]}" | sed '$!s/$/,/')
+]
+
+/-- The value of each immutable in \`runtimeCode\` (the same word at each of its offsets). -/
+def immutableValues : List (String × Word) := [
+$(IFS=$'\n'; printf '%s' "${vals[*]}" | sed '$!s/$/,/')
+]"
+  fi
+  # Linked external libraries (PUSH20 <library> before a DELEGATECALL): from Sourcify's
+  # transformations, else hand-written in links.json (name, offsets); the address is read from
+  # the code and must follow a PUSH20 at every offset.
+  links=""
+  if [ -f "$d/sourcify.json" ]; then
+    links=$(jq -c '[.runtimeTransformations // [] | .[] | select(.reason == "library")] | group_by(.id)
+      | map({name: (.[0].id | split(":") | last), offsets: (map(.offset) | sort)})' "$d/sourcify.json")
+  fi
+  if [ -f "$d/links.json" ]; then links=$(jq -c . "$d/links.json"); fi
+  link_lean=""
+  if [ -n "$links" ] && [ "$links" != "[]" ]; then
+    lrows=()
+    while read -r name offs; do
+      a=""
+      for o in $offs; do
+        [ "${code:$((o*2-2)):2}" = 73 ] || { echo "error: $t: no PUSH20 before library $name at $o" >&2; exit 1; }
+        w=${code:$((o*2)):40}
+        [ -z "$a" ] && a=$w
+        [ "$w" = "$a" ] || { echo "error: $t: library $name has two addresses" >&2; exit 1; }
+      done
+      lrows+=("  (\"$name\", $(cast to-check-sum-address "0x$a"), [$(printf '%s' "$offs" | sed 's/ /, /g')])")
+    done < <(jq -r '.[] | "\(.name) \(.offsets | map(tostring) | join(" "))"' <<<"$links")
+    link_lean="
+/-- Linked external libraries: name, address, byte offsets of the 20-byte address (each after a
+\`PUSH20\`; the code \`DELEGATECALL\`s the library there). The libraries are separate mainnet targets. -/
+def linkedLibraries : List (String × Address × List Nat) := [
+$(IFS=$'\n'; printf '%s' "${lrows[*]}" | sed '$!s/$/,/')
+]
+"
+  fi
+  if [ -f "$d/sourcify.json" ]; then
+    verif="Sourcify runtime match: $(jq -r .sourcify.runtimeMatch "$d/meta.json")"
+  else
+    verif="Blockscout: $(jq -r 'if .blockscout.fullyVerified then "full" else "partial" end' "$d/meta.json") verification"
+  fi
+
   ns="${MNS[$t]}"
   dir="$ROOT/qedefi/$(printf '%s' "$ns" | tr . /)"
   mkdir -p "$dir"
@@ -771,7 +853,7 @@ Generated by \`scripts/build-contracts.sh\` from \`contracts/mainnet/$t/\`: the 
 of \`$(jq -r .contractName "$d/meta.json")\` at \`${MADDR[$t]}\` on Ethereum mainnet, read
 at block $(jq -r .block "$d/meta.json") by \`scripts/fetch-mainnet.sh\`. Verified source in
 \`contracts/mainnet/$t/source/\` (solc $(jq -r .compiler "$d/meta.json"), optimizer $opt;
-Sourcify runtime match: $(jq -r .sourcify.runtimeMatch "$d/meta.json")). Do not edit; rerun the script.
+$verif). Do not edit; rerun the script.
 
 There is no creation code: tests and proofs start from \`runtimeCode\` installed at
 \`address\` with storage \`genesisStorage\` (the constructor's state with test parameters,
@@ -798,9 +880,8 @@ def codeHash : Word := $hash
 /-- The mainnet block at which \`runtimeCode\` was read. -/
 def fetchBlock : Nat := $(jq -r .block "$d/meta.json")
 
-/-- Not tracked for mainnet code: it is installed as deployed, immutables (if any) filled in. -/
-def immutableRefs : List ImmutableRef := []
-
+$imm_lean
+$link_lean
 /-- Storage of the test deployment as \`(slot, value)\` pairs; every other slot is zero. -/
 def genesisStorage : List (Word × Word) := [
 $genesis

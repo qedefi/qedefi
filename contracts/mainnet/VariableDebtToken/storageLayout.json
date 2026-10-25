@@ -1,0 +1,227 @@
+{
+  "note": "Hand-derived from source/ by C3 linearization (VariableDebtTokenInstance \u2192 VariableDebtToken is DebtTokenBase, ScaledBalanceTokenBase, IVariableDebtToken; DebtTokenBase is VersionedInitializable, EIP712Base, ICreditDelegationToken): VersionedInitializable 0\u201351, EIP712Base 52\u201353, DebtTokenBase 54\u201355, IncentivizedERC20 56\u201361, VariableDebtToken 62\u201365; equal to solc 0.8.27's storageLayout output for the verified standard-JSON input (AST ids dropped) and checked against the variableDebtEthWETH proxy's storage (layout-check.txt). POOL, REWARDS_CONTROLLER and _chainId are immutables.",
+  "storage": [
+    {
+      "label": "lastInitializedRevision",
+      "slot": "0",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "initializing",
+      "slot": "1",
+      "offset": 0,
+      "type": "t_bool",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "______gap",
+      "slot": "2",
+      "offset": 0,
+      "type": "t_array(t_uint256)50_storage",
+      "contract": "VersionedInitializable"
+    },
+    {
+      "label": "_nonces",
+      "slot": "52",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_uint256)",
+      "contract": "EIP712Base"
+    },
+    {
+      "label": "_domainSeparator",
+      "slot": "53",
+      "offset": 0,
+      "type": "t_bytes32",
+      "contract": "EIP712Base"
+    },
+    {
+      "label": "_borrowAllowances",
+      "slot": "54",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "DebtTokenBase"
+    },
+    {
+      "label": "_underlyingAsset",
+      "slot": "55",
+      "offset": 0,
+      "type": "t_address",
+      "contract": "DebtTokenBase"
+    },
+    {
+      "label": "_userState",
+      "slot": "56",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_struct(UserState))",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_allowances",
+      "slot": "57",
+      "offset": 0,
+      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_totalSupply",
+      "slot": "58",
+      "offset": 0,
+      "type": "t_uint256",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_name",
+      "slot": "59",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_symbol",
+      "slot": "60",
+      "offset": 0,
+      "type": "t_string_storage",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "_decimals",
+      "slot": "61",
+      "offset": 0,
+      "type": "t_uint8",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "__deprecated_incentivesController",
+      "slot": "61",
+      "offset": 1,
+      "type": "t_contract(IAaveIncentivesController)",
+      "contract": "IncentivizedERC20"
+    },
+    {
+      "label": "__unusedGap",
+      "slot": "62",
+      "offset": 0,
+      "type": "t_array(t_uint256)3_storage",
+      "contract": "VariableDebtToken"
+    },
+    {
+      "label": "__DEPRECATED_AND_NEVER_TO_BE_REUSED",
+      "slot": "65",
+      "offset": 0,
+      "type": "t_bytes32",
+      "contract": "VariableDebtToken"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_array(t_uint256)3_storage": {
+      "encoding": "inplace",
+      "label": "uint256[3]",
+      "numberOfBytes": "96",
+      "base": "t_uint256"
+    },
+    "t_array(t_uint256)50_storage": {
+      "encoding": "inplace",
+      "label": "uint256[50]",
+      "numberOfBytes": "1600",
+      "base": "t_uint256"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_contract(IAaveIncentivesController)": {
+      "encoding": "inplace",
+      "label": "contract IAaveIncentivesController",
+      "numberOfBytes": "20"
+    },
+    "t_enum(DelegationMode)": {
+      "encoding": "inplace",
+      "label": "enum DelegationMode",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_struct(UserState))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct IncentivizedERC20.UserState)",
+      "numberOfBytes": "32",
+      "value": "t_struct(UserState)"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_string_storage": {
+      "encoding": "bytes",
+      "label": "string",
+      "numberOfBytes": "32"
+    },
+    "t_struct(UserState)": {
+      "encoding": "inplace",
+      "label": "struct IncentivizedERC20.UserState",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "label": "balance",
+          "slot": "0",
+          "offset": 0,
+          "type": "t_uint120"
+        },
+        {
+          "label": "delegationMode",
+          "slot": "0",
+          "offset": 15,
+          "type": "t_enum(DelegationMode)"
+        },
+        {
+          "label": "additionalData",
+          "slot": "0",
+          "offset": 16,
+          "type": "t_uint128"
+        }
+      ]
+    },
+    "t_uint120": {
+      "encoding": "inplace",
+      "label": "uint120",
+      "numberOfBytes": "15"
+    },
+    "t_uint128": {
+      "encoding": "inplace",
+      "label": "uint128",
+      "numberOfBytes": "16"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint8": {
+      "encoding": "inplace",
+      "label": "uint8",
+      "numberOfBytes": "1"
+    }
+  }
+}

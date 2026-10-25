@@ -1,0 +1,7 @@
+{
+  "admin()": "f851a440",
+  "implementation()": "5c60da1b",
+  "initialize(address,bytes)": "d1f57894",
+  "upgradeTo(address)": "3659cfe6",
+  "upgradeToAndCall(address,bytes)": "4f1ef286"
+}

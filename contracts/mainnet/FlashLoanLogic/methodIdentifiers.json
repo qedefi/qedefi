@@ -1,0 +1,4 @@
+{
+  "executeFlashLoan(mapping(address => DataTypes.ReserveData) storage,mapping(uint256 => address) storage,mapping(uint8 => DataTypes.EModeCategory) storage,DataTypes.UserConfigurationMap storage,DataTypes.FlashloanParams)": "2e7263ea",
+  "executeFlashLoanSimple(DataTypes.ReserveData storage,DataTypes.FlashloanSimpleParams)": "a1fe0e8d"
+}

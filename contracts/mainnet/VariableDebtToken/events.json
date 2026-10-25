@@ -1,0 +1,8 @@
+{
+  "Approval(address,address,uint256)": "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
+  "BorrowAllowanceDelegated(address,address,address,uint256)": "0xda919360433220e13b51e8c211e490d148e61a3bd53de8c097194e458b97f3e1",
+  "Burn(address,address,uint256,uint256,uint256)": "0x4cf25bc1d991c17529c25213d3cc0cda295eeaad5f13f361969b12ea48015f90",
+  "Initialized(address,address,address,uint8,string,string,bytes)": "0x40251fbfb6656cfa65a00d7879029fec1fad21d28fdcff2f4f68f52795b74f2c",
+  "Mint(address,address,uint256,uint256,uint256)": "0x458f5fa412d0f69b08dd84872b0215675cc67bc1d5b6fd93300a1c3878b86196",
+  "Transfer(address,address,uint256)": "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+}

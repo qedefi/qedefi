@@ -1,24 +1,35 @@
 import Snapshot.Check
-import Snapshot.Fetch
+import Snapshot.Fork
 
 /-!
 # `lake exe snapshot`
 
 ```
 lake exe snapshot fetch <dir> [--rpc URL]   read <dir>/targets.json, fetch once, save
-lake exe snapshot check <dir> [--verbose]   replay the recorded calls offline
+lake exe snapshot check <dir> [--verbose]   replay the recorded calls (and sequence) offline
+lake exe snapshot fork <dir> [--rpc URL] [--anvil URL | --port N]
+                                            run the sequence on an anvil fork and here, compare
 ```
 
 `fetch` needs network access. Without `--rpc` it uses Alchemy with the key `ALCHEMY_KEY`
 from the environment, else from `.env` in the working directory (`KEY=value` lines, `#`
 comments; gitignored), and the network of the targets' chain id. The URL is never printed
-or saved. `check` is offline; its exit code is non-zero iff some call fails.
+or saved. `check` is offline; its exit code is non-zero iff some call fails. `fork` needs the
+network and Foundry's `anvil` (spawned forked at the snapshot block unless `--anvil` names a
+fresh one); its exit code is non-zero iff some step differs.
 -/
 
 open Snapshot
 
 def usage : String :=
-  "usage: snapshot fetch <dir> [--rpc URL]\n       snapshot check <dir> [--verbose]"
+  "usage: snapshot fetch <dir> [--rpc URL]\n       snapshot check <dir> [--verbose]\n       \
+  snapshot fork <dir> [--rpc URL] [--anvil URL | --port N]"
+
+/-- The value after `flag` in `opts`. -/
+def optVal (opts : List String) (flag : String) : Option String :=
+  match opts.dropWhile (· != flag) with
+  | _ :: v :: _ => some v
+  | _ => none
 
 /-- The value of `name` in a `.env` file: `KEY=value` lines (optional `export `, quotes
 around the value), `#` comments. -/
@@ -61,6 +72,11 @@ def main (args : List String) : IO UInt32 := do
       let chainId ← ofExcept "targets.json" (getNatField t "chainId")
       fetchSnapshot dir (← rpcFor explicit chainId)
       let failures ← checkSnapshot dir
+      return if failures = 0 then 0 else 1
+    | "fork" :: dir :: opts =>
+      let s ← State.load dir
+      let port := ((optVal opts "--port").bind String.toNat?).getD 18645
+      let failures ← forkSequence dir (← rpcFor (optVal opts "--rpc") s.chainId) (optVal opts "--anvil") port
       return if failures = 0 then 0 else 1
     | ["check", dir] => return if (← checkSnapshot dir) = 0 then 0 else 1
     | ["check", dir, "--verbose"] => return if (← checkSnapshot dir true) = 0 then 0 else 1

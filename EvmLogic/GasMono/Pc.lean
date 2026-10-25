@@ -6,8 +6,8 @@ import EvmLogic.GasMono.Interface
 
 The lockstep carries the invariant `PcOk`: the pc is an instruction boundary below the region
 end. `exec_pc` gives the pc after every instruction and `pcOk_of_exec` preserves `PcOk`.
-`CallsFed` (every `CALL`/`CREATE`-family byte follows a `GAS`) with `GasFeedsCall` makes every
-call a `CALL`/`STATICCALL` returning to a point of `callReturnPoints` (`callsFed_call`).
+`CallsFed` (every `CALL`/`CREATE`-family byte follows a `GAS`) with `GasFeedsCall` makes every call
+a `CALL`/`STATICCALL`/`DELEGATECALL` returning to a point of `callReturnPoints` (`callsFed_call`).
 -/
 
 namespace EvmLogic.GasMono
@@ -282,10 +282,11 @@ theorem pcOk_of_exec {code : ByteArray} {n : Nat} (hreg : RegionOk code n) {m m'
     · right; rw [← hj]; exact h1
 
 theorem pcOk_return {code : ByteArray} {n pc : Nat} (hreg : RegionOk code n)
-    (hpc : PcOk code n pc) (hb : Bytes.getD code pc = 0xf1 ∨ Bytes.getD code pc = 0xfa) :
+    (hpc : PcOk code n pc)
+    (hb : Bytes.getD code pc = 0xf1 ∨ Bytes.getD code pc = 0xfa ∨ Bytes.getD code pc = 0xf4) :
     PcOk code n (pc + 1) := by
-  refine pcOk_next hreg hpc (by rcases hb with h | h <;> rw [h] <;> decide) (.inl ?_)
-  rcases hb with h | h <;> simp only [nextPc, immSize, h] <;> rfl
+  refine pcOk_next hreg hpc (by rcases hb with h | h | h <;> rw [h] <;> decide) (.inl ?_)
+  rcases hb with h | h | h <;> simp only [nextPc, immSize, h] <;> rfl
 
 /-! ## Calls fed by `GAS` -/
 
@@ -304,12 +305,13 @@ def CallsFed (code : ByteArray) (n : Nat) : Prop :=
 instance (code : ByteArray) (n : Nat) : Decidable (CallsFed code n) :=
   inferInstanceAs (Decidable (∀ q ∈ boundaries code, _))
 
-/-- **A call in the region** is a `CALL` or `STATICCALL` returning to a point of
+/-- **A call in the region** is a `CALL`, `STATICCALL` or `DELEGATECALL` returning to a point of
 `callReturnPoints`. -/
 theorem callsFed_call {code : ByteArray} {n q : Nat} (hfeed : GasFeedsCall code n)
     (hcf : CallsFed code n) (hq : q ∈ boundaries code) (hqn : q < n)
     (hb : IsCallByte (Bytes.getD code q)) :
-    (Bytes.getD code q = 0xf1 ∨ Bytes.getD code q = 0xfa) ∧ q + 1 ∈ callReturnPoints code n := by
+    (Bytes.getD code q = 0xf1 ∨ Bytes.getD code q = 0xfa ∨ Bytes.getD code q = 0xf4) ∧
+      q + 1 ∈ callReturnPoints code n := by
   obtain ⟨h0, hm, hg⟩ := hcf q hq hqn hb
   have := hfeed (q - 1) hm (by omega) hg
   rw [show q - 1 + 1 = q by omega] at this

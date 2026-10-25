@@ -203,6 +203,19 @@ theorem bind_mono (h : WP m Q₁ H₁) (hH : ∀ mf o, SameFrame m mf → H₁ m
     (k : ∀ m', SameFrame m m' → Q₁ m' → WP m' Q H) : WP m Q H :=
   (h.mono (fun _ _ h => h) hH).bind k
 
+/-- **Join**: paths that reach the same program point share its continuation. State the tail
+once, for every machine described by `P` (e.g. a family `F a` of machine literals at the join
+pc, with the fields that differ between the paths abstracted: memory, gas, substate), and close
+each path by reaching `P`. See `docs/proving.md` (Join points). -/
+theorem join {P : Machine → Prop} (tail : ∀ m', P m' → WP m' Q H) (h : WP m P H) : WP m Q H :=
+  h.bind fun m' _ hp => tail m' hp
+
+/-- `join` for a family of machines: the tail is proved for every `F a` with `R a`; a path
+ends at `F a` (by `rfl` on the machine literal) with `R a`. -/
+theorem join_at {α : Sort _} (F : α → Machine) (R : α → Prop)
+    (tail : ∀ a, R a → WP (F a) Q H) {a : α} (ha : R a) (he : m = F a) : WP m Q H :=
+  he ▸ tail a ha
+
 /-- A fragment that never ends the frame can be used under any halting postcondition. -/
 theorem of_false (h : WP m Q (fun _ _ => False)) : WP m Q H :=
   h.mono (fun _ _ h => h) (fun _ _ _ h => h.elim)
