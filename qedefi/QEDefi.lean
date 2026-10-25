@@ -25,12 +25,14 @@ import QEDefi.ERC20.Spec.Bytecode
 import QEDefi.ERC20.Spec.Laws
 import QEDefi.ERC20.Spec.Model
 import QEDefi.ERC20.Spec.Storage
+import QEDefi.ERC20.Spec.TopLevel
 import QEDefi.ERC20.Token
 import QEDefi.ERC20.Variant
 import QEDefi.ERC20.VariantDeprecation
 import QEDefi.ERC20.VariantExtras
 import QEDefi.ERC20.VariantProps
 import QEDefi.ERC4626.Agree
+import QEDefi.ERC4626.AssetModel
 import QEDefi.ERC4626.AssetVariants
 import QEDefi.ERC4626.Events
 import QEDefi.ERC4626.Inflation
