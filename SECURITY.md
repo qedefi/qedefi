@@ -5,7 +5,7 @@ vulnerability: a statement that turns out false for mainnet bytecode, or a count
 while proving.
 
 **Do not open a public issue or pull request for it.** Report it privately through
-[GitHub's private vulnerability reporting](https://github.com/totomanov/qedefi/security/advisories/new)
+[GitHub's private vulnerability reporting](https://github.com/qedefi/qedefi/security/advisories/new)
 for this repository. Include the contract, its address and block, and the Lean statement or the
 transaction that shows the problem. We coordinate disclosure with the contract's maintainers
 (through their own security contact or bug-bounty program) before anything is published.

@@ -90,7 +90,7 @@ Lake clones the repository and builds the package in `subDir`; its `require evm-
 ```toml
 [[require]]
 name = "qedefi"
-git = "https://github.com/totomanov/qedefi"
+git = "https://github.com/qedefi/qedefi"
 rev = "main"
 subDir = "qedefi"
 ```

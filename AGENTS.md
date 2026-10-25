@@ -103,7 +103,7 @@ first: the checklist of tactics, pitfalls and performance fixes, written for age
 People contributing compute paste this into their agent:
 
 ```text
-Clone https://github.com/totomanov/qedefi and follow AGENTS.md: pick one open problem nobody has
+Clone https://github.com/qedefi/qedefi and follow AGENTS.md: pick one open problem nobody has
 claimed, claim it with a draft pull request, and work until it is proved with
 scripts/check-trust.sh passing or you run out of budget. Push what you have either way.
 Never add sorry or axioms, never weaken a statement.
