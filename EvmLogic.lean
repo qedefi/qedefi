@@ -29,6 +29,7 @@ import EvmLogic.Program.Logic
 import EvmLogic.Program.Nested.Deleg
 import EvmLogic.Program.Nested.Frame
 import EvmLogic.Program.Nested.Gas
+import EvmLogic.Program.Nested.GuardDeleg
 import EvmLogic.Program.Nested.Guard
 import EvmLogic.Program.Nested.GuardTrace
 import EvmLogic.Program.Nested.Idle

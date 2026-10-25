@@ -180,11 +180,12 @@ theorem delegFrame_delegate {w : World} {a : Address} {c : ByteArray}
 
 /-! ## All authorizations -/
 
-/-- `validateAuthorization` accepts only an authority holding empty code or a designator, and
-only adds to the warm set. -/
+/-- `validateAuthorization` accepts only the signer of the authorization, holding empty code or
+a designator, and only adds to the warm set. -/
 theorem validateAuthorization_spec (crypto : Crypto) (chainId : Nat) (w : World)
     (warm : AddressSet) (auth : Authorization) :
-    (∀ a, (validateAuthorization crypto chainId w warm auth).1 = some a → Delegable (w.code a)) ∧
+    (∀ a, (validateAuthorization crypto chainId w warm auth).1 = some a →
+      Delegable (w.code a) ∧ recoverAuthority crypto auth = some a) ∧
       ∀ x, x ∈ warm → x ∈ (validateAuthorization crypto chainId w warm auth).2 := by
   unfold validateAuthorization
   split
@@ -193,7 +194,7 @@ theorem validateAuthorization_spec (crypto : Crypto) (chainId : Nat) (w : World)
   · exact ⟨fun _ h => (by cases h), fun _ h => h⟩
   split
   · exact ⟨fun _ h => (by cases h), fun _ h => h⟩
-  · rename_i authority _
+  · rename_i authority hrec
     dsimp only
     split
     · exact ⟨fun _ h => (by cases h), fun _ h => mem_insert_of_mem' h⟩
@@ -202,6 +203,7 @@ theorem validateAuthorization_spec (crypto : Crypto) (chainId : Nat) (w : World)
     · rename_i hcode _
       refine ⟨fun a h => ?_, fun _ h => mem_insert_of_mem' h⟩
       cases h
+      refine ⟨?_, hrec⟩
       simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true',
         not_and, Bool.not_eq_false] at hcode
       by_cases hs : (w.account authority).code.size = 0
@@ -223,9 +225,11 @@ theorem setDelegation_eq_foldl (crypto : Crypto) (chainId : Nat) (auths : List A
             else s.2.2)) (w, warm, 0) := rfl
 
 theorem setDelegation_foldl_spec (crypto : Crypto) (chainId : Nat) (Q : World → Prop)
-    (hstep : ∀ w a c, Q w → Delegable (w.code a) → DelegCode c →
+    (A : Address → Prop)
+    (hstep : ∀ w a c, Q w → A a → Delegable (w.code a) → DelegCode c →
       Q (incrementNonce (setCode w a c) a)) :
-    ∀ (auths : List Authorization) (s : World × AddressSet × Int), Q s.1 →
+    ∀ (auths : List Authorization) (s : World × AddressSet × Int),
+      (∀ auth ∈ auths, ∀ a, recoverAuthority crypto auth = some a → A a) → Q s.1 →
       Q (auths.foldl (fun (s : World × AddressSet × Int) auth =>
         match validateAuthorization crypto chainId s.1 s.2.1 auth with
         | (none, warm) => (s.1, warm, s.2.2)
@@ -244,8 +248,8 @@ theorem setDelegation_foldl_spec (crypto : Crypto) (chainId : Nat) (Q : World �
             if s.1.exists authority then
               s.2.2 + ((authPerEmptyAccount - refundAuthPerExistingAccount : Nat) : Int)
             else s.2.2)) s).2.1
-  | [], _, hq => ⟨hq, fun _ h => h⟩
-  | auth :: auths, s, hq => by
+  | [], _, _, hq => ⟨hq, fun _ h => h⟩
+  | auth :: auths, s, hA, hq => by
     rw [List.foldl_cons]
     have hv := validateAuthorization_spec crypto chainId s.1 s.2.1 auth
     have key : Q (match validateAuthorization crypto chainId s.1 s.2.1 auth with
@@ -271,12 +275,28 @@ theorem setDelegation_foldl_spec (crypto : Crypto) (chainId : Nat) (Q : World �
         | none => exact fun hv => ⟨hq, hv.2⟩
         | some a =>
           intro hv
-          refine ⟨hstep _ _ _ hq (hv.1 a rfl) ?_, hv.2⟩
+          refine ⟨hstep _ _ _ hq (hA auth (List.mem_cons_self ..) a (hv.1 a rfl).2)
+            (hv.1 a rfl).1 ?_, hv.2⟩
           split
           · exact .inl rfl
           · exact .inr ⟨_, rfl⟩
-    obtain ⟨h1, h2⟩ := setDelegation_foldl_spec crypto chainId Q hstep auths _ key.1
+    obtain ⟨h1, h2⟩ := setDelegation_foldl_spec crypto chainId Q A hstep auths _
+      (fun auth' h' => hA auth' (List.mem_cons_of_mem _ h')) key.1
     exact ⟨h1, fun x hx => h2 x (key.2 x hx)⟩
+
+/-- **Induction over the authorizations, by signer.** A world predicate closed under one
+authorization by a signer satisfying `A` holds after all of them, when every signer of the list
+satisfies `A`; the warm set only grows. -/
+theorem setDelegation_induct_by (crypto : Crypto) (chainId : Nat) (auths : List Authorization)
+    (Q : World → Prop) (A : Address → Prop)
+    (hA : ∀ auth ∈ auths, ∀ a, recoverAuthority crypto auth = some a → A a)
+    (hstep : ∀ w a c, Q w → A a → Delegable (w.code a) → DelegCode c →
+      Q (incrementNonce (setCode w a c) a))
+    {w : World} (hw : Q w) (warm : AddressSet) :
+    Q (setDelegation crypto chainId auths w warm).1 ∧
+      ∀ x, x ∈ warm → x ∈ (setDelegation crypto chainId auths w warm).2.1 := by
+  rw [setDelegation_eq_foldl]
+  exact setDelegation_foldl_spec crypto chainId Q A hstep auths (w, warm, 0) hA hw
 
 /-- **Induction over the authorizations.** A world predicate closed under one authorization
 holds after all of them; the warm set only grows. -/
@@ -286,9 +306,9 @@ theorem setDelegation_induct (crypto : Crypto) (chainId : Nat) (auths : List Aut
       Q (incrementNonce (setCode w a c) a))
     {w : World} (hw : Q w) (warm : AddressSet) :
     Q (setDelegation crypto chainId auths w warm).1 ∧
-      ∀ x, x ∈ warm → x ∈ (setDelegation crypto chainId auths w warm).2.1 := by
-  rw [setDelegation_eq_foldl]
-  exact setDelegation_foldl_spec crypto chainId Q hstep auths (w, warm, 0) hw
+      ∀ x, x ∈ warm → x ∈ (setDelegation crypto chainId auths w warm).2.1 :=
+  setDelegation_induct_by crypto chainId auths Q (fun _ => True) (fun _ _ _ _ => trivial)
+    (fun w a c hq _ => hstep w a c hq) hw warm
 
 /-- **The frame of `setDelegation`**: every balance is kept; an account is unchanged unless it
 held empty code or a designator, and then holds empty code or a designator; the warm set only
@@ -414,6 +434,19 @@ theorem applyTopLevelDelegation_world (ctx : Context) (isPre : Address → Bool)
       obtain ⟨w', warm', refund', code', he, hw'⟩ := hpre
       simp only [he]
       split <;> exact hw'
+
+/-- **Induction over the top-level delegation, by signer.** A world predicate closed under one
+authorization by a signer satisfying `A` holds of the delegated world, when every signer of the
+transaction's authorizations satisfies `A`. -/
+theorem applyTopLevelDelegation_induct_by (ctx : Context) (isPre : Address → Bool)
+    (msg : Message) (Q : World → Prop) (A : Address → Prop)
+    (hA : ∀ auth ∈ ctx.tx.authorizations, ∀ a, recoverAuthority ctx.crypto auth = some a → A a)
+    (hstep : ∀ w a c, Q w → A a → Delegable (w.code a) → DelegCode c →
+      Q (incrementNonce (setCode w a c) a))
+    {w : World} (hw : Q w) : Q (applyTopLevelDelegation ctx isPre w msg).1 := by
+  rcases applyTopLevelDelegation_world ctx isPre w msg with h | ⟨warm, h⟩ <;> rw [h]
+  · exact hw
+  · exact (setDelegation_induct_by _ _ _ Q A hA hstep hw warm).1
 
 /-- **Induction over the top-level delegation.** A world predicate closed under one
 authorization holds of the delegated world. -/
