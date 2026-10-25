@@ -37,6 +37,7 @@ import EvmLogic.Program.Nested.Deleg
 import EvmLogic.Program.Nested.Frame
 import EvmLogic.Program.Nested.Gas
 import EvmLogic.Program.Nested.GuardDeleg
+import EvmLogic.Program.Nested.GuardDelegWorld
 import EvmLogic.Program.Nested.Guard
 import EvmLogic.Program.Nested.GuardTrace
 import EvmLogic.Program.Nested.Idle
@@ -112,6 +113,8 @@ import EvmLogic.Tactic.WpStep
 import EvmLogic.Tx.Delete
 import EvmLogic.Tx.Exec
 import EvmLogic.Tx.Frame
+import EvmLogic.Tx.Guard
+import EvmLogic.Tx.IdleDel
 import EvmLogic.Tx.Lift
 import EvmLogic.Tx.Process
 import EvmLogic.Word
