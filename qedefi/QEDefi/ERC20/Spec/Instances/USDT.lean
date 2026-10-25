@@ -2,6 +2,7 @@ module
 
 public import QEDefi.ERC20.Spec.Model
 public import QEDefi.ERC20.VariantExtras
+public import QEDefi.ERC20.Spec.Instances.YAMV2
 
 /-!
 # USDT as a token model
@@ -21,6 +22,13 @@ rule `usdtEvents`, read off the verified source (`contracts/mainnet/USDT/source/
 * everything else emits no ERC-20 event (`issue`, `redeem`, `destroyBlackFunds`, the admin
   entry points emit their own events, which the bytecode spec of other entry points does not
   check; unknown selectors revert).
+
+The model's invariant is the supply bound as the actors see it (`YAMV2.SubSupply`:
+`Σ bal ≤ supply ≤ MAX` over the balances in the state) instead of the record's `Variant.WF`
+(`Σ bal = supply`), which holds only when the actors hold every token. It is what the bytecode
+needs: SafeMath's `add` on a recipient's balance (and on the owner's, for the fee and `issue`)
+cannot overflow, and `redeem`'s and `destroyBlackFunds`'s supply checks are implied by the
+balance checks.
 
 The deprecation forwarding (`deprecate(a)`, after which every entry point forwards to the token
 at `a`) is not part of this model: it is the two-contract system of `VariantDeprecation.lean`.
@@ -49,8 +57,10 @@ def usdtEvents (s : VState A) (caller : A) : Call A → List (Event A)
   | .other _ => []
   | .permit .. => []
 
-/-- **USDT as a token model.** -/
-def usdtModel : TokenModel (VState A) A (Op A) := (usdt : Variant A).model usdtEvents
+/-- **USDT as a token model**: `Variant.usdt` with USDT's events and the actors' supply bound
+as its invariant. -/
+def usdtModel : TokenModel (VState A) A (Op A) :=
+  { (usdt : Variant A).model usdtEvents with wf := YAMV2.SubSupply }
 
 @[simp] theorem usdtModel_call : (usdtModel : TokenModel (VState A) A (Op A)).call =
     (usdt : Variant A).call := rfl
@@ -62,7 +72,7 @@ def usdtModel : TokenModel (VState A) A (Op A) := (usdt : Variant A).model usdtE
     (usdt : Variant A).stepOp := rfl
 
 @[simp] theorem usdtModel_wf : (usdtModel : TokenModel (VState A) A (Op A)).wf =
-    (usdt : Variant A).WF := rfl
+    YAMV2.SubSupply := rfl
 
 @[simp] theorem usdtModel_balanceOf (s : VState A) (a : A) :
     (usdtModel : TokenModel (VState A) A (Op A)).balanceOf s a = s.bal a := rfl
