@@ -20,10 +20,12 @@ ZRX (`contracts/mainnet/ZRX/source/ZRXToken.sol`, solc 0.4.11, `UnlimitedAllowan
 
 The model is the record `variant` (`Variant.model variant events`, with no other operations
 and a strengthened invariant). The record has no receiver-overflow check; the invariant `wf`
-excludes the states where it matters: `Σ bal = supply` (`Variant.WF`) and `2 · supply ≤ MAX`.
-Then `bal dst + v ≤ supply ≤ MAX` for distinct accounts and `bal c + v ≤ 2 · bal c ≤ MAX` for a
+excludes the states where it matters: `Σ bal ≤ supply ≤ MAX` over the balances in the state
+(`SubSupply`: the actors' view of the supply invariant) and `2 · supply ≤ MAX`. Then
+`bal dst + v ≤ supply ≤ MAX` for distinct accounts and `bal c + v ≤ 2 · bal c ≤ MAX` for a
 self-transfer, so the check never fails. ZRX's supply is fixed at `10²⁷ < MAX / 2` by its
-constructor and nothing changes it, so every reachable state satisfies `wf`.
+constructor and nothing changes it, so every reachable state, seen by any set of actors with
+distinct rows, satisfies `wf`.
 
 `zrx_laws`: `ReturnsTrue` and `NoFalseReturn` fail (a short balance returns `false`),
 `RevertsOnly` fails (unknown selectors end in `INVALID`); the other laws hold.
@@ -56,10 +58,10 @@ def events (s : VState A) (caller : A) (c : Call A) : List (Event A) :=
     | .permit .. => []
   else []
 
-/-- The invariant: the supply invariant of the record, and `2 · supply ≤ MAX` (ZRX's fixed
+/-- The invariant: the supply bound as the actors see it (`SubSupply`), and `2 · supply ≤ MAX` (ZRX's fixed
 supply is `10²⁷`), under which the receiver-overflow check of `transfer`/`transferFrom` never
 fails. -/
-def WF (s : VState A) : Prop := (variant : Variant A).WF s ∧ 2 * s.supply ≤ MAX
+def WF (s : VState A) : Prop := SubSupply s ∧ 2 * s.supply ≤ MAX
 
 /-- **The ZRX model**: the record's calls with ZRX's events, no other operations, invariant
 `WF`. -/
@@ -133,7 +135,7 @@ theorem wfInvariant : (model : TokenModel (VState A) A Empty).WFInvariant := by
       | _ => simpa [model, Variant.model, plain.totalSupply] using this rfl h
     refine ⟨?_, hs ▸ hw.2⟩
     rcases step_or_same (V := (variant : Variant A)) h with h | rfl
-    · exact Variant.WF_step _ sane hw.1 h
+    · exact plain.subSupply_step hw.1 h
     · exact hw.1
   · intro s e; exact e.elim
 

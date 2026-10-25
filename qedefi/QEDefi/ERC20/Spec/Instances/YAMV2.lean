@@ -16,9 +16,10 @@ with 24 decimals and a `minter`:
   `allowance[src][caller]` by `v` through `_approve`, always (an allowance of `2²⁵⁶ − 1` is
   spent too), emitting `Transfer(src, dst, v)` and then `Approval(src, caller, allowance − v)`.
   Every failure reverts, so the order of the checks does not show in the outcome.
-* Recipient balances are added with SafeMath; under the supply invariant (`Σ bal = supply ≤
-  MAX`, `Variant.WF`) the addition cannot overflow (distinct accounts: `bal dst + v ≤ supply`;
-  a self-transfer subtracts first), so the record's `move` is exact in every `WF` state.
+* Recipient balances are added with SafeMath; under the supply bound (`Σ bal ≤ supply ≤ MAX`
+  over the balances in the state, `SubSupply`) the addition cannot overflow (distinct
+  accounts: `bal dst + v ≤ bal dst + bal src ≤ supply`, `SubSupply.credit_le`; a
+  self-transfer subtracts first), so the record's `move` is exact in every `wf` state.
 * Other entry points: `mint(dst, v)` by the minter (SafeMath on the supply, `dst ≠ 0`),
   `increaseAllowance`/`decreaseAllowance` (SafeMath `add`/`sub`, then `_approve`'s checks).
 
@@ -256,6 +257,71 @@ theorem Plain.allowanceAuth (hV : Plain V) (ev) : (Variant.model V ev).Allowance
     | permit o sp v live rec => simp [hV.step_permit] at h
   · exact absurd rfl hne
 
+/-! ## The supply bound as the actors see it -/
+
+/-- **The supply bound as the actors see it**: the balances in the state sum to at most the
+supply, which fits a word. A token abstraction reads only the actors' rows
+(`QEDefi.ERC20.Spec.TokenAbs.read crypto Act`), whose sum is at most the supply in every state
+the token reaches; `Σ bal = supply` (`Variant.WF`) holds only when the actors hold every
+token. -/
+def SubSupply (s : VState A) : Prop := total s.bal ≤ s.supply ∧ s.supply ≤ MAX
+
+omit [Zero A] in
+theorem add_le_total {f : A →₀ ℕ} {a b : A} (h : a ≠ b) : f a + f b ≤ total f := by
+  have h1 := total_sub_single (f := f) (a := a) (le_refl (f a))
+  have h2 := le_total (f - single a (f a)) b
+  rw [sub_single_apply, ite_eq_right h] at h2
+  have := le_total f a
+  omega
+
+omit [Zero A] in
+/-- Under the bound, crediting `v ≤ bal src` to another account cannot overflow a word. -/
+theorem SubSupply.credit_le {s : VState A} {src dst : A} {v : ℕ} (hw : SubSupply s)
+    (hne : src ≠ dst) (hv : v ≤ s.bal src) : s.bal dst + v ≤ MAX := by
+  have := add_le_total (f := s.bal) hne
+  have := hw.1; have := hw.2
+  omega
+
+theorem Plain.subSupply_step (hV : Plain V) {s s' : VState A} {c : A} {op : Call A}
+    (hw : SubSupply s) (h : V.step s c op = some s') : SubSupply s' := by
+  cases op with
+  | transfer d v =>
+    obtain ⟨h1, h2, h3, -⟩ := Plain.transfer (hV := hV) h
+    rw [SubSupply, h2, h3, Variant.total_move h1]; exact hw
+  | transferFrom src d v =>
+    obtain ⟨h1, h2, h3, -⟩ := Plain.transferFrom (hV := hV) h
+    rw [SubSupply, h2, h3, Variant.total_move h1]; exact hw
+  | approve sp v => rw [Plain.approve h]; exact hw
+  | other value => simp [hV.step_other] at h
+  | permit o sp v live rec => simp [hV.step_permit] at h
+
+theorem subSupply_mint (hr : V.rebasing = false) {s s' : VState A} {c d : A} {v : ℕ}
+    (hw : SubSupply s) (h : V.mint s c d v = some s') : SubSupply s' := by
+  unfold Variant.mint at h
+  split_ifs at h with h1 h2 h3 h4
+  cases h
+  simp only [SubSupply, Variant.units, hr, Bool.false_eq_true, ↓reduceIte, total_add_single]
+  have := hw.1
+  omega
+
+theorem subSupply_burn (hr : V.rebasing = false) {s s' : VState A} {c src : A} {v : ℕ}
+    (hw : SubSupply s) (h : V.burn s c src v = some s') : SubSupply s' := by
+  unfold Variant.burn at h
+  split_ifs at h with h1 h2 h3 h4
+  cases h
+  simp only [Variant.units, hr, Bool.false_eq_true, ↓reduceIte] at h4 ⊢
+  have h4' : v ≤ s.bal src := by omega
+  have := le_total s.bal src
+  simp only [SubSupply, total_sub_single h4']
+  have := hw.1; have := hw.2
+  omega
+
+theorem subSupply_adjust {s s' : VState A} {c sp : A} {up : Bool} {x : ℕ}
+    (hw : SubSupply s) (h : V.adjustAllowance s c sp up x = some s') : SubSupply s' := by
+  unfold Variant.adjustAllowance at h
+  cases hk : V.helpers <;> simp only [hk, reduceCtorEq] at h <;> split_ifs at h <;> cases h <;>
+    exact hw
+
 end Plain
 
 /-! ## YAMv2 -/
@@ -300,8 +366,9 @@ def stepOp (s : VState A) : Op A → Option (VState A)
     if c = 0 then none else (variant : Variant A).adjustAllowance s c sp false x
 
 /-- **The YAMv2 model.** States `VState A` (`admin` is the `minter`; the fee, pause, blacklist,
-rebase, ether, frozen and nonce fields are unused), invariant `Variant.WF` (`Σ bal = supply ≤
-MAX`, under which the SafeMath recipient additions cannot overflow). -/
+rebase, ether, frozen and nonce fields are unused), invariant `SubSupply` (`Σ bal ≤ supply ≤
+MAX` over the balances in the state: the actors' view of the supply invariant, under which the
+SafeMath recipient and supply additions cannot overflow). -/
 def model : TokenModel (VState A) A (Op A) where
   balanceOf := (variant : Variant A).balanceOf
   totalSupply := (variant : Variant A).totalSupply
@@ -309,7 +376,7 @@ def model : TokenModel (VState A) A (Op A) where
   call := (variant : Variant A).call
   events := events
   op := stepOp
-  wf := (variant : Variant A).WF
+  wf := SubSupply
 
 /-- The ERC-20 part of the model is the record's. -/
 theorem model_call : (model : TokenModel (VState A) A (Op A)).call =
@@ -370,18 +437,18 @@ theorem wfInvariant : (model : TokenModel (VState A) A (Op A)).WFInvariant := by
   constructor
   · intro s caller c s' r hw h
     obtain ⟨h, -⟩ := step_of_call guardFail_ne arithFail_ne h
-    exact Variant.WF_step _ sane hw h
-  · intro s e s' (hw : (variant : Variant A).WF s) h
+    exact plain.subSupply_step hw h
+  · intro s e s' (hw : SubSupply s) h
     cases e with
     | mint c d v =>
       simp only [model, stepOp] at h; split_ifs at h
-      exact Variant.WF_mint (variant : Variant A) sane hw h
+      exact subSupply_mint (V := (variant : Variant A)) rfl hw h
     | increaseAllowance c sp x =>
       simp only [model, stepOp] at h; split_ifs at h
-      exact Variant.WF_adjustAllowance (variant : Variant A) hw h
+      exact subSupply_adjust hw h
     | decreaseAllowance c sp x =>
       simp only [model, stepOp] at h; split_ifs at h
-      exact Variant.WF_adjustAllowance (variant : Variant A) hw h
+      exact subSupply_adjust hw h
 
 /-- **YAMv2 satisfies every standard law**, in every state for the moves. -/
 theorem yamv2_laws : (model : TokenModel (VState A) A (Op A)).Standard fun _ => True where

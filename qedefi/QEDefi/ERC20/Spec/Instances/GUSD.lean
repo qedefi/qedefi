@@ -27,7 +27,7 @@ ledger, as a `VState` (`bal`, `supply`, `allowance`; the other fields are unused
 wiring: the two `erc20Impl` pointers and the three custodians (`Ctl`). Its ERC-20 calls are the
 record `variant` (2 decimals; `transfer`/`transferFrom` reject the recipient `0`, `approve`
 rejects the spender `0`, every allowance is spent, everything returns `true`, every failure
-reverts; the unchecked `addBalance` cannot wrap under the supply invariant `Variant.WF`).
+reverts; the unchecked `addBalance` cannot wrap under the supply bound `SubSupply`).
 `transferFrom` emits only `Transfer`. The other operations (`Op`) are the implementation's
 entry points (holder and custodian `burn`, `print` by the custodian, `batchTransfer`,
 `increaseApproval`/`decreaseApproval`) and the custodians' replacements. The request/confirm
@@ -35,8 +35,8 @@ protocol is abstracted to its effect: since anyone can request any nonzero addre
 custodian can set its pointer to any nonzero address (`confirmPrint` likewise executes a print
 that anyone requested, so `print` is any print the implementation's custodian confirms).
 
-**The invariant** `wf impl` is the record's supply invariant together with the wiring: both
-`erc20Impl` pointers are the pinned implementation `impl` (whose immutables point at this proxy
+**The invariant** `wf impl` is the supply bound as the actors see it (`SubSupply`:
+`Σ bal ≤ supply ≤ MAX`) with the wiring: both `erc20Impl` pointers are the pinned implementation `impl` (whose immutables point at this proxy
 and store). It is *not* invariant (`not_wfInvariant`): a custodian can point the proxy or the
 store at other code, after which the model says nothing. Every other call and operation keeps
 it (`wf_call`, `wf_op`).
@@ -153,10 +153,10 @@ def stepOp (t : State A) : Op A → Option (State A)
   | .setCustodian w c a =>
     if c = t.2.custodian w ∧ a ≠ 0 then some (t.1, t.2.setCustodian w a) else none
 
-/-- The invariant: the supply invariant of the ledger, and both `erc20Impl` pointers at the
+/-- The invariant: the supply bound of the ledger as the actors see it, and both `erc20Impl` pointers at the
 pinned implementation `impl`. -/
 def WF (impl : A) (t : State A) : Prop :=
-  (variant : Variant A).WF t.1 ∧ t.2.proxyImpl = impl ∧ t.2.storeImpl = impl
+  SubSupply t.1 ∧ t.2.proxyImpl = impl ∧ t.2.storeImpl = impl
 
 /-- **The GUSD model**, for the pinned implementation at `impl`. -/
 def model (impl : A) : TokenModel (State A) A (Op A) where
@@ -254,17 +254,17 @@ theorem wf_call (impl : A) {t t' : State A} {c : A} {op : Call A} {r : RetData}
   simp only [Variant.model_call, call_eq] at h
   split at h <;> cases h
   obtain ⟨hw, hp, hs⟩ := hw
-  exact ⟨Variant.WF_step _ sane hw ‹_›, h2 ▸ hp, h2 ▸ hs⟩
+  exact ⟨plain.subSupply_step hw ‹_›, h2 ▸ hp, h2 ▸ hs⟩
 
-theorem WF_batch {c : A} {s s' : VState A} {xs : List (A × ℕ)} (hw : (variant : Variant A).WF s)
+theorem subSupply_batch {c : A} {s s' : VState A} {xs : List (A × ℕ)} (hw : SubSupply s)
     (h : xs.foldlM (fun s (x : A × ℕ) => (variant : Variant A).transfer s c x.1 x.2) s = some s') :
-    (variant : Variant A).WF s' := by
+    SubSupply s' := by
   induction xs generalizing s with
   | nil => simp at h; exact h ▸ hw
   | cons x xs ih =>
     simp only [List.foldlM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
     obtain ⟨s1, h1, h2⟩ := h
-    exact ih (Variant.WF_transfer _ sane hw h1) h2
+    exact ih (plain.subSupply_step (op := .transfer x.1 x.2) hw h1) h2
 
 /-- Every operation but a custodian's replacement of an `erc20Impl` pointer keeps the
 invariant. -/
@@ -276,26 +276,26 @@ theorem wf_op (impl : A) {t t' : State A} {e : Op A} (hw : (model impl).wf t)
   cases e with
   | increaseApproval c sp x =>
     obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
-    exact ⟨Variant.WF_adjustAllowance _ hw h1, hp, hs⟩
+    exact ⟨subSupply_adjust hw h1, hp, hs⟩
   | decreaseApproval c sp x =>
     obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
-    exact ⟨Variant.WF_adjustAllowance _ hw h1, hp, hs⟩
+    exact ⟨subSupply_adjust hw h1, hp, hs⟩
   | burn c v =>
     obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
-    exact ⟨Variant.WF_burn _ sane hw h1, hp, hs⟩
+    exact ⟨subSupply_burn (V := (variant : Variant A)) rfl hw h1, hp, hs⟩
   | custodianBurn c o v =>
     simp only [stepOp] at h; split_ifs at h
     obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
-    exact ⟨Variant.WF_burn _ sane hw h1, hp, hs⟩
+    exact ⟨subSupply_burn (V := (variant : Variant A)) rfl hw h1, hp, hs⟩
   | print c d v =>
     simp only [stepOp] at h; split_ifs at h; cases h
     refine ⟨?_, hp, hs⟩
     cases hm : (variant : Variant A).mint t.1 c d v with
     | none => exact hw
-    | some s1 => exact Variant.WF_mint _ sane hw hm
+    | some s1 => exact subSupply_mint (V := (variant : Variant A)) rfl hw hm
   | batchTransfer c xs =>
     obtain ⟨s1, h1, rfl⟩ := Option.map_eq_some_iff.1 h
-    exact ⟨WF_batch hw h1, hp, hs⟩
+    exact ⟨subSupply_batch hw h1, hp, hs⟩
   | setProxyImpl c a => exact absurd rfl (he c a).1
   | setStoreImpl c a => exact absurd rfl (he c a).2
   | setCustodian w c a =>
@@ -315,7 +315,7 @@ def wired (impl : A) : State A := (VState.ofToken ⟨0, 0, fun _ _ => 0⟩ 0 0, 
 
 theorem wf_wired (impl : A) : (model impl).wf (wired impl) := by
   refine ⟨?_, rfl, rfl⟩
-  simp [Variant.WF, variant, Variant.standard, wired, VState.ofToken, total]
+  simp [SubSupply, wired, VState.ofToken, total, MAX]
 
 theorem not_wfInvariant {impl a : A} (ha : a ≠ 0) (hai : a ≠ impl) :
     ¬ (model impl).WFInvariant := by
