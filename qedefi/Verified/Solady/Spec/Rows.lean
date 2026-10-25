@@ -357,4 +357,41 @@ theorem iszero_not_one {a : Word} (h : a = ~~~0) : (~~~a).iszero = 1 := by
 theorem iszero_not_zero' {a : Word} (h : a ≠ ~~~0) : (~~~a).iszero = 0 :=
   iszero_not_eq_zero.mpr h
 
+private theorem add_mod_wrap {a b : Nat} (ha : a < 2 ^ 256) (hb : b < 2 ^ 256)
+    (h : 2 ^ 256 ≤ a + b) : (a + b) % 2 ^ 256 = a + b - 2 ^ 256 := by
+  rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
+
+theorem lt_add_iszero_ne {S v : Word} (h : ((S + v).lt S).iszero ≠ 0) :
+    S.toNat + v.toNat < 2 ^ 256 := by
+  by_contra hge
+  have hm := add_mod_wrap S.isLt v.isLt (Nat.le_of_not_lt hge)
+  apply h
+  simp only [Word.lt, Word.ofBool, BitVec.ult, BitVec.toNat_add, hm, Word.iszero]
+  have : S.toNat + v.toNat - 2 ^ 256 < S.toNat := by have := v.isLt; omega
+  simp only [Nat.reducePow] at this
+  simp [this]
+
+theorem lt_add_iszero_eq {S v : Word} (h : ((S + v).lt S).iszero = 0) :
+    2 ^ 256 ≤ S.toNat + v.toNat := by
+  by_contra hlt
+  have hm : (S.toNat + v.toNat) % 2 ^ 256 = S.toNat + v.toNat := Nat.mod_eq_of_lt (by omega)
+  simp only [Word.lt, Word.ofBool, BitVec.ult, BitVec.toNat_add, hm, Word.iszero] at h
+  have : ¬ S.toNat + v.toNat < S.toNat := by omega
+  simp [this] at h
+
+theorem lt_add_iszero_one {S v : Word} (h : S.toNat + v.toNat < 2 ^ 256) :
+    ((S + v).lt S).iszero = 1 := by
+  have hm : (S.toNat + v.toNat) % 2 ^ 256 = S.toNat + v.toNat := Nat.mod_eq_of_lt h
+  simp only [Word.lt, Word.ofBool, BitVec.ult, BitVec.toNat_add, hm, Word.iszero]
+  have : ¬ S.toNat + v.toNat < S.toNat := by omega
+  simp [this]
+
+theorem lt_add_iszero_zero {S v : Word} (h : 2 ^ 256 ≤ S.toNat + v.toNat) :
+    ((S + v).lt S).iszero = 0 := by
+  have hm := add_mod_wrap S.isLt v.isLt h
+  simp only [Word.lt, Word.ofBool, BitVec.ult, BitVec.toNat_add, hm, Word.iszero]
+  have : S.toNat + v.toNat - 2 ^ 256 < S.toNat := by have := v.isLt; omega
+  simp only [Nat.reducePow] at this
+  simp [this]
+
 end Verified.Solady.Spec
