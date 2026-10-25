@@ -131,6 +131,14 @@ example :
     (by decide) (by decide) (by decide +kernel) rfl trivial (by decide)
     (fun _ _ hs _ => WP.ret (resumeAfter_create_stack (hs.kind.trans rfl)).1)
 
+/-- **The any-outcome havoc rule fires** with no gas, balance or freshness side condition: the
+creator resumes after the `CREATE`, or the frame ends. -/
+example (crypto : Crypto) (g : Nat) :
+    WP (machine crypto ccode false 3 [0, 0, 0] g) (fun m => m.frame.pc = 4) (fun _ _ => True) :=
+  Reentrancy.WP.create_havoc_any (b := false) (salt := 0) Reentrancy.goodOk_none
+    (fun _ hd => hd.danger.1.elim) rfl rfl (by decide) rfl trivial (fun _ => trivial)
+    (fun _ _ hpc _ _ => WP.ret hpc)
+
 /-! ## `SELFDESTRUCT` -/
 
 /-- `SELFDESTRUCT` to `0xBEEF`: the frame ends successfully; the account, not created in this

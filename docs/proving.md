@@ -328,6 +328,7 @@ less gas than its ancestors.
 | `WP.staticcall_havoc` | any `STATICCALL` | any return whose world is `Good` |
 | `WP.call_frozen` | `CALL` under a held guard: `Covers` for `Frozen P m.world` | protected storage and code exactly as at the call |
 | `WP.create_havoc`, `WP.create2_havoc` (`Reentrancy/Create.lean`) | `CREATE*` of arbitrary init code at a free address, `Good m.world`, `Covers` for `createGas` | any return whose world is `Good`, the address or `0` pushed |
+| `WP.create_havoc_any` | any `CREATE*`, `Good m.world`, `Covers` for the creator's gas; no gas, balance, nonce, depth or freshness condition | the frame halts, or resumes at `pc + 1` with one word pushed in a `Good` world |
 
 Checks-effects-interactions is `WP.call_havoc` with the contract's invariant as `Good`; a
 reentrancy guard is `WP.call_frozen`, whose `Covers` (`covers_frozen`) asks that a frame
