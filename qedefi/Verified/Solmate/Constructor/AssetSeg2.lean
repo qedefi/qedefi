@@ -2,11 +2,21 @@ import Verified.Solmate.Constructor.AssetDefs
 import Verified.Solmate.Constructor.AssetCode
 import EvmLogic.Tactic.StepExt
 
+/-!
+# The `MockERC20` constructor, second segment
+
+From `0x018f` (`At399`) to the `RETURN`: the `MCOPY` of the symbol, the storage of the name and
+symbol in slots 0 and 1 (short strings), `computeDomainSeparator()`, the `CODECOPY` of the
+runtime code and the stores of the three immutables into it (`output_eq`).
+-/
+
 namespace Verified.Solmate.Constructor
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLogic.Tactic
 open Verified.Solmate.Contracts
 
 set_option maxHeartbeats 0 in
+/-- **The second segment**: from `At399` (slots 0 and 1 empty), the constructor returns the
+runtime code with `Asset.immutables` and writes the name and symbol slots. -/
 theorem asset_seg2 (m : Machine) (hc : m.frame.code = SolmateAsset.initCode)
     (hj : JumpTable m.frame.jumpDests SolmateAsset.initCode) (hpc : m.frame.pc = 399)
     (hs : m.frame.stack = [544#256, 416#256, 4#256, 512#256, 4#256, 0#256, 384#256, 448#256,

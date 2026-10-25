@@ -270,6 +270,74 @@ theorem getD_patch_out (c : ByteArray) (ps : List (Nat × Word)) (j : Nat)
     Bytes.getD (patchWords c ps) j = Bytes.getD c j := by
   rw [getD_eq_toList, getD_eq_toList, data_patchWords, getElem?_patchList_of_disjoint _ _ _ h]
 
+/-! ## Patches byte by byte
+
+`patchFn ps g j`: byte `j` after writing the words `ps` in order over the bytes `g`. Both a
+patched code (`getD_patchWords`) and a memory after word stores (`getD_storeWords`) are of this
+form, so a constructor's returned code is compared with `runtimeCodeWith` byte by byte. -/
+
+/-- Byte `j` after writing the words of `ps`, in order, over `g`. -/
+def patchFn : List (Nat × Word) → (Nat → UInt8) → Nat → UInt8
+  | [], g, j => g j
+  | p :: ps, g, j => patchFn ps (fun j => if p.1 ≤ j ∧ j < p.1 + 32 then
+      Bytes.getD (Bytes.ofWord p.2) (j - p.1) else g j) j
+
+theorem patchFn_congr (ps : List (Nat × Word)) {g g' : Nat → UInt8} {j : Nat} (h : g j = g' j) :
+    patchFn ps g j = patchFn ps g' j := by
+  induction ps generalizing g g' with
+  | nil => exact h
+  | cons p ps ih => exact ih (by simp only [h])
+
+theorem patchWords_cons (c : ByteArray) (p : Nat × Word) (ps : List (Nat × Word)) :
+    patchWords c (p :: ps) = patchWords (patchWords c [p]) ps := by
+  apply eq_of_data_toList_eq
+  simp only [data_patchWords, patchList, List.foldl_cons, List.foldl_nil]
+
+theorem patchWords_nil (c : ByteArray) : patchWords c [] = c := by
+  apply eq_of_data_toList_eq
+  simp only [data_patchWords, patchList, List.foldl_nil]
+
+theorem getD_patchWords_single (c : ByteArray) (o : Nat) (w : Word) (h : o + 32 ≤ c.size)
+    (j : Nat) : Bytes.getD (patchWords c [(o, w)]) j =
+      if o ≤ j ∧ j < o + 32 then Bytes.getD (Bytes.ofWord w) (j - o) else Bytes.getD c j := by
+  split
+  · rename_i hj
+    exact getD_patch_in c [] [] o w h (by simp) j hj.1 hj.2
+  · rename_i hj
+    have ho : ∀ o' ∈ [(o, w)].map Prod.fst, j < o' ∨ o' + 32 ≤ j := by
+      simp only [List.map_cons, List.map_nil, List.mem_singleton, forall_eq]; omega
+    exact getD_patch_out c [(o, w)] j ho
+
+/-- **Patched code, byte by byte** (every window inside the code). -/
+theorem getD_patchWords (ps : List (Nat × Word)) (c : ByteArray)
+    (h : ∀ p ∈ ps, p.1 + 32 ≤ c.size) (j : Nat) :
+    Bytes.getD (patchWords c ps) j = patchFn ps (Bytes.getD c) j := by
+  induction ps generalizing c with
+  | nil => simp only [patchFn, patchWords_nil]
+  | cons p ps ih =>
+    obtain ⟨o, w⟩ := p
+    rw [patchWords_cons, ih _ (fun q hq => by
+      rw [size_patchWords]; exact h q (List.mem_cons_of_mem _ hq))]
+    simp only [patchFn]
+    apply patchFn_congr
+    exact getD_patchWords_single c o w (h _ (List.mem_cons_self ..)) j
+
+/-- Word stores at the given offsets, in order, each after the expansion `MSTORE` does. -/
+def storeWords (M : Memory) (ps : List (Nat × Word)) : Memory :=
+  ps.foldl (fun m p => (m.expand p.1 32).storeWord p.1 p.2) M
+
+/-- **Memory after word stores, byte by byte.** -/
+theorem getD_storeWords (ps : List (Nat × Word)) (M : Memory) (j : Nat) :
+    Bytes.getD (storeWords M ps).bytes j = patchFn ps (Bytes.getD M.bytes) j := by
+  induction ps generalizing M with
+  | nil => simp only [storeWords, List.foldl_nil, patchFn]
+  | cons p ps ih =>
+    simp only [storeWords, List.foldl_cons, patchFn] at ih ⊢
+    rw [ih]
+    apply patchFn_congr
+    simp only [Memory.storeWord, Memory.getD_bytes_write, Memory.getD_bytes_expand,
+      Bytes.size_ofWord]
+
 end Verified.Solmate.Constructor
 
 /-- Read a word or bytes of a memory built by a chain of stores, `MCOPY`s and writes at numeral
