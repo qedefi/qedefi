@@ -62,6 +62,11 @@ noncomputable def weth9Abs : TokenAbs (VState Address) where
     rw [readMap_congr (fun k h => hk k (.inl h)), readMap2_congr (fun k h => hk k (.inr h))]
   Sound crypto Act := ActorRows crypto Act [3] [4] []
 
+/-- **The gas from which WETH9's ERC-20 calls are exact**: `100000` covers the costliest path
+(`transferFrom` with an allowance debit: three cold `SLOAD`s and `SSTORE`s and a `LOG3`, about
+`45000`). Below it a call may also fail (out of gas), never do anything else. -/
+def weth9Gas : Nat := 100000
+
 /-- The selectors WETH9's dispatcher knows. -/
 def weth9Sel : List Nat := WETH9.selectors.map fun p => p.2.toNat
 
