@@ -611,4 +611,37 @@ theorem halts_of_lift (hp : PatchOk c c' R) {H : Machine → Outcome → Prop}
   · exact lockstep hp hH d j ml mh' hl hj hR hx
   · exact hf.elim
 
+
+/-! ## Exits of the halting instructions -/
+
+theorem exitOf_stop {m : Machine} (hcode : m.frame.code[m.frame.pc]? = some 0x00) :
+    exitOf m = some (m, .success .empty) := by
+  rw [exitOf_eq_of_code hcode, show Opcode.decode m.ctx.fork 0x00 = .stop by
+    cases m.ctx.fork <;> rfl]
+  rfl
+
+theorem exitOf_invalid {m : Machine} (hcode : m.frame.code[m.frame.pc]? = some 0xfe) :
+    exitOf m = some (m, .halt .invalidOpcode) := by
+  rw [exitOf_eq_of_code hcode, show Opcode.decode m.ctx.fork 0xfe = .invalid by
+    cases m.ctx.fork <;> rfl]
+  rfl
+
+theorem exitOf_return {m : Machine} {x y : Word} {rest : List Word}
+    (hcode : m.frame.code[m.frame.pc]? = some 0xf3) (hstk : m.frame.stack = x :: y :: rest)
+    (hgas : outputCost m x y ≤ m.frame.gasLeft) :
+    exitOf m = some (outputMachine m x y rest, .success (outputData m x y)) := by
+  rw [exitOf_eq_of_code hcode, show Opcode.decode m.ctx.fork 0xf3 = .«return» by
+    cases m.ctx.fork <;> rfl]
+  simp only [exec, StateT.run_bind, run_readOutput hstk hgas]
+  rfl
+
+theorem exitOf_revert {m : Machine} {x y : Word} {rest : List Word}
+    (hcode : m.frame.code[m.frame.pc]? = some 0xfd) (hstk : m.frame.stack = x :: y :: rest)
+    (hgas : outputCost m x y ≤ m.frame.gasLeft) :
+    exitOf m = some (outputMachine m x y rest, .revert (outputData m x y)) := by
+  rw [exitOf_eq_of_code hcode, show Opcode.decode m.ctx.fork 0xfd = .revert by
+    cases m.ctx.fork <;> rfl]
+  simp only [exec, StateT.run_bind, run_readOutput hstk hgas]
+  rfl
+
 end Verified.WeirdERC20.USDT.Spec
