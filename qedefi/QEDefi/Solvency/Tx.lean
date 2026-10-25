@@ -1,5 +1,6 @@
 import QEDefi.Solvency.Bank
 import EvmLogic.Tx.Lift
+import EvmLogic.Program.Reentrancy.Deleg
 
 /-!
 # Ether across a transaction
@@ -129,6 +130,18 @@ theorem processMessageCall_supply_le {fuel : Nat} {ctx : Context} {w : World}
   processMessageCall_good_v (C := fun _ => True) (goodOps_supply_le hs) (Nat.le_refl _) hdeleg
     ⟨hdepth, id, htarget, fun h => h.elim⟩ hv trivial (fun _ hd => hd.danger.1.elim) hr
 
+/-- **A top-level message call creates no ether**, EIP-7702 authorizations included:
+`processMessageCall_supply_le` without its fork/authorization hypothesis (authorizations keep
+every balance, `EvmLogic.Program.Delegation`). -/
+theorem processMessageCall_supply_le_7702 {fuel : Nat} {ctx : Context} {w : World}
+    {tr : TransientStorage} {msg : Message} {r : MessageResult} (hs : supply w < 2 ^ 256)
+    (hdepth : msg.depth = 0)
+    (htarget : msg.target = some msg.currentTarget ∨ msg.target = none)
+    (hv : msg.shouldTransferValue = true)
+    (hr : processMessageCall fuel ctx w tr msg = .ok r) : supply r.world ≤ supply w :=
+  processMessageCall_good_v_7702 (C := fun _ => True) (goodOps_supply_le hs) (Nat.le_refl _)
+    ⟨hdepth, id, htarget, fun h => h.elim⟩ hv trivial (fun _ hd => hd.danger.1.elim) hr
+
 /-! ## Transactions -/
 
 theorem credits_le {gas gu p b : Nat} (hgu : gu ≤ gas) :
@@ -136,6 +149,64 @@ theorem credits_le {gas gu p b : Nat} (hgu : gu ≤ gas) :
   have h1 : gu * (p - b) ≤ gu * p := Nat.mul_le_mul_left _ (Nat.sub_le _ _)
   have h2 : (gas - gu) * p + gu * p = gas * p := by rw [← Nat.add_mul, Nat.sub_add_cancel hgu]
   omega
+
+/-- **An ether invariant of top-level message calls is an invariant of transactions**, given
+that top-level message calls create no ether (`hsup`, discharged by
+`processMessageCall_supply_le` in `process_keeps_ether` and by
+`processMessageCall_supply_le_7702` in `process_keeps_ether_7702`). If `Inv` holds only in
+worlds where the protected accounts (`P`) hold real code (`hP`) and all ether is below `2²⁵⁶`
+(`hcap`), is kept by every top-level message call with the `TopMsg` facts (`hmsg`), and is kept
+by every change that keeps storage and code of the protected accounts, does not decrease their
+balances and keeps all ether below `2²⁵⁶` (`hframe`), then every successful transaction keeps
+it, and all ether does not grow. -/
+theorem process_keeps_ether_of {P : Address → Prop} {Inv : World → Prop} {fuel : Nat}
+    {crypto : Crypto} {fork : Fork} {env : BlockEnv} {gasAvail blobAvail : Nat} {w : World}
+    {tx : Transaction} {hint : Option Address} {out : TxOutput}
+    (hP : ∀ w, Inv w → ∀ p, P p → RealCode (w.code p))
+    (hcap : ∀ w, Inv w → supply w < 2 ^ 256)
+    (hmsg : ∀ (ctx : Context) (w₁ : World) (msg : Message) (r : MessageResult), Inv w₁ →
+      TopMsg P crypto fork env tx w₁ ctx msg → processMessageCall fuel ctx w₁ ∅ msg = .ok r →
+      Inv r.world)
+    (hframe : ∀ w w', Inv w →
+      (∀ p, P p → Keep p w w' ∧ (w.balance p).toNat ≤ (w'.balance p).toNat) →
+      supply w' < 2 ^ 256 → Inv w')
+    (hsup : ∀ (ctx : Context) (w₁ : World) (msg : Message) (r : MessageResult),
+      supply w₁ < 2 ^ 256 → TopMsg P crypto fork env tx w₁ ctx msg →
+      processMessageCall fuel ctx w₁ ∅ msg = .ok r → supply r.world ≤ supply w₁)
+    (hw : Inv w) (h : process fuel crypto fork env gasAvail blobAvail w tx hint = .ok out) :
+    Inv out.world ∧ supply out.world ≤ supply w := by
+  obtain ⟨c, ctx, msg, r, gu, hc, hm, hr, hgu, hout⟩ := process_split (hP w hw) h
+  have hchk := check_ok hc
+  have hfee : upfrontFee fork env tx c ≤ (w.account c.sender).balance.toNat := by
+    have := hchk.2.2.2.1; omega
+  have hs1 := supply_prefixWorld hfee
+  have hsw := hcap w hw
+  have hsender : ∀ p, P p → p ≠ c.sender := fun p hp he =>
+    not_realCode_sender hc (he ▸ hP w hw p hp)
+  have h1 := hframe w (prefixWorld w c.sender
+    (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee fork env tx c))) hw
+    (fun p hp => ⟨keep_prefixWorld w c.sender _ p, by
+    rw [balance_prefixWorld]; simp [hsender p hp]⟩) (by omega)
+  have h2 := hmsg ctx _ msg r h1 hm hr
+  have hs2 := hsup ctx _ msg r (by omega) hm hr
+  have hcr := credits_le (p := c.effectiveGasPrice) (b := env.baseFee) hgu
+  have hfee' : tx.gas * c.effectiveGasPrice ≤ upfrontFee fork env tx c := by
+    unfold upfrontFee; omega
+  have hsum : supply r.world + (tx.gas - gu) * c.effectiveGasPrice +
+      gu * (c.effectiveGasPrice - env.baseFee) ≤ supply w := by
+    generalize supply (prefixWorld w c.sender _) = S1 at hs1 hs2
+    generalize (tx.gas - gu) * c.effectiveGasPrice = R at hcr ⊢
+    generalize gu * (c.effectiveGasPrice - env.baseFee) = W at hcr ⊢
+    generalize tx.gas * c.effectiveGasPrice = T at hcr hfee'
+    generalize upfrontFee fork env tx c = F at hfee' hs1
+    omega
+  obtain ⟨hs3, hb3⟩ := supply_suffixWorld (r := r) (sender := c.sender) (coinbase := env.coinbase)
+    (refund := (tx.gas - gu) * c.effectiveGasPrice)
+    (reward := gu * (c.effectiveGasPrice - env.baseFee)) (by omega)
+  rw [hout]
+  refine ⟨hframe _ _ h2 (fun p hp => ?_) (by omega), by omega⟩
+  obtain ⟨hd, hsz⟩ := processMessageCall_realCode hr (hm.real p hp)
+  exact ⟨keep_suffixWorld hsz hd _ _ _ _, hb3 p hd⟩
 
 /-- **An ether invariant of top-level message calls is an invariant of transactions.** If `Inv`
 holds only in worlds where the protected accounts (`P`) hold real code (`hP`) and all ether is
@@ -157,39 +228,28 @@ theorem process_keeps_ether {P : Address → Prop} {Inv : World → Prop} {fuel 
       supply w' < 2 ^ 256 → Inv w')
     (hdeleg : fork < .prague ∨ tx.authorizations = [])
     (hw : Inv w) (h : process fuel crypto fork env gasAvail blobAvail w tx hint = .ok out) :
-    Inv out.world ∧ supply out.world ≤ supply w := by
-  obtain ⟨c, ctx, msg, r, gu, hc, hm, hr, hgu, hout⟩ := process_split (hP w hw) h
-  have hchk := check_ok hc
-  have hfee : upfrontFee fork env tx c ≤ (w.account c.sender).balance.toNat := by
-    have := hchk.2.2.2.1; omega
-  have hs1 := supply_prefixWorld hfee
-  have hsw := hcap w hw
-  have hsender : ∀ p, P p → p ≠ c.sender := fun p hp he =>
-    not_realCode_sender hc (he ▸ hP w hw p hp)
-  have h1 := hframe w (prefixWorld w c.sender
-    (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee fork env tx c))) hw
-    (fun p hp => ⟨keep_prefixWorld w c.sender _ p, by
-    rw [balance_prefixWorld]; simp [hsender p hp]⟩) (by omega)
-  have h2 := hmsg ctx _ msg r h1 hm hr
-  have hs2 := processMessageCall_supply_le (by omega) (hm.deleg hdeleg) hm.top.depth
-    hm.top.target hm.transfers hr
-  have hcr := credits_le (p := c.effectiveGasPrice) (b := env.baseFee) hgu
-  have hfee' : tx.gas * c.effectiveGasPrice ≤ upfrontFee fork env tx c := by
-    unfold upfrontFee; omega
-  have hsum : supply r.world + (tx.gas - gu) * c.effectiveGasPrice +
-      gu * (c.effectiveGasPrice - env.baseFee) ≤ supply w := by
-    generalize supply (prefixWorld w c.sender _) = S1 at hs1 hs2
-    generalize (tx.gas - gu) * c.effectiveGasPrice = R at hcr ⊢
-    generalize gu * (c.effectiveGasPrice - env.baseFee) = W at hcr ⊢
-    generalize tx.gas * c.effectiveGasPrice = T at hcr hfee'
-    generalize upfrontFee fork env tx c = F at hfee' hs1
-    omega
-  obtain ⟨hs3, hb3⟩ := supply_suffixWorld (r := r) (sender := c.sender) (coinbase := env.coinbase)
-    (refund := (tx.gas - gu) * c.effectiveGasPrice)
-    (reward := gu * (c.effectiveGasPrice - env.baseFee)) (by omega)
-  rw [hout]
-  refine ⟨hframe _ _ h2 (fun p hp => ?_) (by omega), by omega⟩
-  obtain ⟨hd, hsz⟩ := processMessageCall_realCode hr (hm.real p hp)
-  exact ⟨keep_suffixWorld hsz hd _ _ _ _, hb3 p hd⟩
+    Inv out.world ∧ supply out.world ≤ supply w :=
+  process_keeps_ether_of hP hcap hmsg hframe
+    (fun _ _ _ _ hs hm hr => processMessageCall_supply_le hs (hm.deleg hdeleg) hm.top.depth
+      hm.top.target hm.transfers hr) hw h
+
+/-- **An ether invariant of top-level message calls is an invariant of transactions**, EIP-7702
+authorizations included: `process_keeps_ether` without its fork/authorization hypothesis. -/
+theorem process_keeps_ether_7702 {P : Address → Prop} {Inv : World → Prop} {fuel : Nat}
+    {crypto : Crypto} {fork : Fork} {env : BlockEnv} {gasAvail blobAvail : Nat} {w : World}
+    {tx : Transaction} {hint : Option Address} {out : TxOutput}
+    (hP : ∀ w, Inv w → ∀ p, P p → RealCode (w.code p))
+    (hcap : ∀ w, Inv w → supply w < 2 ^ 256)
+    (hmsg : ∀ (ctx : Context) (w₁ : World) (msg : Message) (r : MessageResult), Inv w₁ →
+      TopMsg P crypto fork env tx w₁ ctx msg → processMessageCall fuel ctx w₁ ∅ msg = .ok r →
+      Inv r.world)
+    (hframe : ∀ w w', Inv w →
+      (∀ p, P p → Keep p w w' ∧ (w.balance p).toNat ≤ (w'.balance p).toNat) →
+      supply w' < 2 ^ 256 → Inv w')
+    (hw : Inv w) (h : process fuel crypto fork env gasAvail blobAvail w tx hint = .ok out) :
+    Inv out.world ∧ supply out.world ≤ supply w :=
+  process_keeps_ether_of hP hcap hmsg hframe
+    (fun _ _ _ _ hs hm hr => processMessageCall_supply_le_7702 hs hm.top.depth hm.top.target
+      hm.transfers hr) hw h
 
 end QEDefi.Solvency
