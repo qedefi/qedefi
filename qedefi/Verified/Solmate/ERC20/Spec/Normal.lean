@@ -8,7 +8,7 @@ import Verified.Solmate.ERC4626.UnknownSelectors
 Each ERC-20 call, view and operation of the deployed asset (`SolmateAsset.runtimeCodeWith ia`,
 any immutables), in a frame with enough gas, not static and without value, ends exactly as
 `solmateModel` says through `solmateAbs` (`transfer_normal`, …). These are the `Normal`
-halves of the obligations; the frames outside `Normal` are in `Abnormal.lean`.
+halves of the obligations; the frames outside `Normal` are in `Obligations.lean`.
 
 The proofs reuse the asset's frame summaries with their logs (`transfer_halts_ok_events`, …)
 and compare their worlds (`transferWorld`, …) with the model's state change row by row
