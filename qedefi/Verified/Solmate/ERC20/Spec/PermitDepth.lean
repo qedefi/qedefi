@@ -1,4 +1,5 @@
 import Verified.Solmate.ERC20.Spec.PermitNormal
+import Verified.Solmate.ERC20.Spec.Static
 
 /-!
 # Solmate's `permit` at the call-depth limit
@@ -60,7 +61,7 @@ theorem step_returndatacopy_zero (hcode : m.frame.code[m.frame.pc]? = some 0x3e)
 end Verified.Solmate.ERC20.Spec
 
 namespace Verified.Solmate.ERC20.Spec
-open QEDefi.ERC4626 Verified.Solmate.ERC20.Permit
+open QEDefi.ERC4626 Verified.Solmate.ERC20.Permit QEDefi.ERC20.Spec
 
 open EvmLean Verified.Solmate EvmLogic EvmLogic.Program EvmLean.Interpreter EvmLogic.Solidity
 open EvmLogic.Tactic Verified.Solmate.Contracts
@@ -249,5 +250,88 @@ theorem permit_halts_limit {ia : SolmateAsset.Immutables} (m : Machine)
       h64 hs hv' (by dsimp only; omega) (by dsimp only; omega) rfl hdel1 hdepth hstatic
   · exact permit_body_limit _ (F := 320) (S := 320) (.inr ⟨rfl, rfl⟩) rfl hj rfl rfl rfl
       h64 hs hv' (by dsimp only; omega) (by dsimp only; omega) rfl hdel1 hdepth hstatic
+
+set_option maxHeartbeats 0 in
+/-- From `permit`'s body (`0x0566`) in a static frame: the nonce's `SSTORE` halts. -/
+theorem permit_body_static {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {F S : Nat}
+    {ds deadline value v r s : Word} {owner spender : Address}
+    (hFS : (F = 128 ∧ S = 96) ∨ (F = 320 ∧ S = 320))
+    (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
+    (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
+    (hpc : m.frame.pc = 1382)
+    (hs : m.frame.stack = [ds, 1#256, 0#256, s, r, v, deadline, value, Word.ofAddress spender,
+      Word.ofAddress owner, 424#256, 3573918927#256])
+    (hmem : m.frame.memory = M) (hM64 : M.loadWord 64 = BitVec.ofNat 256 F) (hMs : M.size = S)
+    (hg : 90000 ≤ m.frame.gasLeft) (hstatic : m.frame.msg.isStatic = true) :
+    WP m (fun _ => False) (fun _ o => Fails o) := by
+  have hagree := assetJumpDestsAgree ia
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hc hpc hs hmem
+  rcases hFS with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;>
+  · pwp_run_to 1419 [hM64, hMs, permit_norm, ofAddress_and_addressMask, addressMask_and_ofAddress,
+      Memory.read_64]
+    apply wp_sstore_static
+    · pcode_fact
+    · exact hstatic
+    · intro e; trivial
+
+set_option maxHeartbeats 0 in
+theorem permit_halts_static {ia : SolmateAsset.Immutables} (m : Machine)
+    (hf : Fresh (SolmateAsset.runtimeCodeWith ia) m)
+    (hval : m.frame.msg.value = 0) (hstatic : m.frame.msg.isStatic = true)
+    {owner spender : Address} {value deadline v r s : Word}
+    (hd : PermitCall m.frame.msg.data owner spender value deadline v r s)
+    (hsz : m.frame.msg.data.size < 2 ^ 64)
+    (hcase : DomainCase ia.initialChainId (ofNat m.ctx.block.chainId)
+      (m.world.sload m.frame.msg.currentTarget 0#256))
+    (hg : 100000 ≤ m.frame.gasLeft) (hg' : m.frame.gasLeft < 2 ^ 64)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx) :
+    Halts m (fun _ o => Fails o) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1, harg2, harg3, harg4, harg5, harg6⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 224))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  subst hstd
+  by_cases hv : v.toNat < 256
+  swap
+  · -- `v` is not a `uint8`: the decoder reverts
+    have hne := eq_of_ne (Ne.symm (and_255_ne (x := v) (by omega)))
+    pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3, harg4,
+      harg5, harg6, hne, ofAddress_and_addressMask, addressMask_and_ofAddress, Solidity.eq_self]
+    trivial
+  have hv' := and_255_of_lt hv
+  by_cases hdl : (ofNat m_ctx.block.timestamp).toNat ≤ deadline.toNat
+  swap
+  · -- the deadline has passed
+    have hlt' : Word.lt deadline (ofNat m_ctx.block.timestamp) = 1 :=
+      (Word.lt_eq_one_iff _ _).2 (by omega)
+    pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3, harg4,
+      harg5, harg6, hv', hlt', ofAddress_and_addressMask, addressMask_and_ofAddress,
+      Solidity.eq_self, iszero_one]
+    trivial
+  have hge : Word.lt deadline (ofNat m_ctx.block.timestamp) = 0 := (Word.lt_eq_zero_iff _ _).2 hdl
+  pwp_run_to 1060 [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1, harg2, harg3,
+    harg4, harg5, harg6, hv', hge, ofAddress_and_addressMask, addressMask_and_ofAddress,
+    Solidity.eq_self, iszero_zero]
+  refine WP.bind_mono (asset_ds_wp _ rfl hj rfl rfl (by simp) (by pjumpdest_disch)
+    (Memory.loadWord_storeWord _ _ _) (by simp [Memory.size_storeWord, Memory.size_expand,
+      Memory.wordsAfter, Memory.words]) hcase (by dsimp only; omega) (by dsimp only; omega))
+    (fun _ _ _ h => h.elim) ?_
+  rintro _ - ⟨mem, g, sub, rfl, hmem, hgb, hgu, hlog⟩
+  dsimp only [Machine.resumeWith] at hgb hgu hlog ⊢
+  simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod, dsOf]
+  generalize domainSeparator m_ctx.crypto _ _ _ _ _ = ds
+  rcases hmem with ⟨h64, hs⟩ | ⟨h64, hs⟩
+  · exact permit_body_static _ (F := 128) (S := 96) (.inl ⟨rfl, rfl⟩) rfl hj rfl rfl rfl
+      h64 hs (by dsimp only; omega) hstatic
+  · exact permit_body_static _ (F := 320) (S := 320) (.inr ⟨rfl, rfl⟩) rfl hj rfl rfl rfl
+      h64 hs (by dsimp only; omega) hstatic
 
 end Verified.Solmate.ERC20.Spec
