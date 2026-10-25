@@ -231,4 +231,12 @@ theorem lt_of_iszero_gt_eq {v b : Word} (h : Word.iszero (Word.gt v b) = 0) : b.
   have hu : BitVec.ult b v = false := by simp [BitVec.ult]; omega
   simp [Word.iszero, Word.gt, Word.ofBool, hu] at h
 
+theorem iszero_gt_of_le {v b : Word} (h : v.toNat ≤ b.toNat) : Word.iszero (Word.gt v b) = 1 := by
+  have hu : BitVec.ult b v = false := by simp [BitVec.ult]; omega
+  simp [Word.iszero, Word.gt, Word.ofBool, hu]
+
+theorem iszero_gt_of_lt {v b : Word} (h : b.toNat < v.toNat) : Word.iszero (Word.gt v b) = 0 := by
+  have hu : BitVec.ult b v = true := by simp [BitVec.ult]; omega
+  simp [Word.iszero, Word.gt, Word.ofBool, hu]
+
 end Verified.Solady.Spec

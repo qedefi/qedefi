@@ -1,4 +1,5 @@
 import Verified.Solady.Spec.Approve
+import EvmLogic.Tactic.StepExt
 
 /-!
 # Solady `ERC20` under the spec: `transfer`
@@ -63,5 +64,51 @@ theorem transfer_low (m : Machine) (dst : Address) (v : Word)
     rw [shr_loadWord_of _ 12 dst]
     · event_log [v]
     · simp (disch := decide) only [Memory.read_expand, Memory.read_storeWord_of_disjoint, read_addr0]
+
+set_option maxHeartbeats 0 in
+theorem transfer_high (m : Machine) (dst : Address) (v : Word)
+    (hf : Fresh SoladyToken.runtimeCode m)
+    (hd : Args m.frame.msg.data 0xa9059cbb [Word.ofAddress dst, v])
+    (hsz : m.frame.msg.data.size < 2 ^ 64)
+    (hval : m.frame.msg.value = 0) (hst : m.frame.msg.isStatic = false)
+    (hg : g₀ ≤ m.frame.gasLeft) :
+    Halts m (MovePost m m.world #[] m.frame.msg.caller dst v) := by
+  obtain ⟨hsel, hsize, harg⟩ := hd
+  have harg0 := harg 0 (by simp)
+  have harg1 := harg 1 (by simp)
+  simp only [List.length_cons, List.length_nil] at hsize harg0 harg1
+  have hlt := lt_size_four' (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  simp only [g₀] at hg
+  apply WP.halts_of_false
+  solady_fresh_intro
+  simp only [List.getElem_cons_zero, List.getElem_cons_succ, Nat.mul_zero, Nat.add_zero,
+    Nat.mul_one] at harg0 harg1
+  pwp_steps [hval, hst, hsel', hlt, Abi.shr_calldataload_zero, Memory.read_64, harg0, harg1,
+    hok, ofAddress_and_addressMask, Solidity.eq_self]
+  simp (disch := simp (disch := decide) only [Memory.read_expand,
+    Memory.read_storeWord_of_disjoint, read_seed_tail]) only [read_balRow]
+  by_cases hle : v.toNat ≤ (m_world.sload m_msg.currentTarget (balSlot m_ctx.crypto m_msg.caller)).toNat
+  · have hc := iszero_gt_of_le hle
+    simp only [balSlot] at hc hle
+    simp only [hc]
+    pwp_xsteps [hval, hst, hc, Memory.read_64, ofAddress_and_addressMask, Solidity.eq_self]
+    simp (disch := simp (disch := decide) only [Memory.read_expand,
+      Memory.read_storeWord_of_disjoint, read_seed_tail]) only [read_balRow]
+    refine ⟨fun h => absurd hle (by simp only [balSlot] at h ⊢; omega),
+      fun _ => ⟨hval, hst, rfl, rfl, rfl, rfl, ?_⟩⟩
+    simp only [outputMachine]
+    logs_simp []
+    rw [shr_loadWord_of _ 12 dst]
+    · event_log [v]
+    · simp (disch := decide) only [Memory.read_expand, Memory.read_storeWord_of_disjoint,
+        read_addr0]
+  · have hc := iszero_gt_of_lt (Nat.lt_of_not_le hle)
+    simp only [balSlot] at hc hle
+    simp only [hc]
+    pwp_steps [hval, hst, hc, Memory.read_64]
+    exact ⟨fun _ => ⟨_, rfl⟩, fun h => absurd h (by simpa [balSlot] using hle)⟩
 
 end Verified.Solady.Spec
