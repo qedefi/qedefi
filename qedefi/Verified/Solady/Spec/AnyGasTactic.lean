@@ -41,8 +41,6 @@ def ruleFor (b : Nat) : Option Rule :=
       else if b = 0x52 then some { lemma := ``pwp_mstore, intros := 1 }
       else if b = 0x56 then some { lemma := ``pwp_jump }
       else if b = 0x5b then some { lemma := ``pwp_jumpdest, stk := false, intros := 1 }
-      else if b = 0x55 then some { lemma := ``pwp_sstore_any, intros := 3 }
-      else if b = 0xa3 then some { lemma := ``pwp_log3 }
       else none
 
 /-- One step of the main goal. `none`: no rule applies (the goal is unchanged). -/
@@ -91,6 +89,16 @@ def hwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
     return ← run (← `(tactic| refine pwp_swap ⟨$nS, by decide⟩ ‹_› $hb rfl rfl ?_)) 1
   if bn = 0x39 then
     return ← run (← `(tactic| refine pwp_codecopy ‹_› $hb rfl (by decide) ?_)) 1
+  if bn = 0x55 ∨ bn = 0xa3 then
+    -- keep the `isStatic = false` the rule provides (a success's postcondition needs it)
+    let lS := mkIdent (if bn = 0x55 then ``pwp_sstore_any else ``pwp_log3)
+    if ← attempt (do
+        evalTactic (← `(tactic| refine $lS ‹_› $hb rfl ?_))
+        evalTactic (← `(tactic| intro hstatic))
+        drop (if bn = 0x55 then 2 else 1)
+        norm) then
+      return some (← getGoals)
+    return none
   if bn = 0x57 then
     let ok ← attempt do
       evalTactic (← `(tactic| refine pwp_jumpi ‹_› $hb rfl ?_ ?_))

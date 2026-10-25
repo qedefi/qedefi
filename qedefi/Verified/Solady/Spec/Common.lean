@@ -57,4 +57,10 @@ theorem eq_zero_of_iszero_ne {x : Word} (h : Word.iszero x ≠ 0) : x = 0 := by
   by_contra hx
   exact h (iszero_of_ne hx)
 
+theorem ite_pos' {p : Prop} [Decidable p] {α : Sort _} {a b : α} (h : p) :
+    (if p then a else b) = a := by simp [h]
+
+theorem ite_neg' {p : Prop} [Decidable p] {α : Sort _} {a b : α} (h : ¬ p) :
+    (if p then a else b) = b := by simp [h]
+
 end Verified.Solady.Spec

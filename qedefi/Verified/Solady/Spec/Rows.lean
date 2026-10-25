@@ -131,4 +131,50 @@ theorem permit2_test (sp : Address) :
   · rintro rfl
     decide
 
+/-- `shr(96, mload(0x2c))` after `mstore(0x20, sp)`: the spender, whatever follows in memory. -/
+theorem shr_loadWord_addr (M : Memory) (sp : Address) :
+    Word.shr 96#256 ((M.storeWord 32 (Word.ofAddress sp)).loadWord 44) = Word.ofAddress sp := by
+  have hs : sp.toNat < 2 ^ 160 := sp.isLt
+  have hoa : (Word.ofAddress sp).toNat = sp.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  have h1 : (M.storeWord 32 (Word.ofAddress sp)).read 44 20 = ofAddress sp := by
+    rw [read_storeWord_slice' _ 32 12 20 44 _ (by omega) rfl, ofWord_ofAddress_extract]
+  have hB := toNat_lt ((M.storeWord 32 (Word.ofAddress sp)).read 64 12)
+  rw [Memory.read, size_readPadded] at hB
+  apply BitVec.eq_of_toNat_eq
+  rw [Memory.loadWord, show (M.storeWord 32 (Word.ofAddress sp)).read 44 32 =
+    (M.storeWord 32 (Word.ofAddress sp)).read 44 20 ++
+      (M.storeWord 32 (Word.ofAddress sp)).read 64 12 from Memory.read_add _ 44 20 12, h1]
+  simp only [Word.shr, toWord, toNat_append, toNat_ofAddress, hoa, Memory.read, size_readPadded]
+  change (BitVec.ofNat 256 _ >>> (96 : Nat)).toNat = _
+  rw [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- Solady `approve`'s Permit2 test `or(xor(sp, PERMIT2), iszero(not(v)))`, normalized: zero
+exactly when the spender is Permit2 and the amount is not `MAX`. -/
+theorem approve_test (sp : Address) (v : Word) :
+    (~~~v).iszero ||| 180847076211518657644945212059388835#256 ^^^ Word.ofAddress sp = 0 ↔
+      sp = PERMIT2 ∧ v ≠ ~~~0 := by
+  have hx : 180847076211518657644945212059388835#256 ^^^ Word.ofAddress sp = 0 ↔ sp = PERMIT2 := by
+    rw [show (0 : Word) = 0#256 from rfl, BitVec.xor_eq_zero_iff]
+    constructor
+    · intro h
+      apply BitVec.eq_of_toNat_eq
+      have := congrArg BitVec.toNat h
+      simp only [Word.ofAddress, BitVec.toNat_setWidth] at this
+      have hs : sp.toNat < 2 ^ 160 := sp.isLt
+      rw [show PERMIT2.toNat = 180847076211518657644945212059388835 from rfl]
+      rw [show (180847076211518657644945212059388835#256 : Word).toNat =
+        180847076211518657644945212059388835 from rfl] at this
+      omega
+    · rintro rfl; decide
+  have hA : (~~~v).iszero = 0 ↔ ~~~v ≠ 0 := by
+    by_cases hx : ~~~v = 0 <;> simp [Word.iszero, Word.ofBool, hx]
+  have hB : ~~~v ≠ 0 ↔ v ≠ ~~~0 := by
+    constructor
+    · intro h hv; exact h (by rw [hv, BitVec.not_not])
+    · intro h hv; exact h (by rw [← hv, BitVec.not_not])
+  rw [show (0 : Word) = 0#256 from rfl, BitVec.or_eq_zero_iff, ← show (0 : Word) = 0#256 from rfl,
+    hA, hB, hx, and_comm]
+
 end Verified.Solady.Spec
