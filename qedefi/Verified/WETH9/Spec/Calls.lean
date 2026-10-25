@@ -41,6 +41,68 @@ theorem weth9_call_transfer (s : VState Address) (c dst : Address) (v : ℕ) :
       Variant.move, Variant.units, Variant.feeOverflow, Variant.feeOf, Variant.credit,
       Variant.retData, Variant.weth9, Variant.standard, h, moved]
 
+/-! ## Moves on the storage -/
+
+theorem add_le_total {f : Address →₀ ℕ} {a b : Address} (h : a ≠ b) : f a + f b ≤ total f := by
+  have h1 := Token.total_sub_single (f := f) (a := a) (v := f a) le_rfl
+  have h2 := Token.le_total (f - Finsupp.single a (f a)) b
+  rw [Token.sub_single_apply] at h2
+  simp only [h, ↓reduceIte] at h2
+  have h3 := Token.le_total f a
+  omega
+
+/-- **A move on WETH9's storage is the model's move**: debiting `wad ≤ balanceOf[src]` from
+`src`'s row and then crediting `dst`'s row as read after the debit (unchecked) is `moved`, for
+actors `src`, `dst` with distinct rows, when the balances are backed (`total ≤ ether`, so the
+credit cannot wrap). -/
+theorem read_move {crypto : Crypto} {Act : Finset Address} {w : World} {token src dst : Address}
+    {wad : Word} (hR : ActorRows crypto Act [3] [4] []) (hs : src ∈ Act) (hd : dst ∈ Act)
+    (hb : wad.toNat ≤ (w.sload token (mappingSlot crypto (Word.ofAddress src) 3)).toNat)
+    (hwf : total (weth9Read crypto Act w token).bal ≤ (weth9Read crypto Act w token).ether) :
+    weth9Read crypto Act
+      ((w.sstore token (mappingSlot crypto (Word.ofAddress src) 3)
+          (w.sload token (mappingSlot crypto (Word.ofAddress src) 3) - wad)).sstore token
+        (mappingSlot crypto (Word.ofAddress dst) 3)
+        ((w.sstore token (mappingSlot crypto (Word.ofAddress src) 3)
+          (w.sload token (mappingSlot crypto (Word.ofAddress src) 3) - wad)).sload token
+            (mappingSlot crypto (Word.ofAddress dst) 3) + wad)) token =
+      moved (weth9Read crypto Act w token) src dst wad.toNat := by
+  set bs := w.sload token (mappingSlot crypto (Word.ofAddress src) 3) with hbs
+  set w1 := w.sstore token (mappingSlot crypto (Word.ofAddress src) 3) (bs - wad) with hw1
+  have hether : (w.balance token).toNat < 2 ^ 256 := (w.balance token).isLt
+  simp only [weth9Read, moved] at hwf ⊢
+  congr 1
+  · ext a
+    rw [readMap_sstore_bal hR hd, Token.add_single_apply, Token.sub_single_apply]
+    have hsub : (bs - wad).toNat = bs.toNat - wad.toNat := QEDefi.Solvency.toNat_sub_of_le hb
+    have hsrc : readMap crypto Act w token 3 src = bs.toNat := readMap_of_mem hs _ _ _
+    by_cases had : a = dst
+    · subst had
+      have h1 : w1.sload token (mappingSlot crypto (Word.ofAddress a) 3) =
+          if a = src then bs - wad else w.sload token (mappingSlot crypto (Word.ofAddress a) 3) := by
+        by_cases has : a = src
+        · subst has; simp [hw1]
+        · rw [hw1, World.sload_sstore_ne_key _ _ _
+            (fun h => has (balSlot_inj hR hd hs h))]
+          simp [has]
+      rw [h1]
+      by_cases has : a = src
+      · subst has
+        simp only [↓reduceIte, BitVec.sub_add_cancel]
+        rw [hsrc]; omega
+      · simp only [has, ↓reduceIte, Ne.symm has]
+        rw [readMap_of_mem hd]
+        have htot := add_le_total (f := readMap crypto Act w token 3) (Ne.symm has)
+        rw [hsrc, readMap_of_mem hd] at htot
+        rw [QEDefi.Solvency.toNat_add_of_lt (by omega)]
+    · simp only [had, ↓reduceIte, Ne.symm had]
+      rw [readMap_sstore_bal hR hs]
+      by_cases has : a = src
+      · subst has; simp only [↓reduceIte, hsub, hsrc]
+      · simp [has, Ne.symm has]
+  · rw [readMap2_sstore_bal hR hd, readMap2_sstore_bal hR hs]
+  · simp [hw1]
+
 /-! ## The bridge -/
 
 /-- **The postcondition of `CallSpec`** for the call `c` of the frame `m`, actors `Act`. -/
