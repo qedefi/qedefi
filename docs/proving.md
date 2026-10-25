@@ -417,7 +417,20 @@ system calls, transactions (the transaction layer's obligation) and credits
 (`BlockPreserves`) holds after every valid block (`stateTransition_preserves`) and along any
 chain of them (`Applies.preserves`), whose environments are a `BlockChain`
 (`Applies.blockChain`); `blockPreserves_good` discharges the system-call and credit obligations
-for the nested simulation's `GoodOk` predicates.
+for the nested simulation's `GoodOk` predicates. Its frame-summary hypothesis is discharged for
+the deployed system contracts: their mainnet code is `systemCode` (`Chain/SystemCode.lean`,
+bytes in `contracts/system/`, code hashes recomputed by the kernel in `SystemCodeHash.lean`),
+and no instruction of it (`PUSH` immediates skipped) is a `CALL`, `CREATE`, `SELFDESTRUCT` or
+`GAS` (`isolated_systemCode`, a `decide +kernel` scan), so a system call to it, or to an empty
+system contract, runs in one frame at the system contract (`reaches_lone`,
+`reaches_systemMessage`) and keeps every `GoodOk` predicate protecting neither
+`SYSTEM_ADDRESS` nor a system contract (`systemCall_good_systemCode`). That the system
+contracts hold their canonical code (`SystemCodeIn`) is itself a block invariant: no
+transaction (EIP-7702 included), system call or credit changes real code
+(`processMessageCall_code`, `process_code`, `Chain/CodeKeep.lean`), so it is assumed only at the
+start of a chain (`blockPreserves_good_systemCode`, `Applies.good_systemCode`). "Canonical code
+or none" is not invariant: nothing in the semantics keeps a transaction from deploying code at
+an empty address.
 
 **Time-indexed models** (`QEDefi.Trace.Time`). The model step is `step now s op`; behaviour
 over time is a closed form in `now` (e.g. `Vesting.Schedule.vested total t`), proved
