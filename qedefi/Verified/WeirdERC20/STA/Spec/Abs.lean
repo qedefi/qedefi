@@ -77,8 +77,10 @@ noncomputable def staAbs : TokenAbs (VState Address) where
 /-- The model. -/
 noncomputable abbrev M : TokenModel (VState Address) Address (Variant.Op Address) := staModel
 
-/-- The gas from which every obligation is exact. -/
-def g₀ : Nat := 100000
+/-- The gas from which every obligation is exact. `transferFrom` makes four `SSTORE`s and two
+`LOG3`s after up to eight `SLOAD`s; with each access priced at its cold worst case that exceeds
+`100000`, so the bound is `200000` (a larger `g₀` only weakens the obligations). -/
+def g₀ : Nat := 200000
 
 /-- The dispatcher's selectors (`STA.selectors`). -/
 def sel : List Nat := STA.selectors.map (·.2.toNat)
