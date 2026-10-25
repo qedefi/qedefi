@@ -21,10 +21,14 @@ import QEDefi.Actor.Trace
 import QEDefi.ERC20.Permit
 import QEDefi.ERC20.Rep
 import QEDefi.ERC20.RepOz
+import QEDefi.ERC20.Spec.Asset
 import QEDefi.ERC20.Spec.Bytecode
+import QEDefi.ERC20.Spec.Callee
+import QEDefi.ERC20.Spec.Invariant
 import QEDefi.ERC20.Spec.Laws
 import QEDefi.ERC20.Spec.Model
 import QEDefi.ERC20.Spec.Storage
+import QEDefi.ERC20.Spec.TopLevel
 import QEDefi.ERC20.Spec.VariantLaws
 import QEDefi.ERC20.Token
 import QEDefi.ERC20.Variant
@@ -32,6 +36,7 @@ import QEDefi.ERC20.VariantDeprecation
 import QEDefi.ERC20.VariantExtras
 import QEDefi.ERC20.VariantProps
 import QEDefi.ERC4626.Agree
+import QEDefi.ERC4626.AssetModel
 import QEDefi.ERC4626.AssetVariants
 import QEDefi.ERC4626.Events
 import QEDefi.ERC4626.Inflation
