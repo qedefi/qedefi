@@ -24,7 +24,8 @@ What this needs beyond `ERC20Spec` and `M.WFInvariant`, as hypotheses:
 * **`Touch`** (`FramesTouch`, `TxTouch`): every frame of the token's code that a transaction
   reaches has an actor as caller and well-formed calldata naming only actors (`WellFormed`: an
   ERC-20 call, a view, the fallback, an entry point of `ops`, or a `permit` for a token with
-  one), and calldata shorter than `2⁶⁴` bytes. The spec is exact only for actors' calls
+  one), and calldata shorter than `2⁶⁴` bytes; for a token with `permit`, the account `0x01`
+  holds no EIP-7702 designator in the frame's world (`EcrecoverPlain`: nobody holds its key). The spec is exact only for actors' calls
   (`Start.caller`, `Call.addrs`), and the invariant is about the actors' view: a transfer to an
   account outside the actors changes the actors' sum but not the supply. The size bound holds
   on any real chain (a caller pays for its calldata in memory: `2⁶⁴` bytes cost more than `2¹⁰⁰`
@@ -242,15 +243,15 @@ theorem etherFree_of_read {abs : TokenAbs σ} {M : TokenModel σ Address E}
 
 /-- **Calldata the spec covers, naming only actors**: an ERC-20 call or a view whose accounts
 are actors, an unknown selector or short calldata (the fallback), an entry point whose accounts
-are actors, or (for a token with `permit`, `rec = some _`) a `permit` for two actors. -/
+are actors, or (for a token with `permit`, `perm = some _`) a `permit` for two actors. -/
 def WellFormed (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E)
-    (opAddrs : E → List Address) (rec : Option (Machine → ℕ → Address)) (Act : Finset Address)
+    (opAddrs : E → List Address) (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (Act : Finset Address)
     (msg : Message) : Prop :=
   (∃ c : Call Address, c.Encodes msg.data ∧ ∀ x ∈ c.addrs, x ∈ Act) ∨
   (∃ v : View, v.Encodes msg.data ∧ ∀ x ∈ v.addrs, x ∈ Act) ∨
   (msg.data.size < 4 ∨ Abi.selectorOf msg.data ∉ sel) ∨
   (∃ e, ops msg.caller msg.data msg.value.toNat = some e ∧ ∀ x ∈ opAddrs e, x ∈ Act) ∨
-  (rec.isSome ∧ ∃ (o sp : Address) (v dl pv pr ps : Word), o ∈ Act ∧ sp ∈ Act ∧
+  (perm.isSome ∧ ∃ (o sp : Address) (v dl pv pr ps : Word), o ∈ Act ∧ sp ∈ Act ∧
     Args msg.data 0xd505accf [Word.ofAddress o, Word.ofAddress sp, v, dl, pv, pr, ps])
 
 /-- **The end `(mf, o)` of the frame `m` is explained by a model action of an actor naming only
@@ -268,12 +269,13 @@ def Explained (abs : TokenAbs σ) (M : TokenModel σ Address E)
 variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {crypto : Crypto}
   {Act : Finset Address} {a : Address} {g₀ : Nat} {sel : List Nat}
   {ops : Address → ByteArray → ℕ → Option E} {opAddrs : E → List Address}
-  {rec : Option (Machine → ℕ → Address)}
+  {perm : Option ((Machine → Nat) × (Machine → ℕ → Address))}
 
 /-- **The spec explains every frame with well-formed calldata naming actors.** -/
 theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) {m : Machine}
-    (hs : Start code abs M Act m) (hwf : WellFormed sel ops opAddrs rec Act m.frame.msg) :
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) {m : Machine}
+    (hs : Start code abs M Act m) (hwf : WellFormed sel ops opAddrs perm Act m.frame.msg)
+    (hecr : perm.isSome → EcrecoverPlain m) :
     Halts m (Explained abs M ops opAddrs Act m) := by
   rcases hwf with ⟨c, he, hc⟩ | ⟨v, he, hv⟩ | hd | ⟨e, he, hea⟩ | ⟨hrec, o, sp, v, dl, pv, pr, ps,
     ho, hsp, hargs⟩
@@ -285,8 +287,8 @@ theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
       (fun hm => .inr (.inr (.inl ⟨_, by simp [Call.addrs], hm⟩))) (fun hf => .inl hf.1)
   · exact (hspec.ops Act m e hs he hea).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inr ⟨_, e, he, hea, hm⟩))) (fun hf => .inl hf.1)
-  · obtain ⟨r, hr⟩ := Option.isSome_iff_exists.1 hrec
-    exact (hpermit r hr Act m o sp v dl pv pr ps hs ho hsp hargs).mono fun _ _ _ h => h.elim
+  · obtain ⟨⟨gp, r⟩, hr⟩ := Option.isSome_iff_exists.1 hrec
+    exact (hpermit gp r hr Act m o sp v dl pv pr ps hs ho hsp (hecr hrec) hargs).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inl ⟨_, by simp [Call.addrs, ho, hsp], hm⟩)))
       (fun hf => .inl hf.1)
 
@@ -363,33 +365,34 @@ theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size
 /-! ## Message calls and transactions -/
 
 /-- **Every token frame a message call reaches touches only actors**: it has an actor as
-caller, well-formed calldata naming only actors, shorter than `2⁶⁴` bytes. -/
+caller, well-formed calldata naming only actors, shorter than `2⁶⁴` bytes, and, for a token
+with `permit`, `ecrecover` runs the precompile in its world (`EcrecoverPlain`). -/
 def FramesTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
-    (rec : Option (Machine → ℕ → Address)) (crypto : Crypto) (Act : Finset Address) (a : Address)
+    (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto) (Act : Finset Address) (a : Address)
     (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
   ∀ G m, Reaches ctx w tr msg m →
     DStartV (Prot a) (TokInv code abs M crypto Act a) (Ctx crypto) G m →
     m.frame.msg.data.size < 2 ^ 64 ∧ m.frame.msg.caller ∈ Act ∧
-      WellFormed sel ops opAddrs rec Act m.frame.msg
+      WellFormed sel ops opAddrs perm Act m.frame.msg ∧ (perm.isSome → EcrecoverPlain m)
 
 /-- **A top-level message call keeps the invariant**, whatever it calls (the token or anything
 calling it, at any depth), for any transaction type: a message from an unprotected caller
 (`TopOk`) that moves its value, in the context of `crypto`, all of whose token frames touch
 only actors. -/
 theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (hW : M.WFInvariant)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult}
     (hw : TokInv code abs M crypto Act a w) (hmsg : TopOk (Prot a) w msg)
     (hv : msg.shouldTransferValue = true) (hC : ctx.crypto = crypto)
-    (htouch : FramesTouch code abs M sel ops opAddrs rec crypto Act a ctx w tr msg)
+    (htouch : FramesTouch code abs M sel ops opAddrs perm crypto Act a ctx w tr msg)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     TokInv code abs M crypto Act a r.world := by
   refine processMessageCall_good_reach (C := Ctx crypto) (goodOps hE hreal hdel) hw hmsg hv hC
     (fun G m hreach hd => ?_) hr
-  obtain ⟨hsize, hcaller, hwfd⟩ := htouch G m hreach hd
+  obtain ⟨hsize, hcaller, hwfd, hecr⟩ := htouch G m hreach hd
   have ht : m.frame.msg.currentTarget = a := hd.danger.1
   have hsnap : m.frame.snapshot.1.code a = code := hd.snapshot.1
   have hwcode : m.world.code a = code := ((hd.keep a rfl).code).trans hsnap
@@ -409,7 +412,7 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
       wf := by
         show M.wf (abs.read m.ctx.crypto Act m.frame.snapshot.1 m.frame.msg.currentTarget)
         rw [hd.context, ht]; exact hd.snapshot.2 }
-  have h := frame_inv hW hE hreal hstart (explained_of_spec hspec hpermit hstart hwfd)
+  have h := frame_inv hW hE hreal hstart (explained_of_spec hspec hpermit hstart hwfd hecr)
     ⟨ko, ks, by rw [hfr]; rfl⟩ (by rw [ht]; exact hsnap)
   rw [hd.context, ht] at h
   exact h
@@ -418,7 +421,7 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
 transaction's top-level message call), and the transaction uses `crypto`. -/
 def TxTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E) (sel : List Nat)
     (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
-    (rec : Option (Machine → ℕ → Address)) (crypto : Crypto) (Act : Finset Address) (a : Address)
+    (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto) (Act : Finset Address) (a : Address)
     (i : Input) (w : World) (_ : EvmLean.Tx.TxOutput) : Prop :=
   i.crypto = crypto ∧
   ∀ (intr : EvmLean.Tx.IntrinsicGas) (c : EvmLean.Tx.Checked),
@@ -426,7 +429,7 @@ def TxTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     EvmLean.Tx.check i.crypto i.fork i.env i.gasAvail i.blobAvail w i.tx i.hint = .ok c →
     let w₁ := prefixWorld w c.sender
       (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee i.fork i.env i.tx c))
-    FramesTouch code abs M sel ops opAddrs rec crypto Act a (txContext i.crypto i.fork i.env i.tx c)
+    FramesTouch code abs M sel ops opAddrs perm crypto Act a (txContext i.crypto i.fork i.env i.tx c)
       w₁ ∅ (EvmLean.Tx.prepareMessage i.crypto i.fork i.env w₁ i.tx c.sender
         (w.account c.sender).nonce (i.tx.gas - intr.regular))
 
@@ -434,11 +437,11 @@ def TxTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
 authorizations, any fork and block, with the crypto `abs` is read with, all of whose token
 frames touch only actors. -/
 theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (hW : M.WFInvariant)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {i : Input} {w : World} {out : EvmLean.Tx.TxOutput}
     (hw : TokInv code abs M crypto Act a w) (h : i.run w = .ok out)
-    (htouch : TxTouch code abs M sel ops opAddrs rec crypto Act a i w out) :
+    (htouch : TxTouch code abs M sel ops opAddrs perm crypto Act a i w out) :
     TokInv code abs M crypto Act a out.world := by
   obtain ⟨hcr, htouch⟩ := htouch
   obtain ⟨intr, c, r, gu, hv, hc, hr, -, hout, -, -⟩ := process_ok h
@@ -459,11 +462,11 @@ theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
 /-- **The invariant holds after any sequence of successful transactions** using `crypto`, all
 of whose token frames touch only actors. -/
 theorem txSteps_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (hW : M.WFInvariant)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {w w' : World}
     (hw : TokInv code abs M crypto Act a w)
-    (h : TxSteps (TxTouch code abs M sel ops opAddrs rec crypto Act a) w w') :
+    (h : TxSteps (TxTouch code abs M sel ops opAddrs perm crypto Act a) w w') :
     TokInv code abs M crypto Act a w' :=
   h.keeps (fun _ _ _ hv hr ht => process_inv hspec hpermit hW hE hsound hreal hdel hv hr ht) hw
 
@@ -494,11 +497,11 @@ theorem variant_conserved {V : Variant Address} (hV : V.Sane) (hr : V.rebasing =
     {abs : TokenAbs (VState Address)} {ops : Address → ByteArray → ℕ → Option (Variant.Op Address)}
     {opAddrs : Variant.Op Address → List Address}
     (hspec : ERC20Spec code abs (V.model ev) g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs (V.model ev) g₀ r)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs (V.model ev) gp r)
     (hE : EtherFree abs (V.model ev)) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) {w w' : World}
     (hw : TokInv code abs (V.model ev) crypto Act a w)
-    (h : TxSteps (TxTouch code abs (V.model ev) sel ops opAddrs rec crypto Act a) w w') :
+    (h : TxSteps (TxTouch code abs (V.model ev) sel ops opAddrs perm crypto Act a) w w') :
     total (abs.read crypto Act w' a).bal + total (abs.read crypto Act w' a).frozen =
       (abs.read crypto Act w' a).supply := by
   have hi := txSteps_inv hspec hpermit (variant_wfInvariant hV ev) hE hsound hreal hdel hw h
