@@ -161,8 +161,10 @@ unchanged.
 - `0x01` delegated by EIP-7702 (nobody holds its key); calldata of `2⁶⁴` bytes or more
   (impossible within `2⁶⁴` gas); a stored `name`/`symbol` whose getter needs `2⁶⁴` gas
   (slots 0–1 are written only by the constructor).
-- The transaction layer around `processMessageCall` (nonce, gas purchase and refund, fees) is
-  an environment step: it changes no storage of the vault or asset, stated but not proved.
+- The trace theorems over top-level calls treat the rest of a transaction (nonce, gas
+  purchase and refund, fees) as an environment step. Over real transactions and valid blocks
+  it is proved instead ([Whole transactions and valid blocks](#whole-transactions-and-valid-blocks));
+  there the system calls still carry a coverage hypothesis (`SysCovered`).
 - Signature unforgeability: `permit` theorems say exactly when a permit succeeds in terms of
   `crypto.ecrecover`; that only the owner can sign is *not* claimed (`SigUnforgeable` is
   provided as an optional hypothesis, unused).
