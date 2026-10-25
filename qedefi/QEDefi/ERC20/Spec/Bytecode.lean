@@ -203,13 +203,15 @@ def Normal (g₀ : Nat) (m : Machine) : Prop :=
 /-- The common hypotheses of every obligation, for the actors `Act`: `m` is a fresh frame of
 `code`, started the way the interpreter starts frames (its world is its snapshot with the value
 moved, as `launchCall` and `initMachine` do), its value moved if nonzero (token code run by a
-`DELEGATECALL` that carries value is out of scope), its calldata is payable, the caller is an
-actor, the actors' hash hypotheses hold, and the token is in a state its model can reach. -/
+`DELEGATECALL` that carries value is out of scope), it runs the standard precompiles (as every
+machine the interpreter builds does), its calldata is payable, the caller is an actor, the
+actors' hash hypotheses hold, and the token is in a state its model can reach. -/
 structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (Act : Finset Address) (m : Machine) : Prop where
   fresh : Fresh code m
   launched : m.world = transferValue m.frame.snapshot.1 m.frame.msg
   value : m.frame.msg.shouldTransferValue = true ∨ m.frame.msg.value = 0
+  precompiles : m.precompiles = PrecompileImpl.standard m.ctx
   size : m.frame.msg.data.size < 2 ^ 64
   caller : m.frame.msg.caller ∈ Act
   sound : abs.Sound m.ctx.crypto Act

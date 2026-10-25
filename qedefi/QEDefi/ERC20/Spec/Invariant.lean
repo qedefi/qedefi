@@ -402,6 +402,7 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
     { fresh := hfresh
       launched := hd.world_eq
       value := .inl hd.transfers
+      precompiles := hd.pre
       size := hsize
       caller := hcaller
       sound := by rw [hd.context]; exact hsound

@@ -24,13 +24,15 @@ namespace Callee
 
 /-! ## Starting the token's frame -/
 
-/-- **`Start` holds for the frame `launchCall` pushes** for a call running the token's code
+/-- **`Start` holds for the frame `launchCall` pushes**, from a machine running the standard
+precompiles (as every machine the interpreter builds does), for a call running the token's code
 (not a precompile), whose value moves or is zero, with payable calldata, for actors containing
 the caller whose hash hypotheses hold, from a world where the token's model state satisfies its
 invariant. -/
 theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E}
     {Act : Finset Address} {m : Machine} {req : CallRequest}
-    (hpre : precompileOf m.precompiles req.msg = none) (hcode : req.msg.code = code)
+    (hpre : precompileOf m.precompiles req.msg = none)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx) (hcode : req.msg.code = code)
     (hval : req.msg.shouldTransferValue = true ∨ req.msg.value = 0)
     (hsize : req.msg.data.size < 2 ^ 64) (hcaller : req.msg.caller ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -47,6 +49,7 @@ theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel 
     { fresh := hcode ▸ fresh_init _ req.msg _ _ rfl
       launched := rfl
       value := hval
+      precompiles := hstd
       size := hsize
       caller := hcaller
       sound := hsound
@@ -95,7 +98,8 @@ abbrev callData (m : Machine) (inOff inSize outOff outSize : Word) : ByteArray :
   readBytes (callMemory m inOff inSize outOff outSize).bytes inOff.toNat inSize.toNat
 
 /-- **Callee rule for an ERC-20 call to a verified token.** At a `CALL` without value to the
-token at `t = toW` (its code `code`, not a precompile, no designator) whose input window encodes
+token at `t = toW` (its code `code`, not a precompile, no designator), from a machine running the
+standard precompiles, whose input window encodes
 the ERC-20 call `c`, with the caller's account and the accounts of `c` actors whose hash
 hypotheses hold and the token's state satisfying its invariant, the caller continues after the
 token's frame with the model's outcome of `c` by the caller's account in the token's state
@@ -109,6 +113,7 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
       m.frame.gasLeft)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -134,6 +139,7 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
         rwa [show mc.frame.msg.code = code from htok] at this
       launched := (transferValue_zero _ _ rfl).symm
       value := .inr rfl
+      precompiles := hstd
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller
       sound := hsound
@@ -156,6 +162,7 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
       m.frame.gasLeft)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -172,7 +179,7 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
       WP (resumeAfter (call0Caller m gas toW inOff inSize outOff outSize rest) m.parents mf o)
         Q H) :
     WP m Q H :=
-  call hc hcode hstk hdel hgas hdepth hpre htok hsize hcaller haddrs hsound hwf he
+  call hc hcode hstk hdel hgas hdepth hpre hstd htok hsize hcaller haddrs hsound hwf he
     fun mf o hsf h => h.elim (k mf o hsf) fun hf => (hf.2 ⟨hg₀, hstatic⟩).elim
 
 /-! ## `STATICCALL` of a view -/
@@ -189,8 +196,8 @@ abbrev staticChild (m : Machine) (gas toW inOff inSize outOff outSize : Word)
     parents := callerFrame m rest (callCost m gas 0 (Word.toAddress toW) 0 0 inOff inSize outOff
       outSize) (Word.toAddress toW) inOff inSize outOff outSize :: m.parents }
 
-/-- **Callee rule for a view of a verified token.** At a `STATICCALL` to the token whose input
-window encodes the view `v`, with the caller's account and the view's accounts actors, the
+/-- **Callee rule for a view of a verified token.** At a `STATICCALL` to the token, from a
+machine running the standard precompiles, whose input window encodes the view `v`, with the caller's account and the view's accounts actors, the
 caller continues after the token's frame with one returned word holding the model's value and
 nothing changed, or, with less than `g₀` gas forwarded, with a failure. -/
 theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
@@ -201,6 +208,7 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
       m.frame.gasLeft)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
+    (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ v.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -224,6 +232,7 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
         rwa [show mc.frame.msg.code = code from htok] at this
       launched := (transferValue_zero _ _ rfl).symm
       value := .inr rfl
+      precompiles := hstd
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller
       sound := hsound
