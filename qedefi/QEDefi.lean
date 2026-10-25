@@ -24,6 +24,10 @@ import QEDefi.ERC20.RepOz
 import QEDefi.ERC20.Spec.Asset
 import QEDefi.ERC20.Spec.Bytecode
 import QEDefi.ERC20.Spec.Callee
+import QEDefi.ERC20.Spec.Instances.GUSD
+import QEDefi.ERC20.Spec.Instances.LEND
+import QEDefi.ERC20.Spec.Instances.YAMV2
+import QEDefi.ERC20.Spec.Instances.ZRX
 import QEDefi.ERC20.Spec.Invariant
 import QEDefi.ERC20.Spec.Laws
 import QEDefi.ERC20.Spec.Model
