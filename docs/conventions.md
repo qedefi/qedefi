@@ -20,8 +20,7 @@ guides, Cedar-Lean and LNSym. The workflow and the checks to run are in
 - Namespaces mirror directories. Generic results go to `EvmLogic` (root package) or `QEDefi`;
   anything about a specific contract goes to `qedefi/Verified/<Project>/`, one directory per
   deployed system, its generated code in `Contracts/`. `qedefi/Examples/` is for demos only.
-- Root files (`EvmLean.lean`, `EvmLogic.lean`, `EvmTest.lean`, `QEDefi.lean`, `Verified.lean`,
-  `Examples.lean`, `Difftest.lean`)
+- Root files (`EvmLean.lean`, `EvmLogic.lean`, `EvmTest.lean`, `QEDefi.lean`)
   contain only `import`s and a module doc.
 - Stable interfaces: `Crypto` and `Context.crypto`, `Interpreter.processMessageCall`,
   `OutOfFuel`, `createAddress`/`create2Address`, `Precompile.isPrecompile`/`Precompile.run`

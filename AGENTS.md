@@ -25,9 +25,10 @@ lake build                                    # root package, about a minute
    [Next list](docs/status.md#next). Check the open pull requests first: one titled
    `[wip] <item>` means someone is on it. Prefer a small, well-delimited piece (one function's
    summary, one token's refinement) over a whole row.
-2. **Claim.** If you can open pull requests, push a branch and open a **draft** pull request
-   titled `[wip] <item>`. Push at least once a day; a draft with no push for 72 hours is free
-   for anyone to take over. Without GitHub access, work anyway and say so to your user.
+2. **Claim.** If you can open pull requests, push a branch named `<area>/<item>`
+   (`tokens/usdt-transfer`) and open a **draft** pull request titled `[wip] <item>`. Push at
+   least once a day; a draft with no push for 72 hours is free for anyone to take over. Without
+   GitHub access, work anyway and say so to your user.
 3. **Read before you write.** The document the item links to, then the closest finished proof:
    the Solmate vault (`qedefi/Verified/Solmate/`), WETH9 (`qedefi/Verified/WETH9/`)
    and the proxy guard (`qedefi/Verified/OpenZeppelin/Proxy/`) are the templates.
@@ -36,8 +37,11 @@ lake build                                    # root package, about a minute
    proofs into `qedefi/Verified/<Project>/`, one directory per deployed system.
 5. **Check.** `lake build --wfail` for the modules you touched, `scripts/check-trust.sh`, and for
    any refactor `scripts/compare-statements.py` (0 missing, 0 changed, 0 axiom changes).
-6. **Submit.** Mark the pull request ready and fill the credit section of the template (your
-   user's handle, your model, the approximate agent hours).
+6. **Submit.** Retitle the pull request as its final commit subject (see Commits), fill the
+   credit section of the template (your user's handle, your model, the approximate agent hours),
+   mark it ready and turn on auto-merge: `gh pr merge --auto --squash`. The merge queue rebuilds
+   it on top of the latest `main` and merges it when CI passes. If the queue rejects it, rebase
+   on `main`, fix, and push again.
 
 A session that ends without closing the item is still worth a push: commit the lemmas you
 proved to the draft pull request and list the dead ends in its description, so the next agent
@@ -71,14 +75,21 @@ is being proved, or **checks** it, is not.
   (`git worktree add -b <branch> <path> main`), then copy the caches
   (`cp -cR .lake <wt>/.lake && cp -cR qedefi/.lake <wt>/qedefi/.lake`).
 - **Keep notes** (what worked, what the kernel refused) in `notes.local.md`, which git ignores.
+- **Stay out of shared files:** one item per pull request, in its own files. Do not edit the
+  table in `docs/status.md` or the README; put the result in the pull request description and
+  the maintainer updates them. New modules under `Verified/`, `Examples/` and `Difftest/` need no
+  import list (the lakefile builds every file there).
 
 ## Commits
 
-- An imperative summary line of at most 72 characters (`Prove WETH9 withdraw for any gas`), then
-  a blank line and a body that says why.
+Pull requests are squash-merged: the title becomes the commit subject on `main`, the description
+its body. So the title is an imperative line of at most 72 characters
+(`Prove WETH9 withdraw for any gas`), and the description says why. Commits on your branch:
+
+- The same style: an imperative summary line, a blank line, a body that says why.
 - No `Co-Authored-By` or other attribution trailers for AI tools (Claude, Codex, Copilot), and no
   "Generated with" footers. Credit your model in the pull request template instead.
-- No `WIP`, `fixup` or `tmp` commits on a branch you open a pull request from: squash them first.
+- Work-in-progress commits on your branch are fine: the squash merge drops them.
 
 ## Tools
 

@@ -14,9 +14,9 @@ tmp=$(mktemp -t dumpstmts).lean
 trap 'rm -f "$tmp"' EXIT
 cd "$root/qedefi"
 {
-  echo 'import EvmLogic'; echo 'import QEDefi'; echo 'import Verified'; echo 'import Examples'
-  echo 'import Difftest'
-  find QEDefiTest -name '*.lean' | sed 's|\.lean$||; s|/|.|g; s/^/import /'
+  echo 'import EvmLogic'; echo 'import QEDefi'
+  # Verified, Examples and Difftest have no root module (lakefile globs): import every file.
+  find Verified Examples Difftest QEDefiTest -name '*.lean' | sed 's|\.lean$||; s|/|.|g; s/^/import /'
   cat <<'EOF'
 open Lean Elab Command
 run_cmd do

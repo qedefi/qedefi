@@ -30,8 +30,8 @@ scan() { # scan <regex> <paths...>
 semantics=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?(axiom|opaque|partial\s+def|unsafe)\b|\@\[extern|implemented_by|native_decide|panic!|\bget!|\bhead!|\bgetLast!|\]!' \
   EvmLean EvmLean.lean)
 proofs=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?axiom\b|native_decide|bv_decide|skipKernelTC' \
-  EvmLogic EvmLogic.lean qedefi/QEDefi qedefi/QEDefi.lean qedefi/Verified qedefi/Verified.lean \
-  qedefi/Examples qedefi/Examples.lean qedefi/Difftest qedefi/Difftest.lean)
+  EvmLogic EvmLogic.lean qedefi/QEDefi qedefi/QEDefi.lean qedefi/Verified qedefi/Examples \
+  qedefi/Difftest)
 status=0
 if [ -n "$semantics" ]; then
   echo "$semantics"
