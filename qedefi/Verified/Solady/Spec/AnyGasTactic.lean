@@ -26,7 +26,7 @@ def ruleFor (b : Nat) : Option Rule :=
     (0x17, ``pwp_or), (0x18, ``pwp_xor), (0x1a, ``pwp_byte), (0x1b, ``pwp_shl),
     (0x1c, ``pwp_shr), (0x1d, ``pwp_sar), (0x15, ``pwp_iszero), (0x19, ``pwp_not),
     (0x20, ``pwp_keccak256), (0x35, ``pwp_calldataload), (0x51, ``pwp_mload_val),
-    (0x54, ``pwp_sload)]
+    (0x54, ``pwp_sload), (0x0a, ``pwp_exp)]
   let pv : List (Nat × Name) := [(0x30, ``pwp_address), (0x33, ``pwp_caller),
     (0x34, ``pwp_callvalue), (0x36, ``pwp_calldatasize), (0x38, ``pwp_codesize),
     (0x3d, ``pwp_returndatasize), (0x47, ``pwp_selfbalance), (0x58, ``pwp_pc),

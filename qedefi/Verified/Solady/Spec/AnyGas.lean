@@ -950,6 +950,35 @@ theorem pwp_return {x y : Word} {rest : List Word}
     rfl
 
 
+/-- `EXP` (gas depends on the exponent's byte length). -/
+theorem pwp_exp {x y : Word} {rest : List Word}
+    (hsnap : FailH H) (hcode : m.frame.code[m.frame.pc]? = some 0x0a)
+    (hstk : m.frame.stack = x :: y :: rest)
+    (hrec : rest.length < 1024 → Gas.expCost y.toNat ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with
+        stack := (Word.exp x y) :: rest, gasLeft := m.frame.gasLeft - Gas.expCost y.toNat,
+        pc := m.frame.pc + 1 } } Q H) :
+    WP m Q H := by
+  have hdec : Opcode.decode m.ctx.fork 0x0a = .exp := by cases m.ctx.fork <;> rfl
+  by_cases hg : Gas.expCost y.toNat ≤ m.frame.gasLeft
+  · by_cases hl : rest.length < 1024
+    · exact WP.of_step (step_exp hcode hstk hl hg) ⟨rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl,rfl⟩
+        (hrec hl hg)
+    · have hl' : Gas.stackLimit ≤ rest.length := Nat.le_of_not_lt hl
+      have hg' : ¬ m.frame.gasLeft < Gas.expCost y.toNat := Nat.not_lt.mpr hg
+      refine wp_fail_of_error (e := .stackOverflow) hsnap hcode ?_
+      rw [hdec]
+      simp only [exec, pop, push, charge, advance, getFrame, modifyFrame, StateT.run_bind, hstk,
+        hg', hl', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true,
+        ite_false]
+      rfl
+  · have hg' : m.frame.gasLeft < Gas.expCost y.toNat := Nat.lt_of_not_le hg
+    refine wp_fail_of_error (e := .outOfGas) hsnap hcode ?_
+    rw [hdec]
+    simp only [exec, pop, push, charge, advance, getFrame, modifyFrame, StateT.run_bind, hstk,
+      hg', StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, ite_true]
+    rfl
+
 /-! ## Writes in a possibly static frame -/
 
 /-- `SSTORE` in any frame: a static frame fails (`writeInStaticContext` or out of gas). -/
