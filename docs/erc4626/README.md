@@ -79,6 +79,41 @@ provides it for every call kind, and the `*_deployed` theorems use it.
 or asset transfer *by* the vault, an asset `transferFrom`/`burn` *from* it); asset
 `burn(vault, ·)` is the model's "loss" and lowers the price.
 
+### Whole transactions and valid blocks
+
+The columns above run over top-level `processMessageCall`s and assumed environment steps. The
+same statements hold over the real transaction function `Tx.process` (any type, EIP-7702
+included) and the real block function `Block.stateTransition`, with **no environment step**
+(`Verified/Solmate/ERC4626/Process.lean`, `Blocks.lean`, namespace `.Nested`):
+
+| Statement | Sequences of transactions (`ProcessTrace`) | Chains of valid blocks (`CoveredChain`) |
+|---|---|---|
+| `Follows` is kept | `follows_process_anyGas`, `follows_process`, `follows_processTrace` | `follows_stateTransition`, `follows_coveredChain` |
+| model simulation | `lift_processTrace` | `lift_coveredChain` |
+| every model invariant holds | `invariant_processTrace` | `invariant_coveredChain` |
+| `totalSupply` = Σ `balanceOf` | `supply_eq_sum_process`, `supply_eq_sum_processTrace` | `supply_eq_sum_coveredChain` |
+| solvency | `solvent_process`, `solvent_processTrace` | `solvent_coveredChain` |
+| price monotone | `price_mono_processTrace` | `price_mono_coveredChain` |
+
+- The prefix (nonce, fee purchase) and suffix (refund, coinbase reward, `SELFDESTRUCT`
+  deletions, EIP-161 clean-up) of a transaction are proved to keep the vault's and the asset's
+  storage and code (`process_envSteps`: the old `EnvStep`s, derived); `TopOk` and the message's
+  context are derived from `check` (EIP-3607).
+- Coverage is the any-gas one, stated for the transaction's own message in its prefix world
+  (`TxCoveredAnyGas`; `TxCovered` with `TxOk` and `minGas ≥ 250000` implies it).
+- Gas: `GasCapped fork gasAvail` — from Osaka EIP-7825 caps `tx.gas` at `2²⁴`; before Osaka
+  nothing in `validate`/`check` bounds `tx.gas` except the block gas still available, so the
+  transaction theorems take `gasAvail < 2⁶⁴`, which every valid block gives (EIP-1985,
+  `gasLimit_envOf_le`).
+- `ProcessTrace` is a sub-relation of `EvmLogic.Tx.Steps` (`ProcessTrace.steps`);
+  `CoveredChain` of `EvmLogic.Chain.Applies` (`CoveredChain.applies`). `BlockPreserves` cannot
+  be used as is: it asks the obligation of *every* transaction, and a transaction committing a
+  call by a non-actor is not admitted. So `BlockCovered` asks coverage of the transactions
+  (`TxsCovered`) and system calls (`SysCovered`, vacuous for system contracts that call no
+  other contract) the block actually runs, at the world each runs in. Withdrawals need
+  nothing. Extra hypothesis: `SYSTEM_ADDRESS` is neither the vault nor the asset
+  (`not_prot_systemAddress` for the canonical deployment).
+
 ## Hypotheses and exclusions
 
 Every hypothesis is an explicit argument; none is an axiom. The any-gas theorems take:
@@ -178,3 +213,4 @@ unchanged.
 | `…/ERC4626/Invariants/` | top-level traces: `System`, `Deployed`, `Events` (`trace_logs`) |
 | `…/ERC4626/Nested/` | any transaction: `System`, `Calls`, `Views`, `Permit`, `Coverage`, `Invariants` |
 | `…/ERC4626/LowGas/` | any gas: `Code`, `Targets`, `Frames`, `AnyGas` |
+| `…/ERC4626/Process.lean`, `Blocks.lean` | whole transactions (`Tx.process`, EIP-7702 included) and chains of valid blocks (`Block.stateTransition`) |
