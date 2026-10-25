@@ -20,7 +20,7 @@ variable {σ E : Type} {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ
 
 theorem start_high {m : Machine} (h : Start code abs M Act m) {G : Nat}
     (hG : m.frame.gasLeft ≤ G) : Start code abs M Act (high G m) :=
-  ⟨fresh_high h.fresh hG, h.launched, h.value, h.size, h.caller, h.sound, h.wf⟩
+  ⟨fresh_high h.fresh hG, h.launched, h.value, h.precompiles, h.size, h.caller, h.sound, h.wf⟩
 
 theorem fails_of_failed {o : Outcome} (h : Failed o) : Fails o := by
   cases o with
@@ -41,7 +41,7 @@ def MatchesOk (abs : TokenAbs σ) (Act : Finset Address) (m : Machine)
   | .ok s' ret => fun out W T L =>
     out = retBytes ret ∧ abs.read m.ctx.crypto Act W m.frame.msg.currentTarget = s' ∧
     FrameKeeps abs m.ctx.crypto Act m.frame.msg.currentTarget m.world W ∧
-    T = m.transient ∧ L = m.frame.sub.logs ++ (evs.map (eventLog m.frame.msg.currentTarget)).toArray
+    T = m.transient ∧ L = m.frame.sub.logs ++ (evs.map (Spec.eventLog m.frame.msg.currentTarget)).toArray
   | .halt _ => fun _ _ _ _ => False
 
 theorem matchesOk_of {m mf : Machine} {o : Outcome} {evs : List (Event Address)}
