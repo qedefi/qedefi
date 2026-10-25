@@ -114,6 +114,7 @@ theorem halts_of_high {m : Machine} (hf : Fresh USDT.runtimeCode m)
     | halt e => trivial
   · exact .inr (hl _ _ h)
 
+set_option hygiene false in
 /-- Open the lift of a fresh frame (`hf : Fresh USDT.runtimeCode m`) for symbolic execution: a
 literal machine running `patchedCode`, with its jump table as a hypothesis. -/
 macro "lift_intro" : tactic => `(tactic| (

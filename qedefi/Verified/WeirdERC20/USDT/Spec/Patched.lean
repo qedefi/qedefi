@@ -726,8 +726,17 @@ def haltPcs : List Nat := [410, 421, 552, 563, 609, 620, 675, 686, 720, 731, 777
 /-! Kernel lookup table of `patchedCode` (bytes and jump destinations). -/
 code_table patchedCode
 
-/-- Run the fast symbolic stepper until the next halting instruction (`haltPcs`). -/
-macro "usdt_run" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic =>
-  `(tactic| pwp_run_to 410, 421, 552, 563, 609, 620, 675, 686, 720, 731, 777, 788, 818, 829, 915, 926, 1000, 1011, 1077, 1088, 1118, 1129, 1159, 1170, 1200, 1211, 1221, 1232, 1302, 1313, 1410, 1421, 1455, 1466, 1532, 1543, 1553, 1564, 1638, 1649, 1723, 1734, 1865, 1876, 1931, 1942, 1975, 1986, 2010, 2021, 2045, 2056, 2153, 2164, 2194, 2205, 2275, 2286, 2332, 2343, 2373, 2384, 2430, 2441, 2487, 2736, 2954, 3223, 3228, 3230, 3240, 3374, 3729, 3734, 3736, 3746, 3800, 3889, 4210, 4215, 4217, 4227, 4423, 4450, 4884, 4889, 4891, 4901, 5026, 5054, 5391, 5480, 5749, 5754, 5756, 5766, 5880, 5895, 5910, 6109, 6129, 6337, 6612, 6629, 6740, 7196, 7201, 7203, 7213, 7378, 7695, 7910, 7998, 8229, 8383, 8647, 9909, 10792, 10802, 10962, 10989, 11020, 11031, 11048 [$ls,*])
+/-- Run the fast symbolic stepper until the next halting instruction (`haltPcs`), as
+`pwp_run_to` does, with every step's heartbeats counted from the step's start: the stepper's gas
+discharger has a fixed heartbeat budget, which is measured from the start of the declaration and
+so runs out on long runs (each step then falls back to the slower discharger and fails). -/
+elab "usdt_run" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => do
+  let extra := ls.getElems
+  let cfg ← EvmLogic.Program.pwpFastCfg extra
+  EvmLogic.Program.runChunked fun i => Lean.withCurrHeartbeats do
+    if i > 0 then
+      if let some pc ← EvmLogic.Program.wpGoalPc? (← Lean.Elab.Tactic.getMainGoal) then
+        if haltPcs.contains pc then return false
+    EvmLogic.Program.pwpStepFast cfg extra (normAll := i == 0)
 
 end Verified.WeirdERC20.USDT.Spec
