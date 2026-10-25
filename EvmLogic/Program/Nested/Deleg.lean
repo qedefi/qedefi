@@ -7,8 +7,8 @@ import EvmLogic.Program.Delegation
 `processMessageCall_good` assumes `ctx.fork < .prague ∨ ctx.tx.authorizations = []`. That
 hypothesis is not needed: an authorization only rewrites the code and nonce of an account that
 holds empty code or a delegation designator (`EvmLogic.Program.Delegation`), and a protected
-account of a `GoodOk` world holds real code. So the delegated world is `Good` (`GoodOk.deleg_world`),
-and a `TopOk` message stays `TopOk` in it (`TopOk.delegate`): a call to a protected account
+account of a `GoodOk` world holds real code. So the delegated world is `Good`
+(`GoodOk.deleg_world`), and a `TopOk` message stays `TopOk` in it (`TopOk.delegate`): a call to a protected account
 still runs that account's own code, which no authorization can replace.
 
 `processMessageCall_good_7702` is `processMessageCall_good` without the hypothesis.
@@ -21,8 +21,9 @@ variable {P : Address → Prop} {Good : World → Prop}
 
 /-- The frame of the authorizations keeps every protected account that holds real code. -/
 theorem _root_.EvmLogic.Program.DelegFrame.keepP {w w' : World} (h : DelegFrame w w')
-    (hcode : ∀ p, P p → (w.code p).size ≠ 0) (hdel : ∀ p, P p → delegatedAddress? (w.code p) = none) :
-    KeepP P w w' := fun p hp => h.keep (hcode p hp) (hdel p hp)
+    (hcode : ∀ p, P p → (w.code p).size ≠ 0)
+    (hdel : ∀ p, P p → delegatedAddress? (w.code p) = none) : KeepP P w w' :=
+  fun p hp => h.keep (hcode p hp) (hdel p hp)
 
 /-- A `GoodOk` invariant survives the frame of the authorizations. -/
 theorem GoodOk.delegFrame (S : GoodOk P Good) {w w' : World} (hw : Good w) (h : DelegFrame w w') :
@@ -40,8 +41,10 @@ of the delegated world hold no designator (which a `Good` world guarantees). A c
 protected account runs the delegated world's code of that account. -/
 theorem TopOk.delegate {ctx : Context} {isPre : Address → Bool} {w : World} {msg : Message}
     (hmsg : TopOk P w msg)
-    (hdel : ∀ p, P p → delegatedAddress? ((applyTopLevelDelegation ctx isPre w msg).1.code p) = none) :
-    TopOk P (applyTopLevelDelegation ctx isPre w msg).1 (applyTopLevelDelegation ctx isPre w msg).2.1 := by
+    (hdel : ∀ p, P p →
+      delegatedAddress? ((applyTopLevelDelegation ctx isPre w msg).1.code p) = none) :
+    TopOk P (applyTopLevelDelegation ctx isPre w msg).1
+      (applyTopLevelDelegation ctx isPre w msg).2.1 := by
   obtain ⟨-, hcur, hcaller, htarget, hdepth, -, -, -, -, -, hcode⟩ :=
     applyTopLevelDelegation_frame ctx isPre w msg
   refine ⟨hdepth.trans hmsg.depth, hcaller ▸ hmsg.caller, ?_, fun hp ht => ?_⟩
