@@ -15,13 +15,13 @@ Each obligation for the deployed asset (`code ia`, any immutables), from gas `g�
 
 `solmate_erc20Spec`: the bundle.
 
-Not proved: `ERC20Spec.Complete`. As stated, `PermitSpec` fails for this code in frames that
-`Start` admits: a block timestamp of `2²⁵⁶` or more (`TIMESTAMP` pushes it modulo `2²⁵⁶`, the
-spec compares the number), a long `name` in slot 0 off the deployment chain (computing the
-domain separator then needs gas growing with the name's length, so a frame with `g₀` gas runs
-out of gas, which no model result matches), and an EIP-7702 designator at `0x01` (the
-`STATICCALL` of `ecrecover` then runs the delegate, whose answer no recovery function of the
-token's digest predicts); the last also refutes `MalformedSpec` for a successful `permit`.
+Not proved: `ERC20Spec.Complete`. `PermitSpec` fails for this code, for every gas bound `gp`,
+in frames whose gas is `2²⁵⁶` or more (`Start` does not bound it): `GAS` pushes the gas modulo
+`2²⁵⁶`, which `permit` passes to the `STATICCALL` of `ecrecover`; with gas `2²⁵⁶·k + c` (`k`
+large enough that the frame is `Normal`, `c` such that the pushed word is below the
+precompile's 3000), the precompile runs out of gas, the call fails and `permit` reverts on a
+valid signature the model accepts. The obligations above avoid this: their paths execute no
+`GAS` (`noGasRead_of_steps`).
 -/
 
 namespace Verified.Solmate.ERC20.Spec
