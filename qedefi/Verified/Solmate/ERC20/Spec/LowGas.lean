@@ -160,4 +160,92 @@ theorem lockstep : ∀ N, ∀ ml d x ps k mfh oh, Exit (lift d x ps k ml) N mfh 
         | call req => exact hnc.elim
         | create msg => exact hnc.elim
 
+/-! ## Pinning a summary to the exit -/
+
+theorem step_resumeAfter_empty {p : Frame} (hc : p.code.size = 0) (mf : Machine) (o : Outcome) :
+    ∃ r, step (resumeAfter p [] mf o) = .done r := by
+  have hlt : ¬ (resumeAfter p [] mf o).frame.pc < (resumeAfter p [] mf o).frame.code.size := by
+    have : (resumeAfter p [] mf o).frame.code = p.code := rfl
+    rw [this, hc]; omega
+  rw [step_of_pc_ge hlt, finishFrame_of_top _ (by simp [resumeAfter])]
+  exact ⟨_, rfl⟩
+
+/-- **A summary of a frame under a parent with empty code describes its exit**: the witness of
+`Halts` ends the frame exactly as the exit does, as the parent sees it. -/
+theorem pin {mh : Machine} {p0 : Frame} (hp : mh.parents = [p0]) (hc : p0.code.size = 0)
+    {H : Machine → Outcome → Prop} (h : Halts mh H) :
+    ∃ N mfh oh, Exit mh N mfh oh ∧ ∃ mf' o', H mf' o' ∧ SameFrame mh mf' ∧
+      resumeAfter p0 [] mf' o' = resumeAfter p0 [] mfh oh := by
+  obtain ⟨n, mf', o', hn, hs', hH⟩ := h
+  rw [finishFrame_of_parents o' (hs'.parents.trans hp)] at hn
+  have hna : ¬ ∃ m', stepN n mh = .running m' ∧ Above mh m' := by
+    rintro ⟨m', h1, h2⟩
+    rw [hn] at h1
+    cases h1
+    have := h2.length_le
+    simp [resumeAfter, hp] at this
+  obtain ⟨k, hk, mfh, oh, hex⟩ := exit_of_leaves hna
+  have hfin := hex.finish
+  have hR := hfin.1
+  rw [finishFrame_of_parents oh (hfin.2.parents.trans hp)] at hR
+  refine ⟨k, mfh, oh, hex, mf', o', hH, hs', ?_⟩
+  by_cases hnk : n = k + 1
+  · subst hnk; rw [hR] at hn; exact (StepResult.running.inj hn).symm
+  · obtain ⟨r, hr⟩ := step_resumeAfter_empty hc mfh oh
+    have := stepN_add_of_running hR (n - (k + 1))
+    rw [show k + 1 + (n - (k + 1)) = n by omega, hn,
+      show n - (k + 1) = (n - (k + 2)) + 1 by omega, stepN_succ_of_done hr] at this
+    cases this
+
+/-- **What the parent sees of a successful call frame**: the outcome, world, transient storage,
+created accounts and logs. -/
+theorem resumeAfter_success {p : Frame} {mf mf' : Machine} {o' : Outcome} {out : ByteArray}
+    {a b : Nat} (hk : mf.frame.kind = .call a b) (hk' : mf'.frame.kind = .call a b)
+    (h : resumeAfter p [] mf' o' = resumeAfter p [] mf (.success out)) :
+    o' = .success out ∧ mf'.world = mf.world ∧ mf'.transient = mf.transient ∧
+      mf'.createdAccounts = mf.createdAccounts ∧
+      p.sub.logs ++ mf'.frame.sub.logs = p.sub.logs ++ mf.frame.sub.logs := by
+  have hst := congrArg (fun M : Machine => M.frame.stack) h
+  have hw := congrArg Machine.world h
+  have ht := congrArg Machine.transient h
+  have hc := congrArg Machine.createdAccounts h
+  have hl := congrArg (fun M : Machine => M.frame.sub.logs) h
+  have hrd := congrArg (fun M : Machine => M.frame.returnData) h
+  cases o' with
+  | success out' =>
+    simp [resumeAfter, frameResult, resume, hk, hk', ChildResult.success] at hst hw ht hc hl hrd
+    exact ⟨by rw [hrd], hw, ht, hc, hl⟩
+  | revert out' =>
+    simp [resumeAfter, frameResult, resume, hk, hk', ChildResult.success] at hst
+  | halt e =>
+    simp [resumeAfter, frameResult, resume, hk, hk', ChildResult.success] at hst
+
+/-- **A frame summary transfers to any lower gas**, for a frame that reads no gas: if the frame
+lifted under a parent with empty code (as a call frame) succeeds only with a post `P` of its
+observables, the frame itself fails or succeeds with `P`. -/
+theorem lowGas {ml : Machine} {d x : Nat} {p0 : Frame} (hc : p0.code.size = 0) {a b : Nat}
+    {P : ByteArray → Machine → Prop}
+    (hP : ∀ out mf mf', mf'.world = mf.world → mf'.transient = mf.transient →
+      mf'.createdAccounts = mf.createdAccounts → mf'.frame.sub.logs = mf.frame.sub.logs →
+      P out mf → P out mf')
+    (hhigh : Halts (lift d x [p0] (.call a b) ml) fun mf o => ∀ out, o = .success out → P out mf)
+    (hng : ∀ N mfh oh, Exit (lift d x [p0] (.call a b) ml) N mfh oh →
+      NoGasRead (lift d x [p0] (.call a b) ml) N) :
+    Halts ml fun mf o => Failed o ∨ ∃ out, o = .success out ∧ P out mf := by
+  obtain ⟨N, mfh, oh, hex, mf', o', hH, hs', heq⟩ := pin rfl hc hhigh
+  refine (lockstep N ml d x [p0] (.call a b) mfh oh hex (hng N mfh oh hex)).mono
+    fun mfl ol _ hpost => ?_
+  rcases hpost with hf | ⟨rfl, d', x', ps', k', hmf⟩
+  · exact .inl hf
+  · cases ol with
+    | success out =>
+      have hkh : mfh.frame.kind = .call a b := hex.finish.2.kind
+      have hk' : mf'.frame.kind = .call a b := hs'.kind
+      obtain ⟨rfl, hw, ht, hcr, hl⟩ := resumeAfter_success hkh hk' heq
+      have hP' := hP out mf' mfh hw.symm ht.symm hcr.symm ((Array.append_right_inj _).1 hl).symm
+        (hH out rfl)
+      refine .inr ⟨out, rfl, hP out mfh mfl ?_ ?_ ?_ ?_ hP'⟩ <;> rw [hmf] <;> rfl
+    | revert out => exact .inl (fun _ h => by cases h)
+    | halt e => exact .inl (fun _ h => by cases h)
+
 end Verified.Solmate.ERC20.Spec
