@@ -42,11 +42,11 @@ the model's return data, the model's new state through `abs`, nothing changed ou
 token's footprint (`FrameKeeps`), transient storage kept, exactly the model's events logged; on
 failure, rolled back, by `REVERT` or by an exceptional halt (all gas consumed) as the model
 says. -/
-def Shows (abs : TokenAbs σ) (crypto : Crypto) (a : Address) (w₀ : World) (tr : TransientStorage)
-    (evs : List (Event Address)) (r : MessageResult) : Result σ → Prop
+def Shows (abs : TokenAbs σ) (crypto : Crypto) (Act : Finset Address) (a : Address) (w₀ : World)
+    (tr : TransientStorage) (evs : List (Event Address)) (r : MessageResult) : Result σ → Prop
   | .ok s' ret =>
-    r.success = true ∧ r.output = retBytes ret ∧ abs.read crypto r.world a = s' ∧
-      FrameKeeps abs crypto a w₀ r.world ∧ r.transientStorage = tr ∧
+    r.success = true ∧ r.output = retBytes ret ∧ abs.read crypto Act r.world a = s' ∧
+      FrameKeeps abs crypto Act a w₀ r.world ∧ r.transientStorage = tr ∧
       r.logs = (evs.map (eventLog a)).toArray
   | .halt .revert => Failed w₀ tr r ∧ r.reverted = true
   | .halt .invalid => Failed w₀ tr r ∧ r.reverted = false ∧ r.gasLeft = 0
@@ -100,14 +100,16 @@ theorem ends_of_eventually {ctx : Context} {w : World} {tr : TransientStorage} {
 /-- **`Start` holds for the machine of a top-level call** (`startMachine`): its snapshot is
 `(w, tr)` and no value moves (`transferValue_zero`). -/
 theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E}
-    {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+    {Act : Finset Address} {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     (hcode : msg.code = code) (hval : msg.value = 0) (hsize : msg.data.size < 2 ^ 64)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w msg.currentTarget)) :
-    Start code abs M (startMachine ctx w tr msg) where
+    (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
+    (hwf : M.wf (abs.read ctx.crypto Act w msg.currentTarget)) :
+    Start code abs M Act (startMachine ctx w tr msg) where
   fresh := hcode ▸ fresh_startMachine ctx w tr msg
   launched := (transferValue_zero w msg hval).symm
   value := .inr hval
   size := hsize
+  caller := hcaller
   sound := hsound
   wf := hwf
 
@@ -168,9 +170,10 @@ theorem worldCode (h : Msg code ctx w msg a) : (world ctx w msg).code a = code :
   rw [h.account]; exact h.atA
 
 /-- The token's model state is the same after the authorizations. -/
-theorem read (h : Msg code ctx w msg a) (abs : TokenAbs σ) (crypto : Crypto) :
-    abs.read crypto (world ctx w msg) a = abs.read crypto w a :=
-  abs.read_congr crypto w (world ctx w msg) a
+theorem read (h : Msg code ctx w msg a) (abs : TokenAbs σ) (crypto : Crypto)
+    (Act : Finset Address) :
+    abs.read crypto Act (world ctx w msg) a = abs.read crypto Act w a :=
+  abs.read_congr crypto Act w (world ctx w msg) a
     (fun k _ => by simp only [World.sload, h.account])
     (by simp only [World.balance, h.account])
 
@@ -189,16 +192,19 @@ theorem dmsg_facts (h : Msg code ctx w msg a) :
 
 /-- **`Start` for a top-level call to the token**, in the world after the authorizations. -/
 theorem start_ok (h : Msg code ctx w msg a) {abs : TokenAbs σ} {M : TokenModel σ Address E}
-    (tr : TransientStorage) (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a)) :
-    Start code abs M (start ctx w tr msg) := by
-  obtain ⟨hcode, hct, -, -, -, hval, -, hdata⟩ := h.dmsg_facts
-  refine start_startMachine hcode hval (by rw [hdata]; exact h.size) hsound ?_
+    {Act : Finset Address} (tr : TransientStorage) (hcaller : msg.caller ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a)) :
+    Start code abs M Act (start ctx w tr msg) := by
+  obtain ⟨hcode, hct, hcl, -, -, hval, -, hdata⟩ := h.dmsg_facts
+  refine start_startMachine hcode hval (by rw [hdata]; exact h.size) (by rw [hcl]; exact hcaller)
+    hsound ?_
   rw [hct, h.read]; exact hwf
 
 /-- The model state at the start of the frame is the token's state before the call. -/
-theorem pre_start (h : Msg code ctx w msg a) (abs : TokenAbs σ) (tr : TransientStorage) :
-    Spec.pre abs (start ctx w tr msg) = abs.read ctx.crypto w a := by
-  show abs.read ctx.crypto (world ctx w msg) (dmsg ctx w msg).currentTarget = _
+theorem pre_start (h : Msg code ctx w msg a) (abs : TokenAbs σ) (Act : Finset Address)
+    (tr : TransientStorage) :
+    Spec.pre abs Act (start ctx w tr msg) = abs.read ctx.crypto Act w a := by
+  show abs.read ctx.crypto Act (world ctx w msg) (dmsg ctx w msg).currentTarget = _
   rw [h.dmsg_facts.2.1, h.read]
 
 /-- The top-level result of the frame ending `(mf, o)`. -/
@@ -251,10 +257,11 @@ theorem result_fail {tr : TransientStorage} {mf : Machine} {o : Outcome}
     simp
 
 /-- **A frame matching the model gives a result showing it.** -/
-theorem shows_of_matches (h : Msg code ctx w msg a) {abs : TokenAbs σ} {tr : TransientStorage}
-    {mf : Machine} {o : Outcome} {evs : List (Event Address)} {res : Result σ}
-    (hs : SameFrame (start ctx w tr msg) mf) (hm : Matches abs (start ctx w tr msg) mf o evs res) :
-    Shows abs ctx.crypto a (world ctx w msg) tr evs (result ctx w msg mf o) res := by
+theorem shows_of_matches (h : Msg code ctx w msg a) {abs : TokenAbs σ} {Act : Finset Address}
+    {tr : TransientStorage} {mf : Machine} {o : Outcome} {evs : List (Event Address)}
+    {res : Result σ} (hs : SameFrame (start ctx w tr msg) mf)
+    (hm : Matches abs Act (start ctx w tr msg) mf o evs res) :
+    Shows abs ctx.crypto Act a (world ctx w msg) tr evs (result ctx w msg mf o) res := by
   have hct : (start ctx w tr msg).frame.msg.currentTarget = a := h.dmsg_facts.2.1
   match res, hm with
   | .ok s' ret, ⟨ho, hread, hkeep, htr, _, hlogs⟩ =>
@@ -285,29 +292,35 @@ theorem normal_start (h : Msg code ctx w msg a) {tr : TransientStorage} {g₀ : 
 
 end Msg
 
-/-! ## The four obligations at the top level -/
+/-! ## The four obligations at the top level
+
+Every statement holds for every set of actors `Act` containing the sender and the accounts the
+call names, whose hash hypotheses hold; the model state is the token as they see it. -/
 
 variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {g₀ : Nat}
-  {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message} {a : Address}
+  {Act : Finset Address} {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
+  {a : Address}
 
 /-- **An ERC-20 call at the top level.** A top-level call to the token whose calldata encodes
-`c` ends; each result shows the model's outcome of `c` by the sender in the token's state
-before the call (through `abs`), or, with less than `g₀` gas or in a static context, failed. -/
+`c` ends; for actors containing the sender and the accounts of `c`, each result shows the
+model's outcome of `c` by the sender in the token's state before the call (through `abs`), or,
+with less than `g₀` gas or in a static context, failed. -/
 theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c) (h : Msg code ctx w msg a)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a))
+    (hcaller : msg.caller ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a))
     (he : c.Encodes msg.data) :
     Ends ctx w tr msg fun r =>
-      Shows abs ctx.crypto a (world ctx w msg) tr
-        (M.events (abs.read ctx.crypto w a) msg.caller c) r
-        (M.call (abs.read ctx.crypto w a) msg.caller c) ∨
+      Shows abs ctx.crypto Act a (world ctx w msg) tr
+        (M.events (abs.read ctx.crypto Act w a) msg.caller c) r
+        (M.call (abs.read ctx.crypto Act w a) msg.caller c) ∨
       (Failed (world ctx w msg) tr r ∧ ¬ (g₀ ≤ msg.gas ∧ msg.isStatic = false)) := by
-  obtain ⟨-, -, hcaller, -, -, -, -, hdata⟩ := h.dmsg_facts
-  have hs := h.start_ok tr hsound hwf (M := M)
-  refine h.ends (hc _ hs (by show c.Encodes (dmsg ctx w msg).data; rw [hdata]; exact he))
-    fun mf o hsf hH => ?_
-  have hpre := h.pre_start abs tr
-  have hcl : (start ctx w tr msg).frame.msg.caller = msg.caller := hcaller
-  rw [hpre, hcl] at hH
+  obtain ⟨-, -, hcl, -, -, -, -, hdata⟩ := h.dmsg_facts
+  have hs := h.start_ok tr hcaller hsound hwf (M := M)
+  refine h.ends (hc Act _ hs (by show c.Encodes (dmsg ctx w msg).data; rw [hdata]; exact he)
+    haddrs) fun mf o hsf hH => ?_
+  have hpre := h.pre_start abs Act tr
+  have hcl' : (start ctx w tr msg).frame.msg.caller = msg.caller := hcl
+  rw [hpre, hcl'] at hH
   rcases hH with hm | ⟨hf, hn⟩
   · exact .inl (h.shows_of_matches hsf hm)
   · exact .inr ⟨(Msg.result_fail hsf hf).1, fun hn' => hn (h.normal_start.2 hn')⟩
@@ -315,29 +328,32 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c) (h : Msg code 
 /-- **An ERC-20 call at the top level, with enough gas**: every result shows the model's
 outcome. -/
 theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c) (h : Msg code ctx w msg a)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a))
+    (hcaller : msg.caller ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a))
     (he : c.Encodes msg.data) (hgas : g₀ ≤ msg.gas) (hstatic : msg.isStatic = false) :
     Ends ctx w tr msg fun r =>
-      Shows abs ctx.crypto a (world ctx w msg) tr
-        (M.events (abs.read ctx.crypto w a) msg.caller c) r
-        (M.call (abs.read ctx.crypto w a) msg.caller c) :=
-  (call hc h hsound hwf he).mono fun _ hr => hr.resolve_right fun hf => hf.2 ⟨hgas, hstatic⟩
+      Shows abs ctx.crypto Act a (world ctx w msg) tr
+        (M.events (abs.read ctx.crypto Act w a) msg.caller c) r
+        (M.call (abs.read ctx.crypto Act w a) msg.caller c) :=
+  (call hc h hcaller haddrs hsound hwf he).mono fun _ hr =>
+    hr.resolve_right fun hf => hf.2 ⟨hgas, hstatic⟩
 
 /-- **A view at the top level**: each result returns one word holding the model's value and
 changes nothing (world, transient storage, no logs); or, with less than `g₀` gas, failed. -/
 theorem view {v : View} (hv : ViewSpec code abs M g₀ v) (h : Msg code ctx w msg a)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a))
+    (hcaller : msg.caller ∈ Act) (haddrs : ∀ x ∈ v.addrs, x ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a))
     (he : v.Encodes msg.data) :
     Ends ctx w tr msg fun r =>
       (r.success = true ∧ (∃ x : Word, r.output = Bytes.ofWord x ∧
-        x.toNat = v.value M (abs.read ctx.crypto w a)) ∧
+        x.toNat = v.value M (abs.read ctx.crypto Act w a)) ∧
         r.world = world ctx w msg ∧ r.transientStorage = tr ∧ r.logs = #[]) ∨
       (Failed (world ctx w msg) tr r ∧ ¬ g₀ ≤ msg.gas) := by
   obtain ⟨-, -, -, -, hgas, hval, -, hdata⟩ := h.dmsg_facts
-  have hs := h.start_ok tr hsound hwf (M := M)
-  refine h.ends (hv _ hs (by show v.Encodes (dmsg ctx w msg).data; rw [hdata]; exact he))
-    fun mf o hsf hH => ?_
-  rw [h.pre_start abs tr] at hH
+  have hs := h.start_ok tr hcaller hsound hwf (M := M)
+  refine h.ends (hv Act _ hs (by show v.Encodes (dmsg ctx w msg).data; rw [hdata]; exact he)
+    haddrs) fun mf o hsf hH => ?_
+  rw [h.pre_start abs Act tr] at hH
   rcases hH with ⟨x, ho, hx, hw, htr, -, hlogs⟩ | ⟨hf, hn⟩
   · subst ho
     obtain ⟨r1, r2, r3, r4, r5⟩ := Msg.result_success (ctx := ctx) (w := w) (msg := msg)
@@ -350,55 +366,60 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v) (h : Msg code ctx w ms
 /-- **Unknown selectors and short calldata at the top level** end as the model's fallback call
 (`.other 0`: no value), or, with less than `g₀` gas or in a static context, fail. -/
 theorem fallback {sel : List Nat} (hf : FallbackSpec code abs M g₀ sel) (h : Msg code ctx w msg a)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a))
+    (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
+    (hwf : M.wf (abs.read ctx.crypto Act w a))
     (hd : msg.data.size < 4 ∨ Abi.selectorOf msg.data ∉ sel) :
     Ends ctx w tr msg fun r =>
-      Shows abs ctx.crypto a (world ctx w msg) tr
-        (M.events (abs.read ctx.crypto w a) msg.caller (.other 0)) r
-        (M.call (abs.read ctx.crypto w a) msg.caller (.other 0)) ∨
+      Shows abs ctx.crypto Act a (world ctx w msg) tr
+        (M.events (abs.read ctx.crypto Act w a) msg.caller (.other 0)) r
+        (M.call (abs.read ctx.crypto Act w a) msg.caller (.other 0)) ∨
       (Failed (world ctx w msg) tr r ∧ ¬ (g₀ ≤ msg.gas ∧ msg.isStatic = false)) := by
-  obtain ⟨-, -, hcaller, -, hgas, hval, hstatic, hdata⟩ := h.dmsg_facts
-  have hs := h.start_ok tr hsound hwf (M := M)
+  obtain ⟨-, -, hcaller', -, hgas, hval, hstatic, hdata⟩ := h.dmsg_facts
+  have hs := h.start_ok tr hcaller hsound hwf (M := M)
   have hd' : (start ctx w tr msg).frame.msg.data.size < 4 ∨
       Abi.selectorOf (start ctx w tr msg).frame.msg.data ∉ sel := by
     show (dmsg ctx w msg).data.size < 4 ∨ Abi.selectorOf (dmsg ctx w msg).data ∉ sel
     rw [hdata]; exact hd
-  refine h.ends (hf _ hs hd') fun mf o hsf hH => ?_
-  have hcl : (start ctx w tr msg).frame.msg.caller = msg.caller := hcaller
+  refine h.ends (hf Act _ hs hd') fun mf o hsf hH => ?_
+  have hcl : (start ctx w tr msg).frame.msg.caller = msg.caller := hcaller'
   have hv : (start ctx w tr msg).frame.msg.value.toNat = 0 := by
     show (dmsg ctx w msg).value.toNat = 0; rw [hval]; rfl
-  rw [h.pre_start abs tr, hcl, hv] at hH
+  rw [h.pre_start abs Act tr, hcl, hv] at hH
   rcases hH with hm | ⟨hf, hn⟩
   · exact .inl (h.shows_of_matches hsf hm)
   · refine .inr ⟨(Msg.result_fail hsf hf).1, fun ⟨h1, h2⟩ => hn ⟨?_, ?_⟩⟩
     · show g₀ ≤ (dmsg ctx w msg).gas; rw [hgas]; exact h1
     · show (dmsg ctx w msg).isStatic = false; rw [hstatic]; exact h2
 
-/-- **Another entry point at the top level** (calldata the token's decoder `ops` maps to `e`):
-each result has the model's state `M.op` (success exactly when it succeeds), nothing changed
-outside the footprint; or, with less than `g₀` gas or in a static context, failed. -/
-theorem op {ops : Address → ByteArray → ℕ → Option E} {e : E} (hop : OpSpec code abs M g₀ ops)
-    (h : Msg code ctx w msg a) (hsound : abs.Sound ctx.crypto)
-    (hwf : M.wf (abs.read ctx.crypto w a)) (he : ops msg.caller msg.data 0 = some e) :
+/-- **Another entry point at the top level** (calldata the token's decoder `ops` maps to `e`,
+whose accounts are actors): each result has the model's state `M.op` (success exactly when it
+succeeds), nothing changed outside the footprint; or, with less than `g₀` gas or in a static
+context, failed. -/
+theorem op {ops : Address → ByteArray → ℕ → Option E} {opAddrs : E → List Address} {e : E}
+    (hop : OpSpec code abs M g₀ ops opAddrs) (h : Msg code ctx w msg a)
+    (hcaller : msg.caller ∈ Act) (haddrs : ∀ x ∈ opAddrs e, x ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a))
+    (he : ops msg.caller msg.data 0 = some e) :
     Ends ctx w tr msg fun r =>
-      (match M.op (abs.read ctx.crypto w a) e with
-        | some s' => r.success = true ∧ abs.read ctx.crypto r.world a = s' ∧
-          FrameKeeps abs ctx.crypto a (world ctx w msg) r.world ∧ r.transientStorage = tr
+      (match M.op (abs.read ctx.crypto Act w a) e with
+        | some s' => r.success = true ∧ abs.read ctx.crypto Act r.world a = s' ∧
+          FrameKeeps abs ctx.crypto Act a (world ctx w msg) r.world ∧ r.transientStorage = tr
         | none => Failed (world ctx w msg) tr r) ∨
       (Failed (world ctx w msg) tr r ∧ ¬ (g₀ ≤ msg.gas ∧ msg.isStatic = false)) := by
-  obtain ⟨-, hct, hcaller, -, hgas, hval, hstatic, hdata⟩ := h.dmsg_facts
-  have hs := h.start_ok tr hsound hwf (M := M)
+  obtain ⟨-, hct, hcaller', -, hgas, hval, hstatic, hdata⟩ := h.dmsg_facts
+  have hs := h.start_ok tr hcaller hsound hwf (M := M)
   have he' : ops (start ctx w tr msg).frame.msg.caller (start ctx w tr msg).frame.msg.data
       (start ctx w tr msg).frame.msg.value.toNat = some e := by
     show ops (dmsg ctx w msg).caller (dmsg ctx w msg).data (dmsg ctx w msg).value.toNat = _
-    rw [hcaller, hdata, hval]; exact he
-  refine h.ends (hop _ e hs he') fun mf o hsf hH => ?_
+    rw [hcaller', hdata, hval]; exact he
+  refine h.ends (hop Act _ e hs he' haddrs) fun mf o hsf hH => ?_
   have hct' : (start ctx w tr msg).frame.msg.currentTarget = a := hct
-  rw [h.pre_start abs tr] at hH
+  unfold OpMatches at hH
+  rw [h.pre_start abs Act tr] at hH
   rcases hH with hm | ⟨hf, hn⟩
   · refine .inl ?_
     revert hm
-    cases M.op (abs.read ctx.crypto w a) e with
+    cases M.op (abs.read ctx.crypto Act w a) e with
     | some s' =>
       rintro ⟨⟨out, ho⟩, hread, hkeep, htr, -⟩
       subst ho
@@ -413,23 +434,25 @@ theorem op {ops : Address → ByteArray → ℕ → Option E} {e : E} (hop : OpS
 
 /-! ## Model state after a top-level call -/
 
-/-- **The token's model state after an ERC-20 call at the top level**: the model's new state if
-the model call succeeds and the message succeeded, else the state before. -/
+/-- **The token's model state after an ERC-20 call at the top level**, as the actors see it:
+the model's new state if the model call succeeds and the message succeeded, else the state
+before. -/
 theorem call_read {c : Call Address} (hc : CallSpec code abs M g₀ c) (h : Msg code ctx w msg a)
-    (hsound : abs.Sound ctx.crypto) (hwf : M.wf (abs.read ctx.crypto w a))
+    (hcaller : msg.caller ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
+    (hsound : abs.Sound ctx.crypto Act) (hwf : M.wf (abs.read ctx.crypto Act w a))
     (he : c.Encodes msg.data) {fuel : Nat} {r : MessageResult}
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
-    (∃ ret, r.success = true ∧
-      M.call (abs.read ctx.crypto w a) msg.caller c = .ok (abs.read ctx.crypto r.world a) ret) ∨
-    (r.success = false ∧ abs.read ctx.crypto r.world a = abs.read ctx.crypto w a ∧
-      ((∃ s' ret, M.call (abs.read ctx.crypto w a) msg.caller c = .ok s' ret) →
+    (∃ ret, r.success = true ∧ M.call (abs.read ctx.crypto Act w a) msg.caller c =
+      .ok (abs.read ctx.crypto Act r.world a) ret) ∨
+    (r.success = false ∧ abs.read ctx.crypto Act r.world a = abs.read ctx.crypto Act w a ∧
+      ((∃ s' ret, M.call (abs.read ctx.crypto Act w a) msg.caller c = .ok s' ret) →
         ¬ (g₀ ≤ msg.gas ∧ msg.isStatic = false))) := by
   have hfail : Failed (world ctx w msg) tr r →
-      r.success = false ∧ abs.read ctx.crypto r.world a = abs.read ctx.crypto w a :=
-    fun hf => ⟨hf.1, by rw [hf.2.1]; exact h.read abs ctx.crypto⟩
-  rcases (call (tr := tr) hc h hsound hwf he).2 fuel r hr with hs | ⟨hf, hn⟩
+      r.success = false ∧ abs.read ctx.crypto Act r.world a = abs.read ctx.crypto Act w a :=
+    fun hf => ⟨hf.1, by rw [hf.2.1]; exact h.read abs ctx.crypto Act⟩
+  rcases (call (tr := tr) hc h hcaller haddrs hsound hwf he).2 fuel r hr with hs | ⟨hf, hn⟩
   · revert hs
-    cases hres : M.call (abs.read ctx.crypto w a) msg.caller c with
+    cases hres : M.call (abs.read ctx.crypto Act w a) msg.caller c with
     | ok s' ret =>
       rintro ⟨hsucc, -, hread, -⟩
       exact .inl ⟨ret, hsucc, by rw [hread]⟩
@@ -452,10 +475,10 @@ theorem prepareMessage_data_call {crypto : Crypto} {fork : Fork} {env : BlockEnv
 /-- **A transaction calling the token.** A successful transaction (any type, fork, block,
 authorizations) whose recipient is the token at `a` (real code `code`, not a precompile, not the
 block's coinbase, which the transaction's reward would pay), with no value and calldata encoding
-the ERC-20 call `c`, leaves the token in the model's state after `c` by the transaction's sender
-(`out.sender`), or in its state before; in its state before when the model call fails; and in the
-model's state after when the message had at least `g₀` gas (the transaction's gas less its
-intrinsic gas). -/
+the ERC-20 call `c`, leaves the token, as actors containing its sender and the accounts of `c`
+see it, in the model's state after `c` by the transaction's sender (`out.sender`), or in its
+state before; in its state before when the model call fails; and in the model's state after
+when the message had at least `g₀` gas (the transaction's gas less its intrinsic gas). -/
 theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat} {crypto : Crypto}
     {fork : Fork} {env : BlockEnv} {gasAvail blobAvail : Nat} {w : World}
     {tx : Transaction} {hint : Option Address} {out : EvmLean.Tx.TxOutput}
@@ -463,16 +486,20 @@ theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat
     (hto : tx.to = some a) (hcode : w.code a = code) (hreal : code.size ≠ 0)
     (hdel : delegatedAddress? code = none) (hpre : Precompile.isPrecompile fork a = false)
     (hcb : a ≠ env.coinbase) (hval : tx.value = 0) (hsize : tx.data.size < 2 ^ 64)
-    (hsound : abs.Sound crypto) (hwf : M.wf (abs.read crypto w a)) (he : c.Encodes tx.data) :
-    (∃ ret, M.call (abs.read crypto w a) out.sender c = .ok (abs.read crypto out.world a) ret) ∨
-    (abs.read crypto out.world a = abs.read crypto w a ∧
-      ((∃ s' ret, M.call (abs.read crypto w a) out.sender c = .ok s' ret) →
+    (hcaller : out.sender ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
+    (hsound : abs.Sound crypto Act) (hwf : M.wf (abs.read crypto Act w a))
+    (he : c.Encodes tx.data) :
+    (∃ ret, M.call (abs.read crypto Act w a) out.sender c =
+      .ok (abs.read crypto Act out.world a) ret) ∨
+    (abs.read crypto Act out.world a = abs.read crypto Act w a ∧
+      ((∃ s' ret, M.call (abs.read crypto Act w a) out.sender c = .ok s' ret) →
         tx.gas < g₀ + (EvmLean.Tx.intrinsicGas tx).regular)) := by
   obtain ⟨i, ck, r, gu, hv, hck, hr, -, hout, hsender, -⟩ := EvmLogic.Tx.process_ok hp
   have hvi := EvmLogic.Tx.validate_ok hv
   have hrc : EvmLogic.Tx.RealCode (w.code a) :=
     EvmLogic.Tx.realCode_of_deleg (by rw [hcode]; exact hreal) (by rw [hcode]; exact hdel)
   have hsa : a ≠ ck.sender := fun e => EvmLogic.Tx.not_realCode_sender hck (e ▸ hrc)
+  rw [hsender] at hcaller
   set s := ck.sender
   set w₁ := EvmLogic.Tx.prefixWorld w s
     (BitVec.ofNat 256 ((w.account s).balance.toNat - EvmLogic.Tx.upfrontFee fork env tx ck))
@@ -480,8 +507,8 @@ theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat
     rw [EvmLogic.Tx.account_prefixWorld]; simp only [hsa, ite_false]
   have hcode₁ : w₁.code a = code := by
     show (w₁.account a).code = code; rw [hacc]; exact hcode
-  have hread₁ : abs.read crypto w₁ a = abs.read crypto w a :=
-    abs.read_congr crypto w w₁ a (fun k _ => by simp only [World.sload, hacc])
+  have hread₁ : abs.read crypto Act w₁ a = abs.read crypto Act w a :=
+    abs.read_congr crypto Act w w₁ a (fun k _ => by simp only [World.sload, hacc])
       (by simp only [World.balance, hacc])
   set msg := EvmLean.Tx.prepareMessage crypto fork env w₁ tx s (w.account s).nonce
     (tx.gas - i.regular)
@@ -495,20 +522,20 @@ theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat
       value := by rw [EvmLogic.Tx.prepareMessage_value, hval]; rfl
       depth := EvmLogic.Tx.prepareMessage_depth ..
       size := by rw [hdata]; exact hsize }
-  have hres := call_read (tr := ∅) hc hm hsound (by rw [EvmLogic.Tx.txContext_crypto, hread₁]; exact hwf)
-    (by rw [hdata]; exact he) hr
   have hmcaller : msg.caller = s := EvmLogic.Tx.prepareMessage_caller ..
   have hmgas : msg.gas = tx.gas - i.regular := EvmLogic.Tx.prepareMessage_gas ..
   have hmstatic : msg.isStatic = false := EvmLogic.Tx.prepareMessage_isStatic ..
+  have hres := call_read (tr := ∅) hc hm (by rw [hmcaller]; exact hcaller) haddrs hsound
+    (by rw [EvmLogic.Tx.txContext_crypto, hread₁]; exact hwf) (by rw [hdata]; exact he) hr
   simp only [EvmLogic.Tx.txContext_crypto, hread₁, hmcaller, hmgas, hmstatic] at hres
   -- the suffix keeps the token's state
   obtain ⟨hnd, hsz⟩ := EvmLogic.Tx.processMessageCall_realCode hr
     (by rw [hcode₁]; exact EvmLogic.Tx.realCode_of_deleg hreal hdel)
   have hkeep := EvmLogic.Tx.keep_suffixWorld hsz hnd s env.coinbase
     ((tx.gas - gu) * ck.effectiveGasPrice) (gu * (ck.effectiveGasPrice - env.baseFee))
-  have hpost : abs.read crypto out.world a = abs.read crypto r.world a := by
+  have hpost : abs.read crypto Act out.world a = abs.read crypto Act r.world a := by
     rw [hout]
-    refine abs.read_congr crypto _ _ a (fun k _ => ?_) ?_
+    refine abs.read_congr crypto Act _ _ a (fun k _ => ?_) ?_
     · simp only [World.sload, hkeep.1]
     · rw [EvmLogic.Tx.balance_suffixWorld _ _ _ _ _ hnd]
       simp only [EvmLogic.Tx.balance_creditBalance, hcb, hsa, ite_false]
