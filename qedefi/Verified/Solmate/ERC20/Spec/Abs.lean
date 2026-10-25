@@ -212,7 +212,7 @@ theorem frameKeeps_refl (crypto : Crypto) (Act : Finset Address) (token : Addres
   ⟨fun _ _ => rfl, rfl, rfl, rfl, fun _ _ => rfl⟩
 
 /-- A write into the footprint keeps what `FrameKeeps` keeps. -/
-theorem FrameKeeps.sstore {w w₁ : World} {k : Word}
+theorem frameKeeps_sstore {w w₁ : World} {k : Word}
     (h : FrameKeeps solmateAbs crypto Act token w w₁) (hk : solmateFootprint crypto Act k) :
     FrameKeeps solmateAbs crypto Act token w (w₁.sstore token k v) where
   own k' hk' := by
