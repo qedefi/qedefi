@@ -97,12 +97,24 @@ the treasury are owed about **1.18 WETH** (`5.4e-7` of the supply) and **287 USD
 (`1.2e-7`) more than `virtualUnderlyingBalance + deficit + debt`. Counting the actual underlying
 held by the aToken instead of the virtual balance covers USDC but leaves WETH about 1.02 WETH
 short. The model shows that no modelled v3.7 operation opens such a gap (beyond about half a
-wei per accrual), so it stems from what the model leaves out: the reserves' history under earlier
-versions (half-up mint/burn rounding before v3.5, stable debt before v3.2, unbacked/portal
-mints and flash-loan index bumps before v3.4, the v3.4 virtual-balance migration), and the
-rounding of the rate strategy. Once the gap exists the strategy's supply rate is computed on
-`V + deficit + debt`, not on the aToken supply, so `RateSound` fails by the same relative
-amount and the gap grows with interest. Not investigated further.
+wei per accrual). **Cause** (found by bisecting the gap over historical blocks with `eth_call`
+and `eth_getStorageAt`): v3.5 (Pool revision 9, block 23,088,584) and v3.6 (revision 10, block
+24,247,927) read both reserves' cache before updating either in `liquidationCall`; when the
+collateral and the debt are the same asset the second update sees the stale timestamp and
+credits the treasury its reserve-factor share of the debt interest twice, a claim with nothing
+behind it. Every jump of the gap bisects to one block containing such a same-asset liquidation
+and matches the excess treasury credit to within 1e-6 WETH; together they account for the
+whole change since v3.4 (WETH +1.18, USDC +352 minus slow drift in the protocol's favour). v3.1
+(block 20,398,674) had set the virtual balance so that the gap was −1 wei (WETH) and 0 (USDC),
+so older history (half-up rounding, stable debt, portals, the migration) contributes nothing.
+v3.7 (revision 11, block 25,199,939) restores the safe order, which is what this model
+implements; since then the gap only grows with interest, because the rate strategy pays
+suppliers on `V + deficit + debt` (so `RateSound` fails by the same relative amount): about
+0.006 WETH predicted and 0.0056 observed over v3.7's first ~145 days. Other reserves with
+same-asset liquidations in the same period (USDT, LINK) probably carry a gap too (not
+measured). The WETH `deficit` (52,964.45 WETH) is unrelated: a single governance transaction
+(block 25,037,701, 2026-05-06) wrote off two rsETH-collateralised WETH positions; the invariant
+counts the deficit as backing, so it does not show in the gap.
 
 ## Not modelled / shortcomings
 
