@@ -93,6 +93,11 @@ import EvmLogic.Tactic.PrefixRun
 import EvmLogic.Tactic.SolStep
 import EvmLogic.Tactic.StepExt
 import EvmLogic.Tactic.WpStep
+import EvmLogic.Tx.Delete
+import EvmLogic.Tx.Exec
+import EvmLogic.Tx.Frame
+import EvmLogic.Tx.Lift
+import EvmLogic.Tx.Process
 import EvmLogic.Word
 
 /-!
@@ -104,6 +109,7 @@ A generic program logic and proof library over the `EvmLean` semantics: step lem
 (`EvmLogic.GasMono`), abstract interpretation (`EvmLogic.AbsInt`, and its path-sensitive
 variant `EvmLogic.AbsInt.Guard`), relays and protected state across whole message calls
 (`EvmLogic.Program.Nested.Relay`, `…Guard`), frames whose every path ends safely
-(`EvmLogic.Program.Nested.Own`, with the `own_explore` symbolic executor) and tactics
-(`EvmLogic.Tactic`).
+(`EvmLogic.Program.Nested.Own`, with the `own_explore` symbolic executor), the transaction
+layer that lifts message-level invariants to `EvmLean.Tx.process` (`EvmLogic.Tx.Lift`) and
+tactics (`EvmLogic.Tactic`).
 -/
