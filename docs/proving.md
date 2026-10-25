@@ -49,6 +49,7 @@ is `step m = .running { m with … }` (or `.done …` / `finishFrame …`) with 
 | `Step.Basic` | `step_of_binOp`/`unOp`/`ternOp`/`pushValue`, `run_succ_of_running`, `run_succ_of_done`, `processMessageCall_eq_run`, `initMachine_call` |
 | `Step.Arith`, `Stack`, `Push`, `Env`, `Log` | arithmetic, `PUSH`/`DUP`/`SWAP`/`POP`, environment opcodes, `LOG0`–`LOG4` |
 | `Step.Memory`, `Storage`, `Flow` | `MLOAD`/`MSTORE`/`KECCAK256`, `SLOAD`/`SSTORE` (+ `sloadCost_le`, `sstoreCost_le`), jumps and halts, `topLevelResult_*` |
+| `Step.Transient` | `TLOAD`/`TSTORE` (EIP-1153, 100 gas; `step_tstore_static`, `_oog`), `getTransient_setTransient*` |
 | `Bytes`, `State`, `Word` | calldata decoding, memory read/write, `World.sload_sstore*`, balances, word facts (`Word.lt_eq_zero_iff`, …) |
 
 A top-level proof has this shape (`Examples/Basic/Token.lean`):
@@ -144,7 +145,20 @@ pushed, output copied, unused gas returned, world or snapshot, logs merged on su
 proxy's forwarding is summarised once for all implementations
 (`Verified/AaveV3/ATokenProxy/Forward.lean`, `forward_halts`). Precompile calls run within one step
 (`Program/PrecompileCall.lean`: `WP.staticcall_precompile`, and `WP.staticcall_ecrecover` for
-solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
+solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`. `CALLCODE` is `step_callcode` /
+`WP.callcode` (`Program/CallCode.lean`); `SELFDESTRUCT` (EIP-6780: the balance moves, the account
+is scheduled for deletion only if created in the same transaction) is `step_selfdestruct`
+(`Program/Selfdestruct.lean`).
+
+**Creation** (`Program/Create.lean`). `step_create`/`step_create2` push the init-code frame
+(`createChild`) with the exact charge (`createCharge`: 32000, EIP-3860 init-code words, hashing for
+`CREATE2`, memory) and the EIP-150 child gas (`createGas`; the creator keeps 1/64,
+`creatorGas_eq`), at `newAddress` (`createAddress` of the nonce or the `CREATE2` address, through
+`ctx.crypto.keccak256`). Every other outcome is a step lemma: `step_create_oog`, `_initcode`
+(EIP-3860), `_static`, `_soft` (balance, nonce, depth: `0` pushed, child gas returned),
+`_collision` (EIP-7610: `0` pushed, child gas consumed, nonce incremented). `WP.create`/`WP.create2`
+are the callee-summary rules; the creator resumes as `resumeAfter_create_success` (code
+deposited, address pushed), `_deposit_fail`, `_revert`, `_halt`.
 
 **Gas across a call** (`Program/GasBound.lean`). A frame never ends with more gas than it
 started with: `Halts.gas_le` adds `returnedGas mf o ≤ m.frame.gasLeft` to any `Halts m H` (refunds
@@ -269,7 +283,8 @@ takes the instruction when gas and stack allow and otherwise absorbs the failure
 (`wp_fail_of_error`, `wp_fail_of_revert`): `pwp_push`, `pwp_dup`, `pwp_swap`, `pwp_pop`, one rule
 per arithmetic/comparison/environment opcode (`pwp_add`, `pwp_eq`, `pwp_caller`, …), `pwp_jump`,
 `pwp_jumpi` (both branches), `pwp_mload_val`, `pwp_mstore`, `pwp_keccak256`, `pwp_codecopy`,
-`pwp_returndatacopy` (memory left unknown), `pwp_calldataload`, `pwp_sload`, `pwp_sstore`; the
+`pwp_returndatacopy` (memory left unknown), `pwp_calldataload`, `pwp_sload`, `pwp_sstore`,
+`pwp_tload`, `pwp_tstore` (`PrefixTransient.lean`; a static `TSTORE` is an absorbed failure); the
 frame ends with `pwp_revert`/`pwp_invalid` (always fine) or `pwp_stop`/`pwp_return` (the world
 must be `Good`). They mirror `GasMono.CodeFails` with a forward goal, so no gas lower bound.
 **`apwp_steps [h₁, …]`** (`Tactic/PrefixStep.lean`) drives them over literal code from a
@@ -317,6 +332,8 @@ less gas than its ancestors.
 | `WP.call_stipend` | `CALL` whose child gets ≤ 2300 gas, any target | the callee's final world equals its initial world |
 | `WP.staticcall_havoc` | any `STATICCALL` | any return whose world is `Good` |
 | `WP.call_frozen` | `CALL` under a held guard: `Covers` for `Frozen P m.world` | protected storage and code exactly as at the call |
+| `WP.create_havoc`, `WP.create2_havoc` (`Reentrancy/Create.lean`) | `CREATE*` of arbitrary init code at a free address, `Good m.world`, `Covers` for `createGas` | any return whose world is `Good`, the address or `0` pushed |
+| `WP.create_havoc_any` | any `CREATE*`, `Good m.world`, `Covers` for the creator's gas; no gas, balance, nonce, depth or freshness condition | the frame halts, or resumes at `pc + 1` with one word pushed in a `Good` world |
 
 Checks-effects-interactions is `WP.call_havoc` with the contract's invariant as `Good`; a
 reentrancy guard is `WP.call_frozen`, whose `Covers` (`covers_frozen`) asks that a frame

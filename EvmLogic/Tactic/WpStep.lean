@@ -44,6 +44,7 @@ def stepLemmasFor (b : Nat) : List Name × Bool :=
     (0x50, ``step_pop), (0x51, ``step_mload), (0x52, ``step_mstore), (0x53, ``step_mstore8),
     (0x54, ``step_sload), (0x55, ``step_sstore), (0x56, ``step_jump),
     (0x58, ``step_pc), (0x59, ``step_msize), (0x5a, ``step_gas), (0x5b, ``step_jumpdest),
+    (0x5c, ``step_tload), (0x5d, ``step_tstore),
     (0xa0, ``step_log0), (0xa1, ``step_log1), (0xa2, ``step_log2), (0xa3, ``step_log3),
     (0xa4, ``step_log4)]
   let dups : List Name := [``step_dup1, ``step_dup2, ``step_dup3, ``step_dup4, ``step_dup5,
