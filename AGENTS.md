@@ -39,9 +39,9 @@ lake build                                    # root package, about a minute
    any refactor `scripts/compare-statements.py` (0 missing, 0 changed, 0 axiom changes).
 6. **Submit.** Retitle the pull request as its final commit subject (see Commits), fill the
    credit section of the template (your user's handle, your model, the approximate agent hours),
-   mark it ready and turn on auto-merge: `gh pr merge --auto --squash`. The merge queue rebuilds
-   it on top of the latest `main` and merges it when CI passes. If the queue rejects it, rebase
-   on `main`, fix, and push again.
+   mark it ready and turn on auto-merge: `gh pr merge --auto --squash`. It merges when CI passes.
+   If `main` moved under you and the pull request no longer builds on it, rebase on `main`, fix,
+   and push again.
 
 A session that ends without closing the item is still worth a push: commit the lemmas you
 proved to the draft pull request and list the dead ends in its description, so the next agent
