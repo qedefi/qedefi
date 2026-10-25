@@ -212,6 +212,25 @@ theorem exec_stop (m : Machine) :
   rw [show Opcode.decode m.ctx.fork 0x00 = .stop by cases m.ctx.fork <;> rfl]
   rfl
 
+/-- `SSTORE` in a static frame (with the gas to pay for it) fails. -/
+theorem exec_sstore_static {m : Machine} {x y : Word} {rest : List Word}
+    (hstk : m.frame.stack = x :: y :: rest) (hstatic : m.frame.msg.isStatic = true)
+    (hstipend : Gas.callStipend < m.frame.gasLeft)
+    (hgas : (sstoreCostRefund m x y).1 ≤ m.frame.gasLeft) :
+    (exec (Opcode.decode m.ctx.fork 0x55)).run m = .error .writeInStaticContext := by
+  have hg := Nat.not_lt.mpr hgas
+  have hs : ¬ m.frame.gasLeft ≤ Gas.callStipend := Nat.not_le.mpr hstipend
+  simp only [sstoreCostRefund] at hg
+  rw [show Opcode.decode m.ctx.fork 0x55 = .sstore by cases m.ctx.fork <;> rfl]
+  simp only [exec, execSstore, pop, getFrame, modifyFrame, StateT.run_bind, hstk,
+    StateT.run_get, StateT.run_pure, StateT.run_modify, pure_bind, hs, ite_false]
+  simp only [run_accessStorageKey, StateT.run_bind, pure_bind, modifySub, modifyFrame,
+    StateT.run_modify, charge, getFrame, StateT.run_get, StateT.run_pure]
+  simp only [hg, ite_false, requireNonStatic, getFrame, StateT.run_bind, StateT.run_get,
+    StateT.run_pure, pure_bind, StateT.run_modify]
+  simp [hstatic]
+  rfl
+
 /-! ## `BALANCE` -/
 
 /-- **`BALANCE`**: pushes the balance of the address, charging the EIP-2929 access cost and

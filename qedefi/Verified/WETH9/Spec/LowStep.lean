@@ -107,4 +107,10 @@ elab_rules : tactic
       if b == 0xf3 || b == 0xfd || b == 0x00 then return
       unless ← lowStep extra do return
 
+/-- At an `SSTORE` of a static frame: every version fails (`LowOK.error`); leaves the goal
+`∀ e, Hf M (.halt e)`. -/
+macro "low_static " h:term : tactic => `(tactic| (
+  refine LowOK.error (b := 0x55) (by sol_disch) (readsGasB_decode_false _ _ (by decide))
+    (exec_sstore_static rfl $h (by sol_disch) (by sol_disch)) ?_))
+
 end Verified.WETH9.Spec
