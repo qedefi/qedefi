@@ -55,14 +55,6 @@ def assetWorld (crypto : Crypto) (chainId : Nat) (w : World) (self : Address) : 
   setCode (((incrementNonce w self).sstore self 0#256 Asset.nameSlot).sstore self 1#256
     Asset.symbolSlot) self (SolmateAsset.runtimeCodeWith (Asset.immutables crypto chainId self))
 
-theorem sload_incrementNonce_of_deployable {w : World} {a : Address} (k : Word)
-    (hd : accountDeployable w a = true) : (incrementNonce w a).sload a k = 0#256 := by
-  simp only [World.sload, incrementNonce, account_modifyState w a
-    (fun acc => { acc with nonce := acc.nonce + 1 }) a (by simp [Account.isEmpty]), ↓reduceIte]
-  simp only [accountDeployable, Bool.and_eq_true, decide_eq_true_eq] at hd
-  rw [Std.ExtTreeMap.isEmpty_iff.mp hd.2]
-  exact Storage.get_empty k
-
 theorem delegatedAddress?_assetInit :
     delegatedAddress? (SolmateAsset.creationCode ++ SolmateAsset.constructorArgs) = none := by
   rw [← SolmateAsset.initCode_eq]

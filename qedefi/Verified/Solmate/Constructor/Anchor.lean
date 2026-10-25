@@ -51,29 +51,6 @@ theorem result_eq {fuel n : Nat} {ctx : Context} {w : World} {tr : TransientStor
 
 /-! ## Accounts of the deployment worlds -/
 
-theorem account_incrementNonce (w : World) (a b : Address) :
-    (incrementNonce w a).account b =
-      if b = a then { w.account a with nonce := (w.account a).nonce + 1 } else w.account b :=
-  account_modifyState w a _ b (by simp [Account.isEmpty])
-
-theorem account_setCode (w : World) (a : Address) (out : ByteArray) (hs : out.size ≠ 0)
-    (b : Address) :
-    (setCode w a out).account b = if b = a then { w.account a with code := out } else w.account b :=
-  account_modifyState w a _ b (by simp [Account.isEmpty, hs])
-
-theorem account_sstore (w : World) (a : Address) (k v : Word) (b : Address) :
-    (w.sstore a k v).account b =
-      if b = a then { w.account a with storage := (w.account a).storage.set k v }
-      else w.account b := by
-  split
-  · subst_vars; exact World.account_modify_self _ _ _
-  · exact World.account_modify_ne _ _ ‹_›
-
-theorem storage_empty_of_deployable {w : World} {a : Address} (hd : accountDeployable w a = true) :
-    (w.account a).storage = ∅ := by
-  simp only [accountDeployable, Bool.and_eq_true, decide_eq_true_eq] at hd
-  exact Std.ExtTreeMap.isEmpty_iff.mp hd.2
-
 /-- The asset's account after its creation; every other account unchanged. -/
 theorem account_assetWorld (crypto : Crypto) (chainId : Nat) (w : World) (self b : Address) :
     (assetWorld crypto chainId w self).account b =

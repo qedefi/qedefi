@@ -69,12 +69,6 @@ def vaultWorld (crypto : Crypto) (chainId : Nat) (w : World) (self asset : Addre
     self 0#256 Vault.nameSlot).sstore self 1#256 Vault.symbolSlot) self
     (SolmateVault.runtimeCodeWith (Vault.immutables crypto chainId self asset dec))
 
-theorem code_incrementNonce' (w : World) (a b : Address) :
-    (incrementNonce w a).code b = w.code b := by
-  simp only [World.code, incrementNonce, account_modifyState w a
-    (fun acc => { acc with nonce := acc.nonce + 1 }) b (by simp [Account.isEmpty])]
-  split <;> simp_all
-
 theorem delegatedAddress?_vaultInit (asset : Address) :
     delegatedAddress? (SolmateVault.creationCode ++ SolmateVault.constructorArgsFor asset) =
       none := by
