@@ -1,5 +1,5 @@
 import Verified.WETH9.Spec.TransferFromCall
-import Verified.WETH9.Spec.DepositLow
+import Verified.WETH9.Spec.Deposit
 
 /-!
 # WETH9 (mainnet bytecode) against `ERC20Spec`
@@ -18,13 +18,15 @@ along the symbolic execution, `Verified.WETH9.Spec.LowGas`):
   static frame their first `SSTORE` fails.
 * **`weth9_viewSpec`**: `balanceOf`, `allowance`, `totalSupply` (`ViewSpec`).
 
-Not provable as the spec stands (so `ERC20Spec` itself is not proved):
+Not provable as the spec stands, and refuted in Lean (so `ERC20Spec` itself is refuted:
+`weth9_erc20Spec_false`):
 
 * **`FallbackSpec`**: WETH9's fallback runs `deposit()`, which logs `Deposit(msg.sender,
   msg.value)` on success, for any value (`deposit_low` shows the body). `Matches` requires a
   successful call to append exactly the model's events, and `Event` has only `Transfer` and
   `Approval`, so no event rule makes the `Deposit` log match: every non-static frame with calldata
-  shorter than four bytes (or an unknown selector) and enough gas is a counterexample.
+  shorter than four bytes (or an unknown selector) and enough gas is a counterexample
+  (`fallbackSpec_false`, for top-level frames).
 * **`OpSpec`** for `Op.deposit` (what `weth9Ops` decodes): the model adds the value to the
   contract's ether *as read in the snapshot* (`pre` reads the world before the value moved),
   while the bytecode's world after the frame has the ether that `transferValue` moved. They
@@ -35,7 +37,7 @@ Not provable as the spec stands (so `ERC20Spec` itself is not proved):
   frame); (2) the balance wraps: `snapshot balance + v ≥ 2²⁵⁶` makes the `Word` balance wrap in
   `transferValue`, while the model's `ether` is a natural number (total ether is far below
   `2²⁵⁶` on a real chain, but `Start` does not say so). The fallback has the same two problems
-  in addition to the `Deposit` log. A fix: `Start` (or `OpSpec`) could require `caller ≠
+  in addition to the `Deposit` log. Case (1) is `opSpec_false`. A fix: `Start` (or `OpSpec`) could require `caller ≠
   currentTarget ∨ value = 0` and `(snapshot balance of currentTarget).toNat + value < 2²⁵⁶`, and
   `Matches` could allow a token's own non-ERC-20 logs (or `Event` could carry them).
 -/
@@ -56,5 +58,18 @@ theorem weth9_callSpec (c : Call Address) :
   | approve sp v => exact approve_callPost hS hE (hA sp (by simp [Call.addrs]))
   | other _ => exact hE.elim
   | permit _ _ _ _ _ => exact hE.elim
+
+/-- **`ERC20Spec` is false for WETH9** (its `fallback` field, `fallbackSpec_false`), whatever the
+gas, selectors and decoder: a top-level, non-static message call with calldata shorter than a
+selector and enough gas logs `Deposit`, which no model event can match. -/
+theorem weth9_erc20Spec_false {g₀ : Nat} {sel : List Nat}
+    {ops : Address → ByteArray → ℕ → Option (Variant.Op Address)}
+    {opAddrs : Variant.Op Address → List Address}
+    (h : ERC20Spec WETH9.runtimeCode weth9Abs weth9Model g₀ sel ops opAddrs)
+    {Act : Finset Address} {m : Machine} (hS : Start WETH9.runtimeCode weth9Abs weth9Model Act m)
+    (hp : m.parents = []) {ko ks : Nat} (hk : m.frame.kind = .call ko ks)
+    (hsize : m.frame.msg.data.size < 4) (hst : m.frame.msg.isStatic = false)
+    (hg₀ : g₀ ≤ m.frame.gasLeft) (hg : 50000 ≤ m.frame.gasLeft) : False :=
+  fallbackSpec_false h.fallback hS hp hk hsize hst hg₀ hg
 
 end Verified.WETH9.Spec
