@@ -33,7 +33,7 @@ theorem reaches_value (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg
   have hagree := assetJumpDestsAgree ia
   fresh_intro
   pwp_run_to 14 [hz]
-  exact wp_target (by decide)
+  exact wp_target (by simp [targets])
 
 set_option maxHeartbeats 0 in
 theorem reaches_short (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value = 0)
@@ -43,7 +43,7 @@ theorem reaches_short (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg
   have hagree := assetJumpDestsAgree ia
   fresh_intro
   pwp_run_to 232 [hval, hlt]
-  exact wp_target (by decide)
+  exact wp_target (by simp [targets])
 
 set_option maxHeartbeats 0 in
 theorem reaches_unknown (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value = 0)
@@ -77,21 +77,21 @@ theorem reaches_unknown (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.m
     · have g2 := gt_lit_one (C := 0x23b872dd) (by decide) hS h2
       pwp_run_to 98, 135, 194, 232 [hval, hlt, hsel', Abi.shr_calldataload_zero, e1, e2, e3, e4,
         e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, g1, g2]
-      exact wp_target (by decide)
+      exact wp_target (by simp [targets])
     · have g2 := gt_lit_zero (C := 0x23b872dd) (by decide) hS h2
       pwp_run_to 98, 135, 194, 232 [hval, hlt, hsel', Abi.shr_calldataload_zero, e1, e2, e3, e4,
         e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, g1, g2]
-      exact wp_target (by decide)
+      exact wp_target (by simp [targets])
   · have g1 := gt_lit_zero (C := 0x70a08231) (by decide) hS h1
     rcases Nat.lt_or_ge S 0x9dc29fac with h2 | h2
     · have g2 := gt_lit_one (C := 0x9dc29fac) (by decide) hS h2
       pwp_run_to 98, 135, 194, 232 [hval, hlt, hsel', Abi.shr_calldataload_zero, e1, e2, e3, e4,
         e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, g1, g2]
-      exact wp_target (by decide)
+      exact wp_target (by simp [targets])
     · have g2 := gt_lit_zero (C := 0x9dc29fac) (by decide) hS h2
       pwp_run_to 98, 135, 194, 232 [hval, hlt, hsel', Abi.shr_calldataload_zero, e1, e2, e3, e4,
         e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, g1, g2]
-      exact wp_target (by decide)
+      exact wp_target (by simp [targets])
 
 set_option maxHeartbeats 0 in
 theorem reaches_known (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value = 0)
@@ -106,7 +106,7 @@ theorem reaches_known (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg
     fresh_intro
     pwp_run_to 515, 321, 263, 426, 553, 298, 405, 496 [hval, hsel', hlt,
       Abi.shr_calldataload_zero]
-    exact wp_target (by decide)
+    exact wp_target (by simp [targets])
 
 /-- **The asset's dispatcher reaches a target.** -/
 theorem reaches_target (m : Machine) (hf : Fresh (code ia) m)
