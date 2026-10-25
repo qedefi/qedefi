@@ -111,4 +111,78 @@ theorem transfer_high (m : Machine) (dst : Address) (v : Word)
     pwp_steps [hval, hst, hc, Memory.read_64]
     exact ⟨fun _ => ⟨_, rfl⟩, fun h => absurd h (by simpa [balSlot] using hle)⟩
 
+/-! ## The obligation -/
+
+theorem solady_call_transfer (s : VState Address) (c d : Address) (v : ℕ) :
+    M.call s c (.transfer d v) =
+      if s.bal c < v then .halt .revert
+      else .ok { s with bal := s.bal - Finsupp.single c v + Finsupp.single d v } (.word true) := by
+  by_cases h : s.bal c < v
+  · simp [M, Solady.soladyModel, Variant.call, Variant.step, Variant.transfer, Variant.moveOk,
+      Variant.move, Variant.units, Variant.solady, Variant.standard, Variant.failKind,
+      Variant.guardOk, Variant.overflows, Variant.feeOverflow, Variant.failWith, h]
+  · simp [M, Solady.soladyModel, Variant.call, Variant.step, Variant.transfer, Variant.moveOk,
+      Variant.move, Variant.units, Variant.solady, Variant.standard, Variant.feeOverflow,
+      Variant.feeOf, Variant.credit, Variant.retData, h]
+
+/-- Under the model's invariant, two actors' balances fit a word together. -/
+theorem bal_add_lt {s : VState Address} (hw : M.wf s) {c d : Address} (hcd : c ≠ d) :
+    s.bal c + s.bal d < 2 ^ 256 := by
+  have h := QEDefi.ERC20.add_le_total (f := s.bal) hcd
+  simp only [M, Solady.soladyModel, Variant.model_wf, Variant.WF, Variant.solady,
+    Variant.standard, Bool.false_eq_true, ↓reduceIte, reduceCtorEq] at hw
+  have : s.supply ≤ QEDefi.Math.MAX := hw.2
+  simp only [QEDefi.Math.MAX] at this
+  omega
+
+theorem toNat_word {v : ℕ} (hv : v < 2 ^ 256) : (word v).toNat = v := by
+  rw [word, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hv]
+
+/-- **`transfer(dst, v)`**: `InsufficientBalance` reverts, or the move with its `Transfer`. -/
+theorem call_transfer (dst : Address) (v : ℕ) :
+    CallSpec SoladyToken.runtimeCode soladyAbs M g₀ (.transfer dst v) := by
+  intro Act m hs hc haddr
+  obtain ⟨hv256, hd⟩ := hc
+  have hdA : dst ∈ Act := haddr dst (by simp [Call.addrs])
+  have hcA := hs.caller
+  refine halts_split' (G := Normal g₀ m)
+    (fun hG => transfer_high m dst (word v) hs.fresh hd hs.size hG.2.2 hG.2.1 hG.1)
+    (transfer_low m dst (word v) hs.fresh hd hs.size) ?_
+  rintro mf o ⟨hrev, hok⟩
+  by_cases hlt : (m.world.sload m.frame.msg.currentTarget
+      (balSlot m.ctx.crypto m.frame.msg.caller)).toNat < v
+  · obtain ⟨out, rfl⟩ := hrev (by rwa [toNat_word hv256])
+    by_cases hG : Normal g₀ m
+    · left
+      have hpre := pre_eq hs hG.2.2
+      have hbc : (pre soladyAbs Act m).bal m.frame.msg.caller =
+          (m.world.sload m.frame.msg.currentTarget
+            (balSlot m.ctx.crypto m.frame.msg.caller)).toNat := by
+        rw [hpre]; simp [read, balances, hcA]
+      rw [solady_call_transfer, hbc, ite_pos' hlt]
+      exact ⟨out, rfl⟩
+    · exact .inr ⟨trivial, hG⟩
+  left
+  have hle : (word v).toNat ≤ (m.world.sload m.frame.msg.currentTarget
+      (balSlot m.ctx.crypto m.frame.msg.caller)).toNat := by rw [toNat_word hv256]; omega
+  obtain ⟨hv, -, ho, hw, ht, hcr, hl⟩ := hok hle
+  have hpre := pre_eq hs hv
+  have hbc : (pre soladyAbs Act m).bal m.frame.msg.caller =
+      (m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto m.frame.msg.caller)).toNat := by
+    rw [hpre]; simp [read, balances, hcA]
+  rw [solady_call_transfer, hbc, ite_neg' hlt]
+  refine ⟨by rw [ho]; rfl, ?_, ?_, ht, hcr, ?_⟩
+  · show read _ _ _ _ = _
+    rw [hw, moveWorld, read_moveWorld hs.sound hcA hdA hle, ← hpre, toNat_word hv256]
+    intro hcd
+    have h1 := bal_add_lt hs.wf hcd
+    have hbd : (pre soladyAbs Act m).bal dst =
+        (m.world.sload m.frame.msg.currentTarget (balSlot m.ctx.crypto dst)).toNat := by
+      rw [hpre]; simp [read, balances, hdA]
+    rw [toNat_word hv256]; omega
+  · rw [hw, moveWorld]
+    exact FrameKeeps.sstore (bal_mem _ hdA) (FrameKeeps.sstore (bal_mem _ hcA) frameKeeps_refl)
+  · rw [hl]
+    simp [M, Solady.soladyModel, Solady.soladyEvents, Spec.eventLog]
+
 end Verified.Solady.Spec

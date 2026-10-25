@@ -49,6 +49,16 @@ theorem halts_split {m : Machine} {P S : Machine → Outcome → Prop} {G : Prop
   · refine lo _ ⟨fun _ _ => .inr ⟨trivial, hG⟩, fun _ _ => .inr ⟨trivial, hG⟩⟩ ?_
     exact fun mf o h => .inl (hPS mf o h)
 
+/-- `halts_split` when turning `P` into the obligation may need the exact case (a revert the
+model only predicts from the state before the value moved). -/
+theorem halts_split' {m : Machine} {P S : Machine → Outcome → Prop} {G : Prop}
+    (hi : G → Halts m P) (lo : LowHalts m P) (hPS : ∀ mf o, P mf o → S mf o ∨ (Fails o ∧ ¬ G)) :
+    Halts m fun mf o => S mf o ∨ (Fails o ∧ ¬ G) := by
+  by_cases hG : G
+  · exact (hi hG).mono fun mf o _ h => hPS mf o h
+  · refine lo _ ⟨fun _ _ => .inr ⟨trivial, hG⟩, fun _ _ => .inr ⟨trivial, hG⟩⟩ ?_
+    exact fun mf o h => hPS mf o h
+
 theorem lt_size_four' {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by
   rw [Word.lt_eq_zero_iff]; simp only [ofNat, BitVec.toNat_ofNat]; omega

@@ -1,5 +1,6 @@
 import Verified.Solady.Spec.Abs
 import EvmLogic.State
+import QEDefi.ERC20.Rep
 
 /-!
 # Solady `ERC20` under the spec: writes through the abstraction
@@ -145,5 +146,52 @@ theorem read_sstore_supply (hS : SoladySound crypto Act) (x : Word) :
     · rename_i hm; rw [World.sload_sstore_ne_key _ _ _ (hS.allow_supply o hm.1 sp hm.2)]
     · rfl
   simp only [read, hb, hn, hal, World.balance_sstore, readSlot, World.sload_sstore_self]
+
+/-- **Solady's move** (debit `src`, then credit `dst` read after the debit) through the
+abstraction: the model's move, when the debit is covered and the credit does not wrap. -/
+theorem read_moveWorld (hS : SoladySound crypto Act) {c d : Address} (hc : c ∈ Act) (hd : d ∈ Act)
+    {v : Word} (hv : v.toNat ≤ (w.sload token (balSlot crypto c)).toNat)
+    (hov : c ≠ d → (w.sload token (balSlot crypto d)).toNat + v.toNat < 2 ^ 256) :
+    read crypto Act
+        ((w.sstore token (balSlot crypto c) (w.sload token (balSlot crypto c) - v)).sstore token
+          (balSlot crypto d)
+          ((w.sstore token (balSlot crypto c) (w.sload token (balSlot crypto c) - v)).sload token
+            (balSlot crypto d) + v)) token =
+      { read crypto Act w token with
+        bal := (read crypto Act w token).bal - Finsupp.single c v.toNat +
+          Finsupp.single d v.toNat } := by
+  rw [read_sstore_bal hS hd, read_sstore_bal hS hc]
+  simp only [read]
+  congr 1
+  have hsub : (w.sload token (balSlot crypto c) - v).toNat =
+      (w.sload token (balSlot crypto c)).toNat - v.toNat := by
+    rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def]; exact hv)]
+  ext a
+  simp only [Finsupp.update_apply, Finsupp.coe_add, Finsupp.coe_tsub, Pi.add_apply, Pi.sub_apply,
+    Finsupp.single_apply, balances, Finsupp.onFinset_apply]
+  by_cases hcd : c = d
+  · subst hcd
+    rw [World.sload_sstore_self, BitVec.sub_add_cancel]
+    by_cases ha : a = c
+    · subst ha; simp [hc]; omega
+    · simp only [ha, Ne.symm ha, ↓reduceIte, add_zero, tsub_zero]
+      split
+      · rename_i haA
+        rw [World.sload_sstore_ne_key _ _ _ (fun e => ha (hS.bal_inj a haA c hc e))]
+      · rfl
+  · have hne : balSlot crypto d ≠ balSlot crypto c := fun e => hcd (hS.bal_inj d hd c hc e).symm
+    rw [World.sload_sstore_ne_key _ _ _ hne]
+    have hadd : (w.sload token (balSlot crypto d) + v).toNat =
+        (w.sload token (balSlot crypto d)).toNat + v.toNat := by
+      rw [BitVec.toNat_add, Nat.mod_eq_of_lt (hov hcd)]
+    by_cases ha : a = d
+    · subst ha; simp [hd, hcd, hadd]
+    · by_cases hac : a = c
+      · subst hac; simp [hc, ha, hsub, Ne.symm ha]
+      · simp only [ha, Ne.symm ha, Ne.symm hac, ↓reduceIte, add_zero, tsub_zero]
+        split
+        · rename_i haA
+          rw [World.sload_sstore_ne_key _ _ _ (fun e => hac (hS.bal_inj a haA c hc e))]
+        · rfl
 
 end Verified.Solady.Spec
