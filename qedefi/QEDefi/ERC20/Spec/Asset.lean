@@ -54,14 +54,15 @@ theorem wellFormed_congr {m₁ m₂ : Message} (hd : m₂.data = m₁.data) (hc 
   unfold WellFormed; rw [hd, hc, hv]; exact h
 
 /-- **The token's state after a top-level call** with well-formed calldata naming actors, sent
-by an actor (for a token with `permit`, with `ecrecover` running the precompile): one the model allows from its state before (`Post`), and the token keeps its
+by an actor (for a token with `permit`, with `ecrecover` running the precompile and less than
+`2⁶⁴` gas): one the model allows from its state before (`Post`), and the token keeps its
 code. -/
 theorem post (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (h : Msg code ctx w msg a)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
     (hwf : M.wf (abs.read ctx.crypto Act w a))
     (hwfd : WellFormed sel ops opAddrs perm Act msg)
-    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg)) :
+    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg) ∧ msg.gas < 2 ^ 64) :
     Ends ctx w tr msg fun r =>
       Post M ops opAddrs Act msg.caller (abs.read ctx.crypto Act w a)
         (abs.read ctx.crypto Act r.world a) ∧ r.world.code a = code := by
@@ -69,7 +70,10 @@ theorem post (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
   have hs := h.start_ok tr hcaller hsound hwf (M := M)
   have hwfd' : WellFormed sel ops opAddrs perm Act (start ctx w tr msg).frame.msg :=
     wellFormed_congr hdata hcl (hval.trans h.value.symm) hwfd
-  refine h.ends (explained_of_spec hspec hpermit hs hwfd' hecr) fun mf o hsf hx => ?_
+  have hecr' : perm.isSome → EcrecoverPlain (start ctx w tr msg) ∧
+      (start ctx w tr msg).frame.gasLeft < 2 ^ 64 := fun hp =>
+    ⟨(hecr hp).1, by show (dmsg ctx w msg).gas < _; rw [h.dmsg_facts.2.2.2.2.1]; exact (hecr hp).2⟩
+  refine h.ends (explained_of_spec hspec hpermit hs hwfd' hecr') fun mf o hsf hx => ?_
   have hpre := h.pre_start abs Act tr
   have hcl' : (start ctx w tr msg).frame.msg.caller = msg.caller := hcl
   have hct' : (start ctx w tr msg).frame.msg.currentTarget = a := hct
@@ -147,7 +151,7 @@ theorem debit (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     {o : Address} (hops : OpsDebitAuth M ops o) (h : Msg code ctx w msg a)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
     (hwf : M.wf (abs.read ctx.crypto Act w a)) (hwfd : WellFormed sel ops opAddrs perm Act msg)
-    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg)) (ho : o ≠ msg.caller) {fuel : Nat} {r : MessageResult}
+    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg) ∧ msg.gas < 2 ^ 64) (ho : o ≠ msg.caller) {fuel : Nat} {r : MessageResult}
     (hr : processMessageCall fuel ctx w tr msg = .ok r)
     (hlow : M.balanceOf (abs.read ctx.crypto Act r.world a) o <
       M.balanceOf (abs.read ctx.crypto Act w a) o) :
@@ -165,8 +169,8 @@ theorem debit (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
 /-- **A sequence of top-level calls to the token**, from `w₀`, for the actors `Act`: each a
 call to the token at `a` (`Msg`) with `crypto`, sent by an actor with well-formed calldata
 naming actors (for a token with `permit`, with `ecrecover` running the precompile,
-`EcrecoverPlain`); between them, anything that leaves the token's account as it is (the other
-accounts arbitrary). -/
+`EcrecoverPlain`, and less than `2⁶⁴` gas); between them, anything that leaves the token's
+account as it is (the other accounts arbitrary). -/
 inductive Trace (code : ByteArray) (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E)
     (opAddrs : E → List Address) (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto)
     (Act : Finset Address) (a : Address) : World → World → Prop where
@@ -176,7 +180,7 @@ inductive Trace (code : ByteArray) (sel : List Nat) (ops : Address → ByteArray
   | call {w₀ w : World} {fuel : Nat} {ctx : Context} {tr : TransientStorage} {msg : Message}
       {r : MessageResult} : Trace code sel ops opAddrs perm crypto Act a w₀ w →
       Msg code ctx w msg a → ctx.crypto = crypto → msg.caller ∈ Act →
-      WellFormed sel ops opAddrs perm Act msg → (perm.isSome → EcrecoverPlain (start ctx w tr msg)) →
+      WellFormed sel ops opAddrs perm Act msg → (perm.isSome → EcrecoverPlain (start ctx w tr msg) ∧ msg.gas < 2 ^ 64) →
       processMessageCall fuel ctx w tr msg = .ok r →
       Trace code sel ops opAddrs perm crypto Act a w₀ r.world
 
