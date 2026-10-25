@@ -96,10 +96,10 @@ theorem bnb_call_approve (s : VState Address) (c sp : Address) (v : ℕ) :
   by_cases h : v = 0
   · subst h
     simp [M, QEDefi.ERC20.Spec.BNB.bnbModel, Variant.call, Variant.step, Variant.approve,
-      Variant.approveOk, Variant.bnb, Variant.standard, Variant.failKind, Variant.guardOk,
+      Variant.approveOk, Variant.bnb, Variant.standard, Variant.failKind, Variant.guardOk, BNB.bnbGuard,
       Variant.failWith]
   · simp [M, QEDefi.ERC20.Spec.BNB.bnbModel, Variant.call, Variant.step, Variant.approve,
-      Variant.approveOk, Variant.bnb, Variant.standard, Variant.retData, h]
+      Variant.approveOk, Variant.bnb, Variant.standard, Variant.retData, h, BNB.bnbGuard]
 
 theorem bnbRead_sstore_allow {crypto : Crypto} {Act : Finset Address} {w : World} {t o sp : Address}
     (hS : bnbSound crypto Act) (ho : o ∈ Act) (hs : sp ∈ Act) (x : Word) :
