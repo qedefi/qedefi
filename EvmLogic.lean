@@ -1,5 +1,6 @@
 import EvmLogic.AbsInt.Check
 import EvmLogic.AbsInt.Code
+import EvmLogic.AbsInt.CodeDeleg
 import EvmLogic.AbsInt.Domain
 import EvmLogic.AbsInt.Effect
 import EvmLogic.AbsInt.Frame
@@ -26,11 +27,14 @@ import EvmLogic.Program.Call
 import EvmLogic.Program.CallCodeless
 import EvmLogic.Program.Code
 import EvmLogic.Program.CodeTable
+import EvmLogic.Program.Delegation
 import EvmLogic.Program.GasBound
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
+import EvmLogic.Program.Nested.Deleg
 import EvmLogic.Program.Nested.Frame
 import EvmLogic.Program.Nested.Gas
+import EvmLogic.Program.Nested.GuardDeleg
 import EvmLogic.Program.Nested.Guard
 import EvmLogic.Program.Nested.GuardTrace
 import EvmLogic.Program.Nested.Idle
@@ -45,6 +49,7 @@ import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Program.Reentrancy.AnyCaller
 import EvmLogic.Program.Reentrancy.Certified
+import EvmLogic.Program.Reentrancy.Deleg
 import EvmLogic.Program.Reentrancy.Ether
 import EvmLogic.Program.Reentrancy.Exec
 import EvmLogic.Program.Reentrancy.Halts
@@ -59,6 +64,7 @@ import EvmLogic.Program.Reentrancy.Value
 import EvmLogic.Program.Reentrancy.World
 import EvmLogic.Program.Run
 import EvmLogic.Program.Summary
+import EvmLogic.Program.SummaryDeleg
 import EvmLogic.Program.Time
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Call

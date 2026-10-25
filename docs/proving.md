@@ -69,7 +69,12 @@ discharges, and normalize with `evm_norm` (literal code bytes via the `reduceByt
 simproc, numerals, gas constants, memory costs, warm sets, plus the given lemmas). Fuel must
 be `k + n` with `n` at least the number of steps. `evm_gas` closes gas goals with symbolic
 `SLOAD`/`SSTORE` costs; give theorems a generous gas lower bound. Top-level call theorems
-need `ctx.fork < .prague ∨ ctx.tx.authorizations = []` (EIP-7702).
+that equate `processMessageCall` with a run from the given world need
+`ctx.fork < .prague ∨ ctx.tx.authorizations = []` (EIP-7702). Without it, the authorizations
+run first: `EvmLogic.Program.Delegation` bounds what they do (`DelegFrame`: balances kept, only
+accounts holding empty code or a designator change, and only their code and nonce), and the
+`_7702` theorems (`processMessageCall_good_7702`, `processMessageCall_good_v_7702`,
+`processMessageCall_guard_7702`, `processMessageCall_eq_run_7702`, …) drop the hypothesis.
 
 **Tactic families.** All share the step lemmas; pick by goal shape and code:
 
