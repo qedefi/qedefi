@@ -177,4 +177,58 @@ theorem approve_test (sp : Address) (v : Word) :
   rw [show (0 : Word) = 0#256 from rfl, BitVec.or_eq_zero_iff, ← show (0 : Word) = 0#256 from rfl,
     hA, hB, hx, and_comm]
 
+theorem read_seed_tail (M : Memory) (s : Word) :
+    (M.storeWord 12 s).read 32 12 = (ofWord s).extract 20 32 :=
+  read_storeWord_slice' M 12 20 12 32 s (by omega) rfl
+
+/-- The row window after `mstore(0x00, o)`, given the seed tail at `[0x20, 0x2c)`. -/
+theorem read_row_of (M : Memory) (o : Address) (seed : Word) (hs : seed.toNat < 2 ^ 96)
+    (h2 : M.read 32 12 = (ofWord seed).extract 20 32) :
+    (M.storeWord 0 (Word.ofAddress o)).read 12 32 = ofWord (rowWord o seed) :=
+  read_row _ o seed hs (Memory.read_storeWord _ _ _)
+    (by rw [Memory.read_storeWord_of_disjoint _ _ _ _ _ (by omega), h2])
+
+/-- `read_row_of` for the balance seed (a `simp` lemma with its hypothesis discharged). -/
+theorem read_balRow (M : Memory) (o : Address)
+    (h2 : M.read 32 12 = (ofWord 2275545506#256).extract 20 32) :
+    (M.storeWord 0 (Word.ofAddress o)).read 12 32 = ofWord (rowWord o balSeed) :=
+  read_row_of M o balSeed (by decide) h2
+
+/-- `shr(96, mload(off))` when `[off, off + 20)` holds an address. -/
+theorem shr_loadWord_of (M : Memory) (off : Nat) (a : Address)
+    (h : M.read off 20 = ofAddress a) :
+    Word.shr 96#256 (M.loadWord off) = Word.ofAddress a := by
+  have hs : a.toNat < 2 ^ 160 := a.isLt
+  have hB := toNat_lt (M.read (off + 20) 12)
+  rw [Memory.read, size_readPadded] at hB
+  apply BitVec.eq_of_toNat_eq
+  rw [Memory.loadWord, show M.read off 32 = M.read off 20 ++ M.read (off + 20) 12 from
+    Memory.read_add _ off 20 12, h]
+  simp only [Word.shr, toWord, toNat_append, toNat_ofAddress, Memory.read, size_readPadded]
+  change (BitVec.ofNat 256 _ >>> (96 : Nat)).toNat = _
+  rw [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow]
+  have hoa : (Word.ofAddress a).toNat = a.toNat := by
+    simp only [Word.ofAddress, BitVec.toNat_setWidth]; omega
+  rw [hoa]
+  omega
+
+/-- The address in a stored address word: bytes `[off + 12, off + 32)`. -/
+theorem read_addr_of_store (M : Memory) (off : Nat) (a : Address) :
+    (M.storeWord off (Word.ofAddress a)).read (off + 12) 20 = ofAddress a := by
+  rw [read_storeWord_slice' _ off 12 20 (off + 12) _ (by omega) rfl, ofWord_ofAddress_extract]
+
+theorem read_addr0 (M : Memory) (a : Address) :
+    (M.storeWord 0 (Word.ofAddress a)).read 12 20 = ofAddress a :=
+  read_addr_of_store M 0 a
+
+theorem le_of_iszero_gt {v b : Word} (h : Word.iszero (Word.gt v b) ≠ 0) : v.toNat ≤ b.toNat := by
+  by_contra hlt
+  have hu : BitVec.ult b v = true := by simp [BitVec.ult]; omega
+  simp [Word.iszero, Word.gt, Word.ofBool, hu] at h
+
+theorem lt_of_iszero_gt_eq {v b : Word} (h : Word.iszero (Word.gt v b) = 0) : b.toNat < v.toNat := by
+  by_contra hle
+  have hu : BitVec.ult b v = false := by simp [BitVec.ult]; omega
+  simp [Word.iszero, Word.gt, Word.ofBool, hu] at h
+
 end Verified.Solady.Spec
