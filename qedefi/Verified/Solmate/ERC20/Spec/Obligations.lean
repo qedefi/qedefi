@@ -15,13 +15,9 @@ Each obligation for the deployed asset (`code ia`, any immutables), from gas `g�
 
 `solmate_erc20Spec`: the bundle.
 
-Not proved: `ERC20Spec.Complete`. `PermitSpec` fails for this code, for every gas bound `gp`,
-in frames whose gas is `2²⁵⁶` or more (`Start` does not bound it): `GAS` pushes the gas modulo
-`2²⁵⁶`, which `permit` passes to the `STATICCALL` of `ecrecover`; with gas `2²⁵⁶·k + c` (`k`
-large enough that the frame is `Normal`, `c` such that the pushed word is below the
-precompile's 3000), the precompile runs out of gas, the call fails and `permit` reverts on a
-valid signature the model accepts. The obligations above avoid this: their paths execute no
-`GAS` (`noGasRead_of_steps`).
+`permit` is in `PermitSpec.lean` (`permit_spec_case`: the deployment chain, or a short
+`name`); `ERC20Spec.Complete` is not stated yet (a long `name` off the deployment chain, and
+`MalformedSpec`, remain).
 -/
 
 namespace Verified.Solmate.ERC20.Spec
