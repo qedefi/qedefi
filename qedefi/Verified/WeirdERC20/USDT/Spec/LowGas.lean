@@ -644,4 +644,30 @@ theorem exitOf_revert {m : Machine} {x y : Word} {rest : List Word}
   simp only [exec, StateT.run_bind, run_readOutput hstk hgas]
   rfl
 
+
+theorem wp_sstore_static {m : Machine} (hstatic : m.frame.msg.isStatic = true) :
+    Wp (exec .sstore) (fun _ _ => False) m := by
+  simp [exec, execSstore, requireNonStatic, accessStorageKey, hstatic]
+
+/-- An `SSTORE` in a static frame ends it with an exceptional halt. -/
+theorem exitOf_sstore_static {m : Machine} (hcode : m.frame.code[m.frame.pc]? = some 0x55)
+    (hstatic : m.frame.msg.isStatic = true) : ∃ e, exitOf m = some (m, .halt e) := by
+  rw [exitOf_eq_of_code hcode, show Opcode.decode m.ctx.fork 0x55 = .sstore by
+    cases m.ctx.fork <;> rfl]
+  have hw := wp_sstore_static hstatic
+  cases h : (exec .sstore).run m with
+  | error e => exact ⟨e, rfl⟩
+  | ok p =>
+    obtain ⟨a, m'⟩ := p
+    exact (hw.of_run h).elim
+
+
+/-- An `SSTORE` in a static frame is an exit with any postcondition holding on exceptional
+halts. -/
+theorem exitsWith_sstore_static {m : Machine} {H : Machine → Outcome → Prop}
+    (hcode : m.frame.code[m.frame.pc]? = some 0x55) (hstatic : m.frame.msg.isStatic = true)
+    (hH : ∀ e, H m (.halt e)) : ExitsWith H m := by
+  obtain ⟨e, he⟩ := exitOf_sstore_static hcode hstatic
+  exact ⟨m, .halt e, he, hH e⟩
+
 end Verified.WeirdERC20.USDT.Spec

@@ -55,6 +55,12 @@ theorem lt_size_four {n : Nat} (h₁ : 4 ≤ n) (h₂ : n < 2 ^ 256) :
     Word.lt (ofNat n) (BitVec.ofNat 256 4) = 0 := by
   rw [Word.lt_eq_zero_iff]; simp only [ofNat, BitVec.toNat_ofNat]; omega
 
+/-- `onlyPayloadSize`'s check `msg.data.length < k` fails on calldata of at least `k` bytes. -/
+theorem lt_size_le {n k : Nat} (h₁ : k ≤ n) (h₂ : n < 2 ^ 256) :
+    Word.lt (ofNat n) (BitVec.ofNat 256 k) = 0 := by
+  rw [Word.lt_eq_zero_iff]; simp only [ofNat, BitVec.toNat_ofNat]
+  rw [Nat.mod_eq_of_lt h₂]; exact Nat.le_trans (Nat.mod_le _ _) h₁
+
 theorem expCost_0 : Gas.expCost 0 = 10 := by decide
 theorem expCost_20 : Gas.expCost 20 = 60 := by decide
 
@@ -150,6 +156,12 @@ macro "usdt_stop" : tactic => `(tactic| (
 /-- Close a checkpoint at `INVALID`, leaving the postcondition. -/
 macro "usdt_invalid" : tactic => `(tactic| (
   refine WP.ret ⟨by dsimp only; decide, _, _, exitOf_invalid (by code_fact), ?_⟩))
+
+/-- Close a checkpoint at an `SSTORE` of a static frame (an exceptional halt), leaving the
+postcondition. -/
+macro "usdt_static" : tactic => `(tactic| (
+  refine WP.ret ⟨by dsimp only; decide,
+    exitsWith_sstore_static (by code_fact) (by dsimp only; assumption) (fun _ => ?_)⟩))
 
 /-! ## Frames `Start` admits -/
 
