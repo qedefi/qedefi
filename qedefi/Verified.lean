@@ -184,6 +184,7 @@ import Verified.Solmate.ERC4626.ViewsSpec
 import Verified.Solmate.ERC4626.Withdraw
 import Verified.Solmate.ERC4626.WithdrawInternal
 import Verified.WETH9.Backed
+import Verified.WETH9.Backed7702
 import Verified.WETH9.Contracts.WETH9
 import Verified.WETH9.Solvency
 import Verified.WeirdERC20.AMPL.Contracts.AMPL

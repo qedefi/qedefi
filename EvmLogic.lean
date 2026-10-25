@@ -22,9 +22,11 @@ import EvmLogic.Program.Call
 import EvmLogic.Program.CallCodeless
 import EvmLogic.Program.Code
 import EvmLogic.Program.CodeTable
+import EvmLogic.Program.Delegation
 import EvmLogic.Program.GasBound
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
+import EvmLogic.Program.Nested.Deleg
 import EvmLogic.Program.Nested.Frame
 import EvmLogic.Program.Nested.Gas
 import EvmLogic.Program.Nested.Guard
@@ -41,6 +43,7 @@ import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Program.Reentrancy.AnyCaller
 import EvmLogic.Program.Reentrancy.Certified
+import EvmLogic.Program.Reentrancy.Deleg
 import EvmLogic.Program.Reentrancy.Ether
 import EvmLogic.Program.Reentrancy.Exec
 import EvmLogic.Program.Reentrancy.Halts
