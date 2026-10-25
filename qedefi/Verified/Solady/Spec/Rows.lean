@@ -344,4 +344,17 @@ theorem eq_permit2_ne {c : Address}
 theorem iszero_not_ne {a : Word} (h : (~~~a).iszero ≠ 0) : a = ~~~0 := by
   by_contra ha; exact h (iszero_not_eq_zero.mpr ha)
 
+theorem eq_permit2_one {c : Address} (h : c = PERMIT2) :
+    (Word.ofAddress c).eq 180847076211518657644945212059388835#256 = 1 := by
+  subst h; decide
+
+theorem eq_permit2_zero' {c : Address} (h : c ≠ PERMIT2) :
+    (Word.ofAddress c).eq 180847076211518657644945212059388835#256 = 0 := eq_permit2_zero.mpr h
+
+theorem iszero_not_one {a : Word} (h : a = ~~~0) : (~~~a).iszero = 1 := by
+  subst h; decide
+
+theorem iszero_not_zero' {a : Word} (h : a ≠ ~~~0) : (~~~a).iszero = 0 :=
+  iszero_not_eq_zero.mpr h
+
 end Verified.Solady.Spec
