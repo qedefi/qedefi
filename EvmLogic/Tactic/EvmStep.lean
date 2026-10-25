@@ -9,6 +9,7 @@ import EvmLogic.Step.Memory
 import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage
+import EvmLogic.Step.Transient
 
 /-!
 # Symbolic execution: `evm_step`
@@ -174,6 +175,7 @@ macro_rules | `(tactic| evm_step_core) => `(tactic| first
   | evm_apply step_jumpdest | evm_apply step_jump
   | evm_apply step_jumpi_of_eq_zero | evm_apply step_jumpi_of_ne_zero
   | evm_apply step_sload | evm_apply step_sstore
+  | evm_apply step_tload | evm_apply step_tstore
   | evm_apply step_mload | evm_apply step_mstore
   | evm_apply step_mstore8 | evm_apply step_keccak256
   | evm_apply step_log0 | evm_apply step_log1
@@ -211,7 +213,8 @@ macro_rules
     outputData, Gas.extendMemory, List.foldl, Gas.ceil32, Gas.memoryCost, Gas.words,
     Gas.memoryPerWord, Memory.size_storeWord, Memory.size_expand, Memory.size_empty,
     Memory.wordsAfter, Memory.words, Nat.reduceDiv, Nat.reduceLeDiff, Nat.reduceEqDiff,
-    Nat.max_def, ↓reduceIte, Memory.expand_storeWord_self, readBytes_bytes, $extra,*])
+    Nat.max_def, ↓reduceIte, Memory.expand_storeWord_self, readBytes_bytes,
+    getTransient_empty, getTransient_setTransient_self, $extra,*])
 
 
 /-- Advance `run (n + 1) m` by one instruction; `evm_step [h₁, …]` adds simp lemmas to the

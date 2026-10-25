@@ -19,9 +19,11 @@ import EvmLogic.GasMono.Lockstep
 import EvmLogic.GasMono.Pc
 import EvmLogic.Program.Block
 import EvmLogic.Program.Call
+import EvmLogic.Program.CallCode
 import EvmLogic.Program.CallCodeless
 import EvmLogic.Program.Code
 import EvmLogic.Program.CodeTable
+import EvmLogic.Program.Create
 import EvmLogic.Program.GasBound
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
@@ -41,6 +43,7 @@ import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Program.Reentrancy.AnyCaller
 import EvmLogic.Program.Reentrancy.Certified
+import EvmLogic.Program.Reentrancy.Create
 import EvmLogic.Program.Reentrancy.Ether
 import EvmLogic.Program.Reentrancy.Exec
 import EvmLogic.Program.Reentrancy.Halts
@@ -50,10 +53,12 @@ import EvmLogic.Program.Reentrancy.Prefix
 import EvmLogic.Program.Reentrancy.PrefixCall
 import EvmLogic.Program.Reentrancy.PrefixEnv
 import EvmLogic.Program.Reentrancy.PrefixOps
+import EvmLogic.Program.Reentrancy.PrefixTransient
 import EvmLogic.Program.Reentrancy.Tail
 import EvmLogic.Program.Reentrancy.Value
 import EvmLogic.Program.Reentrancy.World
 import EvmLogic.Program.Run
+import EvmLogic.Program.Selfdestruct
 import EvmLogic.Program.Summary
 import EvmLogic.Program.Time
 import EvmLogic.Solidity.Abi
@@ -81,6 +86,7 @@ import EvmLogic.Step.Memory
 import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage
+import EvmLogic.Step.Transient
 import EvmLogic.Tactic.Abstract
 import EvmLogic.Tactic.EvmStep
 import EvmLogic.Tactic.FastStep
