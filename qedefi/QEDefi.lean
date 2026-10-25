@@ -29,6 +29,7 @@ import QEDefi.ERC20.Spec.Instances.ZRX
 import QEDefi.ERC20.Spec.Laws
 import QEDefi.ERC20.Spec.Model
 import QEDefi.ERC20.Spec.Storage
+import QEDefi.ERC20.Spec.VariantLaws
 import QEDefi.ERC20.Token
 import QEDefi.ERC20.Variant
 import QEDefi.ERC20.VariantDeprecation
