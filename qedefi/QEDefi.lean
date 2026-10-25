@@ -22,6 +22,7 @@ import QEDefi.ERC20.Permit
 import QEDefi.ERC20.Rep
 import QEDefi.ERC20.RepOz
 import QEDefi.ERC20.Spec.Bytecode
+import QEDefi.ERC20.Spec.Instances.GUSD
 import QEDefi.ERC20.Spec.Instances.LEND
 import QEDefi.ERC20.Spec.Instances.YAMV2
 import QEDefi.ERC20.Spec.Instances.ZRX
