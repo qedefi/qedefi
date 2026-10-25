@@ -256,13 +256,14 @@ def WellFormed (sel : List Nat) (ops : Address → ByteArray → ℕ → Option 
 /-- **The end `(mf, o)` of the frame `m` is explained by a model action of an actor naming only
 actors**: it failed, or changed nothing, or it is an ERC-20 call, or an entry point. -/
 def Explained (abs : TokenAbs σ) (M : TokenModel σ Address E)
-    (opAddrs : E → List Address) (Act : Finset Address) (m mf : Machine) (o : Outcome) : Prop :=
+    (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address) (Act : Finset Address) (m mf : Machine) (o : Outcome) : Prop :=
   Fails o ∨
   (mf.world = m.world ∧ mf.transient = m.transient ∧ mf.frame.sub.logs = m.frame.sub.logs) ∨
   (∃ c : Call Address, (∀ x ∈ c.addrs, x ∈ Act) ∧
     Matches abs Act m mf o (M.events (pre abs Act m) m.frame.msg.caller c)
       (M.call (pre abs Act m) m.frame.msg.caller c)) ∨
-  (∃ e, (∀ x ∈ opAddrs e, x ∈ Act) ∧ OpMatches abs M Act e m mf o)
+  (∃ d e, ops m.frame.msg.caller d m.frame.msg.value.toNat = some e ∧
+    (∀ x ∈ opAddrs e, x ∈ Act) ∧ OpMatches abs M Act e m mf o)
 
 variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {crypto : Crypto}
   {Act : Finset Address} {a : Address} {g₀ : Nat} {sel : List Nat}
@@ -273,7 +274,7 @@ variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {c
 theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) {m : Machine}
     (hs : Start code abs M Act m) (hwf : WellFormed sel ops opAddrs rec Act m.frame.msg) :
-    Halts m (Explained abs M opAddrs Act m) := by
+    Halts m (Explained abs M ops opAddrs Act m) := by
   rcases hwf with ⟨c, he, hc⟩ | ⟨v, he, hv⟩ | hd | ⟨e, he, hea⟩ | ⟨hrec, o, sp, v, dl, pv, pr, ps,
     ho, hsp, hargs⟩
   · exact (hspec.calls c Act m hs he hc).mono fun _ _ _ h => h.elim
@@ -283,7 +284,7 @@ theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
   · exact (hspec.fallback Act m hs hd).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inl ⟨_, by simp [Call.addrs], hm⟩))) (fun hf => .inl hf.1)
   · exact (hspec.ops Act m e hs he hea).mono fun _ _ _ h => h.elim
-      (fun hm => .inr (.inr (.inr ⟨e, hea, hm⟩))) (fun hf => .inl hf.1)
+      (fun hm => .inr (.inr (.inr ⟨_, e, he, hea, hm⟩))) (fun hf => .inl hf.1)
   · obtain ⟨r, hr⟩ := Option.isSome_iff_exists.1 hrec
     exact (hpermit r hr Act m o sp v dl pv pr ps hs ho hsp hargs).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inl ⟨_, by simp [Call.addrs, ho, hsp], hm⟩)))
@@ -319,7 +320,7 @@ theorem goodOps (hE : EtherFree abs M) (hreal : code.size ≠ 0)
 /-- **An explained frame of the token's code keeps the invariant**: from `Start`, the world it
 hands back (the frame's world on success, its snapshot on failure) satisfies `TokInv`. -/
 theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size ≠ 0)
-    {m : Machine} (hs : Start code abs M Act m) (hX : Halts m (Explained abs M opAddrs Act m))
+    {m : Machine} (hs : Start code abs M Act m) (hX : Halts m (Explained abs M ops opAddrs Act m))
     (hk : ∃ o s, m.frame.kind = .call o s)
     (hsnap : m.frame.snapshot.1.code m.frame.msg.currentTarget = code) :
     Halts m (fun mf o =>
@@ -339,7 +340,7 @@ theorem frame_inv (hW : M.WFInvariant) (hE : EtherFree abs M) (hreal : code.size
   | .success out =>
     rw [frameResult_success_call hkf]
     show TokInv code abs M m.ctx.crypto Act t mf.world
-    rcases hx with hx | ⟨hw, -⟩ | ⟨c, -, hc⟩ | ⟨e, -, hop⟩
+    rcases hx with hx | ⟨hw, -⟩ | ⟨c, -, hc⟩ | ⟨-, e, -, -, hop⟩
     · exact hx.elim
     · rw [hw]; exact hmInv
     · revert hc
