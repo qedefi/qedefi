@@ -7,8 +7,8 @@ description: How to write, debug and speed up Lean proofs in this repo (evm-lean
 
 Two Lake packages: the root `evm-lean` (core + Std: `EvmLean` semantics, `EvmLogic` proof
 library, `EvmTest`, `Conformance`) and `qedefi/` (Mathlib v4.35.0 + evm-lean: `QEDefi` models,
-`Examples` incl. the Solmate verification, `QEDefiTest`). Toolchain:
-`export PATH="$HOME/.elan/bin:$PATH"`. Background: `docs/proving.md`, `docs/conventions.md`, `CONTRIBUTING.md`.
+`Verified` (one directory per verified contract), `Examples` (demos), `Difftest`,
+`QEDefiTest`). Toolchain: `export PATH="$HOME/.elan/bin:$PATH"`. Background: `docs/proving.md`, `docs/conventions.md`, `CONTRIBUTING.md`.
 
 ## Interactive first: the `lean-lsp` MCP tools
 
@@ -93,4 +93,4 @@ Tactics: `evm_step(s)` (generic), `sol_step(s)`/`sol_dispatch` (literal code),
 immutables), `pwp_msteps`/`psol_msteps` (with `MCOPY`), `wp_intro`/`wp_step(s)`/`wp_run_to`/
 `wp_finish`/`wp_generalize_gas` (frame WP), `fails_steps` (revert/OOG paths), `kernel_rfl`/
 `kernel_decide`, `evm_gas`/`evm_norm`. Worked examples: `qedefi/Examples/Basic/*`, then
-`Examples/Solmate/ERC20/Transfer.lean`.
+`Verified/Solmate/ERC20/Transfer.lean`.

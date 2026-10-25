@@ -1,7 +1,7 @@
 import EvmLean.Crypto.Real
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Layout
-import Examples.Solmate.Contracts.SolmateAssetData
+import Verified.Solmate.Contracts.SolmateAssetData
 
 /-!
 # Tests for the Solidity layer
@@ -10,12 +10,12 @@ Selectors against the compiler's method identifiers, ABI encoding and decoding o
 calldata, and packed storage fields (`Field.get`/`Field.set`).
 -/
 
-namespace Examples.Tests.Solidity
+namespace QEDefiTest.Solidity
 
-open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Solidity Examples.Solmate
+open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Solidity Verified.Solmate
 
 -- Every method identifier of the Solmate asset artifact is the selector of its signature.
-#guard Examples.Solmate.Contracts.SolmateAsset.selectors.all fun (sig, sel) =>
+#guard Verified.Solmate.Contracts.SolmateAsset.selectors.all fun (sig, sel) =>
   Abi.selector Crypto.real sig == sel.toNat
 
 #guard Abi.selector Crypto.real "transfer(address,uint256)" == 0xa9059cbb
@@ -53,4 +53,4 @@ def packed : Word := 0xabcd * 2 ^ 16 + 1 * 2 ^ 8 + 18
 #guard owner.get (paused.set packed 0) == 0xabcd
 #guard decimals.set (decimals.set packed 6) 18 == packed
 
-end Examples.Tests.Solidity
+end QEDefiTest.Solidity

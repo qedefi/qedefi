@@ -4,7 +4,8 @@
 #
 #   scripts/dump-statements.sh OUT.tsv
 #
-# Run after building; covers EvmLean, EvmLogic, QEDefi, Examples and QEDefiTest.
+# Run after building; covers EvmLean, EvmLogic, QEDefi, Verified, Examples, Difftest and
+# QEDefiTest.
 set -euo pipefail
 out=$(cd "$(dirname "${1:?usage: dump-statements.sh OUT.tsv}")" && pwd)/$(basename "$1")
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -13,14 +14,15 @@ tmp=$(mktemp -t dumpstmts).lean
 trap 'rm -f "$tmp"' EXIT
 cd "$root/qedefi"
 {
-  echo 'import EvmLogic'; echo 'import QEDefi'; echo 'import Examples'
+  echo 'import EvmLogic'; echo 'import QEDefi'; echo 'import Verified'; echo 'import Examples'
+  echo 'import Difftest'
   find QEDefiTest -name '*.lean' | sed 's|\.lean$||; s|/|.|g; s/^/import /'
   cat <<'EOF'
 open Lean Elab Command
 run_cmd do
   let env ← getEnv
   let ours (m : Name) : Bool :=
-    [`EvmLean, `EvmLogic, `QEDefi, `Examples, `QEDefiTest].any (·.isPrefixOf m)
+    [`EvmLean, `EvmLogic, `QEDefi, `Verified, `Examples, `Difftest, `QEDefiTest].any (·.isPrefixOf m)
   let mut out : Array String := #[]
   for (name, ci) in env.constants.toList do
     if let .thmInfo t := ci then

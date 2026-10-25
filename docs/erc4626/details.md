@@ -1,8 +1,8 @@
 # ERC-4626 verification: technical notes
 
 Notes per component of the Solmate verification ([README](README.md)). Paths are under
-`qedefi/Examples/Solmate/` unless stated; theorem names are in the namespace of their
-directory (`Examples.Solmate.ERC4626.…`, `Examples.Solmate.ERC20.…`). Every theorem holds
+`qedefi/Verified/Solmate/` unless stated; theorem names are in the namespace of their
+directory (`Verified.Solmate.ERC4626.…`, `Verified.Solmate.ERC20.…`). Every theorem holds
 for every `Crypto`, every fork the hypotheses allow, and arbitrary immutables.
 
 ## 1. Abstraction (`ERC4626/Abstraction.lean`)

@@ -1,8 +1,8 @@
 # Verification targets
 
 Pinned Solidity sources, a reproducible build, pinned mainnet bytecode, and the artifacts used
-by the Lean proofs (`qedefi/Examples/Solmate/`), the generated contract modules
-(`qedefi/Examples/<Project>/Contracts/`) and the differential tester (`lake exe difftest`). The
+by the Lean proofs (`qedefi/Verified/Solmate/`), the generated contract modules
+(`qedefi/Verified/<Project>/Contracts/`) and the differential tester (`lake exe difftest`). The
 ERC-4626 verification is described in [docs/erc4626](../docs/erc4626/README.md), the token
 targets in [docs/tokens.md](../docs/tokens.md).
 
@@ -19,7 +19,7 @@ targets in [docs/tokens.md](../docs/tokens.md).
 
 | Time target | Source |
 |---|---|
-| `VestingWallet` | OpenZeppelin `finance/VestingWallet.sol` (vendored, unmodified): linear vesting of ETH and ERC-20 balances by `block.timestamp` ([proofs](../qedefi/Examples/Time/)) |
+| `VestingWallet` | OpenZeppelin `finance/VestingWallet.sol` (vendored, unmodified): linear vesting of ETH and ERC-20 balances by `block.timestamp` ([proofs](../qedefi/Verified/OpenZeppelin/VestingWallet/)) |
 
 | Proxy target | Kind | Source |
 |---|---|---|
@@ -29,7 +29,7 @@ targets in [docs/tokens.md](../docs/tokens.md).
 
 | Multisig target | Kind | Source |
 |---|---|---|
-| `MiniSafe` | compiled | `src/MiniSafe.sol`: a minimal Safe-style threshold multisig (owners, threshold, nonce; ECDSA `checkNSignatures`), the owner of the ProxyAdmin in `qedefi/Examples/Actor/Bytecode/SafeGuard.lean` |
+| `MiniSafe` | compiled | `src/MiniSafe.sol`: a minimal Safe-style threshold multisig (owners, threshold, nonce; ECDSA `checkNSignatures`), the owner of the ProxyAdmin in `qedefi/Verified/Safe/MiniSafe/Guard.lean` |
 
 `src/Targets.sol` is the compilation root.
 
@@ -199,7 +199,7 @@ The two Safe v1.5.0 targets are also reproduced from source: `build-contracts.sh
 `safe-global/safe-smart-account` tag `v1.5.0` (`source/`) with its pinned settings (solc
 0.7.6, optimizer off, Istanbul) and checks the runtime code byte for byte, metadata included
 (`REPRODUCE`; `mainnet/SafeProxy/notes.md` explains why the proxy's source is the tag's file).
-They are used by `qedefi/Examples/Safe/Bytecode/` (the upgrade guard with a Safe owner).
+They are used by `qedefi/Verified/Safe/Bytecode/` (the upgrade guard with a Safe owner).
 
 Every Sourcify match above except GUSDImpl's and SafeSingleton's is *partial* (`"match"`: the
 code equals the recompilation except the metadata hash in the trailer), so those are not
@@ -247,7 +247,7 @@ slots 0–2 (`name`, `symbol`, `decimals`) equal `genesis.json`.
 
 Aave V3's Ethereum Core market (WETH reserve), as deployed; facts, immutables, libraries and
 storage in [docs/aave-v3.md](../docs/aave-v3.md). Modules
-`Examples.AaveV3.Contracts.<Name>` (`qedefi/Examples/AaveV3/Contracts/`).
+`Verified.AaveV3.Contracts.<Name>` (`qedefi/Verified/AaveV3/Contracts/`).
 
 | Name | Address | Code hash | Size | Read at block | Compiler (mainnet) | Verification |
 |---|---|---|---|---|---|---|
@@ -275,10 +275,10 @@ initialized state (test balances for the aToken; no Pool reserves).
 
 ## Lean API
 
-Namespaces `Examples.Solmate.Contracts.{SolmateAsset, SolmateVault}`,
-`Examples.OpenZeppelin.Contracts.{OzAsset, OzVault, OzVaultOffset, OzTransparentProxy,
+Namespaces `Verified.Solmate.Contracts.{SolmateAsset, SolmateVault}`,
+`Verified.OpenZeppelin.Contracts.{OzAsset, OzVault, OzVaultOffset, OzTransparentProxy,
 OzProxyAdmin, ActorImpl}` and
-`Examples.Solady.Contracts.SoladyToken`, each with `creationCode`,
+`Verified.Solady.Contracts.SoladyToken`, each with `creationCode`,
 `constructorArgs`, `runtimeCode` (a literal `ByteArray` that reduces in the kernel),
 `address`, `size_runtimeCode`/`size_creationCode`, `selectors`, `events` (topic 0), `errors`,
 `storageLayout`, `immutableRefs` and, with immutables, `Immutables`, `deployment`,
@@ -299,7 +299,7 @@ itself has no Solidity state, only the ERC-1967 slots). Mappings:
 `keccak(o₂₀ ‖ 0⁸ ‖ 0x87a211a2)`, `allowance(o, s)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x7f5e9f20 ‖ s₂₀)`,
 `nonces(o)` at `keccak(o₂₀ ‖ 0⁸ ‖ 0x38377508)` ([docs/tokens.md](../docs/tokens.md)).
 
-Mainnet modules (`Examples.WETH9.Contracts.WETH9`, `Examples.WeirdERC20.<T>.Contracts.<T>` for
+Mainnet modules (`Verified.WETH9.Contracts.WETH9`, `Verified.WeirdERC20.<T>.Contracts.<T>` for
 `USDT`, `BNB`, `STA`, `AMPL` (implementation), `YAMV2`, `LEND`, `ZRX`, and
 `AMPL.Contracts.AMPLProxy`, `GUSD.Contracts.{GUSD, GUSDImpl, GUSDStore}`)
 have `runtimeCode`, `size_runtimeCode`, `address` (mainnet), `codeHash`, `fetchBlock`,
@@ -414,7 +414,7 @@ recorded timestamp makes the following transactions mismatch (status, output, st
 
 `lake exe difftest [--seed N] [--sequences N] [--length N] [--family NAME[,NAME…]] [--edge]
 [--low-gas PCT]`
-(`qedefi/Examples/Differential/Main.lean`, run from `qedefi/`, needs anvil) deploys both families
+(`qedefi/Difftest/Main.lean`, run from `qedefi/`, needs anvil) deploys both families
 through their creation code in evm-lean (`processMessageCall`, `Crypto.real`, Cancun) and in
 anvil, then runs random call sequences from four actors: asset mint/burn/approve/transfer/
 transferFrom, donations, vault deposit/mint/withdraw/redeem with third-party owners, share
@@ -428,7 +428,7 @@ Families: `solmate`, `oz` (default), `oz3` (OZ vault with δ = 3), and the token
 `oz20`, `solady`, `weth9`, `usdt`, `usdtfee` (fee on in genesis), `bnb`, `sta`, `ampl`, `gusd`
 (proxy, implementation and store; calls to all three), `yamv2`, `lend`, `lendico` (LEND with
 the ICO reopened: purchases with ether, transfers locked) and `zrx`
-(`qedefi/Examples/Differential/Token.lean`); groups `vaults`, `tokens`, `all`. `--edge` makes
+(`qedefi/Difftest/Token.lean`); groups `vaults`, `tokens`, `all`. `--edge` makes
 the token generators favour extreme amounts (0, 1, `2²⁵⁶ − 1`, `2²⁵⁵`, balance, balance + 1),
 self-transfers and address arguments with dirty upper 96 bits; `--low-gas PCT` lowers the
 gas limit of `PCT` % of random calls (vaults too): the previous call again with `gasUsed + δ`

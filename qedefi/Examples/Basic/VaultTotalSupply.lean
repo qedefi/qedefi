@@ -1,6 +1,6 @@
 import EvmLogic.Tactic.WpStep
 import EvmLogic.Program.Summary
-import Examples.Solmate.Contracts.SolmateVault
+import Verified.Solmate.Contracts.SolmateVault
 
 /-!
 # Scale check: a function of the real Solmate vault
@@ -12,7 +12,7 @@ the large code.
 
 namespace Examples.Basic.VaultTotalSupply
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Solidity
-open Examples.Solmate Examples.Solmate.Contracts
+open Verified.Solmate Verified.Solmate.Contracts
 
 /-- Postcondition of `totalSupply()`: returns storage slot 2 of the executing account, world
 unchanged. -/

@@ -5,6 +5,15 @@ a faster tactic, a conformance fix, a correction to the docs. Open an issue firs
 that changes `EvmLean` (the semantics) or one of the stable interfaces listed in
 [docs/conventions.md](docs/conventions.md#organisation).
 
+## Contribute your agent's compute
+
+The quickest way to help: let a coding agent work on an [open problem](#open-problems). The Lean
+kernel checks every proof, so a contribution needs no trust in whoever wrote it. Give your agent
+the prompt in [AGENTS.md](AGENTS.md#prompt-for-your-user); the same file has the claim protocol
+(a draft pull request titled `[wip] <item>`) and the rules. Reading new theorem statements in
+review, and checking that they say what they claim, is the most valuable thing a person can do
+here.
+
 ## Setup
 
 ```bash
@@ -42,17 +51,17 @@ are in [docs/conventions.md](docs/conventions.md).
 
 ## Adding a verified contract
 
-The Solmate vault (`qedefi/Examples/Solmate/`) and the proxy guard
-(`qedefi/Examples/Actor/Bytecode/`) are the templates.
+The Solmate vault (`qedefi/Verified/Solmate/`) and the proxy guard
+(`qedefi/Verified/OpenZeppelin/Proxy/`) are the templates.
 
 1. **Pin the code** ([contracts/README.md](contracts/README.md)). A compiled target: vendor its
    sources unmodified under `contracts/lib/` (or write a wrapper in `contracts/src/`), import it
    from `contracts/src/Targets.sol`, and add it to `scripts/build-contracts.sh`. A deployed
    target: `scripts/fetch-mainnet.sh <Name> <address>`, then hand-write `storageLayout.json` and
    `genesis.json`. Either way the build script generates
-   `qedefi/Examples/<Project>/Contracts/<Name>.lean` with the code as a kernel-reducible literal.
+   `qedefi/Verified/<Project>/Contracts/<Name>.lean` with the code as a kernel-reducible literal.
 2. **Check the semantics agree** before proving anything: add a `difftest` family
-   (`qedefi/Examples/Differential/`) and run it against anvil.
+   (`qedefi/Difftest/`) and run it against anvil.
 3. **Pick or write the model.** Reuse `QEDefi.ERC20.Token` or a `QEDefi.ERC20.Variant`
    instance, the `QEDefi.ERC4626` vaults, or the `QEDefi.Actor` components; anything
    contract-independent goes into `QEDefi`, with its properties proved there.
@@ -64,7 +73,7 @@ The Solmate vault (`qedefi/Examples/Solmate/`) and the proxy guard
    `EvmLogic.GasMono` and `EvmLogic.AbsInt` for any gas and depth,
    `EvmLogic.Program.Nested.Guard` for who-can statements over several contracts, and
    `QEDefi.Trace.Time` for time-dependent contracts across blocks.
-6. **Document** the headline theorems and every hypothesis: a row in the README's table and a
+6. **Document** the headline theorems and every hypothesis: a row in the table of [docs/status.md](docs/status.md) and a
    section in the relevant document under `docs/`.
 
 ## Open problems

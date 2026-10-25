@@ -4,8 +4,8 @@
 # * The semantics (EvmLean/): no `sorry`, `axiom`, `opaque`, `partial def`, `unsafe`,
 #   `@[extern]`, `implemented_by`, `native_decide`, `panic!`, `get!`, `head!`, `getLast!`,
 #   `!`-indexing.
-# * The proof libraries (EvmLogic/, qedefi/QEDefi/, qedefi/Examples/): no `sorry`, `axiom`,
-#   `native_decide`.
+# * The proof libraries (EvmLogic/, qedefi/QEDefi/, qedefi/Verified/, qedefi/Examples/,
+#   qedefi/Difftest/): no `sorry`, `axiom`, `native_decide`, `bv_decide`, `skipKernelTC`.
 #
 # Comments and backtick-quoted spans (docs mentioning e.g. `opaque`) are ignored.
 set -euo pipefail
@@ -29,8 +29,9 @@ scan() { # scan <regex> <paths...>
 }
 semantics=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?(axiom|opaque|partial\s+def|unsafe)\b|\@\[extern|implemented_by|native_decide|panic!|\bget!|\bhead!|\bgetLast!|\]!' \
   EvmLean EvmLean.lean)
-proofs=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?axiom\b|native_decide' \
-  EvmLogic EvmLogic.lean qedefi/QEDefi qedefi/QEDefi.lean qedefi/Examples qedefi/Examples.lean)
+proofs=$(scan '\bsorry\b|^\s*(private\s+|protected\s+)?axiom\b|native_decide|bv_decide|skipKernelTC' \
+  EvmLogic EvmLogic.lean qedefi/QEDefi qedefi/QEDefi.lean qedefi/Verified qedefi/Verified.lean \
+  qedefi/Examples qedefi/Examples.lean qedefi/Difftest qedefi/Difftest.lean)
 status=0
 if [ -n "$semantics" ]; then
   echo "$semantics"
@@ -39,7 +40,7 @@ if [ -n "$semantics" ]; then
 fi
 if [ -n "$proofs" ]; then
   echo "$proofs"
-  echo "error: sorry/axiom/native_decide found in a proof library" >&2
+  echo "error: sorry/axiom/native_decide/bv_decide/skipKernelTC found in a proof library" >&2
   status=1
 fi
 [ $status -eq 0 ] && echo "trust check passed"

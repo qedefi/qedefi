@@ -1,4 +1,4 @@
-import Examples.Reentrancy.Solvency.Model
+import QEDefi.Solvency.Bank
 import Examples.Reentrancy.Contracts.GuardedBank
 import EvmLogic.Tactic.PrefixStep
 import EvmLogic.Program.Reentrancy.PrefixCall
@@ -26,6 +26,7 @@ is `2` reverts) and reset to `1` on exit. Proved on the compiled bytecode, for a
 
 namespace Examples.Reentrancy.Solvency.Guarded
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Program.Nested
+open QEDefi.Solvency
   EvmLogic.Program.Reentrancy EvmLogic.Solidity Examples.Reentrancy.Contracts
 
 /-- The bank is solvent (`balances` at slot `0`, the code `GuardedBank.runtimeCode`). -/

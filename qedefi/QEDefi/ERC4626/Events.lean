@@ -8,7 +8,7 @@ public import QEDefi.ERC4626.Solmate
 The events each `Solmate.Op` emits, in order, exactly as the Solmate sources emit them
 (note: spending an allowance emits no `Approval`); a reverting call emits nothing. `stream`
 is the event stream of a call sequence. The EVM log encoding is in
-`Examples.Solmate.ERC4626.Events`.
+`Verified.Solmate.ERC4626.Events`.
 -/
 
 @[expose] public noncomputable section

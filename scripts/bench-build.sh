@@ -4,8 +4,8 @@
 #   scripts/bench-build.sh OUTDIR
 #
 # Deletes `.lake/build` and `qedefi/.lake/build` (keeps `qedefi/.lake/packages`, i.e. Mathlib from
-# cache), builds `EvmLean` untimed, then times `EvmLogic` (root package) and `QEDefi Examples`
-# (qedefi package) separately with `--wfail` at Lake's default parallelism. Writes
+# cache), builds `EvmLean` untimed, then times `EvmLogic` (root package) and
+# `QEDefi Verified Examples` (qedefi package) separately with `--wfail` at Lake's default parallelism. Writes
 # `OUTDIR/{evmlogic,qedefi}.log` (Lake's output, with per-module durations) and
 # `OUTDIR/summary.txt` (wall and CPU seconds of each phase).
 set -euo pipefail
@@ -27,5 +27,5 @@ phase() { # name dir targets...
 }
 : > "$out/summary.txt"
 phase evmlogic "$root" EvmLogic
-phase qedefi "$root/qedefi" QEDefi Examples
+phase qedefi "$root/qedefi" QEDefi Verified Examples
 cat "$out/summary.txt"

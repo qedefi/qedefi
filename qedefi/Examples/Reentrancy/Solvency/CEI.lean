@@ -1,4 +1,4 @@
-import Examples.Reentrancy.Solvency.Model
+import QEDefi.Solvency.Bank
 import Examples.Reentrancy.Contracts.CEIBank
 import EvmLogic.Tactic.PrefixStep
 import EvmLogic.Program.Reentrancy.PrefixCall
@@ -28,6 +28,7 @@ the recipient may call back into the bank at any depth. Proved on the compiled b
 
 namespace Examples.Reentrancy.Solvency.CEI
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Program EvmLogic.Program.Nested
+open QEDefi.Solvency
   EvmLogic.Program.Reentrancy EvmLogic.Solidity EvmLogic.AbsInt Examples.Reentrancy.Contracts
 
 /-- The bank is solvent (`balances` at slot `0`, the bank's code `CEIBank.runtimeCode`). -/

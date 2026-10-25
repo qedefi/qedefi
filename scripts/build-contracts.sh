@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the verification targets with the pinned compiler, extract their artifacts and
-# generate the Lean constants in qedefi/Examples/<Project>/Contracts/. Two kinds of target:
+# generate the Lean constants in qedefi/Verified/<Project>/Contracts/ (the reentrancy
+# demonstrators: qedefi/Examples/Reentrancy/Contracts/). Two kinds of target:
 #   compiled  Solidity sources under contracts/ (forge, solc 0.8.28), deployed on anvil;
 #   mainnet   deployed mainnet bytecode pinned in contracts/mainnet/<Name>/ (fetched once by
 #             scripts/fetch-mainnet.sh; this script is offline and checks the code hash).
@@ -15,16 +16,16 @@
 #     storageLayout.json, immutableReferences.json}
 #   contracts/artifacts/deployment.json
 #   contracts/mainnet/<Name>/{methodIdentifiers.json, events.json, errors.json}
-#   qedefi/Examples/Solmate/Contracts/{SolmateAsset,SolmateVault}{,Data}.lean
-#   qedefi/Examples/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}{,Data}.lean
-#   qedefi/Examples/OpenZeppelin/Contracts/{OzTransparentProxy,OzProxyAdmin,ActorImpl}{,Data}.lean
-#   qedefi/Examples/Actor/Contracts/MiniSafe{,Data}.lean
-#   qedefi/Examples/Solady/Contracts/SoladyToken{,Data}.lean
-#   qedefi/Examples/Time/Contracts/VestingWallet{,Data}.lean
+#   qedefi/Verified/Solmate/Contracts/{SolmateAsset,SolmateVault}{,Data}.lean
+#   qedefi/Verified/OpenZeppelin/Contracts/{OzAsset,OzVault,OzVaultOffset}{,Data}.lean
+#   qedefi/Verified/OpenZeppelin/Contracts/{OzTransparentProxy,OzProxyAdmin,ActorImpl}{,Data}.lean
+#   qedefi/Verified/Safe/Contracts/MiniSafe{,Data}.lean
+#   qedefi/Verified/Solady/Contracts/SoladyToken{,Data}.lean
+#   qedefi/Verified/OpenZeppelin/Contracts/VestingWallet{,Data}.lean
 #   qedefi/Examples/Reentrancy/Contracts/{VulnerableBank,CEIBank,GuardedBank,Attacker}{,Data}.lean
 #     (<Name>Data.lean: bytes, immutables, selectors, layout; <Name>.lean: the code facts and
 #     the kernel code table)
-#   qedefi/Examples/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
+#   qedefi/Verified/<Project>/Contracts/<Name>.lean for each mainnet target (MAINNET below)
 #
 # Immutables. solc emits the runtime code with zero placeholders where immutables go
 # (`runtime.template.hex`, positions in `immutableReferences.json`); the constructor fills
@@ -114,40 +115,40 @@ REENTRANCY=(VulnerableBank CEIBank GuardedBank Attacker OnceAttacker)
 # Directory of each generated Lean module.
 # Lean namespace prefix of each generated module (mirrors its directory).
 declare -A LEANNS=(
-  [SolmateAsset]="Examples.Solmate.Contracts"
-  [SolmateVault]="Examples.Solmate.Contracts"
-  [OzAsset]="Examples.OpenZeppelin.Contracts"
-  [OzVault]="Examples.OpenZeppelin.Contracts"
-  [OzVaultOffset]="Examples.OpenZeppelin.Contracts"
-  [SoladyToken]="Examples.Solady.Contracts"
-  [VestingWallet]="Examples.Time.Contracts"
+  [SolmateAsset]="Verified.Solmate.Contracts"
+  [SolmateVault]="Verified.Solmate.Contracts"
+  [OzAsset]="Verified.OpenZeppelin.Contracts"
+  [OzVault]="Verified.OpenZeppelin.Contracts"
+  [OzVaultOffset]="Verified.OpenZeppelin.Contracts"
+  [SoladyToken]="Verified.Solady.Contracts"
+  [VestingWallet]="Verified.OpenZeppelin.Contracts"
   [VulnerableBank]="Examples.Reentrancy.Contracts"
   [CEIBank]="Examples.Reentrancy.Contracts"
   [GuardedBank]="Examples.Reentrancy.Contracts"
   [Attacker]="Examples.Reentrancy.Contracts"
   [OnceAttacker]="Examples.Reentrancy.Contracts"
-  [ActorImpl]="Examples.OpenZeppelin.Contracts"
-  [OzTransparentProxy]="Examples.OpenZeppelin.Contracts"
-  [OzProxyAdmin]="Examples.OpenZeppelin.Contracts"
-  [MiniSafe]="Examples.Actor.Contracts"
+  [ActorImpl]="Verified.OpenZeppelin.Contracts"
+  [OzTransparentProxy]="Verified.OpenZeppelin.Contracts"
+  [OzProxyAdmin]="Verified.OpenZeppelin.Contracts"
+  [MiniSafe]="Verified.Safe.Contracts"
 )
 declare -A LEANDIR=(
-  [SolmateAsset]="$ROOT/qedefi/Examples/Solmate/Contracts"
-  [SolmateVault]="$ROOT/qedefi/Examples/Solmate/Contracts"
-  [OzAsset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [OzVault]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [OzVaultOffset]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [SoladyToken]="$ROOT/qedefi/Examples/Solady/Contracts"
-  [VestingWallet]="$ROOT/qedefi/Examples/Time/Contracts"
+  [SolmateAsset]="$ROOT/qedefi/Verified/Solmate/Contracts"
+  [SolmateVault]="$ROOT/qedefi/Verified/Solmate/Contracts"
+  [OzAsset]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [OzVault]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [OzVaultOffset]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [SoladyToken]="$ROOT/qedefi/Verified/Solady/Contracts"
+  [VestingWallet]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
   [VulnerableBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [CEIBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [GuardedBank]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [Attacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
   [OnceAttacker]="$ROOT/qedefi/Examples/Reentrancy/Contracts"
-  [ActorImpl]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [OzTransparentProxy]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [OzProxyAdmin]="$ROOT/qedefi/Examples/OpenZeppelin/Contracts"
-  [MiniSafe]="$ROOT/qedefi/Examples/Actor/Contracts"
+  [ActorImpl]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [OzTransparentProxy]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [OzProxyAdmin]="$ROOT/qedefi/Verified/OpenZeppelin/Contracts"
+  [MiniSafe]="$ROOT/qedefi/Verified/Safe/Contracts"
 )
 
 # Mainnet targets: contracts/mainnet/<Name>/ and the Lean namespace of the generated module
@@ -156,24 +157,24 @@ MAINNET=(WETH9 USDT BNB STA AMPL AMPLProxy GUSD GUSDImpl GUSDStore YAMV2 LEND ZR
   SafeProxy AToken ATokenProxy VariableDebtToken VariableDebtTokenProxy Pool PoolProxy
   InterestRateStrategy PoolLogic SupplyLogic BorrowLogic FlashLoanLogic LiquidationLogic)
 declare -A MNS=(
-  [WETH9]="Examples.WETH9.Contracts"
-  [USDT]="Examples.WeirdERC20.USDT.Contracts"
-  [BNB]="Examples.WeirdERC20.BNB.Contracts"
-  [STA]="Examples.WeirdERC20.STA.Contracts"
-  [AMPL]="Examples.WeirdERC20.AMPL.Contracts"
-  [AMPLProxy]="Examples.WeirdERC20.AMPL.Contracts"
-  [GUSD]="Examples.WeirdERC20.GUSD.Contracts"
-  [GUSDImpl]="Examples.WeirdERC20.GUSD.Contracts"
-  [GUSDStore]="Examples.WeirdERC20.GUSD.Contracts"
-  [YAMV2]="Examples.WeirdERC20.YAMV2.Contracts"
-  [LEND]="Examples.WeirdERC20.LEND.Contracts"
-  [ZRX]="Examples.WeirdERC20.ZRX.Contracts"
-  [SafeSingleton]="Examples.Safe.Contracts"
-  [SafeProxy]="Examples.Safe.Contracts"
+  [WETH9]="Verified.WETH9.Contracts"
+  [USDT]="Verified.WeirdERC20.USDT.Contracts"
+  [BNB]="Verified.WeirdERC20.BNB.Contracts"
+  [STA]="Verified.WeirdERC20.STA.Contracts"
+  [AMPL]="Verified.WeirdERC20.AMPL.Contracts"
+  [AMPLProxy]="Verified.WeirdERC20.AMPL.Contracts"
+  [GUSD]="Verified.WeirdERC20.GUSD.Contracts"
+  [GUSDImpl]="Verified.WeirdERC20.GUSD.Contracts"
+  [GUSDStore]="Verified.WeirdERC20.GUSD.Contracts"
+  [YAMV2]="Verified.WeirdERC20.YAMV2.Contracts"
+  [LEND]="Verified.WeirdERC20.LEND.Contracts"
+  [ZRX]="Verified.WeirdERC20.ZRX.Contracts"
+  [SafeSingleton]="Verified.Safe.Contracts"
+  [SafeProxy]="Verified.Safe.Contracts"
 )
 for t in AToken ATokenProxy VariableDebtToken VariableDebtTokenProxy Pool PoolProxy InterestRateStrategy \
     PoolLogic SupplyLogic BorrowLogic FlashLoanLogic LiquidationLogic; do
-  MNS[$t]="Examples.AaveV3.Contracts"
+  MNS[$t]="Verified.AaveV3.Contracts"
 done
 # Mainnet targets whose runtime code is also rebuilt here from the verified source, with the
 # compiler and settings Sourcify records (svm layout, ~/.svm/<version>/solc-<version>), and
@@ -947,9 +948,9 @@ done
 
 if [ $CHECK -eq 1 ]; then
   git -C "$ROOT" diff --exit-code -- contracts/artifacts contracts/mainnet \
-    qedefi/Examples/Solmate/Contracts qedefi/Examples/OpenZeppelin/Contracts \
-    qedefi/Examples/Solady/Contracts qedefi/Examples/Reentrancy/Contracts \
-    qedefi/Examples/Time/Contracts \
+    qedefi/Verified/Solmate/Contracts qedefi/Verified/OpenZeppelin/Contracts \
+    qedefi/Verified/Solady/Contracts qedefi/Examples/Reentrancy/Contracts \
+    qedefi/Verified/OpenZeppelin/Contracts \
     $(for t in "${MAINNET[@]}"; do printf '%s ' "qedefi/$(printf '%s' "${MNS[$t]}" | tr . /)"; done) \
     || { echo "error: generated files are out of date" >&2; exit 1; }
   echo "generated files are up to date"

@@ -7,3 +7,4 @@ conformance-results.txt
 .env
 CLAUDE.local.md
 .claude/worktrees/
+notes.local.md

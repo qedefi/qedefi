@@ -1,5 +1,5 @@
-import Examples.Solmate.Contracts.Deploy
-import Examples.OpenZeppelin.Contracts.Deploy
+import Verified.Solmate.Contracts.Deploy
+import Verified.OpenZeppelin.Contracts.Deploy
 import Examples.Deployment
 
 /-!
@@ -10,10 +10,10 @@ addresses, immutables patching, and the storage layouts the proofs rely on. Exec
 tested against anvil by `lake exe difftest`.
 -/
 
-namespace Examples.Tests.Contracts
+namespace QEDefiTest.Contracts
 
-open EvmLean EvmLogic EvmLogic.Solidity Examples.Deployment Examples.OpenZeppelin
-open Examples.OpenZeppelin.Contracts Examples.Solmate Examples.Solmate.Contracts
+open EvmLean EvmLogic EvmLogic.Solidity Examples.Deployment Verified.OpenZeppelin
+open Verified.OpenZeppelin.Contracts Verified.Solmate Verified.Solmate.Contracts
 
 /-- The 4-byte selector of a function signature. -/
 def selectorOf (sig : String) : UInt32 :=
@@ -78,4 +78,4 @@ def eventsOk (t : List (String × Word)) : Bool :=
   ["INITIAL_CHAIN_ID", "INITIAL_DOMAIN_SEPARATOR", "asset", "decimals"]
 #guard OzAsset.immutableRefs.isEmpty
 
-end Examples.Tests.Contracts
+end QEDefiTest.Contracts

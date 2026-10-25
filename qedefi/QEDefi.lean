@@ -43,6 +43,8 @@ import QEDefi.ERC4626.Witnesses
 import QEDefi.Math.Arith
 import QEDefi.Staking.Deps
 import QEDefi.Staking.Model
+import QEDefi.Solvency.Bank
+import QEDefi.Solvency.Deps
 import QEDefi.Trace.Lift
 import QEDefi.Trace.Time
 import QEDefi.Vesting.Model
@@ -56,5 +58,5 @@ and their word-level representation (`QEDefi.ERC20`), the Solmate and OpenZeppel
 vault models with their properties (`QEDefi.ERC4626`), EVM-independent lifting of per-call
 refinement to traces (`QEDefi.Trace`), and the actor model: who can cause an effect, through
 roles, relays, thresholds, configuration changes and delays (`QEDefi.Actor`,
-`docs/access-control.md`).
+`docs/access-control.md`), and bank solvency as a world invariant (`QEDefi.Solvency`).
 -/

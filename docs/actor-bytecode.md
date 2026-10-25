@@ -145,7 +145,7 @@ certificate into the relay obligations: `ginCert_init`, `ginCert_next`, `ginCert
 `ginCert_call`, `ginCert_no_create`, `ginCert_sstore`. `Storage.lean` adds `exec_slot`: no
 instruction but `SSTORE` writes the storage of an account holding code.
 
-## 4. The upgrade guard on bytecode (`qedefi/Examples/Actor/Bytecode/`)
+## 4. The upgrade guard on bytecode (`qedefi/Verified/OpenZeppelin/Proxy/`)
 
 The OpenZeppelin v5.7.0 contracts built by `scripts/build-contracts.sh` (`OzTransparentProxy`
 with its admin immutable, `OzProxyAdmin`, and the implementation `ActorImpl`):
@@ -155,7 +155,7 @@ with its admin immutable, `OzProxyAdmin`, and the implementation `ActorImpl`):
   - The proxy when the sender is not its admin: only the `DELEGATECALL` to the implementation
     slot's address, nothing written.
   - `ActorImpl`: writes slot `0` only.
-- `ProxyGuard.lean`: the instance of `processMessageCall_guard`.
+- `Proxy/Guard.lean`: the instance of `processMessageCall_guard`.
   - **Relays:** the proxy, ProxyAdmin and the implementation.
   - **World invariant `G`:** the implementation slot holds `ia`, and ProxyAdmin's slot `0` holds
     the owner `o`.
@@ -176,7 +176,7 @@ This covers any calldata, any value, calls at any depth, reentrancy, and reverts
 standard axioms are used.
 
 In the terms of `QEDefi.Actor`, this is Ownable's `no_act` with `T = {sender}`, now a fact about
-every reachable EVM machine. `ProxyGuardTrace.lean` lifts it to traces: along every sequence of
+every reachable EVM machine. `Proxy/GuardTrace.lean` lifts it to traces: along every sequence of
 transactions not sent by the owner, interleaved with environment steps that leave the deployment
 alone (a transaction's nonce increment and fee payment among them), the implementation and the
 owner never change (`Dep.trace_impl_kept`), and the owner's first transaction starts from the
@@ -190,7 +190,7 @@ original ones (`Dep.trace_impl_until_owner`).
 
 ## 5. A Safe owner: threshold signatures on bytecode
 
-`qedefi/Examples/Actor/Bytecode/SafeGuard.lean` makes the ProxyAdmin's owner a threshold
+`qedefi/Verified/Safe/MiniSafe/Guard.lean` makes the ProxyAdmin's owner a threshold
 multisig, `MiniSafe` (`contracts/src/MiniSafe.sol`, 1,303 bytes): owners, a threshold and a nonce
 in storage, and `execTransaction(to, value, data, signatures)` that calls `to` once `threshold`
 owners signed the transaction digest, checked as Safe 1.5.0's `checkNSignatures` does for ECDSA
@@ -238,7 +238,7 @@ condition is `hc<pc>`), closes decided branches and stops at the given pcs.
 | `ownerSlot crypto a ≠ 1` | no owner slot is the nonce slot (keccak avoids `1`) |
 | from Prague: address `1` has no code, a nonzero nonce, and does not send | `1` never holds a delegation designator, so `ecrecover` is the precompile (a designator there would let any code answer `ecrecover`) |
 
-**`SafeGuard.Dep.impl_kept`:**
+**`Verified.Safe.MiniSafe.Guard.Dep.impl_kept`:**
 
 > From a world where the proxy, its ProxyAdmin, the implementation and the Safe are deployed,
 > the implementation slot holds `ia`, ProxyAdmin is owned by the Safe, and the Safe has threshold
@@ -250,7 +250,7 @@ Relays: the proxy, ProxyAdmin, the implementation and the Safe. `Iss`: the proxy
 implementation's code; the Safe calls only `1`. A ProxyAdmin frame's sender is not the Safe (by
 `origin`: the Safe calls only `1`, and ProxyAdmin is not `1`), so the certificate of §4 applies.
 The context predicate is `K c := c = ctx`, so the Safe's frames may use the hypotheses about
-`ctx.crypto`. `SafeGuard.Example` instantiates every hypothesis (three owners, threshold `2`, one
+`ctx.crypto`. `MiniSafe.Guard.Example` instantiates every hypothesis (three owners, threshold `2`, one
 signer, a stand-in `Crypto`). Only the standard axioms are used.
 
 In the terms of `QEDefi.Actor.Lib.Safe` (`Examples.Actor.SafeProxyAdminLib`): `Closes.outsider`
@@ -260,9 +260,9 @@ with fewer than `thr` owners among the keys and no module (MiniSafe has none), o
 transactions that do reach `thr` signatures (the converse, that `thr` owners can upgrade, is
 `upgrade_by_owners` in the model only).
 
-## 6. Safe 1.5.0 on bytecode (`qedefi/Examples/Safe/Bytecode/`)
+## 6. Safe 1.5.0 on bytecode (`qedefi/Verified/Safe/Bytecode/`)
 
-`qedefi/Examples/Safe/Bytecode/` replaces MiniSafe by the real Safe: `SafeProxy` and the
+`qedefi/Verified/Safe/Bytecode/` replaces MiniSafe by the real Safe: `SafeProxy` and the
 v1.5.0 singleton (`SafeSingleton`), compiled byte for byte from `safe-global/safe-smart-account`
 tag `v1.5.0` with its pinned settings (`contracts/README.md`). The deployment `Dep` has five
 relays: the OZ transparent proxy `px`, its ProxyAdmin `pa`, the implementation `ia`, the Safe
@@ -314,7 +314,7 @@ the signatures' length word is kept. Each pass that comes back to the head count
 So `i ≤ |O ∩ T| < thr`, and the exit `i ≥ thr` is never taken: every path reverts before the
 call.
 
-**Hypotheses of `Examples.Safe.Guard.Dep.impl_kept`:**
+**Hypotheses of `Verified.Safe.Guard.Dep.impl_kept`:**
 
 | Hypothesis | Meaning |
 |---|---|

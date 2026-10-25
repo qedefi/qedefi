@@ -72,7 +72,7 @@ precise.
 **What `consent` means.** Senders are top-level transaction senders (EIP-3607 makes them keys).
 Signers are the addresses that `ecrecover` returns for signatures the operation carries. A
 signer counts as having acted, which is accurate when only the key holder produces its
-signatures (`SigUnforgeable`, `Examples/Solmate/ERC20/Permit.lean`). A replayed signature counts
+signatures (`SigUnforgeable`, `Verified/Solmate/ERC20/Permit.lean`). A replayed signature counts
 as its signer acting, so a theorem's `T` must include every key whose signatures appear.
 
 ## 3. Modelling a system: the recipe
@@ -166,6 +166,6 @@ instances:
 
 | Theorem | System | Statement |
 |---|---|---|
-| `Examples.Actor.ProxyGuard.Dep.impl_kept` | OZ v5.7.0 transparent proxy and `ProxyAdmin`, owned by an EOA | no transaction not sent by the owner changes the implementation slot or ProxyAdmin's owner (any calldata, depth, reentrancy); `Dep.trace_impl_kept` (`ProxyGuardTrace.lean`) along any sequence of transactions. Ownable's `no_act` with `T = {sender}` |
-| `Examples.Actor.SafeGuard.Dep.impl_kept` | the same, owned by `MiniSafe` (ECDSA threshold multisig) | no transaction signed by fewer than `threshold` owners changes the implementation, the owner, or the Safe's owners and threshold. `Safe`'s `Closes.outsider` |
-| `Examples.Safe.Guard.Dep.impl_kept` | the same, owned by Safe v1.5.0 (mainnet bytecode) | as above, for the Safe's whole configuration, every entry point and all four signature kinds |
+| `Verified.OpenZeppelin.Proxy.Dep.impl_kept` | OZ v5.7.0 transparent proxy and `ProxyAdmin`, owned by an EOA | no transaction not sent by the owner changes the implementation slot or ProxyAdmin's owner (any calldata, depth, reentrancy); `Dep.trace_impl_kept` (`Proxy/GuardTrace.lean`) along any sequence of transactions. Ownable's `no_act` with `T = {sender}` |
+| `Verified.Safe.MiniSafe.Guard.Dep.impl_kept` | the same, owned by `MiniSafe` (ECDSA threshold multisig) | no transaction signed by fewer than `threshold` owners changes the implementation, the owner, or the Safe's owners and threshold. `Safe`'s `Closes.outsider` |
+| `Verified.Safe.Guard.Dep.impl_kept` | the same, owned by Safe v1.5.0 (mainnet bytecode) | as above, for the Safe's whole configuration, every entry point and all four signature kinds |

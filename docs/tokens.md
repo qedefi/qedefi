@@ -7,19 +7,19 @@ hold them. Pinning, layouts and the build are in [contracts/README.md](../contra
 
 | Target | Code | Lean module | `difftest` family | Proved |
 |---|---|---|---|---|
-| Solmate `ERC20` (`MockERC20`) | compiled | `Examples.Solmate.Contracts.SolmateAsset` | `solmate` (as vault asset) | bytecode ([erc4626](erc4626/README.md)) |
-| OpenZeppelin `ERC20` v5.7.0 (`ERC20Mock`) | compiled | `Examples.OpenZeppelin.Contracts.OzAsset` | `oz20`, `oz`, `oz3` | bytecode (below) |
-| Solady `ERC20` v0.1.26 (`SoladyToken`) | compiled | `Examples.Solady.Contracts.SoladyToken` | `solady` | model |
-| WETH9 | mainnet `0xC02a…6Cc2` | `Examples.WETH9.Contracts.WETH9` | `weth9` | bytecode: ether backing, `withdraw` ([proving.md](proving.md#7-untrusted-callees-and-reentrancy-evmlogicprogramreentrancy)); model |
-| USDT (`TetherToken`) | mainnet `0xdAC1…1ec7` | `Examples.WeirdERC20.USDT.Contracts.USDT` | `usdt`, `usdtfee` | model |
-| BNB | mainnet `0xB8c7…DD52` | `Examples.WeirdERC20.BNB.Contracts.BNB` | `bnb` | model |
-| STA (Statera) | mainnet `0xa7DE…eED1` | `Examples.WeirdERC20.STA.Contracts.STA` | `sta` | model |
-| AMPL (zos proxy + `UFragments`) | mainnet `0xD46b…A161` / `0xD0e3…35b1` | `Examples.WeirdERC20.AMPL.Contracts.{AMPLProxy,AMPL}` | `ampl` | model |
-| GUSD (`ERC20Proxy` + `ERC20Impl` + `ERC20Store`) | mainnet `0x056F…d5Cd` / `0x483A…40A2` / `0xc42B…68a0` | `Examples.WeirdERC20.GUSD.Contracts.{GUSD,GUSDImpl,GUSDStore}` | `gusd` | — |
-| YAMv2 | mainnet `0xAba8…aD8A` | `Examples.WeirdERC20.YAMV2.Contracts.YAMV2` | `yamv2` | — |
-| LEND (`EthLendToken`) | mainnet `0x80fB…ab03` | `Examples.WeirdERC20.LEND.Contracts.LEND` | `lend`, `lendico` | — |
-| ZRX (`ZRXToken`) | mainnet `0xE41d…F498` | `Examples.WeirdERC20.ZRX.Contracts.ZRX` | `zrx` | — |
-| Aave V3 aEthWETH (`AToken` rev. 5 behind its proxy) | mainnet `0x4d5F…14E8` / `0xadC4…7AdA` | `Examples.AaveV3.Contracts.{ATokenProxy,AToken}` | — | bytecode, partly ([aave-v3.md](aave-v3.md)) |
+| Solmate `ERC20` (`MockERC20`) | compiled | `Verified.Solmate.Contracts.SolmateAsset` | `solmate` (as vault asset) | bytecode ([erc4626](erc4626/README.md)) |
+| OpenZeppelin `ERC20` v5.7.0 (`ERC20Mock`) | compiled | `Verified.OpenZeppelin.Contracts.OzAsset` | `oz20`, `oz`, `oz3` | bytecode (below) |
+| Solady `ERC20` v0.1.26 (`SoladyToken`) | compiled | `Verified.Solady.Contracts.SoladyToken` | `solady` | model |
+| WETH9 | mainnet `0xC02a…6Cc2` | `Verified.WETH9.Contracts.WETH9` | `weth9` | bytecode: ether backing, `withdraw` ([proving.md](proving.md#7-untrusted-callees-and-reentrancy-evmlogicprogramreentrancy)); model |
+| USDT (`TetherToken`) | mainnet `0xdAC1…1ec7` | `Verified.WeirdERC20.USDT.Contracts.USDT` | `usdt`, `usdtfee` | model |
+| BNB | mainnet `0xB8c7…DD52` | `Verified.WeirdERC20.BNB.Contracts.BNB` | `bnb` | model |
+| STA (Statera) | mainnet `0xa7DE…eED1` | `Verified.WeirdERC20.STA.Contracts.STA` | `sta` | model |
+| AMPL (zos proxy + `UFragments`) | mainnet `0xD46b…A161` / `0xD0e3…35b1` | `Verified.WeirdERC20.AMPL.Contracts.{AMPLProxy,AMPL}` | `ampl` | model |
+| GUSD (`ERC20Proxy` + `ERC20Impl` + `ERC20Store`) | mainnet `0x056F…d5Cd` / `0x483A…40A2` / `0xc42B…68a0` | `Verified.WeirdERC20.GUSD.Contracts.{GUSD,GUSDImpl,GUSDStore}` | `gusd` | — |
+| YAMv2 | mainnet `0xAba8…aD8A` | `Verified.WeirdERC20.YAMV2.Contracts.YAMV2` | `yamv2` | — |
+| LEND (`EthLendToken`) | mainnet `0x80fB…ab03` | `Verified.WeirdERC20.LEND.Contracts.LEND` | `lend`, `lendico` | — |
+| ZRX (`ZRXToken`) | mainnet `0xE41d…F498` | `Verified.WeirdERC20.ZRX.Contracts.ZRX` | `zrx` | — |
+| Aave V3 aEthWETH (`AToken` rev. 5 behind its proxy) | mainnet `0x4d5F…14E8` / `0xadC4…7AdA` | `Verified.AaveV3.Contracts.{ATokenProxy,AToken}` | — | bytecode, partly ([aave-v3.md](aave-v3.md)) |
 
 The weird tokens come from the Trail of Bits token-integration checklist and
 `d-xo/weird-erc20`. Tests and proofs install mainnet code at its mainnet address with the
@@ -49,12 +49,12 @@ value and gas, top level or nested):
 7. **Arbitrary callers**: 1–4 hold when `T` is called by arbitrary contracts at any depth
    (`EvmLogic/Program/Nested/`).
 
-Solmate's `ERC20` has 2, 3, 5 and 6 on the bytecode (`qedefi/Examples/Solmate/ERC20/`), and 1, 4
+Solmate's `ERC20` has 2, 3, 5 and 6 on the bytecode (`qedefi/Verified/Solmate/ERC20/`), and 1, 4
 and 7 through the vault proofs. Each other target's deviations below say which items change.
 
 ## OpenZeppelin `ERC20` on bytecode
 
-`qedefi/Examples/OpenZeppelin/ERC20/`, for calls with zero value: item 2 with logs (without
+`qedefi/Verified/OpenZeppelin/ERC20/`, for calls with zero value: item 2 with logs (without
 revert data), the storage part of 3, and the `totalSupply`/`balanceOf`/`allowance`/`decimals`
 part of 5; item 1 is `Token.WF_oz*`.
 
@@ -298,4 +298,4 @@ always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`N
   layout, the supply relation and the freshness predicate as parameters.
 - **Upgradeable tokens** (USDC): the proxy's dispatch theorem (every non-admin call delegates)
   and theorems that hold until an admin transaction. `WP.delegatecall` and Aave's aToken proxy
-  (`Examples/AaveV3/ATokenProxy/`, `forward_halts`) are the worked pattern.
+  (`Verified/AaveV3/ATokenProxy/`, `forward_halts`) are the worked pattern.

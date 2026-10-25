@@ -15,7 +15,7 @@ jobs:
         with:
           build-args: "--wfail"
           test: true
-      # The `qedefi` package (Mathlib): QEDefi, Examples, difftest.
+      # The `qedefi` package (Mathlib): QEDefi, Verified, Examples, Difftest.
       - name: DeFi package
         working-directory: qedefi
         run: |

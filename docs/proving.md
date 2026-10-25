@@ -137,7 +137,7 @@ the fresh child frame (e.g. a `FunctionSummary` of the callee; for `DELEGATECALL
 `CALLVALUE`), the caller continues from `resumeAfter_success` / `_revert` / `_halt` (flag
 pushed, output copied, unused gas returned, world or snapshot, logs merged on success). A
 proxy's forwarding is summarised once for all implementations
-(`Examples/AaveV3/ATokenProxy/Forward.lean`, `forward_halts`). Precompile calls run within one step
+(`Verified/AaveV3/ATokenProxy/Forward.lean`, `forward_halts`). Precompile calls run within one step
 (`Program/PrecompileCall.lean`: `WP.staticcall_precompile`, and `WP.staticcall_ecrecover` for
 solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
 
@@ -164,7 +164,7 @@ every branch (`wp_abstract gas g hg`, `wp_abstract_mem M with hM` plus the facts
 `wp_abstract sub s hs`), then `wp_join [M, M_size, …, g, hg, s]`. It reverts the named
 hypotheses in every open goal, checks the statements coincide (mentioning only hypotheses common
 to all branches), and replaces the goals by one. Use `case' pos => …` (which leaves the goal
-open) rather than `·` for the branches. `Examples/AaveV3/AToken/Burn/Success.lean`: the `Mint` and
+open) rather than `·` for the branches. `Verified/AaveV3/AToken/Burn/Success.lean`: the `Mint` and
 `Burn` event branches of `burn` join before `safeTransfer`'s call.
 
 ## 4. The Solidity layer (`EvmLogic/Solidity/`)
@@ -334,8 +334,8 @@ kernel-evaluated on bytecode against a re-enter-once attacker. `NoWrite.lean`/`C
 `noWrite_halts` — a certified tail with no storage-writing or calling instruction keeps the
 world for any gas.
 
-**Solvency after any transaction** (`qedefi/Examples/Reentrancy/Solvency/`), on bytecode, for any
-gas. `Model.lean`: `Solvent crypto base code bank` (what the bank owes, the sum of its balance
+**Solvency after any transaction** (`qedefi/Examples/Reentrancy/Solvency/`, WETH9 in
+`qedefi/Verified/WETH9/`), on bytecode, for any gas. `QEDefi/Solvency/Bank.lean`: `Solvent crypto base code bank` (what the bank owes, the sum of its balance
 entries **over their slots** — no Keccak hypothesis — is at most its ether, and all ether is below
 `2²⁵⁶`) is closed under everything arbitrary code does (`goodOps_solvent`); `Locked` (bank
 storage frozen, ether floor) likewise. `CEI.lean`: `cei_frame` runs every function with
@@ -367,7 +367,8 @@ The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots cr
 
 Modules: `EvmLogic/Program/Time.lean` (block environments), `qedefi/QEDefi/Trace/Time.lean`
 (EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
-`qedefi/Examples/Time/` (OpenZeppelin `VestingWallet`, Solmate across blocks).
+`qedefi/Verified/OpenZeppelin/VestingWallet/` and `qedefi/Verified/Solmate/ERC4626/Time.lean`
+(Solmate across blocks).
 
 **Principle: the block context stays symbolic.** Per-call theorems hold for every `ctx`, so
 `TIMESTAMP`, `NUMBER`, `PREVRANDAO`, the base fee … are free variables of the bytecode proof,
@@ -403,11 +404,11 @@ runs blocks in order, each a sequence of `step b` transitions; with
 
 Time-independent systems are the constant case (`TSystem.const`, `refinement_const`,
 `texec_const`). For a protocol whose trace theorems are already proved, a multi-block trace
-is just a trace: `BlockTrace.induction_on` (`Examples/Time/Solmate.lean` turns
+is just a trace: `BlockTrace.induction_on` (`Verified/Solmate/ERC4626/Time.lean` turns
 `BlockTrace (BlockTxStep …)` into `TxTrace` and gets `supply_eq_sum_multiBlock`,
 `solvent_multiBlock`, … for any sequence of blocks, unchanged statements, no time reasoning).
 
-**Recipe for a time-dependent contract** (`Examples/Time/VestingWallet/`):
+**Recipe for a time-dependent contract** (`Verified/OpenZeppelin/VestingWallet/`):
 
 1. Model with `now` (`Vesting.step`, mirroring the contract's reverts) and its closed form;
    prove its laws once (`vested_mono_time`, `vested_mono_total`, `vested_le`) and the time
@@ -477,9 +478,9 @@ about 20 s; the multi-block layer adds no per-block or per-time work. `lake exe 
 
 ## Proof performance
 
-A clean build of `QEDefi` and `Examples` takes about two minutes on a 12-core machine; symbolic
-execution costs about 8 ms per instruction (`deposit`: 611 instructions in 5 s), plus about
-20 ms of kernel checking. What keeps it there:
+A clean build of `QEDefi`, `Verified` and `Examples` takes about two minutes on a 12-core
+machine; symbolic execution costs about 8 ms per instruction (`deposit`: 611 instructions in
+5 s), plus about 20 ms of kernel checking. What keeps it there:
 
 - **Code tables** (`EvmLogic/Program/CodeTable.lean`, the `code_table` command): each contract
   gets a binary trie of its bytes and jump destinations, checked once (`CodeTable.Ok`, by

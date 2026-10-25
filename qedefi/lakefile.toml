@@ -1,6 +1,6 @@
 name = "qedefi"
 version = "0.1.0"
-defaultTargets = ["QEDefi", "Examples", "difftest"]
+defaultTargets = ["QEDefi", "Verified", "Examples", "Difftest", "difftest"]
 testDriver = "QEDefiTest"
 
 [leanOptions]
@@ -23,9 +23,17 @@ path = ".."
 [[lean_lib]]
 name = "QEDefi"
 
-# Worked examples: small demos, the Solmate and OpenZeppelin contracts, differential testing.
+# Verified contracts: one directory per deployed system, its generated code and its proofs.
+[[lean_lib]]
+name = "Verified"
+
+# Small demos of the program logic, actor models, reentrancy demonstrators.
 [[lean_lib]]
 name = "Examples"
+
+# Differential testing against Foundry's anvil (`lake exe difftest`).
+[[lean_lib]]
+name = "Difftest"
 
 # `#guard` evaluation tests (contract constants, Solidity layer, string getters); `lake test`.
 # Kept out of the proof libraries so that their build does not run the evaluations.
@@ -35,4 +43,4 @@ name = "QEDefiTest"
 # Differential testing of compiled contracts: evm-lean vs. Foundry (`lake exe difftest`).
 [[lean_exe]]
 name = "difftest"
-root = "Examples.Differential.Main"
+root = "Difftest.Main"

@@ -7,7 +7,7 @@ public import QEDefi.ERC20.Token
 
 `PermitToken A` is a `Token` plus per-owner nonces. Validity of a permit (deadline,
 signature, domain) is a parameter `valid` of the owner's current nonce, instantiated by the
-bytecode layer (`Examples.Solmate.ERC20.Permit.PermitValid`). The nonce increment is
+bytecode layer (`Verified.Solmate.ERC20.Permit.PermitValid`). The nonce increment is
 unchecked in the source, so it wraps modulo `2²⁵⁶`.
 -/
 

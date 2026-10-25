@@ -1,8 +1,8 @@
 # Aave V3 (Ethereum Core market) as verification targets
 
 The deployed bytecode of Aave V3's Core market on Ethereum mainnet, pinned as mainnet targets
-(`contracts/mainnet/<Name>/`, generated modules `qedefi/Examples/AaveV3/Contracts/<Name>.lean`,
-namespace `Examples.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. This file
+(`contracts/mainnet/<Name>/`, generated modules `qedefi/Verified/AaveV3/Contracts/<Name>.lean`,
+namespace `Verified.AaveV3.Contracts.<Name>`). The WETH reserve is the worked reserve. This file
 records what the targets are, exactly, and what is proved about them; the accounting model and its
 theorems are in [aave-v3-model.md](aave-v3-model.md). Fetch and build workflow:
 [contracts/README.md](../contracts/README.md#mainnet-targets).
@@ -30,7 +30,7 @@ theorems are in [aave-v3-model.md](aave-v3-model.md). Fetch and build workflow:
 | Interest-rate strategy | `0x9ec6F08190DeA04A54f8Afc53Db96134e5E3FdFB` | target `InterestRateStrategy` (`DefaultReserveInterestRateStrategyV2`, shared by all reserves: the Pool's immutable `RESERVE_INTEREST_RATE_STRATEGY`) |
 | Treasury (Collector) | `0x464C71f6c2F760DdA6093dCB91C24c39e5d6e18c` | aToken immutable `TREASURY` |
 | Rewards controller | `0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb` | token immutable `REWARDS_CONTROLLER` |
-| WETH (underlying) | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | reserve id 0; target `Examples.WETH9.Contracts.WETH9` |
+| WETH (underlying) | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | reserve id 0; target `Verified.WETH9.Contracts.WETH9` |
 
 The sources are `aave-v3-origin` (tokens, libraries; comments refer to v3.4 and v3.5), the
 Pool's from `aave-v3-origin-private`. The data provider reports no stable debt token for WETH
@@ -178,7 +178,7 @@ and the custom errors are in the generated module (`selectors`, `events`, `error
 
 ## Proved on the bytecode
 
-`qedefi/Examples/AaveV3/AToken/` (namespace `Examples.AaveV3.AToken`), about the deployed AToken
+`qedefi/Verified/AaveV3/AToken/` (namespace `Verified.AaveV3.AToken`), about the deployed AToken
 implementation `AToken.runtimeCode` (immutables concrete in the code; `pool` = the Pool proxy).
 Every theorem is a `Halts` statement for an arbitrary frame `m` with `Fresh AToken.runtimeCode m`:
 any executing address (on mainnet the aToken proxy, reaching the implementation by
@@ -282,8 +282,8 @@ on the gas is needed, so `mint_halts_ok`/`burn_halts_ok` and their `_effect` cor
 their `gas < 2^64` hypothesis); `BitField` (`Solidity/Layout.lean`: the packed `_userState`);
 `reduceErrorSelector` and `read_error₁/₂` (`Solidity/Steps.lean`: custom-error revert data).
 
-**Through the proxy** (`qedefi/Examples/AaveV3/ATokenProxy/`, namespace
-`Examples.AaveV3.ATokenProxy`), about the deployed proxy `ATokenProxy.runtimeCode` (the same
+**Through the proxy** (`qedefi/Verified/AaveV3/ATokenProxy/`, namespace
+`Verified.AaveV3.ATokenProxy`), about the deployed proxy `ATokenProxy.runtimeCode` (the same
 bytes as `VariableDebtTokenProxy`). `implementation w a` is the address in `a`'s EIP-1967 slot
 `implSlot`; `admin` the PoolConfigurator. `DelegatedFrom m mc`: `mc` is the implementation's
 frame of the proxy frame `m` (same world, transient storage, created accounts, caller, address,
@@ -305,7 +305,7 @@ of its own.
 needs the bound on the revert data (with unbounded output the proxy's `RETURNDATACOPY` can run
 out of gas).
 
-**The ledger after any transaction** (`qedefi/Examples/AaveV3/AToken/Havoc/`). The rewards
+**The ledger after any transaction** (`qedefi/Verified/AaveV3/AToken/Havoc/`). The rewards
 controller, the Pool and the underlying are arbitrary code here: every external call is taken by
 `pwp_call_any` of the any-gas prefix calculus ([proving.md](proving.md#7-untrusted-callees-and-reentrancy-evmlogicprogramreentrancy)),
 and the invariant `Good` is that the scaled ledger balances (`ledgerSum`, the Σ of the low 120

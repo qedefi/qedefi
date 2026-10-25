@@ -1,8 +1,8 @@
 import EvmTest.InterpreterUtil
 import EvmLean.Crypto.Real
 import EvmLogic.Solidity.Strings
-import Examples.Solmate.Contracts.SolmateVaultData
-import Examples.Solmate.Contracts.SolmateAssetData
+import Verified.Solmate.Contracts.SolmateVaultData
+import Verified.Solmate.Contracts.SolmateAssetData
 
 /-!
 # Tests for `string` storage and ABI encoding (`EvmLogic.Solidity.Strings`)
@@ -12,9 +12,9 @@ The compiled `name()`/`symbol()` getters, run with the real Keccak-256, return
 `Str.getterGas`, and revert on inconsistent slots.
 -/
 
-namespace Examples.Tests.Strings
+namespace QEDefiTest.Strings
 open EvmLean EvmLean.Interpreter EvmLogic EvmLogic.Solidity EvmTest EvmTest.InterpreterUtil
-open Examples.Solmate Examples.Solmate.Contracts
+open Verified.Solmate Verified.Solmate.Contracts
 
 -- The canonical deployment strings, in their short storage form.
 #guard Str.shortWord "Solmate Vault".toUTF8 ==
@@ -106,4 +106,4 @@ def namesLong : Storage :=
 #guard (getter SolmateVault.runtimeCode 0x95d89b41 namesShort).map (·.output) ==
   some (Abi.encodeString "svSAST".toUTF8)
 
-end Examples.Tests.Strings
+end QEDefiTest.Strings

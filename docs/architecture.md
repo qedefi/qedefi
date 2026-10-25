@@ -78,12 +78,14 @@ header roots.
 | | `Conformance` | `EvmLean` | `lake exe conform` |
 | | `Snapshot` | `EvmLean`, `Conformance.Hex` | `lake exe snapshot`: deployed contracts at a pinned block ([contracts/README.md](../contracts/README.md#snapshots)) |
 | `qedefi` (`qedefi/`) | `QEDefi` | Mathlib v4.35.0, `EvmLogic` | models and their theorems: `Math` (`uint256` `mulDiv`), `ERC20` ledgers and variants, `ERC4626` vaults, `Aave` (v3.7 accounting), `Actor` (access control), `Vesting`, `Staking`, `Trace` lifting (also time-indexed) |
-| | `Examples` | `QEDefi` | `Basic` demos; verified `Solmate`, `OpenZeppelin`, `Actor`, `Safe`, `Reentrancy`, `Time` and `AaveV3` targets; mainnet token data; `Differential` (`lake exe difftest`) |
-| | `QEDefiTest` | `Examples` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
+| | `Verified` | `QEDefi` | one directory per deployed system: `Solmate`, `OpenZeppelin` (ERC-20, ERC-4626, proxy, VestingWallet), `Safe`, `WETH9`, `AaveV3`, `Solady`, `WeirdERC20` |
+| | `Examples` | `Verified` | `Basic` demos, `Actor` models, `Reentrancy` demonstrators |
+| | `Difftest` | `Verified`, `Examples` | differential testing against anvil (`lake exe difftest`) |
+| | `QEDefiTest` | `Verified` | `#guard` tests of the contract constants (`lake test` in `qedefi/`; not a default target) |
 
 Rules: the root package never depends on Mathlib or on `qedefi/`; `EvmLean` never imports
 `EvmLogic`; generic results go to `EvmLogic` or `QEDefi`, contract-specific ones to
-`Examples`. Namespaces mirror directories (`EvmLogic.Solidity.Keccak` is
+`Verified`. Namespaces mirror directories (`EvmLogic.Solidity.Keccak` is
 `EvmLogic/Solidity/Keccak.lean`); lemmas about `EvmLean`'s own types keep the `EvmLean.*`
 namespaces so that dot notation works. Model files in `QEDefi` use the Lean module system
 (`module`, `public import`) as Mathlib does. The `qedefi` package (QEDefi, the DeFi layer)
@@ -102,8 +104,8 @@ README).
   Fixtures: `ethereum/tests` @ `08839f54` (`scripts/fetch-fixtures.sh`), the suite
   EVMYulLean reports against (it passes 22,267 / 22,302 there); execution-spec-tests v5.4.0
   (`scripts/fetch-eest-fixtures.sh`). Transition networks (`<A>To<B>AtTime15k`) switch fork
-  per block by timestamp. Results are in the [README](../README.md#the-semantics).
-- **Differential** (`qedefi/Examples/Differential/`): `lake exe difftest` deploys the compiled
+  per block by timestamp. Results are in the [status page](status.md#the-evm-semantics).
+- **Differential** (`qedefi/Difftest/`): `lake exe difftest` deploys the compiled
   ERC-4626 targets in evm-lean and in anvil and compares random call sequences
   ([contracts/README.md](../contracts/README.md#differential-testing)).
 
