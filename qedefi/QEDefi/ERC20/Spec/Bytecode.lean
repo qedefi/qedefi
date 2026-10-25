@@ -304,14 +304,17 @@ def EcrecoverPlain (m : Machine) : Prop :=
 actors, ends as the model's `permit` call, with `live = timestamp ≤ deadline` (`TIMESTAMP`
 pushes the timestamp modulo `2²⁵⁶`) and the signature recovery `rec m` of the token (its
 EIP-712 digest at each nonce, through `crypto.ecrecover`), when `ecrecover` runs the precompile
-(`EcrecoverPlain`); or, with less than `gp m` gas, static or with value, fails. The recovery
+(`EcrecoverPlain`) and the frame has less than `2⁶⁴` gas (`GAS` pushes the gas modulo `2²⁵⁶`,
+and a token forwarding it to `ecrecover` would forward too little from `2²⁵⁶` on; no real frame
+has `2⁶⁴` gas, block gas limits are below `2⁶³`); or, with less than `gp m` gas, static or
+with value, fails. The recovery
 `rec` and the gas bound `gp` are reviewed parts of each token's spec, like its model: a
 token's `permit` may need gas growing with its state (Solmate off its deployment chain
 recomputes the domain separator from `name`, of any length). -/
 def PermitSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (gp : Machine → Nat) (rec : Machine → ℕ → Address) : Prop :=
   ∀ Act m (o sp : Address) (v dl pv pr ps : Word), Start code abs M Act m → o ∈ Act → sp ∈ Act →
-    EcrecoverPlain m →
+    EcrecoverPlain m → m.frame.gasLeft < 2 ^ 64 →
     Args m.frame.msg.data 0xd505accf [Word.ofAddress o, Word.ofAddress sp, v, dl, pv, pr, ps] →
     let c : Call Address :=
       .permit o sp v.toNat (decide (m.ctx.block.timestamp % 2 ^ 256 ≤ dl.toNat)) (rec m)
