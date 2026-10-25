@@ -203,13 +203,15 @@ def Normal (g₀ : Nat) (m : Machine) : Prop :=
 /-- The common hypotheses of every obligation, for the actors `Act`: `m` is a fresh frame of
 `code`, started the way the interpreter starts frames (its world is its snapshot with the value
 moved, as `launchCall` and `initMachine` do), its value moved if nonzero (token code run by a
-`DELEGATECALL` that carries value is out of scope), its calldata is payable, the caller is an
-actor, the actors' hash hypotheses hold, and the token is in a state its model can reach. -/
+`DELEGATECALL` that carries value is out of scope), it runs the standard precompiles (as every
+machine the interpreter builds does), its calldata is payable, the caller is an actor, the
+actors' hash hypotheses hold, and the token is in a state its model can reach. -/
 structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (Act : Finset Address) (m : Machine) : Prop where
   fresh : Fresh code m
   launched : m.world = transferValue m.frame.snapshot.1 m.frame.msg
   value : m.frame.msg.shouldTransferValue = true ∨ m.frame.msg.value = 0
+  precompiles : m.precompiles = PrecompileImpl.standard m.ctx
   size : m.frame.msg.data.size < 2 ^ 64
   caller : m.frame.msg.caller ∈ Act
   sound : abs.Sound m.ctx.crypto Act
@@ -305,19 +307,26 @@ def PermitSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address
         (M.call (pre abs Act m) m.frame.msg.caller c) ∨
       (Fails out ∧ ¬ Normal g₀ m)
 
+/-- A call that may explain a frame: any ERC-20 call, a `permit` only with the token's own
+signature recovery `rec` (a token without `permit` has `rec = none`). -/
+def Explains (rec : Option (Machine → ℕ → Address)) (m : Machine) : Call Address → Prop
+  | .permit _ _ _ _ r' => ∃ r, rec = some r ∧ r' = r m
+  | _ => True
+
 /-- **Any calldata** is explained by some action of the caller the model allows: an ERC-20
-call other than `permit`, a view (nothing changes), an entry point the decoder accepts for
-some calldata of the caller, or a failure. The action may name accounts outside `Act` (dirty
+call (a `permit` only with the token's signature recovery, `Explains`), a view (nothing
+changes), an entry point the decoder accepts for some calldata of the caller, or a failure. The action may name accounts outside `Act` (dirty
 calldata may name any account); it is then exact for the actors together with those accounts,
 whenever their hash hypotheses hold. With the exact obligations this says malformed calldata
 (short or dirty arguments of a known selector) can do nothing a well-formed call could not. -/
 def MalformedSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
-    (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address) : Prop :=
+    (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
+    (rec : Option (Machine → ℕ → Address)) : Prop :=
   ∀ Act m, Start code abs M Act m →
     Halts m fun mf o =>
       Fails o ∨
       (mf.world = m.world ∧ mf.transient = m.transient ∧ mf.frame.sub.logs = m.frame.sub.logs) ∨
-      (∃ c, (∀ o sp v live rec, c ≠ .permit o sp v live rec) ∧
+      (∃ c, Explains rec m c ∧
         let Act' := Act ∪ c.addrs.toFinset
         (abs.Sound m.ctx.crypto Act' → M.wf (pre abs Act' m) →
           Matches abs Act' m mf o (M.events (pre abs Act' m) m.frame.msg.caller c)
@@ -334,6 +343,6 @@ structure ERC20Spec.Complete (code : ByteArray) (abs : TokenAbs σ) (M : TokenMo
     (opAddrs : E → List Address) (rec : Option (Machine → ℕ → Address)) : Prop where
   spec : ERC20Spec code abs M g₀ sel ops opAddrs
   permit : ∀ r, rec = some r → PermitSpec code abs M g₀ r
-  malformed : MalformedSpec code abs M ops opAddrs
+  malformed : MalformedSpec code abs M ops opAddrs rec
 
 end QEDefi.ERC20.Spec
