@@ -8,8 +8,8 @@ frame its `SSTORE` fails; otherwise it adds the frame's value to `balanceOf[call
 solc 0.4), logs `Deposit(caller, value)` (`depositLog9`, not an ERC-20 event) and stops with
 empty return data.
 
-This is what the spec's `OpSpec` (for `Op.deposit`) and `FallbackSpec` (the fallback runs the same
-body) are about; see `Verified.WETH9.Spec.Spec` for why neither holds as stated.
+This is the body behind `OpSpec` (for `Op.deposit`) and `FallbackSpec` (the fallback runs the
+same body), proved in `Verified.WETH9.Spec.DepositSpec`.
 -/
 
 namespace Verified.WETH9.Spec
