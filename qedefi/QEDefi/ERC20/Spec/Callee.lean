@@ -26,14 +26,17 @@ namespace Callee
 
 /-- **`Start` holds for the frame `launchCall` pushes**, from a machine running the standard
 precompiles (as every machine the interpreter builds does), for a call running the token's code
-(not a precompile), whose value moves or is zero, with payable calldata, for actors containing
+(not a precompile), whose value is zero or moves from another account without wrapping the
+token's balance, with payable calldata, for actors containing
 the caller whose hash hypotheses hold, from a world where the token's model state satisfies its
 invariant. -/
 theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E}
     {Act : Finset Address} {m : Machine} {req : CallRequest}
     (hpre : precompileOf m.precompiles req.msg = none)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx) (hcode : req.msg.code = code)
-    (hval : req.msg.shouldTransferValue = true ∨ req.msg.value = 0)
+    (hval : req.msg.value = 0 ∨ (req.msg.shouldTransferValue = true ∧
+      req.msg.caller ≠ req.msg.currentTarget ∧
+      (m.world.balance req.msg.currentTarget).toNat + req.msg.value.toNat < 2 ^ 256))
     (hsize : req.msg.data.size < 2 ^ 64) (hcaller : req.msg.caller ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
     (hwf : M.wf (abs.read m.ctx.crypto Act m.world req.msg.currentTarget)) :
@@ -138,7 +141,7 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
         have := fresh_init mc mc.frame.msg _ _ hfr
         rwa [show mc.frame.msg.code = code from htok] at this
       launched := (transferValue_zero _ _ rfl).symm
-      value := .inr rfl
+      value := .inl rfl
       precompiles := hstd
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller
@@ -231,7 +234,7 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
         have := fresh_init mc mc.frame.msg _ _ hfr
         rwa [show mc.frame.msg.code = code from htok] at this
       launched := (transferValue_zero _ _ rfl).symm
-      value := .inr rfl
+      value := .inl rfl
       precompiles := hstd
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller

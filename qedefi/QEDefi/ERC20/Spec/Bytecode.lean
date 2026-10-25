@@ -148,10 +148,16 @@ def retBytes : RetData → ByteArray
   | .empty => .empty
   | .word b => Bytes.ofWord (if b then 1#256 else 0#256)
 
+/-- The word of an event argument: an address, or a number below `2²⁵⁶`. -/
+def eventArg : Address ⊕ ℕ → Word
+  | .inl a => Word.ofAddress a
+  | .inr n => word n
+
 /-- The log of a model event emitted by `token`. -/
 def eventLog (token : Address) : Event Address → Log
   | .transfer src dst v => transferLog token src dst (word v)
   | .approval o sp v => approvalLog token o sp (word v)
+  | .log topics data => EvmLogic.Solidity.eventLog token (topics.map eventArg) (data.map eventArg)
 
 /-- The frame failed: `REVERT` or an exceptional halt (its changes are rolled back). -/
 def Fails : Outcome → Prop
@@ -202,15 +208,21 @@ def Normal (g₀ : Nat) (m : Machine) : Prop :=
 
 /-- The common hypotheses of every obligation, for the actors `Act`: `m` is a fresh frame of
 `code`, started the way the interpreter starts frames (its world is its snapshot with the value
-moved, as `launchCall` and `initMachine` do), its value moved if nonzero (token code run by a
-`DELEGATECALL` that carries value is out of scope), it runs the standard precompiles (as every
+moved, as `launchCall` and `initMachine` do), its value is zero or moved from another account
+without wrapping the token's balance (`pre` reads the snapshot, before the value moved: token
+code run by a `DELEGATECALL` that carries value is out of scope; no real frame is a call with
+value from the token to itself, for a token whose code makes no such call; and all ether stays
+below `2²⁵⁶`), it runs the standard precompiles (as every
 machine the interpreter builds does), its calldata is payable, the caller is an actor, the
 actors' hash hypotheses hold, and the token is in a state its model can reach. -/
 structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (Act : Finset Address) (m : Machine) : Prop where
   fresh : Fresh code m
   launched : m.world = transferValue m.frame.snapshot.1 m.frame.msg
-  value : m.frame.msg.shouldTransferValue = true ∨ m.frame.msg.value = 0
+  value : m.frame.msg.value = 0 ∨
+    (m.frame.msg.shouldTransferValue = true ∧ m.frame.msg.caller ≠ m.frame.msg.currentTarget ∧
+      (m.frame.snapshot.1.balance m.frame.msg.currentTarget).toNat + m.frame.msg.value.toNat <
+        2 ^ 256)
   precompiles : m.precompiles = PrecompileImpl.standard m.ctx
   size : m.frame.msg.data.size < 2 ^ 64
   caller : m.frame.msg.caller ∈ Act
