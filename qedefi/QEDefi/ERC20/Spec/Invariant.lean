@@ -25,11 +25,13 @@ What this needs beyond `ERC20Spec` and `M.WFInvariant`, as hypotheses:
   reaches has an actor as caller and well-formed calldata naming only actors (`WellFormed`: an
   ERC-20 call, a view, the fallback, an entry point of `ops`, or a `permit` for a token with
   one), and calldata shorter than `2⁶⁴` bytes; for a token with `permit`, the account `0x01`
-  holds no EIP-7702 designator in the frame's world (`EcrecoverPlain`: nobody holds its key). The spec is exact only for actors' calls
-  (`Start.caller`, `Call.addrs`), and the invariant is about the actors' view: a transfer to an
-  account outside the actors changes the actors' sum but not the supply. The size bound holds
-  on any real chain (a caller pays for its calldata in memory: `2⁶⁴` bytes cost more than `2¹⁰⁰`
-  gas) but the simulation does not track memory against gas.
+  holds no EIP-7702 designator in the frame's world (`EcrecoverPlain`: nobody holds its key),
+  and before Osaka the transaction's gas is below `2⁶⁴` (from Osaka the protocol caps it at
+  `2²⁴`; a nested frame has at most the top-level message's gas). The spec is exact only for
+  actors' calls (`Start.caller`, `Call.addrs`), and the invariant is about the actors' view: a
+  transfer to an account outside the actors changes the actors' sum but not the supply. The
+  size bound holds on any real chain (a caller pays for its calldata in memory: `2⁶⁴` bytes cost
+  more than `2¹⁰⁰` gas) but the simulation does not track memory against gas.
 * **`EtherFree`**: the invariant does not depend on the token's ether balance (others can send
   it ether without running its code: `SELFDESTRUCT`, the coinbase reward). Immediate when `abs`
   does not read the balance (`etherFree_of_read`).
@@ -175,7 +177,7 @@ summaries are only needed for the dangerous frames it reaches (`Reaches`). -/
 theorem processMessageCall_good_reach (S : GoodOps P Good) {fuel : Nat} {ctx : Context}
     {w : World} {tr : TransientStorage} {msg : Message} {r : MessageResult} (hw : Good w)
     (hmsg : TopOk P w msg) (hv : msg.shouldTransferValue = true) (hC : C ctx)
-    (hcov : ∀ G m, Reaches ctx w tr msg m → DStartV P Good C G m →
+    (hcov : ∀ m, Reaches ctx w tr msg m → DStartV P Good C msg.gas m →
       Halts m (fun mf o => Good (frameResult mf o).2.1))
     (hr : processMessageCall fuel ctx w tr msg = .ok r) : Good r.world := by
   have hw' := S.deleg_world ctx (PrecompileImpl.standard ctx).isPrecompile msg hw
@@ -200,11 +202,11 @@ theorem processMessageCall_good_reach (S : GoodOps P Good) {fuel : Nat} {ctx : C
     have hH : Halts m₀ (fun mf o => Good (frameResult mf o).2.1) := by
       rcases hm with hm | hm
       · exact halts_inv_reach (C := C) (G := msg'.gas) S
-          (fun j m hj hd => hcov _ m ⟨m₀, j, hst, hj⟩ hd) 0 m₀ rfl
+          (fun j m hj hd => hcov m ⟨m₀, j, hst, hj⟩ (hgas ▸ hd)) 0 m₀ rfl
           (by rw [(initMachine_msg hi).2]; exact hC) (by rw [hg0]) hm
-      · refine hcov msg'.gas m₀ ⟨m₀, 0, hst, rfl⟩ ⟨hm, ?_, ?_⟩
-        · rw [(initMachine_msg hi).1]; exact hv'
-        · rw [(initMachine_msg hi).2]; exact hC
+      · have hd0 : DStartV P Good C msg'.gas m₀ := ⟨hm, by rw [(initMachine_msg hi).1]; exact hv',
+          by rw [(initMachine_msg hi).2]; exact hC⟩
+        exact hcov m₀ ⟨m₀, 0, hst, rfl⟩ (hgas ▸ hd0)
     obtain ⟨n, mf, o, hgood, hsf, hrun⟩ := hH.run hpar
     cases hrun' : run fuel m₀ with
     | error e => rw [hrun'] at hr; cases hr
@@ -275,7 +277,7 @@ variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {c
 theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) {m : Machine}
     (hs : Start code abs M Act m) (hwf : WellFormed sel ops opAddrs perm Act m.frame.msg)
-    (hecr : perm.isSome → EcrecoverPlain m) :
+    (hecr : perm.isSome → EcrecoverPlain m ∧ m.frame.gasLeft < 2 ^ 64) :
     Halts m (Explained abs M ops opAddrs Act m) := by
   rcases hwf with ⟨c, he, hc⟩ | ⟨v, he, hv⟩ | hd | ⟨e, he, hea⟩ | ⟨hrec, o, sp, v, dl, pv, pr, ps,
     ho, hsp, hargs⟩
@@ -288,7 +290,7 @@ theorem explained_of_spec (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
   · exact (hspec.ops Act m e hs he hea).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inr ⟨_, e, he, hea, hm⟩))) (fun hf => .inl hf.1)
   · obtain ⟨⟨gp, r⟩, hr⟩ := Option.isSome_iff_exists.1 hrec
-    exact (hpermit gp r hr Act m o sp v dl pv pr ps hs ho hsp (hecr hrec) hargs).mono fun _ _ _ h => h.elim
+    exact (hpermit gp r hr Act m o sp v dl pv pr ps hs ho hsp (hecr hrec).1 (hecr hrec).2 hargs).mono fun _ _ _ h => h.elim
       (fun hm => .inr (.inr (.inl ⟨_, by simp [Call.addrs, ho, hsp], hm⟩)))
       (fun hf => .inl hf.1)
 
@@ -371,15 +373,15 @@ def FramesTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Addres
     (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
     (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto) (Act : Finset Address) (a : Address)
     (ctx : Context) (w : World) (tr : TransientStorage) (msg : Message) : Prop :=
-  ∀ G m, Reaches ctx w tr msg m →
-    DStartV (Prot a) (TokInv code abs M crypto Act a) (Ctx crypto) G m →
+  ∀ m, Reaches ctx w tr msg m →
+    DStartV (Prot a) (TokInv code abs M crypto Act a) (Ctx crypto) msg.gas m →
     m.frame.msg.data.size < 2 ^ 64 ∧ m.frame.msg.caller ∈ Act ∧
       WellFormed sel ops opAddrs perm Act m.frame.msg ∧ (perm.isSome → EcrecoverPlain m)
 
 /-- **A top-level message call keeps the invariant**, whatever it calls (the token or anything
 calling it, at any depth), for any transaction type: a message from an unprotected caller
 (`TopOk`) that moves its value, in the context of `crypto`, all of whose token frames touch
-only actors. -/
+only actors, with less than `2⁶⁴` gas for a token with `permit` (its frames then have less). -/
 theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
@@ -388,11 +390,12 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
     (hw : TokInv code abs M crypto Act a w) (hmsg : TopOk (Prot a) w msg)
     (hv : msg.shouldTransferValue = true) (hC : ctx.crypto = crypto)
     (htouch : FramesTouch code abs M sel ops opAddrs perm crypto Act a ctx w tr msg)
+    (hgas : perm.isSome → msg.gas < 2 ^ 64)
     (hr : processMessageCall fuel ctx w tr msg = .ok r) :
     TokInv code abs M crypto Act a r.world := by
   refine processMessageCall_good_reach (C := Ctx crypto) (goodOps hE hreal hdel) hw hmsg hv hC
-    (fun G m hreach hd => ?_) hr
-  obtain ⟨hsize, hcaller, hwfd, hecr⟩ := htouch G m hreach hd
+    (fun m hreach hd => ?_) hr
+  obtain ⟨hsize, hcaller, hwfd, hecr⟩ := htouch m hreach hd
   have ht : m.frame.msg.currentTarget = a := hd.danger.1
   have hsnap : m.frame.snapshot.1.code a = code := hd.snapshot.1
   have hwcode : m.world.code a = code := ((hd.keep a rfl).code).trans hsnap
@@ -412,18 +415,21 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
       wf := by
         show M.wf (abs.read m.ctx.crypto Act m.frame.snapshot.1 m.frame.msg.currentTarget)
         rw [hd.context, ht]; exact hd.snapshot.2 }
-  have h := frame_inv hW hE hreal hstart (explained_of_spec hspec hpermit hstart hwfd hecr)
+  have h := frame_inv hW hE hreal hstart (explained_of_spec hspec hpermit hstart hwfd
+    fun hp => ⟨hecr hp, by have := hd.gas; have := hgas hp; rw [hfr]; show m.frame.msg.gas < _; omega⟩)
     ⟨ko, ks, by rw [hfr]; rfl⟩ (by rw [ht]; exact hsnap)
   rw [hd.context, ht] at h
   exact h
 
 /-- **Every token frame a transaction reaches touches only actors** (`FramesTouch` for the
-transaction's top-level message call), and the transaction uses `crypto`. -/
+transaction's top-level message call), the transaction uses `crypto`, and, for a token with
+`permit`, before Osaka its gas is below `2⁶⁴` (`PermitSpec` needs frames below `2⁶⁴` gas; from
+Osaka the protocol caps a transaction's gas at `2²⁴`). -/
 def TxTouch (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E) (sel : List Nat)
     (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
     (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto) (Act : Finset Address) (a : Address)
     (i : Input) (w : World) (_ : EvmLean.Tx.TxOutput) : Prop :=
-  i.crypto = crypto ∧
+  i.crypto = crypto ∧ (perm.isSome → i.fork < .osaka → i.tx.gas < 2 ^ 64) ∧
   ∀ (intr : EvmLean.Tx.IntrinsicGas) (c : EvmLean.Tx.Checked),
     EvmLean.Tx.validate i.fork i.tx = .ok intr →
     EvmLean.Tx.check i.crypto i.fork i.env i.gasAvail i.blobAvail w i.tx i.hint = .ok c →
@@ -443,7 +449,7 @@ theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hw : TokInv code abs M crypto Act a w) (h : i.run w = .ok out)
     (htouch : TxTouch code abs M sel ops opAddrs perm crypto Act a i w out) :
     TokInv code abs M crypto Act a out.world := by
-  obtain ⟨hcr, htouch⟩ := htouch
+  obtain ⟨hcr, htg, htouch⟩ := htouch
   obtain ⟨intr, c, r, gu, hv, hc, hr, -, hout, -, -⟩ := process_ok h
   have hP : ∀ p, Prot a p → RealCode (w.code p) := fun p hp => by
     subst hp; rw [hw.1]; exact realCode_of_deleg hreal hdel
@@ -454,7 +460,14 @@ theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee i.fork i.env i.tx c))
     (w.account c.sender).nonce (i.tx.gas - intr.regular)
   have hrw := processMessageCall_inv hspec hpermit hW hE hsound hreal hdel hw₁ htop
-    (prepareMessage_shouldTransferValue ..) (by rw [txContext_crypto, hcr]) (htouch intr c hv hc) hr
+    (prepareMessage_shouldTransferValue ..) (by rw [txContext_crypto, hcr]) (htouch intr c hv hc)
+    (fun hp => by
+      rw [prepareMessage_gas]
+      by_cases ho : i.fork < .osaka
+      · have := htg hp ho; omega
+      · have h24 := (validate_ok hv).2.2.2 (show Fork.osaka.toNat ≤ i.fork.toNat from
+          Nat.not_lt.mp ho)
+        simp only [EvmLean.Tx.txMaxGasLimit] at h24; omega) hr
   obtain ⟨hd, hs⟩ := processMessageCall_realCode hr (by rw [hw₁.1]; exact realCode_of_deleg hreal hdel)
   rw [hout]
   exact hrw.keep hE (keep_suffixWorld hs hd _ _ _ _)
