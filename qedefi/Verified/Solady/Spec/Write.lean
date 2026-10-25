@@ -123,6 +123,13 @@ theorem read_sstore_bal (hS : SoladySound crypto Act) {a : Address} (ha : a ∈ 
     · rfl
   simp only [read, hb, hn, hsup, hal, World.balance_sstore]
 
+theorem balances_sstore_supply (hS : SoladySound crypto Act) (x : Word) :
+    balances crypto Act (w.sstore token supplySlot x) token = balances crypto Act w token := by
+  ext a; simp only [balances, Finsupp.onFinset_apply]
+  split
+  · rename_i ha; rw [World.sload_sstore_ne_key _ _ _ (hS.bal_supply a ha)]
+  · rfl
+
 /-- **Writing the supply slot** sets the supply. -/
 theorem read_sstore_supply (hS : SoladySound crypto Act) (x : Word) :
     read crypto Act (w.sstore token supplySlot x) token =
