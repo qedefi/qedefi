@@ -45,30 +45,31 @@ def OpsDebitAuth (M : TokenModel σ Address E) (ops : Address → ByteArray → 
 
 variable {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E} {g₀ : Nat}
   {sel : List Nat} {ops : Address → ByteArray → ℕ → Option E} {opAddrs : E → List Address}
-  {rec : Option (Machine → ℕ → Address)} {Act : Finset Address} {ctx : Context} {w : World}
+  {perm : Option ((Machine → Nat) × (Machine → ℕ → Address))} {Act : Finset Address} {ctx : Context} {w : World}
   {tr : TransientStorage} {msg : Message} {a : Address}
 
 theorem wellFormed_congr {m₁ m₂ : Message} (hd : m₂.data = m₁.data) (hc : m₂.caller = m₁.caller)
-    (hv : m₂.value = m₁.value) (h : WellFormed sel ops opAddrs rec Act m₁) :
-    WellFormed sel ops opAddrs rec Act m₂ := by
+    (hv : m₂.value = m₁.value) (h : WellFormed sel ops opAddrs perm Act m₁) :
+    WellFormed sel ops opAddrs perm Act m₂ := by
   unfold WellFormed; rw [hd, hc, hv]; exact h
 
 /-- **The token's state after a top-level call** with well-formed calldata naming actors, sent
-by an actor: one the model allows from its state before (`Post`), and the token keeps its
+by an actor (for a token with `permit`, with `ecrecover` running the precompile): one the model allows from its state before (`Post`), and the token keeps its
 code. -/
 theorem post (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (h : Msg code ctx w msg a)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (h : Msg code ctx w msg a)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
     (hwf : M.wf (abs.read ctx.crypto Act w a))
-    (hwfd : WellFormed sel ops opAddrs rec Act msg) :
+    (hwfd : WellFormed sel ops opAddrs perm Act msg)
+    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg)) :
     Ends ctx w tr msg fun r =>
       Post M ops opAddrs Act msg.caller (abs.read ctx.crypto Act w a)
         (abs.read ctx.crypto Act r.world a) ∧ r.world.code a = code := by
   obtain ⟨-, hct, hcl, -, -, hval, -, hdata⟩ := h.dmsg_facts
   have hs := h.start_ok tr hcaller hsound hwf (M := M)
-  have hwfd' : WellFormed sel ops opAddrs rec Act (start ctx w tr msg).frame.msg :=
+  have hwfd' : WellFormed sel ops opAddrs perm Act (start ctx w tr msg).frame.msg :=
     wellFormed_congr hdata hcl (hval.trans h.value.symm) hwfd
-  refine h.ends (explained_of_spec hspec hpermit hs hwfd') fun mf o hsf hx => ?_
+  refine h.ends (explained_of_spec hspec hpermit hs hwfd' hecr) fun mf o hsf hx => ?_
   have hpre := h.pre_start abs Act tr
   have hcl' : (start ctx w tr msg).frame.msg.caller = msg.caller := hcl
   have hct' : (start ctx w tr msg).frame.msg.currentTarget = a := hct
@@ -142,17 +143,17 @@ actors see it), the token's new state is the model's state after a `transferFrom
 the sender. Needs `OpsDebitAuth`: entry points other than the ERC-20 calls are not covered by
 `DebitAuth`. -/
 theorem debit (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (hD : M.DebitAuth)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hD : M.DebitAuth)
     {o : Address} (hops : OpsDebitAuth M ops o) (h : Msg code ctx w msg a)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
-    (hwf : M.wf (abs.read ctx.crypto Act w a)) (hwfd : WellFormed sel ops opAddrs rec Act msg)
-    (ho : o ≠ msg.caller) {fuel : Nat} {r : MessageResult}
+    (hwf : M.wf (abs.read ctx.crypto Act w a)) (hwfd : WellFormed sel ops opAddrs perm Act msg)
+    (hecr : perm.isSome → EcrecoverPlain (start ctx w tr msg)) (ho : o ≠ msg.caller) {fuel : Nat} {r : MessageResult}
     (hr : processMessageCall fuel ctx w tr msg = .ok r)
     (hlow : M.balanceOf (abs.read ctx.crypto Act r.world a) o <
       M.balanceOf (abs.read ctx.crypto Act w a) o) :
     ∃ dst v ret, M.call (abs.read ctx.crypto Act w a) msg.caller (.transferFrom o dst v) =
       .ok (abs.read ctx.crypto Act r.world a) ret := by
-  rcases ((post (tr := tr) hspec hpermit h hcaller hsound hwf hwfd).2 fuel r hr).1 with
+  rcases ((post (tr := tr) hspec hpermit h hcaller hsound hwf hwfd hecr).2 fuel r hr).1 with
     he | ⟨c, ret, -, hok⟩ | ⟨d, e, hde, -, hop⟩
   · rw [he] at hlow; exact absurd hlow (lt_irrefl _)
   · obtain ⟨dst, v, rfl⟩ := hD _ _ _ _ _ o hok ho hlow
@@ -163,27 +164,29 @@ theorem debit (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
 
 /-- **A sequence of top-level calls to the token**, from `w₀`, for the actors `Act`: each a
 call to the token at `a` (`Msg`) with `crypto`, sent by an actor with well-formed calldata
-naming actors; between them, anything that leaves the token's account as it is (the other
+naming actors (for a token with `permit`, with `ecrecover` running the precompile,
+`EcrecoverPlain`); between them, anything that leaves the token's account as it is (the other
 accounts arbitrary). -/
 inductive Trace (code : ByteArray) (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E)
-    (opAddrs : E → List Address) (rec : Option (Machine → ℕ → Address)) (crypto : Crypto)
+    (opAddrs : E → List Address) (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (crypto : Crypto)
     (Act : Finset Address) (a : Address) : World → World → Prop where
-  | refl (w : World) : Trace code sel ops opAddrs rec crypto Act a w w
-  | env {w₀ w w' : World} : Trace code sel ops opAddrs rec crypto Act a w₀ w →
-      w'.account a = w.account a → Trace code sel ops opAddrs rec crypto Act a w₀ w'
+  | refl (w : World) : Trace code sel ops opAddrs perm crypto Act a w w
+  | env {w₀ w w' : World} : Trace code sel ops opAddrs perm crypto Act a w₀ w →
+      w'.account a = w.account a → Trace code sel ops opAddrs perm crypto Act a w₀ w'
   | call {w₀ w : World} {fuel : Nat} {ctx : Context} {tr : TransientStorage} {msg : Message}
-      {r : MessageResult} : Trace code sel ops opAddrs rec crypto Act a w₀ w →
+      {r : MessageResult} : Trace code sel ops opAddrs perm crypto Act a w₀ w →
       Msg code ctx w msg a → ctx.crypto = crypto → msg.caller ∈ Act →
-      WellFormed sel ops opAddrs rec Act msg → processMessageCall fuel ctx w tr msg = .ok r →
-      Trace code sel ops opAddrs rec crypto Act a w₀ r.world
+      WellFormed sel ops opAddrs perm Act msg → (perm.isSome → EcrecoverPlain (start ctx w tr msg)) →
+      processMessageCall fuel ctx w tr msg = .ok r →
+      Trace code sel ops opAddrs perm crypto Act a w₀ r.world
 
 /-- **The model invariant holds after any sequence of top-level calls to the token**, the rest
 of the world changing arbitrarily between them, when it held before. -/
 theorem trace_wf (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
-    (hpermit : ∀ r, rec = some r → PermitSpec code abs M g₀ r) (hW : M.WFInvariant)
+    (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     {crypto : Crypto} (hsound : abs.Sound crypto Act) {w₀ w : World} (hcode : w₀.code a = code)
     (hwf : M.wf (abs.read crypto Act w₀ a))
-    (h : Trace code sel ops opAddrs rec crypto Act a w₀ w) :
+    (h : Trace code sel ops opAddrs perm crypto Act a w₀ w) :
     w.code a = code ∧ M.wf (abs.read crypto Act w a) := by
   induction h with
   | refl => exact ⟨hcode, hwf⟩
@@ -194,9 +197,9 @@ theorem trace_wf (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     · rw [abs.read_congr crypto Act w1 w2 a (fun k _ => by simp only [World.sload, hacc])
         (by simp only [World.balance, hacc])]
       exact ih.2
-  | call _ hm hc hcaller hwfd hr ih =>
+  | call _ hm hc hcaller hwfd hecr hr ih =>
     subst hc
-    obtain ⟨hpost, hcode'⟩ := (post hspec hpermit hm hcaller hsound ih.2 hwfd).2 _ _ hr
+    obtain ⟨hpost, hcode'⟩ := (post hspec hpermit hm hcaller hsound ih.2 hwfd hecr).2 _ _ hr
     refine ⟨hcode', ?_⟩
     rcases hpost with he | ⟨c, ret, -, hok⟩ | ⟨d, e, -, -, hop⟩
     · rw [he]; exact ih.2
