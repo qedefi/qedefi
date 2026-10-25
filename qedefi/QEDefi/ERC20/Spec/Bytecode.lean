@@ -292,33 +292,48 @@ structure ERC20Spec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Ad
 
 /-! ## Obligations not yet in `ERC20Spec` -/
 
+/-- **`ecrecover` runs the precompile**: before Prague no call is delegated, and from Prague the
+account `0x01` holds no EIP-7702 designator in the frame's world (with one, a `CALL*` to `0x01`
+runs the delegate's code instead of the precompile, `accessDelegation`). On a real chain nobody
+holds the key of `0x01`, so no authorization for it can be signed; in an arbitrary world it can
+hold one. -/
+def EcrecoverPlain (m : Machine) : Prop :=
+  m.ctx.fork < .prague ∨ delegatedAddress? (m.world.code (1 : Address)) = none
+
 /-- **EIP-2612 `permit(owner, spender, value, deadline, v, r, s)`**, owner and spender
-actors, ends as the model's `permit` call, with `live = timestamp ≤ deadline` and the signature
-recovery `rec m` of the token (its EIP-712 digest at each nonce, through `crypto.ecrecover`; a
-reviewed part of each token's spec, like its model). -/
-def PermitSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E) (g₀ : Nat)
-    (rec : Machine → ℕ → Address) : Prop :=
+actors, ends as the model's `permit` call, with `live = timestamp ≤ deadline` (`TIMESTAMP`
+pushes the timestamp modulo `2²⁵⁶`) and the signature recovery `rec m` of the token (its
+EIP-712 digest at each nonce, through `crypto.ecrecover`), when `ecrecover` runs the precompile
+(`EcrecoverPlain`); or, with less than `gp m` gas, static or with value, fails. The recovery
+`rec` and the gas bound `gp` are reviewed parts of each token's spec, like its model: a
+token's `permit` may need gas growing with its state (Solmate off its deployment chain
+recomputes the domain separator from `name`, of any length). -/
+def PermitSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
+    (gp : Machine → Nat) (rec : Machine → ℕ → Address) : Prop :=
   ∀ Act m (o sp : Address) (v dl pv pr ps : Word), Start code abs M Act m → o ∈ Act → sp ∈ Act →
+    EcrecoverPlain m →
     Args m.frame.msg.data 0xd505accf [Word.ofAddress o, Word.ofAddress sp, v, dl, pv, pr, ps] →
     let c : Call Address :=
-      .permit o sp v.toNat (decide (m.ctx.block.timestamp ≤ dl.toNat)) (rec m)
+      .permit o sp v.toNat (decide (m.ctx.block.timestamp % 2 ^ 256 ≤ dl.toNat)) (rec m)
     Halts m fun mf out =>
       Matches abs Act m mf out (M.events (pre abs Act m) m.frame.msg.caller c)
         (M.call (pre abs Act m) m.frame.msg.caller c) ∨
-      (Fails out ∧ ¬ Normal g₀ m)
+      (Fails out ∧ ¬ Normal (gp m) m)
 
-/-- A call that may explain a frame: any ERC-20 call, a `permit` only with the token's own
-signature recovery `rec` (a token without `permit` has `rec = none`). -/
+/-- A call that may explain a frame: any ERC-20 call; a `permit` only for a token with one
+(`rec = some r`), with its own signature recovery `r m` when `ecrecover` runs the precompile
+(`EcrecoverPlain`), with any recovery otherwise (the delegate at `0x01` then decides). -/
 def Explains (rec : Option (Machine → ℕ → Address)) (m : Machine) : Call Address → Prop
-  | .permit _ _ _ _ r' => ∃ r, rec = some r ∧ r' = r m
+  | .permit _ _ _ _ r' => ∃ r, rec = some r ∧ (EcrecoverPlain m → r' = r m)
   | _ => True
 
 /-- **Any calldata** is explained by some action of the caller the model allows: an ERC-20
 call (a `permit` only with the token's signature recovery, `Explains`), a view (nothing
-changes), an entry point the decoder accepts for some calldata of the caller, or a failure. The action may name accounts outside `Act` (dirty
-calldata may name any account); it is then exact for the actors together with those accounts,
-whenever their hash hypotheses hold. With the exact obligations this says malformed calldata
-(short or dirty arguments of a known selector) can do nothing a well-formed call could not. -/
+changes), an entry point the decoder accepts for some calldata of the caller, or a failure.
+The action may name accounts outside `Act` (dirty calldata may name any account); it is then
+exact for the actors together with those accounts, whenever their hash hypotheses hold. With
+the exact obligations this says malformed calldata (short or dirty arguments of a known
+selector) can do nothing a well-formed call could not. -/
 def MalformedSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
     (rec : Option (Machine → ℕ → Address)) : Prop :=
@@ -336,13 +351,14 @@ def MalformedSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Addr
         (abs.Sound m.ctx.crypto Act' → M.wf (pre abs Act' m) →
           (∃ s', M.op (pre abs Act' m) e = some s') ∧ OpMatches abs M Act' e m mf o))
 
-/-- **The complete spec**: `ERC20Spec`, `permit` (for a token that has it) and malformed
-calldata. -/
+/-- **The complete spec**: `ERC20Spec`, `permit` for a token that has one (`perm = some (gp,
+rec)`: its gas bound and signature recovery) and malformed calldata. -/
 structure ERC20Spec.Complete (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (g₀ : Nat) (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E)
-    (opAddrs : E → List Address) (rec : Option (Machine → ℕ → Address)) : Prop where
+    (opAddrs : E → List Address)
+    (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) : Prop where
   spec : ERC20Spec code abs M g₀ sel ops opAddrs
-  permit : ∀ r, rec = some r → PermitSpec code abs M g₀ r
-  malformed : MalformedSpec code abs M ops opAddrs rec
+  permit : ∀ gp rec, perm = some (gp, rec) → PermitSpec code abs M gp rec
+  malformed : MalformedSpec code abs M ops opAddrs (perm.map Prod.snd)
 
 end QEDefi.ERC20.Spec
