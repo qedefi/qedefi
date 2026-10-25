@@ -16,6 +16,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Trust check
         run: scripts/check-trust.sh
+      # The heaviest proofs (Safe, Aave) elaborate in parallel at the end of the build and can
+      # exhaust the runner's memory; swap absorbs the peak instead of the job being killed.
+      - name: Add swap
+        run: |
+          sudo fallocate -l 12G /swapfile2 && sudo chmod 600 /swapfile2
+          sudo mkswap /swapfile2 && sudo swapon /swapfile2
+          free -h && df -h /
       - name: Install elan
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
@@ -44,8 +51,9 @@ jobs:
         run: |
           lake exe cache get
           lake build --wfail
+      # Saved even when the build fails, so the next run resumes where this one stopped.
       - name: Save build cache
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: |
