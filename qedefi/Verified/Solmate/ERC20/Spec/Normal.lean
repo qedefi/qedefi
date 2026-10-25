@@ -1,5 +1,6 @@
 import Verified.Solmate.ERC20.Spec.ModelCalls
 import Verified.Solmate.ERC20.Events
+import Verified.Solmate.ERC4626.UnknownSelectors
 
 /-!
 # Solmate's `ERC20`: the exact outcomes in normal frames
@@ -300,5 +301,137 @@ theorem transferFrom_normal (hS : Start (code ia) solmateAbs M Act m) {src dst :
         rw [hok.2.1]; exact hrw.1
       · rw [hok.2.1]; exact frameKeeps_trans hk₁ hrw.2
       · rw [hl]; simp [eventLog_transfer]
+
+/-! ## `approve` -/
+
+set_option maxHeartbeats 1000000 in
+/-- **`approve(sp, v)` in a normal frame** ends as the model says. -/
+theorem approve_normal (hS : Start (code ia) solmateAbs M Act m) {sp : Address} {v : ℕ}
+    (hE : (Call.approve sp v).Encodes m.frame.msg.data) (hsp : sp ∈ Act)
+    (hval : m.frame.msg.value = 0) (hst : m.frame.msg.isStatic = false)
+    (hg : 40000 ≤ m.frame.gasLeft) :
+    Halts m fun mf o =>
+      Matches solmateAbs Act m mf o
+        (M.events (pre solmateAbs Act m) m.frame.msg.caller (.approve sp v))
+        (M.call (pre solmateAbs Act m) m.frame.msg.caller (.approve sp v)) := by
+  obtain ⟨hv, hargs⟩ := hE
+  have hd := twoWordCall_of_args hargs
+  have hc := hS.caller
+  simp only [M, solmateModel_call, solmateModel_events, solmateEvents, call_approve]
+  refine (approve_halts_events m hS.fresh hval hst hd hS.size hg).mono
+    fun mf o _ ⟨hok, hl⟩ => ⟨hok.1, ?_, ?_, hok.2.2.1, hok.2.2.2.1, ?_⟩
+  · show solmateRead _ _ _ _ = _
+    rw [hok.2.1, pre_eq hS hval]
+    simp only [ERC20.approveWorld, ERC20.allowanceSlot, layout_allowances]
+    rw [read_sstore_allowance hS.sound hc hsp, toNat_word hv]
+  · rw [hok.2.1]
+    simp only [ERC20.approveWorld, ERC20.allowanceSlot, layout_allowances]
+    exact frameKeeps_sstore (frameKeeps_refl _ _ _ _) (footprint_allowance hc hsp)
+  · rw [hl]; simp [eventLog_approval]
+
+/-! ## Views -/
+
+/-- What a view ends with: the word `x`, nothing changed. -/
+def ViewOk (x : Word) (m mf : Machine) (o : Outcome) : Prop :=
+  o = .success (Bytes.ofWord x) ∧ mf.world = m.world ∧ mf.transient = m.transient ∧
+    mf.createdAccounts = m.createdAccounts ∧ mf.frame.sub.logs = m.frame.sub.logs
+
+set_option maxHeartbeats 0 in
+/-- `totalSupply()` of the asset in any frame, with everything it keeps. -/
+theorem totalSupply_halts (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value = 0)
+    (hsel : Abi.selectorOf m.frame.msg.data = 0x18160ddd) (hsize : 4 ≤ m.frame.msg.data.size)
+    (hsize' : m.frame.msg.data.size < 2 ^ 64)
+    (hg : 3000 ≤ m.frame.gasLeft) :
+    Halts m (ViewOk (m.world.sload m.frame.msg.currentTarget 2#256) m) := by
+  apply WP.halts_of_false
+
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, Solidity.eq_self, Memory.read_64]
+  exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+set_option maxHeartbeats 0 in
+/-- `allowance(owner, spender)` of the asset in any frame, with everything it keeps. -/
+theorem allowance_halts (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value = 0)
+    {owner spender : Address}
+    (hd : TwoWordCall m.frame.msg.data 0xdd62ed3e (Word.ofAddress owner) (Word.ofAddress spender))
+    (hsize' : m.frame.msg.data.size < 2 ^ 64) (hg : 3000 ≤ m.frame.gasLeft) :
+    Halts m (ViewOk (m.world.sload m.frame.msg.currentTarget
+      (ERC20.allowanceSlot m.ctx.crypto ERC20.Layout.solmate owner spender)) m) := by
+  apply WP.halts_of_false
+  obtain ⟨hsel, hsize, harg0, harg1⟩ := hd
+  have hlt := lt_size_four (n := m.frame.msg.data.size) (by omega) (by omega)
+  have hsel' := Dispatch.selector_eq hsel
+  have hok : Word.iszero (Word.slt (ofNat m.frame.msg.data.size - 4#256) (BitVec.ofNat 256 64))
+      = 1 := iszero_slt_calldatasize hsize (by omega)
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hval, hsel', hlt, Abi.shr_calldataload_zero, hok, harg0, harg1,
+    ofAddress_and_addressMask, Solidity.eq_self, Memory.read_64]
+  exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+/-- **A view in a frame with enough gas and no value** returns the model's value and changes
+nothing (static frames included). -/
+theorem view_normal (hS : Start (code ia) solmateAbs M Act m) (vw : View)
+    (hE : vw.Encodes m.frame.msg.data) (hA : ∀ a ∈ vw.addrs, a ∈ Act)
+    (hval : m.frame.msg.value = 0) (hg : 3000 ≤ m.frame.gasLeft) :
+    Halts m fun mf o =>
+      ∃ x : Word, o = .success (Bytes.ofWord x) ∧ x.toNat = vw.value M (pre solmateAbs Act m) ∧
+        mf.world = m.world ∧ mf.transient = m.transient ∧
+        mf.createdAccounts = m.createdAccounts ∧ mf.frame.sub.logs = m.frame.sub.logs := by
+  rw [pre_eq hS hval]
+  cases vw with
+  | balanceOf a =>
+    have ha : a ∈ Act := hA a (by simp [View.addrs])
+    have hargs : Args m.frame.msg.data 0x70a08231 [Word.ofAddress a] := hE
+    refine (balanceOf_halts m hS.fresh a hval hargs.selector
+      (by have := hargs.size; simpa using this) hS.size (by simpa using hargs.arg 0 (by simp))
+      hg).mono fun mf o _ ⟨h1, h2, h3, h4, h5, _⟩ => ⟨_, h1, ?_, h2, h3, h4, h5⟩
+    exact (bal_read ha).symm
+  | allowance ow sp =>
+    have ho : ow ∈ Act := hA ow (by simp [View.addrs])
+    have hsp : sp ∈ Act := hA sp (by simp [View.addrs])
+    refine (allowance_halts m hS.fresh hval (twoWordCall_of_args hE) hS.size hg).mono
+      fun mf o _ ⟨h1, h2, h3, h4, h5⟩ => ⟨_, h1, ?_, h2, h3, h4, h5⟩
+    exact (allowance_read ho hsp).symm
+  | totalSupply =>
+    have hargs : Args m.frame.msg.data 0x18160ddd [] := hE
+    refine (totalSupply_halts m hS.fresh hval
+      hargs.selector (by have := hargs.size; simpa using this) hS.size hg).mono
+      fun mf o _ ⟨h1, h2, h3, h4, h5⟩ => ⟨_, h1, rfl, h2, h3, h4, h5⟩
+
+/-! ## Value and unknown selectors -/
+
+set_option maxHeartbeats 0 in
+/-- **A call with value reverts** (the asset has no payable function), whatever the calldata. -/
+theorem value_reverts (m : Machine) (hf : Fresh (code ia) m) (hval : m.frame.msg.value ≠ 0)
+    (hg : 100 ≤ m.frame.gasLeft) : Halts m (fun _ o => ∃ out, o = .revert out) := by
+  apply WP.halts_of_false
+  have hz := iszero_of_ne hval
+  have hagree := assetJumpDestsAgree ia
+  fresh_intro
+  pwp_steps [hz]
+  exact ⟨_, rfl⟩
+
+/-- **Unknown selectors and short calldata revert** in a frame with enough gas, as the model's
+fallback says (with or without value). -/
+theorem fallback_normal (hS : Start (code ia) solmateAbs M Act m)
+    (hsel : m.frame.msg.data.size < 4 ∨ Abi.selectorOf m.frame.msg.data ∉ ERC4626.assetSelectors)
+    (hg : 1000 ≤ m.frame.gasLeft) :
+    Halts m fun mf o =>
+      Matches solmateAbs Act m mf o
+        (M.events (pre solmateAbs Act m) m.frame.msg.caller (.other m.frame.msg.value.toNat))
+        (M.call (pre solmateAbs Act m) m.frame.msg.caller (.other m.frame.msg.value.toNat)) := by
+  simp only [M, solmateModel_call, call_other]
+  show Halts m fun _ o => ∃ out, o = .revert out
+  by_cases hval : m.frame.msg.value = 0
+  · rcases hsel with h | h
+    · exact ERC4626.asset_short_reverts m hS.fresh hval h hg
+    · by_cases h4 : m.frame.msg.data.size < 4
+      · exact ERC4626.asset_short_reverts m hS.fresh hval h4 hg
+      · exact ERC4626.asset_unknown_reverts m hS.fresh hval (by omega) hS.size hg h
+  · exact value_reverts m hS.fresh hval (by omega)
 
 end Verified.Solmate.ERC20.Spec
