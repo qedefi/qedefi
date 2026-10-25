@@ -140,7 +140,8 @@ theorem step_codeInv {w₀ : World} {m : Machine} (hd : Tx.DelInv w₀ m) (h : C
       | stop out => exact finishFrame_codeInv h₁ hcr _
       | revert out => exact finishFrame_codeInv h₁ hcr _
       | call req =>
-        exact ⟨fun _ h' => by cases h'; exact launchCall_codeInv h₁ req, fun _ h' => by cases h'⟩
+        exact ⟨fun _ h' => by cases h'; exact launchCall_codeInv h₁ req,
+          fun _ h' => by cases h'⟩
       | create msg =>
         exact ⟨fun _ h' => by cases h'; exact launchCreate_codeInv h₁ msg,
           fun _ h' => by cases h'⟩

@@ -189,7 +189,8 @@ theorem systemCall_good_isolated {P : Address → Prop} {Good : World → Prop} 
 `GoodOk` predicate**: `systemCall_good` with `hsum` replaced by the code of the target.
 `hsys`: `SYSTEM_ADDRESS` is not protected; `htgt`: the system contract is not protected (the
 call writes its storage). -/
-theorem systemCall_good_systemCode {P : Address → Prop} {Good : World → Prop} (S : GoodOk P Good)
+theorem systemCall_good_systemCode {P : Address → Prop} {Good : World → Prop}
+    (S : GoodOk P Good)
     (hsys : ¬ P systemAddress) {fuel : Nat} {crypto : Crypto} {fork : Fork} {env : BlockEnv}
     {world : World} {target : Address} {data : ByteArray} {w' : World} {res : MessageResult}
     (ht : target ∈ systemContracts) (htgt : ¬ P target) (hw : Good world)
