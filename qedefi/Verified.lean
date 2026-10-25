@@ -160,6 +160,7 @@ import Verified.Solmate.ERC4626.Nested.Calls
 import Verified.Solmate.ERC4626.Nested.Coverage
 import Verified.Solmate.ERC4626.Nested.Domain
 import Verified.Solmate.ERC4626.Nested.Invariants
+import Verified.Solmate.ERC4626.Nested.Invariants7702
 import Verified.Solmate.ERC4626.Nested.Permit
 import Verified.Solmate.ERC4626.Nested.System
 import Verified.Solmate.ERC4626.Nested.Views
