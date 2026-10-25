@@ -129,4 +129,49 @@ theorem read_sstore_allow {crypto : Crypto} {Act : Finset Address} {w : World} {
     · rw [World.sload_sstore_ne_key _ _ _ (hne a b hab.1 hab.2 (fun h => hao h.1))]
     · rfl
 
+
+/-- **After writing `balances[a] := x`** (an actor), the abstraction's `bal` is updated at `a`. -/
+theorem read_sstore_bal {crypto : Crypto} {Act : Finset Address} {w : World} {token : Address}
+    (hs : usdtAbs.Sound crypto Act) {a : Address} (ha : a ∈ Act) (hl : Live Act w token)
+    (x : Word) :
+    Live Act (w.sstore token (mappingSlot crypto (Word.ofAddress a) balancesSlot) x) token ∧
+    read crypto Act (w.sstore token (mappingSlot crypto (Word.ofAddress a) balancesSlot) x)
+        token =
+      { read crypto Act w token with bal := (read crypto Act w token).bal.update a x.toNat } := by
+  have hs' : ActorRows crypto Act [balancesSlot, blackSlot] [allowedSlot] fixedSlots := hs
+  have hfix : ∀ k ∈ fixedSlots, (w.sstore token (mappingSlot crypto (Word.ofAddress a)
+      balancesSlot) x).sload token k = w.sload token k :=
+    fun k hk => World.sload_sstore_ne_key _ _ _ (fun e => hs'.fixed1 balancesSlot (by simp) a ha
+      (by rw [← e]; exact hk))
+  have hl' := (live_congr (Act := Act) hfix).2 hl
+  refine ⟨hl', ?_⟩
+  have hbk : ∀ b ∈ Act, mappingSlot crypto (Word.ofAddress b) blackSlot ≠
+      mappingSlot crypto (Word.ofAddress a) balancesSlot := by
+    intro b hb e
+    have := (hs'.inj1 blackSlot (by simp) balancesSlot (by simp) b hb a ha e).2
+    exact absurd this (by decide)
+  rw [read_eq_of_live hl', read_eq_of_live hl, readState_eq hfix (World.balance_sstore _ _ _ _ _)
+    (fun b hb => World.sload_sstore_ne_key _ _ _ (hbk b hb))]
+  have hal : readMap2 crypto Act (w.sstore token (mappingSlot crypto (Word.ofAddress a)
+      balancesSlot) x) token allowedSlot = readMap2 crypto Act w token allowedSlot :=
+    readMap2_congr fun k ⟨o, ho, sp, hsp, hk⟩ => by
+      subst hk
+      exact World.sload_sstore_ne_key _ _ _ (fun e => hs'.disj balancesSlot (by simp) allowedSlot
+        (by simp) a ha o ho sp hsp e.symm)
+  rw [hal]
+  simp only [readState]
+  congr 1
+  ext b
+  rw [Finsupp.update_apply]
+  by_cases hb : b ∈ Act
+  · rw [readMap_of_mem hb, readMap_of_mem hb]
+    by_cases hba : b = a
+    · subst hba; simp
+    · simp only [hba, ↓reduceIte]
+      rw [World.sload_sstore_ne_key _ _ _ (fun e => hba
+        (hs'.inj1 balancesSlot (by simp) balancesSlot (by simp) b hb a ha e).1)]
+  · rw [readMap_of_not_mem hb, readMap_of_not_mem hb]
+    have hba : b ≠ a := fun e => hb (e ▸ ha)
+    simp [hba]
+
 end Verified.WeirdERC20.USDT.Spec

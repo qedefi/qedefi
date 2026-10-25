@@ -3,6 +3,7 @@ import Verified.WeirdERC20.USDT.Spec.Abs
 import EvmLogic.Tactic.Patched
 import EvmLogic.Solidity.Dispatch
 import EvmLogic.Program.Call
+import EvmLogic.Tactic.Abstract
 
 /-!
 # USDT bytecode proofs: shared vocabulary
@@ -134,6 +135,14 @@ macro "lift_intro" : tactic => `(tactic| (
   wp_hide_jump_tables
   subst hs hpc hc hmem
   simp only [lift, bump, withCode]))
+
+set_option hygiene false in
+/-- Replace the gas left by a variable `g` with `b ≤ g` (`hg`): keeps the gas term small on
+long runs (the stepper then discharges gas side conditions from `hg` alone). -/
+macro "usdt_gas " b:num : tactic => `(tactic| (
+  wp_abstract gas g hgasEq
+  have hg : $b ≤ g := by rw [← hgasEq]; evm_gas
+  clear hgasEq))
 
 /-- Memory normalization at an exit (as the stepper's). -/
 macro "usdt_mem_norm" : tactic => `(tactic| evm_norm [Memory.loadWord_expand, Memory.read_expand,
