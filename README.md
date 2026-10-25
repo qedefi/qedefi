@@ -52,4 +52,4 @@ Layout, conformance results and how to depend on the packages: [docs/status.md](
 
 ## License
 
-Apache-2.0 ([LICENSE](LICENSE)). Contract sources under `contracts/` keep their own licenses.
+GPL-3.0 ([LICENSE](LICENSE)). Contract sources under `contracts/` keep their own licenses.

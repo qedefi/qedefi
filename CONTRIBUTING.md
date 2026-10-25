@@ -110,5 +110,5 @@ Each of these is a self-contained piece of work; the documents linked give the d
 
 ## License
 
-By contributing you agree that your contributions are licensed under the Apache License 2.0
-([LICENSE](LICENSE)).
+By contributing you agree that your contributions are licensed under the GNU General Public
+License v3.0 ([LICENSE](LICENSE)).

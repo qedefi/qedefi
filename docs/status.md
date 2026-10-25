@@ -146,7 +146,7 @@ docs/           documentation (below)
 
 ## Licenses
 
-The Lean code is Apache-2.0 ([LICENSE](../LICENSE)). Vendored and fetched contract sources under
+The Lean code is GPL-3.0 ([LICENSE](../LICENSE)). Vendored and fetched contract sources under
 `contracts/` keep their own licenses (Solmate AGPL-3.0-only, OpenZeppelin and Solady MIT,
 mainnet sources as published, among them Aave's BUSL-1.1); they are inputs to the build, not
 part of the Lean libraries.
