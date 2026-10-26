@@ -76,7 +76,8 @@ theorem start_extend (hS : Start code abs M Act m) (A : Finset Address)
     (hs : abs.Sound m.ctx.crypto (Act ∪ A)) (hw : M.wf (pre abs (Act ∪ A) m)) :
     Start code abs M (Act ∪ A) m :=
   ⟨hS.fresh, hS.launched, hS.value, hS.precompiles, hS.size,
-    Finset.mem_union_left _ hS.caller, hs, hw, hS.hasCode⟩
+    Finset.mem_union_left _ hS.caller, hs, hw, hS.hasCode,
+    hS.codeBound⟩
 
 /-- **An encoded ERC-20 call** ends as `CallSpec` says, for the actors and its accounts. -/
 theorem post_call {g₀ : Nat} {c : Call Address} (hcs : CallSpec code abs M g₀ c)

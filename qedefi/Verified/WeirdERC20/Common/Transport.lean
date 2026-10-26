@@ -104,7 +104,7 @@ theorem start_clean {m : Machine} (h : Start code abs M Act m) {G : Nat}
     (hG : m.frame.gasLeft ≤ G) {D' : ByteArray} (hD : D'.size < 2 ^ 64) :
     Start code abs M Act (clean D' G m) :=
   ⟨fresh_clean h.fresh hG D', h.launched, h.value, h.precompiles, hD, h.caller, h.sound, h.wf,
-    h.hasCode⟩
+    h.hasCode, h.codeBound⟩
 
 variable {ops : Address → ByteArray → ℕ → Option E} {opAddrs : E → List Address}
   {rec : Option (Machine → ℕ → Address)}

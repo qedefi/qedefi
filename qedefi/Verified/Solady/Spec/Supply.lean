@@ -65,6 +65,7 @@ theorem solady_supply_eq_sum {crypto : Crypto} {Act : Finset Address} {a : Addre
   have := variant_conserved (V := Variant.solady PERMIT2) (ev := soladyEvents)
     (Variant.solady_sane PERMIT2) rfl rfl solady_spec (fun _ _ h => by cases h)
     soladyAbs_etherFree hsound (by rw [SoladyToken.size_runtimeCode]; decide)
+    (by rw [SoladyToken.size_runtimeCode]; decide)
     delegatedAddress?_soladyCode ⟨hw, hsup⟩ h
   simp only [soladyAbs, read, total_balances] at this
   simpa [total, readSlot] using this
