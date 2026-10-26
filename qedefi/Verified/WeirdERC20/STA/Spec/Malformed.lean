@@ -1,13 +1,13 @@
 import Verified.WeirdERC20.STA.Spec.Spec
 import Verified.WeirdERC20.STA.Spec.MalformedGetters
-import Verified.WeirdERC20.Common.Transport
+import Verified.WeirdERC20.Common.Post
 
 /-!
 # Statera with any calldata: `MalformedSpec`
 
 **`sta_malformed`**: in every frame of the mainnet Statera code (solc 0.5.0), with any calldata,
-any value and any gas, the frame fails, changes nothing, or ends as an ERC-20 call or an
-operation of `staModel` (for the actors and the accounts the call names). By selector:
+any value and any gas, whose calldata names only actors, the frame fails, changes nothing, or
+ends as an ERC-20 call or an operation of `staModel`. No entry point is excluded. By selector:
 
 * calldata shorter than a selector or an unknown selector: `fallback_spec` (Statera has no
   fallback function: it reverts);
@@ -18,7 +18,8 @@ operation of `staModel` (for the actors and the accounts the call names). By sel
   with value or too few argument words they revert; otherwise solc 0.5's decoder masks each
   `address` word to its low 160 bits, so the frame runs as the frame whose calldata is the
   ABI encoding of the call with the masked addresses (`Verified.WeirdERC20.Common.transport`),
-  and `calls_spec`/`ops_spec` apply to that call, for the actors extended by its accounts.
+  and `calls_spec`/`ops_spec` apply to that call; its accounts are actors, since the masked
+  words are accounts the calldata names (`calldataAddrs`).
 
 **`sta_complete`**: `ERC20Spec.Complete` (Statera has no `permit`).
 -/
@@ -134,6 +135,10 @@ theorem dirtyRun3 {m : Machine} (hf : Fresh STA.runtimeCode m) (hval : m.frame.m
 
 /-! ## The clean calls -/
 
+theorem word_toNat_self (w : Word) : word w.toNat = w := by
+  simp [word]
+
+
 theorem encodes_transfer (d : ByteArray) :
     (Call.transfer (Word.toAddress (argWord d 0)) (argWord d 1).toNat).Encodes
       (clean2 0xa9059cbb d) :=
@@ -181,93 +186,118 @@ theorem sel_eq : sel = [0xdd62ed3e, 0x095ea7b3, 0x70a08231, 0xc5ac0ded, 0x09260d
 section
 variable {Act : Finset Address} {m : Machine}
 
-/-- `MalPost` of Statera. -/
+/-- `MalformedSpec`'s frame-end condition for Statera. -/
 abbrev Post (Act : Finset Address) (m : Machine) : Machine → Outcome → Prop :=
-  MalPost staAbs M staOps staOpAddrs none Act m
+  LPost staAbs M staOps staOpAddrs none Act m
 
 theorem post_getter (hS : Start STA.runtimeCode staAbs M Act m) {sel q : Nat}
     (hge : (sel, q) ∈ getterEntries) (hsel : Abi.selectorOf m.frame.msg.data = sel)
     (h4 : 4 ≤ m.frame.msg.data.size) : Halts m (Post Act m) :=
-  (getter_halts hge m hS.fresh hsel h4 hS.size).mono fun _ _ _ h => by
-    rcases h with h | h
-    · exact .inl h
-    · exact .inr (.inl h)
+  lpost_unchanged (getter_halts hge m hS.fresh hsel h4 hS.size)
 
 theorem value_toNat {m : Machine} (h : m.frame.msg.value = 0) : m.frame.msg.value.toNat = 0 := by
   rw [h]; rfl
 
+/-- A masked argument word names an actor. -/
+theorem arg_mem {d : ByteArray} (hAct : calldataAddrs d ⊆ Act) {i : Nat}
+    (h : 4 + 32 * i < d.size) : Word.toAddress (argWord d i) ∈ Act :=
+  hAct (mem_calldataAddrs h)
+
 end
 
-/-- **Statera with any calldata**: every frame fails, changes nothing, or ends as an ERC-20
-call or an operation of `staModel` (for the actors and the accounts it names). -/
-theorem sta_malformed : MalformedSpec STA.runtimeCode staAbs M staOps staOpAddrs none := by
-  refine malformedSpec_of fun Act m hS => ?_
+/-- **Statera with any calldata**: every frame whose calldata names only actors fails, changes
+nothing, or ends as an ERC-20 call or an operation of `staModel` for the actors. -/
+theorem sta_malformed : MalformedSpec STA.runtimeCode staAbs M staOps staOpAddrs none [] := by
+  refine malformed_of fun Act m hS hAct _ => ?_
   by_cases hfb : m.frame.msg.data.size < 4 ∨ Abi.selectorOf m.frame.msg.data ∉ sel
-  · exact post_fallback fallback_spec hS hfb
+  · exact lpost_fallback fallback_spec hS hfb
   simp only [not_or, not_lt, not_not] at hfb
   obtain ⟨h4, hmem⟩ := hfb
   rw [sel_eq] at hmem
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
   have hf := hS.fresh
   have hsz := hS.size
+  have hA1 : ∀ (P : Address → Prop), 68 ≤ m.frame.msg.data.size →
+      P (Word.toAddress (argWord m.frame.msg.data 0)) →
+      ∀ a ∈ [Word.toAddress (argWord m.frame.msg.data 0)], P a := by
+    intro P _ h a ha
+    simp only [List.mem_singleton] at ha
+    exact ha ▸ h
   rcases hmem with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
   · exact post_getter hS (q := 0x0370) (by simp [getterEntries]) h h4
-  · rcases approve_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+  · rcases approve_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h68⟩ | hF
     · rw [hs] at hst
-      exact post_call_dirty (calls_spec _) hS
+      exact lpost_call_dirty (calls_spec _) hS
         (dirtyRun2 (by norm_num) approve_clean (by decide) (by norm_num) hf hv hst hg)
         (encodes_approve _) trivial
-    · exact post_fails hF
+        (hA1 (· ∈ Act) h68 (arg_mem hAct (i := 0) (by omega)))
+    · exact lpost_fails hF
   · exact post_getter hS (q := 0x02b0) (by simp [getterEntries]) h h4
   · exact post_getter hS (q := 0x035b) (by simp [getterEntries]) h h4
   · exact post_getter hS (q := 0x0169) (by simp [getterEntries]) h h4
   · exact post_getter hS (q := 0x024a) (by simp [getterEntries]) h h4
   · rcases destroy_dirty m hf h h4 hsz with ⟨-, -, hv, h36⟩ | hF
-    · refine post_op ops_spec hS (e := .burn m.frame.msg.caller m.frame.msg.caller
-        (argWord m.frame.msg.data 0).toNat) ?_
-      rw [value_toNat hv]
-      simp only [staOps, h, show ¬ m.frame.msg.data.size < 36 by omega]
-      simp
-    · exact post_fails hF
-  · rcases destroyFrom_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+    · refine lpost_op ops_spec hS (e := .burn m.frame.msg.caller m.frame.msg.caller
+        (argWord m.frame.msg.data 0).toNat) ?_ ?_
+      · rw [value_toNat hv]
+        simp only [staOps, h, show ¬ m.frame.msg.data.size < 36 by omega]
+        simp
+      · intro a ha
+        simp only [staOpAddrs, List.mem_singleton] at ha
+        exact ha ▸ hS.caller
+    · exact lpost_fails hF
+  · rcases destroyFrom_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h68⟩ | hF
     · rw [hs] at hst
-      refine post_op_dirty ops_spec hS (e := .burnFrom m.frame.msg.caller (Word.toAddress (argWord m.frame.msg.data 0)) (argWord m.frame.msg.data 1).toNat)
+      refine lpost_op_dirty ops_spec hS (e := .burnFrom m.frame.msg.caller
+          (Word.toAddress (argWord m.frame.msg.data 0)) (argWord m.frame.msg.data 1).toNat)
         (dirtyRun2 (by norm_num) destroyFrom_clean (by decide) (by norm_num) hf hv hst hg) ?_
+        (hA1 (· ∈ Act) h68 (arg_mem hAct (i := 0) (by omega)))
       rw [value_toNat hv, staOps_clean2]
       simp
-    · exact post_fails hF
-  · rcases downAllowance_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+    · exact lpost_fails hF
+  · rcases downAllowance_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h68⟩ | hF
     · rw [hs] at hst
-      refine post_op_dirty ops_spec hS (e := .adjustAllowance m.frame.msg.caller (Word.toAddress (argWord m.frame.msg.data 0)) false (argWord m.frame.msg.data 1).toNat)
+      refine lpost_op_dirty ops_spec hS (e := .adjustAllowance m.frame.msg.caller
+          (Word.toAddress (argWord m.frame.msg.data 0)) false (argWord m.frame.msg.data 1).toNat)
         (dirtyRun2 (by norm_num) downAllowance_clean (by decide) (by norm_num) hf hv hst hg) ?_
+        (hA1 (· ∈ Act) h68 (arg_mem hAct (i := 0) (by omega)))
       rw [value_toNat hv, staOps_clean2]
       simp
-    · exact post_fails hF
+    · exact lpost_fails hF
   · exact post_getter hS (q := 0x00df) (by simp [getterEntries]) h h4
   · exact post_getter hS (q := 0x02e3) (by simp [getterEntries]) h h4
   · exact post_getter hS (q := 0x01f2) (by simp [getterEntries]) h h4
-  · rcases transfer_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+  · rcases transfer_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h68⟩ | hF
     · rw [hs] at hst
-      exact post_call_dirty (calls_spec _) hS
+      exact lpost_call_dirty (calls_spec _) hS
         (dirtyRun2 (by norm_num) transfer_clean (by decide) (by norm_num) hf hv hst hg)
         (encodes_transfer _) trivial
-    · exact post_fails hF
-  · rcases transferFrom_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+        (hA1 (· ∈ Act) h68 (arg_mem hAct (i := 0) (by omega)))
+    · exact lpost_fails hF
+  · rcases transferFrom_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h100⟩ | hF
     · rw [hs] at hst
-      exact post_call_dirty (calls_spec _) hS (dirtyRun3 hf hv hst hg)
-        (encodes_transferFrom _) trivial
-    · exact post_fails hF
-  · rcases upAllowance_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, -⟩ | hF
+      refine lpost_call_dirty (calls_spec _) hS (dirtyRun3 hf hv hst hg)
+        (encodes_transferFrom _) trivial ?_
+      intro a ha
+      simp only [Call.addrs, List.mem_cons, List.not_mem_nil, or_false] at ha
+      rcases ha with rfl | rfl
+      · exact arg_mem hAct (i := 0) (by omega)
+      · exact arg_mem hAct (i := 1) (by omega)
+    · exact lpost_fails hF
+  · rcases upAllowance_dirty m hf h h4 hsz with ⟨s, hst, hs, hg, hv, h68⟩ | hF
     · rw [hs] at hst
-      refine post_op_dirty ops_spec hS (e := .adjustAllowance m.frame.msg.caller (Word.toAddress (argWord m.frame.msg.data 0)) true (argWord m.frame.msg.data 1).toNat)
+      refine lpost_op_dirty ops_spec hS (e := .adjustAllowance m.frame.msg.caller
+          (Word.toAddress (argWord m.frame.msg.data 0)) true (argWord m.frame.msg.data 1).toNat)
         (dirtyRun2 (by norm_num) upAllowance_clean (by decide) (by norm_num) hf hv hst hg) ?_
+        (hA1 (· ∈ Act) h68 (arg_mem hAct (i := 0) (by omega)))
       rw [value_toNat hv, staOps_clean2]
       simp
-    · exact post_fails hF
+    · exact lpost_fails hF
 
-/-- **The complete spec of Statera**: `ERC20Spec` and `MalformedSpec` (no `permit`). -/
+/-- **The complete spec of Statera**: `ERC20Spec` and `MalformedSpec` (no `permit`, no entry
+point excluded). -/
 theorem sta_complete :
-    ERC20Spec.Complete STA.runtimeCode staAbs M g₀ sel staOps staOpAddrs none :=
+    ERC20Spec.Complete STA.runtimeCode staAbs M g₀ sel staOps staOpAddrs none [] :=
   ⟨sta_spec, fun _ _ h => (by cases h), sta_malformed⟩
 
 end Verified.WeirdERC20.STA.Spec.Malformed

@@ -1,6 +1,7 @@
 import Verified.WeirdERC20.Common.DataLockstep
 import Verified.OpenZeppelin.ERC20.Spec.Lift
-import Verified.Common.Malformed.Post
+import QEDefi.ERC20.Spec.Bytecode
+import EvmLogic.Program.Reentrancy.Halts
 
 /-!
 # Dirty calldata of a solc 0.4/0.5 token is the clean call
@@ -22,10 +23,8 @@ then `m` fails or succeeds as `Q` says, keeping its created accounts. At the top
 `Halts` witness determines the frame's real exit (`exit_of_halts_top`), which the data
 lockstep follows back to `m`.
 
-`post_call_dirty`, `post_op_dirty`: the rules of `MalformedSpec`
-(`Verified.Common.Malformed.MalPost`) for a frame whose clean counterpart is the ABI encoding
-of an ERC-20 call (`CallSpec`) or an operation the decoder accepts (`OpSpec`), for the actors
-extended by the accounts the call names.
+The rules of `MalformedSpec` built on it are in `Verified.WeirdERC20.Common.Post`
+(`lpost_call_dirty`, `lpost_op_dirty`).
 -/
 
 namespace Verified.WeirdERC20.Common
@@ -35,7 +34,6 @@ open EvmLogic.Program.Reentrancy (halts_any)
 open Verified.Solmate.ERC20.Spec (CertT recorded)
 open Verified.OpenZeppelin.ERC20.Spec (SuccessPost top_success_inv fails_of_failed
   failed_of_fails MatchesOk matchesOk_of matches_of high fresh_high)
-open Verified.Common.Malformed (MalPost start_extend)
 
 variable {ρ : Nat → Address} {allowed : AVal → Bool} {code : ByteArray} {t : Tree}
 
@@ -128,90 +126,5 @@ theorem transport' {m : Machine} {D' : ByteArray} (hr : DirtyRun code m D') {Q :
       Q out mf.world mf.transient mf.frame.sub.logs ∧ mf.createdAccounts = m.createdAccounts := by
   obtain ⟨-, G, d, E, ρ, allowed, t, hG, hpd, hEcr, hpc, hc, hsafe, hEc, hEin⟩ := hr
   exact transport hc hsafe rfl rfl hpd hEcr hpc hEc hEin (hsum G hG)
-
-/-- **A dirty ERC-20 call** whose clean counterpart (calldata `D'`) is the encoding of the call
-`c` ends as `CallSpec` says of `c`, for the actors and its accounts. -/
-theorem post_call_dirty {g₀ : Nat} {c : Call Address}
-    (hcs : CallSpec code abs M g₀ c) {m : Machine} (hS : Start code abs M Act m)
-    {D' : ByteArray} (hr : DirtyRun code m D') (henc : c.Encodes D') (hex : Explains rec m c) :
-    Halts m (MalPost abs M ops opAddrs rec Act m) := by
-  by_cases h : abs.Sound m.ctx.crypto (Act ∪ c.addrs.toFinset) ∧
-      M.wf (pre abs (Act ∪ c.addrs.toFinset) m)
-  · have hsum : ∀ G, m.frame.gasLeft ≤ G → Halts (clean D' G m) fun mf o =>
-        Failed o ∨ ∃ out, o = .success out ∧
-          MatchesOk abs (Act ∪ c.addrs.toFinset) m
-            (M.events (pre abs (Act ∪ c.addrs.toFinset) m) m.frame.msg.caller c)
-            (M.call (pre abs (Act ∪ c.addrs.toFinset) m) m.frame.msg.caller c)
-            out mf.world mf.transient mf.frame.sub.logs := fun G hG =>
-      (hcs _ _ (start_extend (start_clean hS hG hr.1) _ h.1 h.2) henc
-        fun a ha => Finset.mem_union_right _ (List.mem_toFinset.2 ha)).mono fun mf o _ hp => by
-        rcases hp with hm | ⟨hfl, -⟩
-        · exact matchesOk_of hm
-        · exact .inl (failed_of_fails hfl)
-    refine (transport' hr hsum).mono fun mf o _ hp => ?_
-    rcases hp with hfl | ⟨out, rfl, hq, hcr⟩
-    · exact .inl (fails_of_failed hfl)
-    · exact .inr (.inr (.inl ⟨c, hex, fun _ _ => matches_of hq hcr⟩))
-  · exact (halts_any hS.precompiles).mono fun _ _ _ _ =>
-      .inr (.inr (.inl ⟨c, hex, fun hs hw => absurd ⟨hs, hw⟩ h⟩))
-
-/-- What a successful frame must satisfy for `OpMatches` of an operation whose model outcome
-is `s'`, minus its created accounts. -/
-def OpOk (abs : TokenAbs σ) (Act : Finset Address) (m : Machine) (s' : σ) : SuccessPost :=
-  fun _ W T _ => abs.read m.ctx.crypto Act W m.frame.msg.currentTarget = s' ∧
-    FrameKeeps abs m.ctx.crypto Act m.frame.msg.currentTarget m.world W ∧ T = m.transient
-
-/-- **A dirty operation** whose clean counterpart (calldata `D'`) the decoder accepts as `e`
-ends as `OpSpec` says of `e`, for the actors and its accounts. -/
-theorem post_op_dirty {g₀ : Nat} (hos : OpSpec code abs M g₀ ops opAddrs)
-    {m : Machine} (hS : Start code abs M Act m) {D' : ByteArray} (hr : DirtyRun code m D')
-    {e : E} (hops : ops m.frame.msg.caller D' m.frame.msg.value.toNat = some e) :
-    Halts m (MalPost abs M ops opAddrs rec Act m) := by
-  by_cases h : abs.Sound m.ctx.crypto (Act ∪ (opAddrs e).toFinset) ∧
-      M.wf (pre abs (Act ∪ (opAddrs e).toFinset) m)
-  · have hspec := fun G (hG : m.frame.gasLeft ≤ G) =>
-      hos _ _ e (start_extend (start_clean hS hG hr.1) _ h.1 h.2) hops
-        fun a ha => Finset.mem_union_right _ (List.mem_toFinset.2 ha)
-    cases hop : M.op (pre abs (Act ∪ (opAddrs e).toFinset) m) e with
-    | none =>
-      have hsum : ∀ G, m.frame.gasLeft ≤ G → Halts (clean D' G m) fun mf o =>
-          Failed o ∨ ∃ out, o = .success out ∧
-            (fun (_ : ByteArray) (_ : World) (_ : TransientStorage) (_ : Array Log) => False)
-              out mf.world mf.transient mf.frame.sub.logs := fun G hG =>
-        (hspec G hG).mono fun mf o _ hp => by
-          rcases hp with hm | ⟨hfl, -⟩
-          · unfold OpMatches at hm
-            have hop' : M.op (pre abs (Act ∪ (opAddrs e).toFinset) (clean D' G m)) e =
-                none := hop
-            rw [hop'] at hm
-            exact .inl (failed_of_fails hm)
-          · exact .inl (failed_of_fails hfl)
-      refine (transport' hr (Q := fun _ _ _ _ => False) hsum).mono fun mf o _ hp => ?_
-      rcases hp with hfl | ⟨out, rfl, hq, -⟩
-      · exact .inl (fails_of_failed hfl)
-      · exact hq.elim
-    | some s' =>
-      have hsum : ∀ G, m.frame.gasLeft ≤ G → Halts (clean D' G m) fun mf o =>
-          Failed o ∨ ∃ out, o = .success out ∧
-            OpOk abs (Act ∪ (opAddrs e).toFinset) m s' out mf.world mf.transient
-              mf.frame.sub.logs := fun G hG =>
-        (hspec G hG).mono fun mf o _ hp => by
-          rcases hp with hm | ⟨hfl, -⟩
-          · unfold OpMatches at hm
-            have hop' : M.op (pre abs (Act ∪ (opAddrs e).toFinset) (clean D' G m)) e =
-                some s' := hop
-            rw [hop'] at hm
-            obtain ⟨⟨out, ho⟩, h1, h2, h3, -⟩ := hm
-            exact .inr ⟨out, ho, h1, h2, h3⟩
-          · exact .inl (failed_of_fails hfl)
-      refine (transport' hr hsum).mono fun mf o _ hp => ?_
-      rcases hp with hfl | ⟨out, rfl, ⟨h1, h2, h3⟩, hcr⟩
-      · exact .inl (fails_of_failed hfl)
-      · refine .inr (.inr (.inr ⟨D', e, hops, fun _ _ => ⟨⟨s', hop⟩, ?_⟩⟩))
-        unfold OpMatches
-        rw [hop]
-        exact ⟨⟨out, rfl⟩, h1, h2, h3, hcr⟩
-  · exact (halts_any hS.precompiles).mono fun _ _ _ _ =>
-      .inr (.inr (.inr ⟨D', e, hops, fun hs hw => absurd ⟨hs, hw⟩ h⟩))
 
 end Verified.WeirdERC20.Common
