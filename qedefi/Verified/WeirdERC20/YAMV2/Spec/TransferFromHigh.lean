@@ -69,7 +69,7 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
   · have hgt := Verified.Solady.Spec.iszero_gt_of_lt (v := v)
       (b := m_world.sload m_msg.currentTarget (balSlot m_ctx.crypto src)) (by omega)
     simp only [balSlot, mappingSlot] at hgt
-    pwp_xsteps [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt,
+    pwp_xsteps [hMs, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt,
       ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
       Abi.shr_calldataload_zero, Solidity.eq_self]
     exact ⟨fun h => absurd hval h, fun _ => ⟨_, rfl⟩, fun _ _ _ h => absurd h hsb⟩
@@ -83,7 +83,7 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
       (v := (debitWorld m_ctx.crypto m_world m_msg.currentTarget src v).sload
         m_msg.currentTarget (balSlot m_ctx.crypto dst)) (by omega)
     simp only [debitWorld, balSlot, mappingSlot] at h3
-    pwp_xsteps [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3,
+    pwp_xsteps [hMs, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3,
       ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
       Abi.shr_calldataload_zero, Solidity.eq_self]
     exact ⟨fun h => absurd hval h, fun _ => ⟨_, rfl⟩, fun _ _ _ _ h => absurd h hfit⟩
@@ -91,7 +91,7 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
     (v := (debitWorld m_ctx.crypto m_world m_msg.currentTarget src v).sload
       m_msg.currentTarget (balSlot m_ctx.crypto dst)) (by omega)
   simp only [debitWorld, balSlot, mappingSlot] at h3
-  pwp_xrun_to 1248 [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3,
+  pwp_xrun_to 1248 [hMs, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
     Abi.shr_calldataload_zero, Solidity.eq_self, loadWord_write_of_disjoint,
     Memory.read_write_of_disjoint, size_readBytes, Memory.size_write]
@@ -103,8 +103,7 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
     subst hM2; simp [loadWord_write_of_disjoint, Memory.loadWord_storeWord_of_disjoint,
       Memory.loadWord_storeWord]
   have hM2224 : M2.loadWord 224 = 40#256 := by
-    subst hM2; simp [loadWord_write_of_disjoint, Memory.loadWord_storeWord_of_disjoint,
-      Memory.loadWord_storeWord]
+    subst hM2; simp [loadWord_write_of_disjoint, Memory.loadWord_storeWord]
   clear hM2 hMs hM64 hM128
   by_cases hab : v.toNat ≤ ((moveWorld m_ctx.crypto m_world m_msg.currentTarget src dst v).sload
       m_msg.currentTarget (allowSlot m_ctx.crypto src m_msg.caller)).toNat
@@ -113,7 +112,7 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
       (b := (moveWorld m_ctx.crypto m_world m_msg.currentTarget src dst v).sload
         m_msg.currentTarget (allowSlot m_ctx.crypto src m_msg.caller)) (by omega)
     simp only [moveWorld, debitWorld, allowSlot, balSlot, mappingSlot2, mappingSlot] at hga
-    pwp_xsteps [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga,
+    pwp_xsteps [hM2s, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga,
       ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
       Abi.shr_calldataload_zero, Solidity.eq_self]
     exact ⟨fun h => absurd hval h, fun _ => ⟨_, rfl⟩, fun _ _ _ _ _ =>
@@ -123,14 +122,15 @@ theorem transferFrom_high (m : Machine) (src dst : Address) (v : Word)
       m_msg.currentTarget (allowSlot m_ctx.crypto src m_msg.caller)) hab
   simp only [moveWorld, debitWorld, allowSlot, balSlot, mappingSlot2, mappingSlot] at hga
   by_cases hc0 : m_msg.caller = 0
-  · have hcw0 : Word.ofAddress m_msg.caller = 0 := by rw [hc0]; rfl
-    pwp_xsteps [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga, hcw0,
+  · have hcw0 : Word.ofAddress m_msg.caller = 0#256 := by rw [hc0]; rfl
+    rw [hcw0] at hga
+    pwp_xsteps [hM2s, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga, hcw0,
       ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
       Abi.shr_calldataload_zero, Solidity.eq_self, loadWord_write_of_disjoint,
       Memory.read_write_of_disjoint, size_readBytes, Memory.size_write]
     exact ⟨fun h => absurd hval h, fun _ => ⟨_, rfl⟩, fun _ _ h => absurd hc0 h⟩
   have hcw := ofAddress_ne_zero hc0
-  pwp_xsteps [hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga, hcw,
+  pwp_xsteps [hM2s, hval, hst, hsel', hz, hl, harg0, harg1, harg2, hsw, hdw, hgt, h3, hga, hcw,
     ofAddress_and_addressMask, addressMask_and_ofAddress, Memory.read_64,
     Abi.shr_calldataload_zero, Solidity.eq_self]
   refine ⟨fun h => absurd hval h, fun h => ?_, fun _ _ _ _ _ =>

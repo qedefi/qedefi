@@ -42,14 +42,14 @@ theorem loadWord_write_of_disjoint (mem : Memory) (off off' : Nat) (data : ByteA
   rw [Memory.loadWord, Memory.loadWord, Memory.read_write_of_disjoint mem off off' 32 data h]
 
 /-- A gas side condition over a memory with `write`s of copied code. -/
-macro "yam_gas" : tactic => `(tactic| (
+macro "yam_gas" " [" extra:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
   try simp only [memoryCost, outputCost, Gas.extendMemory, List.foldl, Gas.ceil32,
     Gas.memoryCost, Gas.words, Gas.memoryPerWord, Memory.size_storeWord, Memory.size_expand,
     Memory.size_write, size_readBytes, Memory.size_empty, Memory.wordsAfter, Memory.words,
     Gas.logCost, Gas.logBase, Gas.logDataPerByte, Gas.logTopic, Gas.keccak256Cost,
     Gas.keccak256Base, Gas.keccak256PerWord, BitVec.reduceToNat,
     Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.reduceSub, Nat.reduceLeDiff,
-    Nat.reduceEqDiff, Nat.max_def, ↓reduceIte]
+    Nat.reduceEqDiff, Nat.max_def, ↓reduceIte, $extra,*]
   evm_gas))
 
 -- `MLOAD` over a memory with `write`s.
@@ -61,7 +61,7 @@ macro_rules
       case hcode => pcode_fact
       case hstk => exact rfl
       case hlen => pwp_disch
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
@@ -73,7 +73,7 @@ macro_rules
       apply step_mstore
       case hcode => pcode_fact
       case hstk => exact rfl
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
@@ -85,7 +85,7 @@ macro_rules
       apply step_revert
       case hcode => pcode_fact
       case hstk => exact rfl
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
@@ -97,7 +97,7 @@ macro_rules
       apply step_return
       case hcode => pcode_fact
       case hstk => exact rfl
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
@@ -110,7 +110,7 @@ macro_rules
       case hcode => pcode_fact
       case hstk => exact rfl
       case hlen => pwp_disch
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
@@ -123,7 +123,7 @@ macro_rules
       case hcode => pcode_fact
       case hstk => exact rfl
       case hstatic => assumption
-      case hgas => yam_gas
+      case hgas => yam_gas [$extra,*]
     case hs => same_frame
     pwp_norm [$extra,*]))
 
