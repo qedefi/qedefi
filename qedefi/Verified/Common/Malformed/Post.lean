@@ -243,4 +243,32 @@ theorem args_permit {d : ByteArray} (hsel : Abi.selectorOf d = 0xd505accf)
   · exact (clean_ofAddress h1).symm
   all_goals rfl
 
+/-! ## A clean `uint8` (`permit`'s `v`) -/
+
+/-- The `v` word of a `permit` is a clean `uint8`. -/
+def CleanU8 (d : ByteArray) : Prop := argWord d 4 &&& 255#256 = argWord d 4
+
+theorem cleanU8_iff {d : ByteArray} : CleanU8 d ↔ (argWord d 4).toNat < 256 := by
+  unfold CleanU8
+  constructor
+  · intro h
+    have := congrArg BitVec.toNat h
+    simp only [BitVec.toNat_and, BitVec.toNat_ofNat] at this
+    rw [show (255 : Nat) % 2 ^ 256 = 2 ^ 8 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod] at this
+    rw [← this]; exact Nat.mod_lt _ (by decide)
+  · intro h
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_and, BitVec.toNat_ofNat]
+    rw [show (255 : Nat) % 2 ^ 256 = 2 ^ 8 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod]
+    exact Nat.mod_eq_of_lt h
+
+theorem eq_and_255_zero {d : ByteArray} (h : ¬ CleanU8 d) :
+    Word.eq (argWord d 4) (argWord d 4 &&& 255#256) = 0 := by
+  unfold Word.eq Word.ofBool
+  have : (argWord d 4 == argWord d 4 &&& 255#256) = false := by
+    simp only [beq_eq_false_iff_ne, ne_eq]
+    intro he
+    exact h (by unfold CleanU8; exact he.symm)
+  rw [this]; rfl
+
 end Verified.Common.Malformed
