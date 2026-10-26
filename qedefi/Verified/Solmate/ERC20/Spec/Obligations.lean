@@ -15,13 +15,9 @@ Each obligation for the deployed asset (`code ia`, any immutables), from gas `g�
 
 `solmate_erc20Spec`: the bundle.
 
-Not proved: `ERC20Spec.Complete`. As stated, `PermitSpec` fails for this code in frames that
-`Start` admits: a block timestamp of `2²⁵⁶` or more (`TIMESTAMP` pushes it modulo `2²⁵⁶`, the
-spec compares the number), a long `name` in slot 0 off the deployment chain (computing the
-domain separator then needs gas growing with the name's length, so a frame with `g₀` gas runs
-out of gas, which no model result matches), and an EIP-7702 designator at `0x01` (the
-`STATICCALL` of `ecrecover` then runs the delegate, whose answer no recovery function of the
-token's digest predicts); the last also refutes `MalformedSpec` for a successful `permit`.
+`permit` is in `PermitSpec.lean` (`permit_spec_case`: the deployment chain, or a short
+`name`); `ERC20Spec.Complete` is not stated yet (a long `name` off the deployment chain, and
+`MalformedSpec`, remain).
 -/
 
 namespace Verified.Solmate.ERC20.Spec

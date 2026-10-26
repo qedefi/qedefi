@@ -31,18 +31,19 @@ theorem total_readMap (crypto : Crypto) (Act : Finset Address) (w : World) (a : 
 /-- **OzAssetSupplySum: `totalSupply = Σ balanceOf` after any transactions.** For the deployed
 OpenZeppelin `ERC20Mock` at `a` and a finite set of actors `Act` whose storage rows are distinct
 (`ozSound`): if the actors' balances add up to `totalSupply` in `w` (the actors hold every
-token), they do after any sequence of successful transactions using `crypto` whose token frames
-touch only actors. -/
+token) and all ether is below `2²⁵⁶`, they do after any sequence of successful transactions
+using `crypto` whose token frames touch only actors. -/
 theorem oz_supply_eq_sum {crypto : Crypto} {Act : Finset Address} {a : Address} {w w' : World}
     (hsound : ozSound crypto Act)
     (hw : TokInv OzAsset.runtimeCode ozAbs ozModel crypto Act a w)
+    (hsup : QEDefi.Solvency.supply w < 2 ^ 256)
     (h : TxSteps (TxTouch OzAsset.runtimeCode ozAbs ozModel ozSel ozOps ozOpAddrs none crypto
       Act a) w w') :
     ∑ b ∈ Act, (w'.sload a (balanceSlot crypto Layout.oz b)).toNat =
       (w'.sload a Layout.oz.totalSupply).toNat := by
   have := variant_conserved (V := Variant.oz) (ev := ozEvents) Variant.oz_sane rfl rfl
-    oz_erc20Spec (fun _ h => by cases h) ozAbs_etherFree hsound
-    (by rw [OzAsset.size_runtimeCode]; decide) delegatedAddress?_runtimeCode hw h
+    oz_erc20Spec (fun _ _ h => by cases h) ozAbs_etherFree hsound
+    (by rw [OzAsset.size_runtimeCode]; decide) delegatedAddress?_runtimeCode ⟨hw, hsup⟩ h
   simp only [ozAbs_read, ozRead, total_readMap] at this
   simpa [total, readSlot, balanceSlot] using this
 
