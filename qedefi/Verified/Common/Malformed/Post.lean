@@ -17,7 +17,8 @@ spec admits has its rule here, for any token:
   hypotheses hold (the frame halts in any case, `halts_any`);
 * `post_fallback`: short calldata or an unknown selector, through `FallbackSpec`;
 * `post_op`: calldata the decoder `ops` accepts, through `OpSpec`;
-* `post_permit`: a `permit` with the token's own recovery, through `PermitSpec`.
+* `post_permit`: a `permit` with the token's own recovery, through `PermitSpec`
+  (`post_permit_of`: through any proof for the frame).
 
 **The reduction** of malformed calldata to these rules: the decoders of solc ≥ 0.8 revert
 unless the calldata holds every argument word and the `address` words are clean (`CleanAddr`),
@@ -133,6 +134,30 @@ theorem post_op {g₀ : Nat} (hos : OpSpec code abs M g₀ ops opAddrs)
   · exact (halts_any hS.precompiles).mono fun _ _ _ _ =>
       .inr (.inr (.inr ⟨_, e, hops, fun hs hw => absurd ⟨hs, hw⟩ h⟩))
 
+/-- **A `permit` frame that ends as the model's `permit` with the token's own recovery** (or
+fails) for every set of actors containing its accounts. -/
+theorem post_permit_of {r : Machine → ℕ → Address} (hrec : rec = some r)
+    (hS : Start code abs M Act m) {o sp : Address} {v : ℕ} {live : Bool}
+    (h : ∀ Act', Start code abs M Act' m → o ∈ Act' → sp ∈ Act' →
+      Halts m fun mf out =>
+        Matches abs Act' m mf out
+          (M.events (pre abs Act' m) m.frame.msg.caller (.permit o sp v live (r m)))
+          (M.call (pre abs Act' m) m.frame.msg.caller (.permit o sp v live (r m))) ∨ Fails out) :
+    Halts m (MalPost abs M ops opAddrs rec Act m) := by
+  let c : Call Address := .permit o sp v live (r m)
+  have hex : Explains rec m c := ⟨r, hrec, fun _ => rfl⟩
+  by_cases hA : abs.Sound m.ctx.crypto (Act ∪ c.addrs.toFinset) ∧
+      M.wf (pre abs (Act ∪ c.addrs.toFinset) m)
+  · refine (h _ (start_extend hS _ hA.1 hA.2)
+      (Finset.mem_union_right _ (List.mem_toFinset.2 (by simp [c, Call.addrs])))
+      (Finset.mem_union_right _ (List.mem_toFinset.2 (by simp [c, Call.addrs])))).mono
+      fun mf out _ hp => ?_
+    rcases hp with hm | hf
+    · exact .inr (.inr (.inl ⟨c, hex, fun _ _ => hm⟩))
+    · exact .inl hf
+  · exact (halts_any hS.precompiles).mono fun _ _ _ _ =>
+      .inr (.inr (.inl ⟨c, hex, fun hs hw => absurd ⟨hs, hw⟩ hA⟩))
+
 /-- **A `permit` with ABI arguments**, when `ecrecover` runs the precompile and the frame has
 less than `2⁶⁴` gas, ends as `PermitSpec` says, with the token's own recovery. -/
 theorem post_permit {gp : Machine → Nat} {r : Machine → ℕ → Address}
@@ -141,21 +166,10 @@ theorem post_permit {gp : Machine → Nat} {r : Machine → ℕ → Address}
     (hargs : Args m.frame.msg.data 0xd505accf
       [Word.ofAddress o, Word.ofAddress sp, v, dl, pv, pr, ps])
     (hE : EcrecoverPlain m) (hg : m.frame.gasLeft < 2 ^ 64) :
-    Halts m (MalPost abs M ops opAddrs rec Act m) := by
-  let c : Call Address :=
-    .permit o sp v.toNat (decide (m.ctx.block.timestamp % 2 ^ 256 ≤ dl.toNat)) (r m)
-  have hex : Explains rec m c := ⟨r, hrec, fun _ => rfl⟩
-  by_cases h : abs.Sound m.ctx.crypto (Act ∪ c.addrs.toFinset) ∧
-      M.wf (pre abs (Act ∪ c.addrs.toFinset) m)
-  · refine (hps _ m o sp v dl pv pr ps (start_extend hS _ h.1 h.2)
-      (Finset.mem_union_right _ (List.mem_toFinset.2 (by simp [c, Call.addrs])))
-      (Finset.mem_union_right _ (List.mem_toFinset.2 (by simp [c, Call.addrs])))
-      hE hg hargs).mono fun mf out _ hp => ?_
-    rcases hp with hm | ⟨hf, -⟩
-    · exact .inr (.inr (.inl ⟨c, hex, fun _ _ => hm⟩))
-    · exact .inl hf
-  · exact (halts_any hS.precompiles).mono fun _ _ _ _ =>
-      .inr (.inr (.inl ⟨c, hex, fun hs hw => absurd ⟨hs, hw⟩ h⟩))
+    Halts m (MalPost abs M ops opAddrs rec Act m) :=
+  post_permit_of hrec hS fun _ hS' ho hsp =>
+    (hps _ m o sp v dl pv pr ps hS' ho hsp hE hg hargs).mono fun _ _ _ hp =>
+      hp.imp_right fun h => h.1
 
 /-! ## Clean arguments are an encoding -/
 
@@ -228,5 +242,33 @@ theorem args_permit {d : ByteArray} (hsel : Abi.selectorOf d = 0xd505accf)
   · exact (clean_ofAddress h0).symm
   · exact (clean_ofAddress h1).symm
   all_goals rfl
+
+/-! ## A clean `uint8` (`permit`'s `v`) -/
+
+/-- The `v` word of a `permit` is a clean `uint8`. -/
+def CleanU8 (d : ByteArray) : Prop := argWord d 4 &&& 255#256 = argWord d 4
+
+theorem cleanU8_iff {d : ByteArray} : CleanU8 d ↔ (argWord d 4).toNat < 256 := by
+  unfold CleanU8
+  constructor
+  · intro h
+    have := congrArg BitVec.toNat h
+    simp only [BitVec.toNat_and, BitVec.toNat_ofNat] at this
+    rw [show (255 : Nat) % 2 ^ 256 = 2 ^ 8 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod] at this
+    rw [← this]; exact Nat.mod_lt _ (by decide)
+  · intro h
+    apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_and, BitVec.toNat_ofNat]
+    rw [show (255 : Nat) % 2 ^ 256 = 2 ^ 8 - 1 by decide, Nat.and_two_pow_sub_one_eq_mod]
+    exact Nat.mod_eq_of_lt h
+
+theorem eq_and_255_zero {d : ByteArray} (h : ¬ CleanU8 d) :
+    Word.eq (argWord d 4) (argWord d 4 &&& 255#256) = 0 := by
+  unfold Word.eq Word.ofBool
+  have : (argWord d 4 == argWord d 4 &&& 255#256) = false := by
+    simp only [beq_eq_false_iff_ne, ne_eq]
+    intro he
+    exact h (by unfold CleanU8; exact he.symm)
+  rw [this]; rfl
 
 end Verified.Common.Malformed
