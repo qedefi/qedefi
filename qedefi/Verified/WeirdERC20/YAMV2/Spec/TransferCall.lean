@@ -108,7 +108,7 @@ theorem call_transfer (dst : Address) (v : ℕ) :
     · have hne : balSlot m.ctx.crypto dst ≠ balSlot m.ctx.crypto m.frame.msg.caller := fun e =>
         hcd (hs.sound.inj1 1#256 (by decide) 1#256 (by decide) dst hdA _ hcA e).1.symm
       rw [World.sload_sstore_ne_key _ _ _ hne]
-      have h2 := QEDefi.ERC20.add_le_total
+      have h2 := QEDefi.ERC20.Spec.YAMV2.add_le_total
         (f := (read m.ctx.crypto Act m.world m.frame.msg.currentTarget).bal) hcd
       simp only [read, VState.ofToken, show balancesSlot = 1#256 from rfl] at h2 htot
       rw [hbalc, hbald] at h2
