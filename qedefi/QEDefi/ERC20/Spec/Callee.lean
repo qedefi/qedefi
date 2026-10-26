@@ -1,5 +1,6 @@
 import QEDefi.ERC20.Spec.Bytecode
 import EvmLogic.Program.Call
+import EvmLogic.Program.Nested.Frame
 
 /-!
 # Calling a verified token from another contract
@@ -26,9 +27,9 @@ namespace Callee
 
 /-- **`Start` holds for the frame `launchCall` pushes**, from a machine running the standard
 precompiles (as every machine the interpreter builds does), for a call running the token's code
-(not a precompile), whose value is zero or moves from another account without wrapping the
-token's balance, with payable calldata, for actors containing
-the caller whose hash hypotheses hold, from a world where the token's model state satisfies its
+(not a precompile) at an account holding code, whose value is zero or moves from another
+account without wrapping the token's balance, with payable calldata, for actors containing the
+caller whose hash hypotheses hold, from a world where the token's model state satisfies its
 invariant. -/
 theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ Address E}
     {Act : Finset Address} {m : Machine} {req : CallRequest}
@@ -39,7 +40,8 @@ theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel 
       (m.world.balance req.msg.currentTarget).toNat + req.msg.value.toNat < 2 ^ 256))
     (hsize : req.msg.data.size < 2 ^ 64) (hcaller : req.msg.caller ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
-    (hwf : M.wf (abs.read m.ctx.crypto Act m.world req.msg.currentTarget)) :
+    (hwf : M.wf (abs.read m.ctx.crypto Act m.world req.msg.currentTarget))
+    (hhas : (m.world.code req.msg.currentTarget).size ≠ 0) :
     Start code abs M Act (launchCall m req) := by
   have hl : launchCall m req =
       { m with
@@ -56,7 +58,10 @@ theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel 
       size := hsize
       caller := hcaller
       sound := hsound
-      wf := hwf }
+      wf := hwf
+      hasCode := by
+        show ((transferValue m.world req.msg).code req.msg.currentTarget).size ≠ 0
+        rw [(Nested.keep_transferValue (msg := req.msg) hhas).code]; exact hhas }
 
 /-! ## How the token's frame ends, for its caller -/
 
@@ -117,7 +122,8 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
-    (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
+    (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
     (hwf : M.wf (abs.read m.ctx.crypto Act m.world (Word.toAddress toW)))
@@ -146,7 +152,10 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller
       sound := hsound
-      wf := hwf }
+      wf := hwf
+      hasCode := by
+        show (m.world.code (Word.toAddress toW)).size ≠ 0
+        rw [htok]; exact hreal }
   refine WP.call0 hcode hstk hdel hgas hdepth hpre (hc Act mc hs he haddrs) fun mf o hH hsf => ?_
   refine k mf o hsf ?_
   rcases hH with hm | ⟨hf, hn⟩
@@ -166,7 +175,8 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
-    (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
+    (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
     (hwf : M.wf (abs.read m.ctx.crypto Act m.world (Word.toAddress toW)))
@@ -182,7 +192,7 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
       WP (resumeAfter (call0Caller m gas toW inOff inSize outOff outSize rest) m.parents mf o)
         Q H) :
     WP m Q H :=
-  call hc hcode hstk hdel hgas hdepth hpre hstd htok hsize hcaller haddrs hsound hwf he
+  call hc hcode hstk hdel hgas hdepth hpre hstd htok hreal hsize hcaller haddrs hsound hwf he
     fun mf o hsf h => h.elim (k mf o hsf) fun hf => (hf.2 ⟨hg₀, hstatic⟩).elim
 
 /-! ## `STATICCALL` of a view -/
@@ -212,7 +222,8 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
     (hdepth : m.frame.msg.depth + 1 ≤ Gas.stackDepthLimit)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
-    (htok : m.world.code (Word.toAddress toW) = code) (hsize : inSize.toNat < 2 ^ 64)
+    (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ v.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
     (hwf : M.wf (abs.read m.ctx.crypto Act m.world (Word.toAddress toW)))
@@ -239,7 +250,10 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
       size := by show (callData m inOff inSize outOff outSize).size < _; simpa using hsize
       caller := hcaller
       sound := hsound
-      wf := hwf }
+      wf := hwf
+      hasCode := by
+        show (m.world.code (Word.toAddress toW)).size ≠ 0
+        rw [htok]; exact hreal }
   refine WP.staticcall hcode hstk hdel hgas hdepth hpre (hv Act mc hs he haddrs)
     fun mf o hH hsf => k mf o hsf ?_
   rcases hH with ⟨x, ho, hx, hw, htr, -, hlogs⟩ | ⟨hf, hn⟩

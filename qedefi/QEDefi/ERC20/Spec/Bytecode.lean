@@ -212,9 +212,12 @@ moved, as `launchCall` and `initMachine` do), its value is zero or moved from an
 without wrapping the token's balance (`pre` reads the snapshot, before the value moved: token
 code run by a `DELEGATECALL` that carries value is out of scope; no real frame is a call with
 value from the token to itself, for a token whose code makes no such call; and all ether stays
-below `2²⁵⁶`), it runs the standard precompiles (as every
-machine the interpreter builds does), its calldata is payable, the caller is an actor, the
-actors' hash hypotheses hold, and the token is in a state its model can reach. -/
+below `2²⁵⁶`), it runs the standard precompiles (as every machine the interpreter builds
+does), its calldata is payable, the caller is an actor, the actors' hash hypotheses hold, the
+token is in a state its model can reach, and the account it runs at holds code (false only for
+token code run during a constructor, e.g. a proxy's constructor delegatecalling its
+implementation, which deployment proofs cover; code reading `extcodesize(this)`, such as
+AMPL's `initializer`, behaves differently there). -/
 structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (Act : Finset Address) (m : Machine) : Prop where
   fresh : Fresh code m
@@ -228,6 +231,7 @@ structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Addres
   caller : m.frame.msg.caller ∈ Act
   sound : abs.Sound m.ctx.crypto Act
   wf : M.wf (pre abs Act m)
+  hasCode : (m.world.code m.frame.msg.currentTarget).size ≠ 0
 
 /-! ## Obligations -/
 
