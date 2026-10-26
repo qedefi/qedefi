@@ -13,6 +13,7 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split RevertPost lt_size_four_one)
 open Verified.Solady.Spec.AnyGas
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 /-- The dispatcher's `EQ` tests all fail on an unknown selector. -/
 theorem ampl_unknown {data : ByteArray} (h : Abi.selectorOf data ∉ sel) :
@@ -166,9 +167,9 @@ theorem fallback_high (m : Machine) (hf : Fresh AMPL.runtimeCode m)
         pwp_steps [hv, hlt, Abi.shr_calldataload_zero, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e30, g1, g5, g7]
         exact ⟨_, rfl⟩
 
-theorem ampl_call_other (s : VState Address) (c : Address) (v : ℕ) :
+theorem ampl_call_other (s : AState Address) (c : Address) (v : ℕ) :
     M.call s c (.other v) = .halt .revert := by
-  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.call, Variant.step, Variant.fallbackCall,
+  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, Variant.call, Variant.step, Variant.fallbackCall,
     Variant.ampl, Variant.standard, Variant.failKind, Variant.guardOk, Variant.failWith]
 
 /-- **Unknown selectors and short calldata** revert, as the model's `other` call. -/

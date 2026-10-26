@@ -217,7 +217,10 @@ does), its calldata is payable, the caller is an actor, the actors' hash hypothe
 token is in a state its model can reach, and the account it runs at holds code (false only for
 token code run during a constructor, e.g. a proxy's constructor delegatecalling its
 implementation, which deployment proofs cover; code reading `extcodesize(this)`, such as
-AMPL's `initializer`, behaves differently there). -/
+AMPL's `initializer`, behaves differently there) and is shorter than `2²⁵⁶` bytes
+(`EXTCODESIZE` pushes the size modulo `2²⁵⁶`, so `hasCode` alone does not make
+`extcodesize(this) ≠ 0`, as AMPL's `isConstructor()` reads it; EIP-170 caps deployed code at
+24576 bytes, so every real frame satisfies it). -/
 structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (Act : Finset Address) (m : Machine) : Prop where
   fresh : Fresh code m
@@ -232,6 +235,7 @@ structure Start (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Addres
   sound : abs.Sound m.ctx.crypto Act
   wf : M.wf (pre abs Act m)
   hasCode : (m.world.code m.frame.msg.currentTarget).size ≠ 0
+  codeBound : (m.world.code m.frame.msg.currentTarget).size < 2 ^ 256
 
 /-! ## Obligations -/
 

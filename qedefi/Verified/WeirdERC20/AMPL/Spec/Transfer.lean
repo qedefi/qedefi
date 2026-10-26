@@ -13,6 +13,7 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split' eq_zero_of_iszero_ne ite_pos' ite_neg')
 open Verified.Solady.Spec.AnyGas QEDefi.ERC4626
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 theorem ampl_add_lt_one {S v : Word} (h : S.toNat + v.toNat < 2 ^ 256) :
     ((S + v).lt v).iszero = 1 := by

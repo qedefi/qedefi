@@ -104,7 +104,8 @@ theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenMode
     (hcode : msg.code = code) (hval : msg.value = 0) (hsize : msg.data.size < 2 ^ 64)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
     (hwf : M.wf (abs.read ctx.crypto Act w msg.currentTarget))
-    (hhas : (w.code msg.currentTarget).size ≠ 0) :
+    (hhas : (w.code msg.currentTarget).size ≠ 0)
+    (hbound : (w.code msg.currentTarget).size < 2 ^ 256) :
     Start code abs M Act (startMachine ctx w tr msg) where
   fresh := hcode ▸ fresh_startMachine ctx w tr msg
   launched := (transferValue_zero w msg hval).symm
@@ -115,15 +116,18 @@ theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenMode
   sound := hsound
   wf := hwf
   hasCode := hhas
+  codeBound := hbound
 
 /-- **A top-level call to the token at `a`**: `a` holds the token's code `code`, which is real
-code (not empty, not an EIP-7702 designator), and is not a precompile; the message calls `a`
+code (not empty, not an EIP-7702 designator, shorter than `2²⁵⁶` bytes: EIP-170 caps deployed
+code at 24576), and is not a precompile; the message calls `a`
 and runs its code, at depth zero, with no value, and its calldata is shorter than `2⁶⁴`
 bytes (`Start.size`). Transactions build such messages (`tx_call`). -/
 structure Msg (code : ByteArray) (ctx : Context) (w : World) (msg : Message) (a : Address) :
     Prop where
   atA : w.code a = code
   real : code.size ≠ 0
+  bound : code.size < 2 ^ 256
   deleg : delegatedAddress? code = none
   msgCode : msg.code = code
   target : msg.target = some a
@@ -200,9 +204,10 @@ theorem start_ok (h : Msg code ctx w msg a) {abs : TokenAbs σ} {M : TokenModel 
     Start code abs M Act (start ctx w tr msg) := by
   obtain ⟨hcode, hct, hcl, -, -, hval, -, hdata⟩ := h.dmsg_facts
   refine start_startMachine hcode hval (by rw [hdata]; exact h.size) (by rw [hcl]; exact hcaller)
-    hsound ?_ ?_
+    hsound ?_ ?_ ?_
   · rw [hct, h.read]; exact hwf
   · rw [hct, h.worldCode]; exact h.real
+  · rw [hct, h.worldCode]; exact h.bound
 
 /-- The model state at the start of the frame is the token's state before the call. -/
 theorem pre_start (h : Msg code ctx w msg a) (abs : TokenAbs σ) (Act : Finset Address)
@@ -488,6 +493,7 @@ theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat
     {tx : Transaction} {hint : Option Address} {out : EvmLean.Tx.TxOutput}
     (hp : EvmLean.Tx.process fuel crypto fork env gasAvail blobAvail w tx hint = .ok out)
     (hto : tx.to = some a) (hcode : w.code a = code) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hdel : delegatedAddress? code = none) (hpre : Precompile.isPrecompile fork a = false)
     (hcb : a ≠ env.coinbase) (hval : tx.value = 0) (hsize : tx.data.size < 2 ^ 64)
     (hcaller : out.sender ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
@@ -520,7 +526,7 @@ theorem tx_call {c : Call Address} (hc : CallSpec code abs M g₀ c) {fuel : Nat
     (w.account s).nonce (tx.gas - i.regular) hto
   have hdata : msg.data = tx.data := TopLevel.prepareMessage_data_call hto
   have hm : Msg code (EvmLogic.Tx.txContext crypto fork env tx ck) w₁ msg a :=
-    { atA := hcode₁, real := hreal, deleg := hdel, msgCode := hmc.trans hcode₁
+    { atA := hcode₁, real := hreal, bound := hbound, deleg := hdel, msgCode := hmc.trans hcode₁
       target := by rw [EvmLogic.Tx.prepareMessage_target, hto]
       codeAddress := hca, current := hct, pre := hpre
       value := by rw [EvmLogic.Tx.prepareMessage_value, hval]; rfl
