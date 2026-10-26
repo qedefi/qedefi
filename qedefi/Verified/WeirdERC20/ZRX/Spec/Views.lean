@@ -14,13 +14,9 @@ nothing (`totalSupply_halts`, `balanceOf_halts`, `allowance_halts`, by symbolic 
 dispatcher and the getter). `view_exact` states it as `ViewSpec`'s left disjunct for every view
 whose accounts are actors, in every frame `Start` admits with `g₀ ≤ gas` and no value.
 
-What `ViewSpec` adds and is not proved here: frames with less gas or with value, which must
-fail or return the same word. Value reaches `INVALID` at the non-payable check; low gas runs
-out somewhere. Both need reasoning for any gas about the *outcome*, not only the world: the
-prefix calculus (`apwp_steps`) keeps only a predicate of the world a frame hands back
-(`FailOk`), and the gas lockstep (`EvmLogic.GasMono.monoFrom_of_code`) needs
-`PrecompilesOk` of the machine, which `Start` does not provide (ZRX's code makes no call, but
-the lockstep relation carries the hypothesis at every step).
+The rest of `ViewSpec` (frames with less gas or with value, which must fail or return the
+same word) is `ViewSpec.lean`, by the any-gas calculus `hwp_steps`; `views` there is the full
+obligation.
 -/
 
 namespace Verified.WeirdERC20.ZRX.Spec
