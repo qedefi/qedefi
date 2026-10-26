@@ -49,9 +49,10 @@ abbrev Post (ia : SolmateAsset.Immutables) (Act : Finset Address) (m : Machine) 
   MalPost solmateAbs M solmateOps solmateOpAddrs (some (solmateRec ia)) Act m
 
 /-- **The `permit` frames left open**: well-formed calldata (clean `owner` and `spender`, a
-`v` below 256), no value, outside the case `permit_spec_case` covers. -/
+`v` below 256) naming only actors, no value, outside the case `permit_spec_case` covers. -/
 def PermitResidue (ia : SolmateAsset.Immutables) : Prop :=
-  ∀ Act m, Start (code ia) solmateAbs M Act m → m.frame.msg.value = 0 →
+  ∀ Act m, Start (code ia) solmateAbs M Act m → calldataAddrs m.frame.msg.data ⊆ Act →
+    m.frame.msg.value = 0 →
     Abi.selectorOf m.frame.msg.data = 0xd505accf → 228 ≤ m.frame.msg.data.size →
     CleanAddr m.frame.msg.data 0 → CleanAddr m.frame.msg.data 1 →
     CleanU8 m.frame.msg.data →
@@ -172,17 +173,19 @@ theorem post_getter2 (hS : Start (code ia) solmateAbs M Act m) {sel q : Nat}
     (fun m' hf hd hv' h64 hg => getter_halts hge m' hf (hv' ▸ hv) (hd ▸ hsel) (hd ▸ h4) h64
       (by omega))
 
-theorem solmateOps_mint {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x40c10f19)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    solmateOps caller d 0 =
+theorem solmateOps_mint {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x40c10f19) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    solmateOps caller d v =
       some (.mint caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   have h : AddrAmount d 0x40c10f19 := ⟨hsel, hs, hc⟩
   simp [solmateOps, h]
 
-theorem solmateOps_burn {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x9dc29fac)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    solmateOps caller d 0 =
+theorem solmateOps_burn {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x9dc29fac) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    solmateOps caller d v =
       some (.burn caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   have h : AddrAmount d 0x9dc29fac := ⟨hsel, hs, hc⟩
   have h' : ¬ AddrAmount d 0x40c10f19 := fun h' => by
     have := h'.1; rw [hsel] at this; cases this
@@ -191,6 +194,7 @@ theorem solmateOps_burn {d : ByteArray} {caller : Address} (hsel : Abi.selectorO
 /-- `permit`: malformed calldata reverts in the decoder; well-formed calldata ends as
 `permit_spec_case` says, or is in the residue. -/
 theorem post_permit_solmate (hres : PermitResidue ia) (hS : Start (code ia) solmateAbs M Act m)
+    (hcd : calldataAddrs m.frame.msg.data ⊆ Act)
     (hv : m.frame.msg.value = 0) (hsel : Abi.selectorOf m.frame.msg.data = 0xd505accf)
     (h4 : 4 ≤ m.frame.msg.data.size) : Halts m (Post ia Act m) := by
   by_cases hs : 228 ≤ m.frame.msg.data.size
@@ -226,19 +230,22 @@ theorem post_permit_solmate (hres : PermitResidue ia) (hS : Start (code ia) solm
         (m.world.sload m.frame.msg.currentTarget 0#256)
   · obtain ⟨hep, hgl, hdc⟩ := hcase
     have hA := args_permit hsel hs hc0 hc1
-    exact post_permit_of rfl hS fun Act' hS' ho hsp =>
-      (permit_spec_case Act' m _ _ _ _ _ _ _ hS' ho hsp hep hgl hA hdc).mono
-        fun _ _ _ hp => hp.imp_right fun h => h.1
-  · exact hres Act m hS hv hsel hs hc0 hc1 hu hcase
+    have ho := argAddr_mem hcd (j := 0) (by omega)
+    have hsp := argAddr_mem hcd (j := 1) (by omega)
+    exact post_permit_of rfl ho hsp
+      ((permit_spec_case Act m _ _ _ _ _ _ _ hS ho hsp hep hgl hA hdc).mono
+        fun _ _ _ hp => hp.imp_right fun h => h.1)
+  · exact hres Act m hS hcd hv hsel hs hc0 hc1 hu hcase
 
 /-! ## The theorem -/
 
 /-- **Solmate's asset with any calldata**, given the open `permit` cases (`PermitResidue`):
 every frame fails, changes nothing, or ends as an ERC-20 call (a `permit` with Solmate's
-recovery) or a `mint`/`burn` of `solmateModel`, for the actors and the accounts it names. -/
+recovery) or a `mint`/`burn` of `solmateModel`, exactly for actors that include every account
+the calldata can name. -/
 theorem solmate_malformed (hres : PermitResidue ia) :
-    MalformedSpec (code ia) solmateAbs M solmateOps solmateOpAddrs (some (solmateRec ia)) := by
-  refine malformedSpec_of fun Act m hS => ?_
+    MalformedSpec (code ia) solmateAbs M solmateOps solmateOpAddrs (some (solmateRec ia)) [] := by
+  refine malformedSpec_of fun Act m hS hcd _ => ?_
   by_cases hfb : m.frame.msg.data.size < 4 ∨ Abi.selectorOf m.frame.msg.data ∉ assetSelectors
   · exact post_fallback fallback_spec hS hfb
   simp only [not_or, not_lt, not_not] at hfb
@@ -257,7 +264,7 @@ theorem solmate_malformed (hres : PermitResidue ia) :
   · have hsp := spec_mem (by decide) h
     by_cases hs : 68 ≤ m.frame.msg.data.size
     · by_cases hc : CleanAddr m.frame.msg.data 0
-      · exact post_call (calls_spec _) hS (encodes_approve h hs hc) trivial
+      · exact post_approve calls_spec hS hcd h hs hc
       · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' h64 hg =>
           asset_approve_dirty0 m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ hs) h64 (hd ▸ hc) hg
     · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' _ hg =>
@@ -269,7 +276,7 @@ theorem solmate_malformed (hres : PermitResidue ia) :
     by_cases hs : 100 ≤ m.frame.msg.data.size
     · by_cases hc0 : CleanAddr m.frame.msg.data 0
       · by_cases hc1 : CleanAddr m.frame.msg.data 1
-        · exact post_call (calls_spec _) hS (encodes_transferFrom h hs hc0 hc1) trivial
+        · exact post_transferFrom calls_spec hS hcd h hs hc0 hc1
         · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' h64 hg =>
             asset_transferFrom_dirty1 m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ hs) h64 (hd ▸ hc0)
               (hd ▸ hc1) hg
@@ -285,7 +292,8 @@ theorem solmate_malformed (hres : PermitResidue ia) :
   · have hsp := spec_mem (by decide) h
     by_cases hs : 68 ≤ m.frame.msg.data.size
     · by_cases hc : CleanAddr m.frame.msg.data 0
-      · exact post_op ops_spec hS (by rw [hv0]; exact solmateOps_mint h hs hc)
+      · exact post_op ops_spec hS (solmateOps_mint hv0 h hs hc)
+          (argAddr0_list hcd (by omega))
       · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' h64 hg =>
           asset_mint_dirty0 m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ hs) h64 (hd ▸ hc) hg
     · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' _ hg =>
@@ -300,7 +308,8 @@ theorem solmate_malformed (hres : PermitResidue ia) :
   · have hsp := spec_mem (by decide) h
     by_cases hs : 68 ≤ m.frame.msg.data.size
     · by_cases hc : CleanAddr m.frame.msg.data 0
-      · exact post_op ops_spec hS (by rw [hv0]; exact solmateOps_burn h hs hc)
+      · exact post_op ops_spec hS (solmateOps_burn hv0 h hs hc)
+          (argAddr0_list hcd (by omega))
       · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' h64 hg =>
           asset_burn_dirty0 m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ hs) h64 (hd ▸ hc) hg
     · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' _ hg =>
@@ -309,13 +318,13 @@ theorem solmate_malformed (hres : PermitResidue ia) :
   · have hsp := spec_mem (by decide) h
     by_cases hs : 68 ≤ m.frame.msg.data.size
     · by_cases hc : CleanAddr m.frame.msg.data 0
-      · exact post_call (calls_spec _) hS (encodes_transfer h hs hc) trivial
+      · exact post_transfer calls_spec hS hcd h hs hc
       · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' h64 hg =>
           asset_transfer_dirty0 m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ hs) h64 (hd ▸ hc) hg
     · exact fails_low hS (.inr (.inr (.inr hsp))) fun m' hf hd hv' _ hg =>
         asset_transfer_short m' hf (hv' ▸ hv) (hd ▸ h) (hd ▸ h4) (by rw [hd]; omega) hg
   -- permit
-  · exact post_permit_solmate hres hS hv h h4
+  · exact post_permit_solmate hres hS hcd hv h h4
   -- allowance
   · exact post_getter hS (q := 553) (by decide) (by decide) hv h h4
 
@@ -326,7 +335,7 @@ every other frame (`solmate_malformed`). -/
 theorem solmate_complete (hperm : PermitSpec (code ia) solmateAbs M (solmateGp ia) (solmateRec ia))
     (hres : PermitResidue ia) :
     ERC20Spec.Complete (code ia) solmateAbs M g₀ assetSelectors solmateOps solmateOpAddrs
-      (some (solmateGp ia, solmateRec ia)) :=
+      (some (solmateGp ia, solmateRec ia)) [] :=
   ⟨solmate_erc20Spec ia, fun _ _ h => by cases h; exact hperm, solmate_malformed hres⟩
 
 end Verified.Solmate.ERC20.Spec.Malformed
