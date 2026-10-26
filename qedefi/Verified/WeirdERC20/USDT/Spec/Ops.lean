@@ -1,15 +1,18 @@
 import Verified.WeirdERC20.USDT.Spec.OpModel
+import Verified.WeirdERC20.USDT.Spec.PauseHigh
 
 /-!
 # USDT's admin entry points satisfy `OpSpec`
 
-`usdt_ops`: every calldata `ops` decodes (`issue`, `redeem`, `addBlackList`, `removeBlackList`,
-`destroyBlackFunds`, `setParams`, without value) whose account is an actor ends as the model's
-operation: it fails when the model's operation fails, and otherwise succeeds with the model's
-state and only the footprint changed; static or below `g₀` it may fail. The code's conditions
-(`issueOk`, …) are the model's: the owner is the model's `admin`; `require(supply + v > supply)`
-is `v ≠ 0` and no overflow, and the owner's balance cannot overflow first under the actors'
-supply bound; `redeem`'s `supply ≥ v` follows from the balance check under the same bound.
+`usdt_ops`: every calldata `ops` decodes (`pause`, `unpause`, `issue`, `redeem`, `addBlackList`,
+`removeBlackList`, `destroyBlackFunds`, `setParams`, without value) whose account is an actor
+ends as the model's operation: it fails when the model's operation fails, and otherwise succeeds
+with the model's state and only the footprint changed; static or below `g₀` it may fail. The
+code's conditions (`issueOk`, …) are the model's: the owner is the model's `admin`;
+`whenNotPaused`/`whenPaused` are the model's pause guard (`usdtOpGuard`);
+`require(supply + v > supply)` is `v ≠ 0` and no overflow, and the owner's balance cannot
+overflow first under the actors' supply bound; `redeem`'s `supply ≥ v` follows from the balance
+check under the same bound.
 -/
 
 namespace Verified.WeirdERC20.USDT.Spec
@@ -303,6 +306,101 @@ theorem params_spec (hs : usdtAbs.Sound crypto Act) (hl : Live Act w t) (c : Add
     · exact FrameKeeps.sstore (FrameKeeps.sstore (frameKeeps_refl _ _ _ _)
         (fk_fixed (.inr (.inl rfl))) _) (fk_fixed (.inr (.inr rfl))) _
 
+/-- The owner bytes of slot 0 survive the `pause()`/`unpause()` write. -/
+theorem ownerField_pause (b : Bool) (y : Word) :
+    ownerField.get (pauseFlag b |||
+      115792089237316195423570984636004990333889740523700931696805413995650331181055#256 &&& y) =
+      ownerField.get y := by
+  simp only [ownerField, Field.get, Field.mask]
+  rw [Nat.mul_zero, BitVec.ushiftRight_zero, BitVec.ushiftRight_zero, BitVec.and_or_distrib_right,
+    BitVec.and_assoc, BitVec.and_comm y, ← BitVec.and_assoc,
+    show (115792089237316195423570984636004990333889740523700931696805413995650331181055#256 :
+      Word) &&& BitVec.allOnes 256 >>> (256 - 8 * 20) = BitVec.allOnes 256 >>> (256 - 8 * 20)
+      by decide, BitVec.and_comm _ y]
+  cases b
+  · simp only [pauseFlag, Bool.false_eq_true, ↓reduceIte, BitVec.zero_and, BitVec.zero_or]
+  · simp only [pauseFlag, ↓reduceIte]
+    rw [show (1461501637330902918203684832716283019655932542976#256 : Word) &&&
+      BitVec.allOnes 256 >>> (256 - 8 * 20) = 0#256 by decide, BitVec.zero_or]
+
+/-- The `paused` byte after the `pause()`/`unpause()` write is the flag. -/
+theorem pausedField_pause (b : Bool) (y : Word) :
+    (pausedField.get (pauseFlag b |||
+      115792089237316195423570984636004990333889740523700931696805413995650331181055#256 &&& y)
+      != 0) = b := by
+  simp only [pausedField, Field.get, Field.mask]
+  rw [BitVec.ushiftRight_or_distrib, BitVec.and_or_distrib_right, BitVec.ushiftRight_and_distrib,
+    BitVec.and_assoc, BitVec.and_comm (y >>> _), ← BitVec.and_assoc (_ >>> _),
+    show (115792089237316195423570984636004990333889740523700931696805413995650331181055#256 :
+      Word) >>> (8 * 20) &&& BitVec.allOnes 256 >>> (256 - 8 * 1) = 0#256 by decide,
+    BitVec.zero_and, BitVec.or_zero]
+  cases b <;> decide
+
+/-- **The `pause()`/`unpause()` write**: the scope is kept and only `paused` changes, to the
+flag. -/
+theorem write_pause (hs : usdtAbs.Sound crypto Act) (hl : Live Act w t) (b : Bool) :
+    Live Act (pauseW w t b) t ∧
+    readState crypto Act (pauseW w t b) t = { readState crypto Act w t with paused := b } := by
+  have hs' : ActorRows crypto Act [balancesSlot, blackSlot] [allowedSlot] fixedSlots := hs
+  have hkf : (0#256 : Word) ∈ fixedSlots := by simp [fixedSlots]
+  have hne : ∀ j : Word, j ≠ 0#256 → (pauseW w t b).sload t j = w.sload t j :=
+    fun j hj => World.sload_sstore_ne_key _ _ _ hj
+  have h0 : (pauseW w t b).sload t 0 = pauseFlag b |||
+      115792089237316195423570984636004990333889740523700931696805413995650331181055#256 &&&
+        w.sload t 0 := World.sload_sstore_self _ _ _ _
+  have hown : ownerOf (pauseW w t b) t = ownerOf w t := by
+    simp only [ownerOf]; rw [h0, ownerField_pause]
+  have hpaused : pausedOf (pauseW w t b) t = b := by
+    simp only [pausedOf]; rw [h0, pausedField_pause]
+  have hrow1 : ∀ b' ∈ [balancesSlot, blackSlot], ∀ a ∈ Act,
+      (pauseW w t b).sload t (mappingSlot crypto (Word.ofAddress a) b') =
+        w.sload t (mappingSlot crypto (Word.ofAddress a) b') :=
+    fun b' hb a ha => hne _ (fun e => hs'.fixed1 b' hb a ha (by rw [e]; exact hkf))
+  refine ⟨?_, ?_⟩
+  · unfold Live at hl ⊢
+    rw [hown, hne 10 (by decide), hne decimalsSlot (by decide)]
+    exact hl
+  · have hbal : readMap crypto Act (pauseW w t b) t balancesSlot =
+        readMap crypto Act w t balancesSlot :=
+      readMap_congr fun k' ⟨a, ha, e⟩ => by subst e; exact hrow1 _ (by simp) a ha
+    have hal : readMap2 crypto Act (pauseW w t b) t allowedSlot =
+        readMap2 crypto Act w t allowedSlot :=
+      readMap2_congr fun k' ⟨o, ho, sp, hsp, e⟩ => by
+        subst e
+        exact hne _ (fun e => hs'.fixed2 allowedSlot (by simp) o ho sp hsp (by rw [e]; exact hkf))
+    have hbl : blacklistedOf crypto Act (pauseW w t b) t = blacklistedOf crypto Act w t := by
+      funext a
+      simp only [blacklistedOf]
+      by_cases ha : a ∈ Act
+      · rw [hrow1 blackSlot (by simp) a ha]
+      · simp [ha]
+    have hbal' : (pauseW w t b).balance t = w.balance t := World.balance_sstore _ _ _ _ _
+    simp only [readState, hown, hpaused, hbal, hal, hbl, hbal',
+      readSlot_congr (hne supplySlot (by decide)), readSlot_congr (hne bpsSlot (by decide)),
+      readSlot_congr (hne maxFeeSlot (by decide))]
+
+/-- **`pause()` (`b = true`) / `unpause()` (`b = false`).** -/
+theorem pause_spec (hs : usdtAbs.Sound crypto Act) (hl : Live Act w t) (c : Address) (b : Bool) :
+    (¬ pauseOk w t c b → M.op (readState crypto Act w t) (.setPaused c b) = none) ∧
+    (pauseOk w t c b → ∃ s', M.op (readState crypto Act w t) (.setPaused c b) = some s' ∧
+      read crypto Act (pauseW w t b) t = s' ∧
+      FrameKeeps usdtAbs crypto Act t w (pauseW w t b)) := by
+  have had : ownerA w t = (readState crypto Act w t).admin := rfl
+  have hp : ((readState crypto Act w t).paused ≠ b) ↔ (pausedW w t = 0#256 ↔ b = true) := by
+    have := paused_iff (crypto := crypto) (Act := Act) (w := w) (t := t)
+    cases b <;> cases hq : (readState crypto Act w t).paused <;> simp_all
+  rw [op_setPaused]
+  unfold pauseOk
+  rw [had, ← hp]
+  constructor
+  · intro hn; simp only [hn, ↓reduceIte]
+  · intro h1
+    rw [ite_eq_left h1]
+    refine ⟨_, rfl, ?_, ?_⟩
+    · obtain ⟨hl1, hr1⟩ := write_pause hs hl b
+      rw [read_eq_of_live hl1, hr1]
+    · exact FrameKeeps.sstore (frameKeeps_refl _ _ _ _) (.inl (by simp [fixedSlots])) _
+
 end Ops
 
 /-- The address mask on a word: its address. -/
@@ -328,7 +426,21 @@ theorem usdt_ops : OpSpec USDT.runtimeCode usdtAbs M g₀ ops opAddrs := by
   have hval : m.frame.msg.value = 0 := BitVec.eq_of_toNat_eq (by simpa using hv0)
   obtain ⟨hl, hpre, hsub⟩ := start_facts hs hval
   have hg : g₀ ≤ m.frame.gasLeft + (g₀ - m.frame.gasLeft) := by omega
-  split_ifs at hop with h1 h2 h3 h4 h5 h6
+  split_ifs at hop with hp hu h1 h2 h3 h4 h5 h6
+  · obtain rfl := Option.some.inj hop
+    obtain ⟨hn, hsm⟩ := pause_spec (w := m.world) (t := m.frame.msg.currentTarget) hs.sound hl
+      m.frame.msg.caller true
+    refine (halts_of_high hs.fresh (Post := OpOut _ _ m) (fun _ _ _ h => opOut_halt h)
+      (fun _ _ h => h) (pause_high m hs.fresh _ true hg (by rw [hp]; rfl) hsz hs.size
+        hval)).mono fun mf o _ h => ?_
+    exact opOut_spec (by rw [hpre]; exact hn) (by rw [hpre]; exact hsm) h
+  · obtain rfl := Option.some.inj hop
+    obtain ⟨hn, hsm⟩ := pause_spec (w := m.world) (t := m.frame.msg.currentTarget) hs.sound hl
+      m.frame.msg.caller false
+    refine (halts_of_high hs.fresh (Post := OpOut _ _ m) (fun _ _ _ h => opOut_halt h)
+      (fun _ _ h => h) (pause_high m hs.fresh _ false hg (by rw [hu]; rfl) hsz hs.size
+        hval)).mono fun mf o _ h => ?_
+    exact opOut_spec (by rw [hpre]; exact hn) (by rw [hpre]; exact hsm) h
   · obtain rfl := Option.some.inj hop
     have hu : argAddr m.frame.msg.data 0 ∈ Act := hA _ (by simp [opAddrs])
     obtain ⟨hn, hsm⟩ := blackSet_spec (w := m.world) (t := m.frame.msg.currentTarget) hs.sound hl

@@ -295,18 +295,26 @@ witness state, well formed (`Variant.WF`) except where noted. Namespace
 | `usdt` | ✗ `usdt_approve_empty` | ✓ | ✗ `usdt_invalid_witness` | ✓ on `NoFee` (`bps = 0`); ✗ on `WF`, `usdt_fee_witness` | ✓ | ✓ | ✓ | ✓ |
 | `bnb` | ✗ `bnb_empty_witness` | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
 | `sta` | ✓ | ✓ | ✗ `sta_invalid_witness` | ✗ on `WF`, `sta_fee_witness` (no state is `NoFee`: `sta_not_noFee`) | ✗ `sta_fee_witness` | ✓ | ✓ | ✓ |
-| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`), `ampl_scale_zero_witness` | ✓ | ✓ | ✓ | ✓ |
+| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`), `ampl_scale_zero_witness` | ✓ | ✓ | ✗ zero-owner `permit` in every state, `ampl_permit_zero_witness` | ✓ |
 
 One theorem per row: `standard_laws`, `oz_laws`, `solady_laws`, `weth9_laws` (`Standard` in all
 states), `usdt_laws`, `bnb_laws`, `sta_laws`, `ampl_laws` (a conjunction; refutations need two
 accounts, `[Nontrivial A]`). The rows rest on generic lemmas over any variant: `law_exactMoves`
 (`ExactMoves (NoFee V)` for every variant, rebasing included), `law_debitAuth` and
-`law_allowanceAuth` (every variant, unconditionally), `law_supplyFixed` (fee absent or paid to
+`law_allowanceAuth` (every variant whose `permit` rejects the zero owner, `RejectsZeroOwner`: all
+but AMPL), `law_supplyFixed` (fee absent or paid to
 the owner), `law_revertsOnly`, `law_returnsTrue`, `law_noFalseReturn`, `law_wfInvariant`
 (`Sane`). AMPL's rounding never shows in `transfer`/`transferFrom`: a transfer of `v` moves
 `v · scale` gons, exactly `v` in the `balanceOf` view; only `transferAll` (an operation, not a
-call) moves dust. AMPL's zero-owner `permit` (`ampl_permit_zero_owner`) satisfies
-`AllowanceAuth` as stated, since the failed recovery returns `0`, which is the owner.
+call) moves dust. `AllowanceAuth` admits a `permit` only for an owner `o ≠ 0`, since `ecrecover`
+returns `0` when recovery fails: AMPL's `permit` has no zero check, so any caller sets
+`allowance(0, sp)` with a failed signature (`ampl_permit_zero_owner`), and AMPL fails the law
+(`ampl_not_allowanceAuth`).
+
+The tokens with a model of their own decide the laws for it: `bnbModel_laws` (BNB's
+credit-overflow guard), `usdtModel_laws` (USDT's pause guard, `WFInvariant` for the actors'
+supply bound `YAMV2.SubSupply`; not exact on it, as on `WF`), `yamv2_laws`, `zrx_laws`,
+`lend_laws`, `gusd_laws`.
 
 ## Bytecode spec per token (spec layer)
 
@@ -323,7 +331,7 @@ per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` o
 | Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec`; `permit` ✓ on the deployment chain and short names off it (`permit_spec_case`) | 100000 | `permit` off-chain with `name` ≥ 32 bytes; `MalformedSpec` |
 | Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | 100000 | `PermitSpec`, `MalformedSpec` |
 | WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | 100000 | `withdraw` (calls the caller; `withdraw_halts_refines`) |
-| USDT (mainnet) | `Variant.usdt` | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `pause`/`unpause` (the model's `setPaused` never fails; the code does) |
+| USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks (a repeated `pause`/`unpause` reverts) | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `deprecate`, `transferOwnership` (not in the model) |
 | BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
 | STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
 | AMPL (`UFragments` in the proxy's storage) | `Variant.ampl` | ✓ `ampl_spec` | 100000 | `rebase`, owner functions; the proxy's dispatch |

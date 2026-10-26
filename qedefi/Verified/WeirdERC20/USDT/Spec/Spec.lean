@@ -12,8 +12,8 @@ gas `g₀ = 200000`, for every actor set: the three calls (`usdt_transfer`, `usd
 fallback on unknown selectors and short calldata, and the admin entry points `ops` decodes.
 
 The scope is `usdtAbs`'s `Live` (not deprecated, six decimals, the owner an actor); outside it
-the abstraction reads a state the model's invariant excludes. `pause()`/`unpause()` are not
-among `ops` (the code reverts on a repeated pause, the model's `setPaused` does not).
+the abstraction reads a state the model's invariant excludes. `pause()`/`unpause()` are among
+`ops`, as the model's guarded `setPaused` (a repeated pause or unpause fails in both).
 -/
 
 namespace Verified.WeirdERC20.USDT.Spec
