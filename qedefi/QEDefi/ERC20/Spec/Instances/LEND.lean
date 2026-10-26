@@ -355,7 +355,8 @@ theorem debitAuth : (model : TokenModel (State A) A (Op A)).DebitAuth := by
   | other value => rw [(buy_eq_some h).1 o ho] at hlt; exact absurd hlt (lt_irrefl _)
   | permit o' sp' v' l' r' => rw [(buy_eq_some h).1 o ho] at hlt; exact absurd hlt (lt_irrefl _)
 
-theorem allowanceAuth : (model : TokenModel (State A) A (Op A)).AllowanceAuth := by
+/-- `AllowanceAuth` (it names the zero address, the failed recovery of a `permit`: `[Zero A]`). -/
+theorem allowanceAuth [Zero A] : (model : TokenModel (State A) A (Op A)).AllowanceAuth := by
   intro s caller c s' r o sp h ho hne
   obtain ⟨h, -⟩ := step_of_call h
   simp only [model] at hne
@@ -410,7 +411,7 @@ theorem wfInvariant : (model : TokenModel (State A) A (Op A)).WFInvariant := by
       simp only [model, stepOp] at h; split_ifs at h; cases h; exact ⟨hp, he⟩
 
 /-- **LEND satisfies every standard law** (moves exact in every state). -/
-theorem lend_laws : (model : TokenModel (State A) A (Op A)).Standard fun _ => True where
+theorem lend_laws [Zero A] : (model : TokenModel (State A) A (Op A)).Standard fun _ => True where
   returnsTrue := returnsTrue
   noFalseReturn := noFalseReturn
   revertsOnly := revertsOnly

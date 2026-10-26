@@ -458,7 +458,8 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
       sound := by rw [hd.context]; exact hsound
       wf := by
         show M.wf (abs.read m.ctx.crypto Act m.frame.snapshot.1 m.frame.msg.currentTarget)
-        rw [hd.context, ht]; exact hd.snapshot.1.2 }
+        rw [hd.context, ht]; exact hd.snapshot.1.2
+      hasCode := by rw [ht, hwcode]; exact hreal }
   have hsupW : supply m.world < 2 ^ 256 := by
     rw [hd.world_eq]
     unfold transferValue

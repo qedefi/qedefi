@@ -103,7 +103,8 @@ theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenMode
     {Act : Finset Address} {ctx : Context} {w : World} {tr : TransientStorage} {msg : Message}
     (hcode : msg.code = code) (hval : msg.value = 0) (hsize : msg.data.size < 2 ^ 64)
     (hcaller : msg.caller ∈ Act) (hsound : abs.Sound ctx.crypto Act)
-    (hwf : M.wf (abs.read ctx.crypto Act w msg.currentTarget)) :
+    (hwf : M.wf (abs.read ctx.crypto Act w msg.currentTarget))
+    (hhas : (w.code msg.currentTarget).size ≠ 0) :
     Start code abs M Act (startMachine ctx w tr msg) where
   fresh := hcode ▸ fresh_startMachine ctx w tr msg
   launched := (transferValue_zero w msg hval).symm
@@ -113,6 +114,7 @@ theorem start_startMachine {code : ByteArray} {abs : TokenAbs σ} {M : TokenMode
   caller := hcaller
   sound := hsound
   wf := hwf
+  hasCode := hhas
 
 /-- **A top-level call to the token at `a`**: `a` holds the token's code `code`, which is real
 code (not empty, not an EIP-7702 designator), and is not a precompile; the message calls `a`
@@ -198,8 +200,9 @@ theorem start_ok (h : Msg code ctx w msg a) {abs : TokenAbs σ} {M : TokenModel 
     Start code abs M Act (start ctx w tr msg) := by
   obtain ⟨hcode, hct, hcl, -, -, hval, -, hdata⟩ := h.dmsg_facts
   refine start_startMachine hcode hval (by rw [hdata]; exact h.size) (by rw [hcl]; exact hcaller)
-    hsound ?_
-  rw [hct, h.read]; exact hwf
+    hsound ?_ ?_
+  · rw [hct, h.read]; exact hwf
+  · rw [hct, h.worldCode]; exact h.real
 
 /-- The model state at the start of the frame is the token's state before the call. -/
 theorem pre_start (h : Msg code ctx w msg a) (abs : TokenAbs σ) (Act : Finset Address)
