@@ -325,19 +325,20 @@ new state, events, nothing else changed), or, below `g₀` gas, static or with v
 per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` of each token),
 `g₀` and the decoder of the other entry points.
 
-| Token | Model | `ERC20Spec` | `g₀` | Not covered |
-|---|---|---|---|---|
-| OpenZeppelin `ERC20Mock` | `Variant.oz` (`Instances/Oz.lean`) | ✓ `oz_erc20Spec` | 100000 | `MalformedSpec` |
-| Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec`; `permit` ✓ on the deployment chain and short names off it (`permit_spec_case`) | 100000 | `permit` off-chain with `name` ≥ 32 bytes; `MalformedSpec` |
-| Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | 100000 | `PermitSpec`, `MalformedSpec` |
-| WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | 100000 | `withdraw` (calls the caller; `withdraw_halts_refines`) |
-| USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks (a repeated `pause`/`unpause` reverts) | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `deprecate`, `transferOwnership` (not in the model) |
-| BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
-| STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
-| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, with `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership` and `rebase` as the code computes them | ✓ `ampl_spec` (an initialized instance: `Live`); `MalformedSpec` ✓ `ampl_malformed` from the well-formed `permit` frames (`PermitResidue`) | 100000 | `PermitSpec`; the proxy's dispatch |
-| ZRX (mainnet) | own model (`Instances/ZRX.lean`) | stated (`zrxSpec`); views ✓ at `g₀` without value | 100000 | the rest |
-| YAMv2, LEND (mainnet) | own models | stated (`yamv2Spec`, `lendSpec`) | 100000, 150000 | proofs; LEND only in its final sale state |
-| GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | |
+| Token | Model | `ERC20Spec` | Complete (`permit`, malformed calldata) | `g₀` | Not covered (`excl`, or open) |
+|---|---|---|---|---|---|
+| OpenZeppelin `ERC20Mock` | `Variant.oz` | ✓ `oz_erc20Spec` | ✓ `oz_complete` | 100000 | |
+| Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec` | `permit` ✓ `solmate_permit` (every name and chain); malformed ✓ except two `permit` cases (`PermitResidue`: `0x01` delegated, gas ≥ 2⁶⁴) | 100000 | |
+| Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | malformed ✓ except `permit` frames | 100000 | `permit`: the code accepts owner `0` and bumps the nonce by the `ecrecover` call's success flag, which the model cannot state under an arbitrary `Crypto` (about 2¹⁶⁰ work with real Keccak) |
+| WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | ✓ `weth9_complete` | 100000 | `withdraw` (sends ether to and runs the caller; `withdraw_halts_refines`) |
+| USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | ✓ `usdt_complete` | 200000 | `transferOwnership`, `deprecate` |
+| BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | ✓ `bnb_complete` | 100000 | `withdrawEther` (depends on the owner's code) |
+| STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | ✓ `sta_complete` | 200000 | |
+| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership`, `rebase` | ✓ `ampl_spec` (initialized instance) | malformed ✓ `ampl_malformed` except `permit` frames | 100000 | `PermitSpec` (in progress); the proxy's dispatch |
+| ZRX (mainnet) | own model | ✓ `zrx_spec` | | 100000 | malformed calldata |
+| LEND (mainnet) | own model (final sale state) | ✓ `lend_spec` | | 150000 | malformed calldata |
+| YAMv2 (mainnet) | own model | ✓ `yamv2_spec` | | 100000 | malformed calldata |
+| GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | | |
 
 **What every token gets from its spec, proved once** (`Spec/TopLevel.lean`, `Callee.lean`,
 `Asset.lean`, `Invariant.lean`, `QEDefi/ERC4626/AssetModel.lean`): the result of a top-level
