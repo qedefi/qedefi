@@ -316,4 +316,50 @@ theorem pl_ds_long {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {rest
       fun m₂ _ h₂ => ?_
     exact pl_ds_tail (L := L) m₂ h₂ hndef.symm (by rw [hLdef]) hL hL2 hlen (by omega) hr
 
+
+theorem and_one_cases (S : Word) : S &&& 1#256 = 0#256 ∨ S &&& 1#256 = 1#256 := by
+  rcases Nat.mod_two_eq_zero_or_one S.toNat with h | h
+  · exact .inl (Str.and_one_of_even h)
+  · exact .inr (Str.and_one_of_odd h)
+
+set_option maxHeartbeats 0 in
+/-- **`DOMAIN_SEPARATOR()` off the deployment chain with an inconsistent slot word** (a short
+form of 32 bytes or more, or a long one below 32: `nameBytes` is `none`): the packed encoder
+`0x0a66` reverts with `Panic(0x22)`. -/
+theorem pl_ds_panic {ia : SolmateAsset.Immutables} (m : Machine) {r : Word} {rest : List Word}
+    (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
+    (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
+    (hpc : m.frame.pc = 1060) (hs : m.frame.stack = r :: rest) (hlen : rest.length ≤ 1000)
+    (hfmp : m.frame.memory.loadWord 64 = 128#256) (hsize : m.frame.memory.size = 96)
+    (hne : ofNat m.ctx.block.chainId ≠ ia.initialChainId)
+    (hnone : nameBytes m.ctx.crypto (m.world.sload m.frame.msg.currentTarget) = none)
+    (hg : 10000 ≤ m.frame.gasLeft) :
+    WP m (fun _ => False) (fun _ o => ∃ out, o = .revert out) := by
+  have hagree := assetJumpDestsAgree ia
+  obtain ⟨m_ctx, m_pre, m_world, m_transient, m_originalWorld, m_created,
+    ⟨m_msg, m_code, m_jumpDests, m_pc, m_stack, m_memory, m_gasLeft, m_returnData, m_sub,
+      m_snapshot, m_kind⟩, m_parents⟩ := m
+  dsimp only at *
+  subst hc hpc hs
+  have hne' : Word.eq (ofNat m_ctx.block.chainId) ia.initialChainId = 0#256 := eq_of_ne hne
+  unfold nameBytes at hnone
+  generalize hS : m_world.sload m_msg.currentTarget 0#256 = S at hnone
+  rcases and_one_cases S with h0 | h1
+  · -- short form, length from 32
+    simp only [h0, ↓reduceIte] at hnone
+    have hl : ¬ (Permit.shortLength S).toNat < 32 := by
+      intro h; simp [h] at hnone
+    have hlt : Word.lt (Word.shr 1#256 S &&& 127#256) 32#256 = 0#256 :=
+      (Word.lt_eq_zero_iff _ _).2 (by simp only [Permit.shortLength] at hl; simpa using hl)
+    pwp_steps [hne', readBytes_asset_chainId, hfmp, hsize, hS, h0, hlt, permit_norm]
+    exact ⟨_, rfl⟩
+  · -- long form, length below 32
+    have h10 : ¬ (1#256 : Word) = 0#256 := by decide
+    simp only [h1, h10, ↓reduceIte] at hnone
+    have hl : (Word.shr 1#256 S).toNat < 32 := by
+      by_contra h; simp [Nat.le_of_not_lt h] at hnone
+    have hlt : Word.lt (Word.shr 1#256 S) 32#256 = 1#256 := (Word.lt_eq_one_iff _ _).2 (by simpa)
+    pwp_steps [hne', readBytes_asset_chainId, hfmp, hsize, hS, h1, hlt, permit_norm]
+    exact ⟨_, rfl⟩
+
 end Verified.Solmate.ERC20.Spec
