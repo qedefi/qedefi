@@ -14,16 +14,17 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split' eq_zero_of_iszero_ne ite_pos' ite_neg')
 open Verified.Solady.Spec.AnyGas QEDefi.ERC4626
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 set_option linter.unusedSimpArgs false in
-theorem ampl_call_transferFrom (s : VState Address) (c src d : Address) (v : ℕ) :
+theorem ampl_call_transferFrom (s : AState Address) (c src d : Address) (v : ℕ) :
     M.call s c (.transferFrom src d v) =
       if d = 0 ∨ d = s.self ∨ s.allowance src c < v ∨ s.bal src < s.scale * v then .halt .revert
-      else .ok (VState.setAllowance
+      else .ok (AState.setAllowance
         { s with
           bal := (s.bal - Finsupp.single src (s.scale * v) + Finsupp.single d (s.scale * v)) }
         src c (s.allowance src c - v)) (.word true) := by
-  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.model_call]
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.model_call]
   by_cases h1 : d = 0
   · subst h1
     simp [Variant.call, Variant.step, Variant.transferFrom, Variant.moveOk, Variant.ampl,
@@ -42,11 +43,11 @@ theorem ampl_call_transferFrom (s : VState Address) (c src d : Address) (v : ℕ
   · simp [h1', h2, ha, h3, Variant.call, Variant.step, Variant.transferFrom, Variant.moveOk,
       Variant.spend, Variant.move, Variant.units, Variant.ampl, Variant.standard,
       Variant.failKind, Variant.guardOk, Variant.overflows, Variant.feeOverflow, Variant.failWith,
-      Infinite.test, VState.setAllowance]
+      Infinite.test, VState.setAllowance, AState.setAllowance]
   · simp [h1', h2, ha, h3, Variant.call, Variant.step, Variant.transferFrom, Variant.moveOk,
       Variant.spend, Variant.move, Variant.units, Variant.ampl, Variant.standard,
       Variant.feeOverflow, Variant.feeOf, Variant.credit, Variant.retData, Infinite.test,
-      VState.setAllowance]
+      VState.setAllowance, AState.setAllowance]
 
 /-- **AMPL's move through the abstraction**: the debit and the credit of `g` gons, when the
 source covers `g` and the credit fits. -/
@@ -61,7 +62,7 @@ theorem amplRead_moveWorld {crypto : Crypto} {Act : Finset Address} {w : World}
   have hbalc := readMap_of_mem (crypto := crypto) hc w t 158#256
   rw [moveWorld, amplRead_sstore_bal hS hd, debitWorld, amplRead_sstore_bal hS hc]
   dsimp only
-  congr 1
+  congr 2
   ext a
   simp only [Finsupp.update_apply, Finsupp.coe_add, Finsupp.coe_tsub, Pi.add_apply,
     Pi.sub_apply, Finsupp.single_apply]
@@ -207,7 +208,7 @@ theorem call_transferFrom (src dst : Address) (v : ℕ) :
     rw [show (m.world.sload m.frame.msg.currentTarget
         (mappingSlot2 m.ctx.crypto (Word.ofAddress src) (Word.ofAddress m.frame.msg.caller) 159#256) -
           word v).toNat = _ from hsub]
-    simp [VState.setAllowance, hall]
+    simp [VState.setAllowance, AState.setAllowance, hall]
     exact ⟨rfl, rfl⟩
   · rw [hw, moveWorld, debitWorld, allowWorld]
     exact BNB.Spec.FrameKeeps.sstore' (.inr (.inr (.inr (.inl ⟨_, hdA, rfl⟩))))
@@ -215,6 +216,6 @@ theorem call_transferFrom (src dst : Address) (v : ℕ) :
         (BNB.Spec.FrameKeeps.sstore' (.inr (.inr (.inr (.inr (.inl ⟨_, hsA, _, hcA, rfl⟩)))))
           BNB.Spec.frameKeeps_refl'))
   · rw [hl]
-    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, QEDefi.ERC20.Spec.AMPL.amplEvents, Spec.eventLog]
+    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, QEDefi.ERC20.Spec.AMPL.amplEvents, Spec.eventLog]
 
 end Verified.WeirdERC20.AMPL.Spec

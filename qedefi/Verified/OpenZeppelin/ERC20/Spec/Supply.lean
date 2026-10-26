@@ -43,7 +43,8 @@ theorem oz_supply_eq_sum {crypto : Crypto} {Act : Finset Address} {a : Address} 
       (w'.sload a Layout.oz.totalSupply).toNat := by
   have := variant_conserved (V := Variant.oz) (ev := ozEvents) Variant.oz_sane rfl rfl
     oz_erc20Spec (fun _ _ h => by cases h) ozAbs_etherFree hsound
-    (by rw [OzAsset.size_runtimeCode]; decide) delegatedAddress?_runtimeCode ⟨hw, hsup⟩ h
+    (by rw [OzAsset.size_runtimeCode]; decide) (by rw [OzAsset.size_runtimeCode]; decide)
+    delegatedAddress?_runtimeCode ⟨hw, hsup⟩ h
   simp only [ozAbs_read, ozRead, total_readMap] at this
   simpa [total, readSlot, balanceSlot] using this
 

@@ -89,10 +89,10 @@ def hwpStep (extra : Array (TSyntax `Lean.Parser.Tactic.simpLemma)) :
     return ← run (← `(tactic| refine pwp_swap ⟨$nS, by decide⟩ ‹_› $hb rfl rfl ?_)) 1
   if bn = 0x39 then
     return ← run (← `(tactic| refine pwp_codecopy ‹_› $hb rfl (by decide) ?_)) 1
-  if bn = 0x55 ∨ bn = 0xa2 ∨ bn = 0xa3 then
+  if bn = 0x55 ∨ bn = 0xa1 ∨ bn = 0xa2 ∨ bn = 0xa3 then
     -- keep the `isStatic = false` the rule provides (a success's postcondition needs it)
     let lS := mkIdent (if bn = 0x55 then ``pwp_sstore_any
-      else if bn = 0xa2 then ``pwp_log2 else ``pwp_log3)
+      else if bn = 0xa1 then ``pwp_log1 else if bn = 0xa2 then ``pwp_log2 else ``pwp_log3)
     if ← attempt (do
         evalTactic (← `(tactic| refine $lS ‹_› $hb rfl ?_))
         evalTactic (← `(tactic| intro hstatic))

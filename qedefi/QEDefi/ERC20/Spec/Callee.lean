@@ -27,7 +27,7 @@ namespace Callee
 
 /-- **`Start` holds for the frame `launchCall` pushes**, from a machine running the standard
 precompiles (as every machine the interpreter builds does), for a call running the token's code
-(not a precompile) at an account holding code, whose value is zero or moves from another
+(not a precompile) at an account holding code shorter than `2²⁵⁶` bytes, whose value is zero or moves from another
 account without wrapping the token's balance, with payable calldata, for actors containing the
 caller whose hash hypotheses hold, from a world where the token's model state satisfies its
 invariant. -/
@@ -41,7 +41,8 @@ theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel 
     (hsize : req.msg.data.size < 2 ^ 64) (hcaller : req.msg.caller ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
     (hwf : M.wf (abs.read m.ctx.crypto Act m.world req.msg.currentTarget))
-    (hhas : (m.world.code req.msg.currentTarget).size ≠ 0) :
+    (hhas : (m.world.code req.msg.currentTarget).size ≠ 0)
+    (hbound : (m.world.code req.msg.currentTarget).size < 2 ^ 256) :
     Start code abs M Act (launchCall m req) := by
   have hl : launchCall m req =
       { m with
@@ -61,7 +62,10 @@ theorem start_launchCall {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel 
       wf := hwf
       hasCode := by
         show ((transferValue m.world req.msg).code req.msg.currentTarget).size ≠ 0
-        rw [(Nested.keep_transferValue (msg := req.msg) hhas).code]; exact hhas }
+        rw [(Nested.keep_transferValue (msg := req.msg) hhas).code]; exact hhas
+      codeBound := by
+        show ((transferValue m.world req.msg).code req.msg.currentTarget).size < 2 ^ 256
+        rw [(Nested.keep_transferValue (msg := req.msg) hhas).code]; exact hbound }
 
 /-! ## How the token's frame ends, for its caller -/
 
@@ -123,6 +127,7 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -155,7 +160,10 @@ theorem call {c : Call Address} (hc : CallSpec code abs M g₀ c)
       wf := hwf
       hasCode := by
         show (m.world.code (Word.toAddress toW)).size ≠ 0
-        rw [htok]; exact hreal }
+        rw [htok]; exact hreal
+      codeBound := by
+        show (m.world.code (Word.toAddress toW)).size < 2 ^ 256
+        rw [htok]; exact hbound }
   refine WP.call0 hcode hstk hdel hgas hdepth hpre (hc Act mc hs he haddrs) fun mf o hH hsf => ?_
   refine k mf o hsf ?_
   rcases hH with hm | ⟨hf, hn⟩
@@ -176,6 +184,7 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ c.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -192,7 +201,7 @@ theorem call_normal {c : Call Address} (hc : CallSpec code abs M g₀ c)
       WP (resumeAfter (call0Caller m gas toW inOff inSize outOff outSize rest) m.parents mf o)
         Q H) :
     WP m Q H :=
-  call hc hcode hstk hdel hgas hdepth hpre hstd htok hreal hsize hcaller haddrs hsound hwf he
+  call hc hcode hstk hdel hgas hdepth hpre hstd htok hreal hbound hsize hcaller haddrs hsound hwf he
     fun mf o hsf h => h.elim (k mf o hsf) fun hf => (hf.2 ⟨hg₀, hstatic⟩).elim
 
 /-! ## `STATICCALL` of a view -/
@@ -223,6 +232,7 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
     (hpre : m.precompiles.isPrecompile (Word.toAddress toW) = false)
     (hstd : m.precompiles = PrecompileImpl.standard m.ctx)
     (htok : m.world.code (Word.toAddress toW) = code) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hsize : inSize.toNat < 2 ^ 64)
     (hcaller : m.frame.msg.currentTarget ∈ Act) (haddrs : ∀ x ∈ v.addrs, x ∈ Act)
     (hsound : abs.Sound m.ctx.crypto Act)
@@ -253,7 +263,10 @@ theorem view {v : View} (hv : ViewSpec code abs M g₀ v)
       wf := hwf
       hasCode := by
         show (m.world.code (Word.toAddress toW)).size ≠ 0
-        rw [htok]; exact hreal }
+        rw [htok]; exact hreal
+      codeBound := by
+        show (m.world.code (Word.toAddress toW)).size < 2 ^ 256
+        rw [htok]; exact hbound }
   refine WP.staticcall hcode hstk hdel hgas hdepth hpre (hv Act mc hs he haddrs)
     fun mf o hH hsf => k mf o hsf ?_
   rcases hH with ⟨x, ho, hx, hw, htr, -, hlogs⟩ | ⟨hf, hn⟩
