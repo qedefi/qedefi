@@ -17,7 +17,7 @@ assumes only the laws it needs (a vault's no-dilution needs `ExactMoves`, not `R
 | `ExactMoves P` | a transfer of `v` between distinct accounts moves exactly `v` (in states `P`) | USDT with a fee, STA |
 | `SupplyFixed` | transfers and approvals leave `totalSupply` | STA (burns the fee) |
 | `DebitAuth` | only `transferFrom` lowers another account's balance | |
-| `AllowanceAuth` | another account's allowance changes only by its spender's `transferFrom` or its `permit` signature | |
+| `AllowanceAuth` | another account's allowance changes only by its spender's `transferFrom` or its `permit` signature (never a failed recovery: the owner is not `0`) | AMPL (zero-owner `permit`) |
 | `WFInvariant` | the model's invariant survives every call and operation | |
 
 `Standard M P` bundles them. The ERC-20 events are not a law: each model states its own
@@ -78,12 +78,17 @@ def DebitAuth : Prop :=
 
 /-- **Allowances change only with their owner's consent**: a successful call by `caller` that
 changes `allowance(o, sp)` for `o ≠ caller` is the spender `sp = caller` spending it by
-`transferFrom` from `o`, or a `permit` for `(o, sp)` whose signature recovers to `o`. -/
-def AllowanceAuth : Prop :=
+`transferFrom` from `o`, or a `permit` for `(o, sp)` whose signature recovers to `o ≠ 0`.
+
+`ecrecover` returns `0` when recovery fails (`Call.permit`'s `rec`), so a failed recovery
+"recovers to" the owner `0`: the permit branch requires `o ≠ 0`, so that a failed recovery never
+authorises (AMPL's `permit`, without a zero check, lets anyone set `allowance(0, sp)`). Hence
+the `[Zero A]`: the address `0` is the recovery's failure value. -/
+def AllowanceAuth [Zero A] : Prop :=
   ∀ s caller (c : Call A) s' r o sp, M.call s caller c = .ok s' r → o ≠ caller →
     M.allowance s' o sp ≠ M.allowance s o sp →
       (sp = caller ∧ ∃ dst v, c = .transferFrom o dst v) ∨
-      (∃ v live rec n, c = .permit o sp v live rec ∧ rec n = o)
+      (∃ v live rec n, c = .permit o sp v live rec ∧ rec n = o ∧ o ≠ 0)
 
 /-- **The model's invariant is an invariant**: every successful call and every operation
 keeps `wf`. -/
@@ -91,8 +96,8 @@ def WFInvariant : Prop :=
   (∀ s caller (c : Call A) s' r, M.wf s → M.call s caller c = .ok s' r → M.wf s') ∧
   (∀ s (e : E) s', M.wf s → M.op s e = some s' → M.wf s')
 
-/-- **The standard laws**, in states satisfying `P`. -/
-structure Standard (P : σ → Prop) : Prop where
+/-- **The standard laws**, in states satisfying `P` (`[Zero A]` for `AllowanceAuth`). -/
+structure Standard [Zero A] (P : σ → Prop) : Prop where
   returnsTrue : M.ReturnsTrue
   noFalseReturn : M.NoFalseReturn
   revertsOnly : M.RevertsOnly

@@ -19,13 +19,14 @@ with an explicit witness state, well formed (`Variant.WF`) except where noted.
 | `usdt` | ✗ `approve` returns nothing | ✓ | ✗ `INVALID` on short balance | ✓ on `NoFee` (`bps = 0`); ✗ on `WF` (fee to owner) | ✓ | ✓ | ✓ | ✓ |
 | `bnb` | ✗ `transfer` returns nothing | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
 | `sta` | ✓ | ✓ | ✗ `INVALID` on fee overflow | ✗ on `WF` (burned fee; no state is `NoFee`) | ✗ burned fee | ✓ | ✓ | ✓ |
-| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`) | ✓ | ✓ | ✓ | ✓ |
+| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`) | ✓ | ✓ | ✗ zero-owner `permit` | ✓ |
 
 Theorems: `standard_laws`, `oz_laws`, `solady_laws`, `weth9_laws` (the bundle `Standard` in all
 states); `usdt_laws`, `bnb_laws`, `sta_laws`, `ampl_laws` (one conjunction per row, refutations
 under `[Nontrivial A]`: with one account there is no transfer between distinct accounts and no
 recipient `≠ 0`); witnesses `usdt_approve_empty`, `usdt_invalid_witness`, `usdt_fee_witness`,
-`bnb_empty_witness`, `sta_invalid_witness`, `sta_fee_witness`, `ampl_scale_zero_witness`.
+`bnb_empty_witness`, `sta_invalid_witness`, `sta_fee_witness`, `ampl_scale_zero_witness`,
+`ampl_permit_zero_witness`.
 
 The generic lemmas, over any `V : Variant A`, make the rows short:
 
@@ -36,12 +37,13 @@ The generic lemmas, over any `V : Variant A`, make the rows short:
   of `v` moves `v · scale` gons and `⌊(g ± v·k)/k⌋ = ⌊g/k⌋ ± v`, so AMPL's rounding never shows in
   a `transfer`/`transferFrom`; its dust moves only with `transferAll`, an operation);
 * `law_supplyFixed`: no fee, or the fee is paid to the owner;
-* `law_debitAuth`, `law_allowanceAuth`: for **every** variant, unconditionally (a fee raises the
-  owner's balance and takes from the recipient's credit at most what it received; a deposit
-  credits the caller; a `permit` changes only `(owner, spender)` and only when the recovered
-  signer is `owner`; the fallback touches no allowance). Note AMPL's zero-owner permit
-  (`ampl_permit_zero_owner`) passes `AllowanceAuth` as stated: the failed recovery returns `0`,
-  which *is* the owner `0`;
+* `law_debitAuth`: for **every** variant, unconditionally (a fee raises the owner's balance and
+  takes from the recipient's credit at most what it received; a deposit credits the caller);
+* `law_allowanceAuth`: for every variant whose `permit`, if any, rejects the zero owner
+  (`RejectsZeroOwner`: all but AMPL); a `permit` changes only `(owner, spender)` and only when
+  the recovered signer is `owner ≠ 0`; the fallback touches no allowance. AMPL's `permit` has
+  no zero check: a failed recovery returns `0`, so anyone sets `allowance(0, sp)`
+  (`ampl_permit_zero_owner`, `ampl_permit_zero_witness`), and `AllowanceAuth` fails;
 * `law_wfInvariant`: every `Sane` variant.
 -/
 @[expose] public noncomputable section
@@ -375,17 +377,44 @@ theorem law_allowance_step {s s' : VState A} {caller o sp : A} {c : Call A}
           exact hok.1.1.2
       · exact absurd rfl hne
 
-/-- **`AllowanceAuth` for every variant**: `approve` sets the caller's own allowances, a
-`transferFrom` spends the caller's allowance from `src`, a `permit` sets `(owner, spender)` only
-when the recovered signer is `owner`, and the fallback (WETH9 deposits, BNB) touches none. -/
-theorem law_allowanceAuth : (V.model ev).AllowanceAuth := by
+omit [DecidableEq A] [Zero A] in
+/-- The variant's EIP-2612 `permit`, if it has one, rejects the zero owner (Solmate's
+`recovered ≠ address(0)`, Solady's): a failed signature recovery, which returns `0`, never
+passes. -/
+def RejectsZeroOwner (V : Variant A) : Prop :=
+  ∀ rz w, V.permitRule = .eip2612 rz w → rz = true
+
+/-- A `permit` that changes `allowance(o, sp)` on a variant rejecting the zero owner has
+`o ≠ 0`. -/
+theorem law_permit_owner_ne_zero (hz : RejectsZeroOwner V) {s s' : VState A} {caller o sp : A}
+    {v : ℕ} {live : Bool} {rec : ℕ → A} (h : V.step s caller (.permit o sp v live rec) = some s')
+    (hne : s'.allowance o sp ≠ s.allowance o sp) : o ≠ 0 := by
+  simp only [step, permit] at h
+  split_ifs at h with hp hok
+  · rw [law_fallback_allowance V h] at hne
+    exact absurd rfl hne
+  · rintro rfl
+    unfold permitOk at hok
+    cases hr : V.permitRule with
+    | none => exact hp hr
+    | eip2612 rz w =>
+      obtain rfl := hz rz w hr
+      simp [hr] at hok
+
+/-- **`AllowanceAuth` for every variant rejecting the zero owner**: `approve` sets the caller's
+own allowances, a `transferFrom` spends the caller's allowance from `src`, a `permit` sets
+`(owner, spender)` only when the recovered signer is `owner ≠ 0`, and the fallback (WETH9
+deposits, BNB) touches none. -/
+theorem law_allowanceAuth (hz : RejectsZeroOwner V) : (V.model ev).AllowanceAuth := by
   intro s caller c s' r o sp h ho hne
   simp only [model_call, model_allowance] at h hne
   rcases law_call_eq_ok V h with ⟨hs, -⟩ | ⟨-, rfl, -⟩
   · unfold allowanceOf at hne
     split_ifs at hne
     · exact absurd rfl hne
-    · exact law_allowance_step V hs ho hne
+    · rcases law_allowance_step V hs ho hne with h1 | ⟨v, live, rec, n, rfl, hn⟩
+      · exact .inl h1
+      · exact .inr ⟨v, live, rec, n, rfl, hn, law_permit_owner_ne_zero V hz hs hne⟩
   · exact absurd rfl hne
 
 /-! ## Refuting a law from one outcome -/
@@ -565,6 +594,30 @@ theorem ampl_scale_zero_witness {a : A} (ha : a ≠ 0) :
   simp only [balanceOf, hr, hsc, ↓reduceIte]
   simp [wit]
 
+/-- **AMPL lets anyone set the zero owner's allowance**: in every state whose zero-owner nonce is
+below `MAX` (a checked increment), a `permit(0, sp, v, …)` by any caller whose signature
+recovery fails (`rec = fun _ => 0`, what `ecrecover` returns) succeeds and sets
+`allowance(0, sp) = v`. -/
+theorem ampl_permit_zero_witness (s : VState A) (c sp : A) (v : ℕ) (hn : s.nonces 0 < MAX) :
+    ∃ s', (ampl : Variant A).call s c (.permit 0 sp v true (fun _ => 0)) = .ok s' .empty ∧
+      (ampl : Variant A).allowanceOf s' 0 sp = v := by
+  refine ⟨_, by simp only [call, step, ampl_permit_zero_owner s c sp v hn]; rfl, ?_⟩
+  simp [allowanceOf, ampl, standard, VState.setAllowance]
+
+/-- **AMPL fails `AllowanceAuth`**: a caller `a ≠ 0` sets `allowance(0, a)` to `1` by a
+`permit` with a failed recovery (`ampl_permit_zero_witness`, at nonce `0`). -/
+theorem ampl_not_allowanceAuth [Nontrivial A] : ¬ ((ampl : Variant A).model ev).AllowanceAuth := by
+  obtain ⟨a, ha⟩ := exists_ne (0 : A)
+  intro hl
+  obtain ⟨s', hc, hal⟩ := ampl_permit_zero_witness (wit (0 : A) 0 0 1) a a 1 (by simp [wit, MAX])
+  have hne : ((ampl : Variant A).model ev).allowance s' 0 a ≠
+      ((ampl : Variant A).model ev).allowance (wit 0 0 0 1) 0 a := by
+    simp only [model_allowance, hal]
+    simp [allowanceOf, ampl, standard, wit]
+  rcases hl _ a _ s' _ 0 a hc (Ne.symm ha) hne with ⟨-, _, _, h⟩ | ⟨-, -, -, -, -, -, h0⟩
+  · cases h
+  · exact h0 rfl
+
 /-! ## The laws of each variant -/
 
 theorem law_ne_returnFalse {k : OnFail} (h : k = .revert ∨ k = .invalid) : k ≠ .returnFalse := by
@@ -594,7 +647,7 @@ theorem standard_laws : ((standard : Variant A).model ev).Standard (fun _ => Tru
     (law_exactMoves _ ev)
   supplyFixed := law_supplyFixed _ ev (Or.inl rfl)
   debitAuth := law_debitAuth _ ev
-  allowanceAuth := law_allowanceAuth _ ev
+  allowanceAuth := law_allowanceAuth _ ev (by intro _ _ h; simp [standard] at h; exact h.1)
   wfInvariant := law_wfInvariant _ ev standard_sane
 
 /-- **OpenZeppelin v5: every law, in every state.** -/
@@ -606,7 +659,7 @@ theorem oz_laws : ((oz : Variant A).model ev).Standard (fun _ => True) where
     (law_exactMoves _ ev)
   supplyFixed := law_supplyFixed _ ev (Or.inl rfl)
   debitAuth := law_debitAuth _ ev
-  allowanceAuth := law_allowanceAuth _ ev
+  allowanceAuth := law_allowanceAuth _ ev (by intro _ _; simp [oz, standard])
   wfInvariant := law_wfInvariant _ ev oz_sane
 
 /-- **Solady (Permit2 spender `p`): every law, in every state.** The Permit2 allowance reads
@@ -619,7 +672,7 @@ theorem solady_laws (p : A) : ((solady p).model ev).Standard (fun _ => True) whe
     (law_exactMoves _ ev)
   supplyFixed := law_supplyFixed _ ev (Or.inl rfl)
   debitAuth := law_debitAuth _ ev
-  allowanceAuth := law_allowanceAuth _ ev
+  allowanceAuth := law_allowanceAuth _ ev (by intro _ _ h; simp [solady, standard] at h; exact h.1)
   wfInvariant := law_wfInvariant _ ev (solady_sane p)
 
 /-- **WETH9: every law, in every state.** Its `totalSupply` is the ether balance, which no
@@ -633,7 +686,7 @@ theorem weth9_laws : ((weth9 : Variant A).model ev).Standard (fun _ => True) whe
     (law_exactMoves _ ev)
   supplyFixed := law_supplyFixed _ ev (Or.inl rfl)
   debitAuth := law_debitAuth _ ev
-  allowanceAuth := law_allowanceAuth _ ev
+  allowanceAuth := law_allowanceAuth _ ev (by intro _ _; simp [weth9, standard])
   wfInvariant := law_wfInvariant _ ev weth9_sane
 
 omit [DecidableEq A] [Zero A] in
@@ -661,7 +714,8 @@ theorem usdt_laws [Nontrivial A] :
     law_not_revertsOnly _ ev usdt_invalid_witness.2, law_exactMoves _ ev,
     law_exactMoves_mono (fun _ h => usdt_noFee_of_feeBps h) (law_exactMoves _ ev),
     law_not_exactMoves _ ev hw (Ne.symm ha) hc nofun ?_,
-    law_supplyFixed _ ev (Or.inr rfl), law_debitAuth _ ev, law_allowanceAuth _ ev,
+    law_supplyFixed _ ev (Or.inr rfl), law_debitAuth _ ev,
+    law_allowanceAuth _ ev (by intro _ _; simp [usdt, standard]),
     law_wfInvariant _ ev usdt_sane⟩
   rintro ⟨h1, -⟩
   simp only [model_balanceOf, h0, balanceOf_of_not_rebasing (usdt : Variant A) rfl] at h1
@@ -679,7 +733,8 @@ theorem bnb_laws [Nontrivial A] :
   exact ⟨law_not_returnsTrue _ ev rfl (bnb_empty_witness ha).2 nofun,
     law_noFalseReturn_rev _ ev rfl (.inl rfl), law_revertsOnly _ ev rfl rfl rfl,
     law_exactMoves_mono (fun s _ => law_noFee_of_fee_none _ rfl rfl s) (law_exactMoves _ ev),
-    law_supplyFixed _ ev (Or.inl rfl), law_debitAuth _ ev, law_allowanceAuth _ ev,
+    law_supplyFixed _ ev (Or.inl rfl), law_debitAuth _ ev,
+    law_allowanceAuth _ ev (by intro _ _; simp [bnb, standard]),
     law_wfInvariant _ ev bnb_sane⟩
 
 /-- STA charges a fee on every positive value, so no state is fee-free: `ExactMoves (NoFee sta)`
@@ -704,7 +759,8 @@ theorem sta_laws [Nontrivial A] :
     law_noFalseReturn_rev _ ev rfl (.inl rfl),
     law_not_revertsOnly _ ev (sta_invalid_witness ha).2,
     law_not_exactMoves _ ev hw (Ne.symm ha) hc nofun ?_,
-    law_not_supplyFixed _ ev rfl hc ?_, law_debitAuth _ ev, law_allowanceAuth _ ev,
+    law_not_supplyFixed _ ev rfl hc ?_, law_debitAuth _ ev,
+    law_allowanceAuth _ ev (by intro _ _; simp [sta, standard]),
     law_wfInvariant _ ev sta_sane⟩
   · rintro ⟨-, h2, -⟩
     simp only [model_balanceOf, h0] at h2
@@ -742,7 +798,8 @@ theorem ampl_laws [Nontrivial A] :
       ((ampl : Variant A).model ev).ExactMoves (ampl : Variant A).WF ∧
       ¬ ((ampl : Variant A).model ev).ExactMoves (fun _ => True) ∧
       ((ampl : Variant A).model ev).SupplyFixed ∧ ((ampl : Variant A).model ev).DebitAuth ∧
-      ((ampl : Variant A).model ev).AllowanceAuth ∧ ((ampl : Variant A).model ev).WFInvariant := by
+      ¬ ((ampl : Variant A).model ev).AllowanceAuth ∧
+      ((ampl : Variant A).model ev).WFInvariant := by
   obtain ⟨a, ha⟩ := exists_ne (0 : A)
   obtain ⟨hc, h0⟩ := ampl_scale_zero_witness ha
   have hE : ((ampl : Variant A).model ev).ExactMoves (fun s => 0 < s.scale) :=
@@ -751,7 +808,7 @@ theorem ampl_laws [Nontrivial A] :
     law_noFalseReturn_rev _ ev rfl (.inl rfl), law_revertsOnly _ ev rfl rfl rfl, hE,
     law_exactMoves_mono (fun _ h => ampl_scale_pos h) hE,
     law_not_exactMoves _ ev trivial (Ne.symm ha) hc nofun ?_,
-    law_supplyFixed _ ev (Or.inl rfl), law_debitAuth _ ev, law_allowanceAuth _ ev,
+    law_supplyFixed _ ev (Or.inl rfl), law_debitAuth _ ev, ampl_not_allowanceAuth ev,
     law_wfInvariant _ ev ampl_sane⟩
   rintro ⟨h1, -⟩
   simp only [model_balanceOf, h0] at h1
