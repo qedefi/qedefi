@@ -352,9 +352,10 @@ def Explains (rec : Option (Machine → ℕ → Address)) (m : Machine) : Call A
 
 /-- The accounts calldata can name: each 32-byte argument word after the selector (zero-padded
 past the end of the calldata), read as an address (its low 160 bits, as decoders that mask
-addresses read it). -/
+addresses read it), and the zero address, which is what a decoder without length checks reads
+for an argument past the end of the calldata. -/
 def calldataAddrs (data : ByteArray) : Finset Address :=
-  ((List.range ((data.size - 4 + 31) / 32)).map fun i =>
+  insert 0 ((List.range ((data.size - 4 + 31) / 32)).map fun i =>
     Word.toAddress (Bytes.toWord (readBytes data (4 + 32 * i) 32))).toFinset
 
 /-- **Any calldata** is explained by some action of the caller the model allows: an ERC-20
@@ -367,7 +368,11 @@ nothing a well-formed call could not.
 
 `excl` lists the selectors of entry points the model does not describe, whose frames are not
 covered (a reviewed part of each token's spec, like its decoder; e.g. WETH9's `withdraw`,
-which sends ether to the caller and runs the caller's code). -/
+which sends ether to the caller and runs the caller's code).
+
+Known limitation: an operation's explanation (`OpMatches`) fixes the state, not the logs or
+return data, so a frame emitting a log no operation emits can still be explained by an
+operation with the same state change. -/
 def MalformedSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
     (rec : Option (Machine → ℕ → Address)) (excl : List Nat) : Prop :=
