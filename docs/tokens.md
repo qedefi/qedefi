@@ -334,7 +334,7 @@ per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` o
 | USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks (a repeated `pause`/`unpause` reverts) | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `deprecate`, `transferOwnership` (not in the model) |
 | BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
 | STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
-| AMPL (`UFragments` in the proxy's storage) | `Variant.ampl` | ✓ `ampl_spec` | 100000 | `rebase`, owner functions; the proxy's dispatch |
+| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, with `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership` and `rebase` as the code computes them | ✓ `ampl_spec` (an initialized instance: `Live`); `MalformedSpec` ✓ `ampl_malformed` from the well-formed `permit` frames (`PermitResidue`) | 100000 | `PermitSpec`; the proxy's dispatch |
 | ZRX (mainnet) | own model (`Instances/ZRX.lean`) | stated (`zrxSpec`); views ✓ at `g₀` without value | 100000 | the rest |
 | YAMv2, LEND (mainnet) | own models | stated (`yamv2Spec`, `lendSpec`) | 100000, 150000 | proofs; LEND only in its final sale state |
 | GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | |
