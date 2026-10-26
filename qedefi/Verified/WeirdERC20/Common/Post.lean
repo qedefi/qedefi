@@ -52,7 +52,8 @@ theorem malformed_of {excl : List Nat}
 /-- **An argument word, read as an address, is an account the calldata names.** -/
 theorem mem_calldataAddrs {d : ByteArray} {i : Nat} (h : 4 + 32 * i < d.size) :
     Word.toAddress (Bytes.toWord (readBytes d (4 + 32 * i) 32)) ∈ calldataAddrs d := by
-  simp only [calldataAddrs, List.mem_toFinset, List.mem_map, List.mem_range]
+  refine Finset.mem_insert_of_mem ?_
+  simp only [List.mem_toFinset, List.mem_map, List.mem_range]
   exact ⟨i, by omega, rfl⟩
 
 theorem lpost_fails (h : Halts m fun _ o => Fails o) :

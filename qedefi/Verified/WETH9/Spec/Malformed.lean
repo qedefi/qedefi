@@ -4,18 +4,14 @@ import Verified.WETH9.Spec.MalformedPrefix
 import Verified.WeirdERC20.Common.Post
 
 /-!
-# WETH9 with any calldata, when the zero address is an actor
+# WETH9 with any calldata: `MalformedSpec` except `withdraw`
 
-`MalformedSpec` for WETH9 with `excl = weth9Excl` (`withdraw`) is **false** as stated: solc
-0.4.19 reads an argument word past the end of the calldata as zero, so `approve` with calldata
-of exactly the selector runs `approve(0, 0)`. It writes `allowance[caller][0] := 0` (and emits
-`Approval(caller, 0, 0)`), a change outside the actors' footprint when `0` is not an actor,
-while `calldataAddrs` of that calldata is empty: no ERC-20 call naming actors and no
-`deposit` explains the frame (from a state with `allowance[caller][0] ≠ 0`).
-
-**`weth9_malformed_zero`**: with the zero address among the actors (every word the decoder can
-read past the calldata names `0`), every frame of WETH9 except `withdraw` fails, changes
-nothing, or ends as an ERC-20 call or a `deposit` of `weth9Model` for the actors. By selector:
+**`weth9_malformed`**: in every frame of the mainnet WETH9 code (solc 0.4.19), with any calldata
+naming only actors (`calldataAddrs`, which contains `0`: solc 0.4 reads an argument word past
+the end of the calldata as zero, so a missing `address` argument is `0`), any value and any
+gas, except `withdraw` (`weth9Excl`: it sends ether to the caller and runs the caller's code),
+the frame fails, changes nothing, or ends as an ERC-20 call or a `deposit` of `weth9Model`. By
+selector:
 
 * calldata shorter than a selector or an unknown selector: `weth9_fallbackSpec` (`deposit`);
 * the six getters change nothing (`getter_halts`);
@@ -23,7 +19,9 @@ nothing, or ends as an ERC-20 call or a `deposit` of `weth9Model` for the actors
 * `transfer`, `approve`, `transferFrom`: with value they revert; otherwise the frame runs as the
   frame whose calldata is the ABI encoding of the decoded words (zero-padded, `address` words
   masked) (`Verified.WeirdERC20.Common.transport`), and `weth9_callSpec` applies to that call:
-  its accounts are words of the calldata (`calldataAddrs`) or `0`.
+  its accounts are words of the calldata or `0`.
+
+**`weth9_complete`**: `ERC20Spec.Complete` (no `permit`) with `excl = weth9Excl`.
 -/
 
 set_option linter.unusedSimpArgs false
@@ -179,10 +177,7 @@ theorem sel_eq : weth9Sel = [0xdd62ed3e, 0x095ea7b3, 0x70a08231, 0x313ce567, 0xd
     0x06fdde03, 0x95d89b41, 0x18160ddd, 0xa9059cbb, 0x23b872dd, 0x2e1a7d4d] := by
   decide
 
-/-- **WETH9 with any calldata, except `withdraw`, when the zero address is an actor**: every
-frame whose calldata names only actors fails, changes nothing, or ends as an ERC-20 call or a
-`deposit` of `weth9Model` for the actors. (`MalformedSpec` without `0 ∈ Act` is false, see the
-module docstring.) -/
+/-- `weth9_malformed` for any actors containing the calldata's accounts and `0`. -/
 theorem weth9_malformed_zero (Act : Finset Address) (m : Machine)
     (hS : Start WETH9.runtimeCode weth9Abs weth9Model Act m)
     (hAct : calldataAddrs m.frame.msg.data ⊆ Act) (h0 : (0 : Address) ∈ Act)
@@ -257,5 +252,20 @@ theorem weth9_malformed_zero (Act : Finset Address) (m : Machine)
       · exact arg_mem0 hAct h0 1
     · exact lpost_fails hF
   · exact absurd ⟨h4, by rw [h]; simp [weth9Excl]⟩ hex
+
+/-- **WETH9 with any calldata, except `withdraw`**: every frame whose calldata names only actors
+fails, changes nothing, or ends as an ERC-20 call or a `deposit` of `weth9Model` for the
+actors. -/
+theorem weth9_malformed :
+    MalformedSpec WETH9.runtimeCode weth9Abs weth9Model weth9Ops weth9OpAddrs none weth9Excl :=
+  malformed_of fun Act m hS hAct hex =>
+    weth9_malformed_zero Act m hS hAct (hAct (Finset.mem_insert_self _ _)) hex
+
+/-- **The complete spec of WETH9**: `ERC20Spec` and `MalformedSpec` except `withdraw` (no
+`permit`). -/
+theorem weth9_complete :
+    ERC20Spec.Complete WETH9.runtimeCode weth9Abs weth9Model weth9Gas weth9Sel weth9Ops
+      weth9OpAddrs none weth9Excl :=
+  ⟨weth9_erc20Spec, fun _ _ h => (by cases h), weth9_malformed⟩
 
 end Verified.WETH9.Spec.Malformed
