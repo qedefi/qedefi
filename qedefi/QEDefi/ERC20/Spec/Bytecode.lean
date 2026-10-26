@@ -350,38 +350,53 @@ def Explains (rec : Option (Machine → ℕ → Address)) (m : Machine) : Call A
   | .permit _ _ _ _ r' => ∃ r, rec = some r ∧ (EcrecoverPlain m → r' = r m)
   | _ => True
 
+/-- The accounts calldata can name: each 32-byte argument word after the selector (zero-padded
+past the end of the calldata), read as an address (its low 160 bits, as decoders that mask
+addresses read it), and the zero address, which is what a decoder without length checks reads
+for an argument past the end of the calldata. -/
+def calldataAddrs (data : ByteArray) : Finset Address :=
+  insert 0 ((List.range ((data.size - 4 + 31) / 32)).map fun i =>
+    Word.toAddress (Bytes.toWord (readBytes data (4 + 32 * i) 32))).toFinset
+
 /-- **Any calldata** is explained by some action of the caller the model allows: an ERC-20
 call (a `permit` only with the token's signature recovery, `Explains`), a view (nothing
-changes), an entry point the decoder accepts for some calldata of the caller, or a failure.
-The action may name accounts outside `Act` (dirty calldata may name any account); it is then
-exact for the actors together with those accounts, whenever their hash hypotheses hold. With
-the exact obligations this says malformed calldata (short or dirty arguments of a known
-selector) can do nothing a well-formed call could not. -/
+changes), an entry point the decoder accepts for some calldata of the caller, or a failure;
+for actors that include every account the calldata can name (`calldataAddrs`), so the
+explanation is exact for the actors themselves, under their hash hypotheses. With the exact
+obligations this says malformed calldata (short or dirty arguments of a known selector) can do
+nothing a well-formed call could not.
+
+`excl` lists the selectors of entry points the model does not describe, whose frames are not
+covered (a reviewed part of each token's spec, like its decoder; e.g. WETH9's `withdraw`,
+which sends ether to the caller and runs the caller's code).
+
+Known limitation: an operation's explanation (`OpMatches`) fixes the state, not the logs or
+return data, so a frame emitting a log no operation emits can still be explained by an
+operation with the same state change. -/
 def MalformedSpec (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (ops : Address → ByteArray → ℕ → Option E) (opAddrs : E → List Address)
-    (rec : Option (Machine → ℕ → Address)) : Prop :=
-  ∀ Act m, Start code abs M Act m →
+    (rec : Option (Machine → ℕ → Address)) (excl : List Nat) : Prop :=
+  ∀ Act m, Start code abs M Act m → calldataAddrs m.frame.msg.data ⊆ Act →
+    ¬ (4 ≤ m.frame.msg.data.size ∧ Abi.selectorOf m.frame.msg.data ∈ excl) →
     Halts m fun mf o =>
       Fails o ∨
       (mf.world = m.world ∧ mf.transient = m.transient ∧ mf.frame.sub.logs = m.frame.sub.logs) ∨
-      (∃ c, Explains rec m c ∧
-        let Act' := Act ∪ c.addrs.toFinset
-        (abs.Sound m.ctx.crypto Act' → M.wf (pre abs Act' m) →
-          Matches abs Act' m mf o (M.events (pre abs Act' m) m.frame.msg.caller c)
-            (M.call (pre abs Act' m) m.frame.msg.caller c))) ∨
+      (∃ c, Explains rec m c ∧ (∀ a ∈ c.addrs, a ∈ Act) ∧
+        Matches abs Act m mf o (M.events (pre abs Act m) m.frame.msg.caller c)
+          (M.call (pre abs Act m) m.frame.msg.caller c)) ∨
       (∃ d e, ops m.frame.msg.caller d m.frame.msg.value.toNat = some e ∧
-        let Act' := Act ∪ (opAddrs e).toFinset
-        (abs.Sound m.ctx.crypto Act' → M.wf (pre abs Act' m) →
-          (∃ s', M.op (pre abs Act' m) e = some s') ∧ OpMatches abs M Act' e m mf o))
+        (∀ a ∈ opAddrs e, a ∈ Act) ∧ (∃ s', M.op (pre abs Act m) e = some s') ∧
+        OpMatches abs M Act e m mf o)
 
 /-- **The complete spec**: `ERC20Spec`, `permit` for a token that has one (`perm = some (gp,
-rec)`: its gas bound and signature recovery) and malformed calldata. -/
+rec)`: its gas bound and signature recovery) and malformed calldata, except the entry points
+in `excl`. -/
 structure ERC20Spec.Complete (code : ByteArray) (abs : TokenAbs σ) (M : TokenModel σ Address E)
     (g₀ : Nat) (sel : List Nat) (ops : Address → ByteArray → ℕ → Option E)
     (opAddrs : E → List Address)
-    (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) : Prop where
+    (perm : Option ((Machine → Nat) × (Machine → ℕ → Address))) (excl : List Nat) : Prop where
   spec : ERC20Spec code abs M g₀ sel ops opAddrs
   permit : ∀ gp rec, perm = some (gp, rec) → PermitSpec code abs M gp rec
-  malformed : MalformedSpec code abs M ops opAddrs (perm.map Prod.snd)
+  malformed : MalformedSpec code abs M ops opAddrs (perm.map Prod.snd) excl
 
 end QEDefi.ERC20.Spec
