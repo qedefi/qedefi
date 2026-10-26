@@ -148,14 +148,16 @@ theorem arg0_eq (d : ByteArray) : arg0 d = argWord d 0 := by simp [arg0, argWord
 
 theorem arg1_eq (d : ByteArray) : arg1 d = argWord d 1 := by simp [arg1, argWord]
 
-theorem ozOps_mint {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x40c10f19)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    ozOps caller d 0 = some (.mint caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+theorem ozOps_mint {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x40c10f19) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    ozOps caller d v = some (.mint caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   simp only [ozOps, arg0_eq, arg1_eq, clean_ofAddress hc, hs, hsel, and_self, ite_true]
 
-theorem ozOps_burn {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x9dc29fac)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    ozOps caller d 0 = some (.burn caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+theorem ozOps_burn {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x9dc29fac) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    ozOps caller d v = some (.burn caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   simp only [ozOps, arg0_eq, arg1_eq, clean_ofAddress hc, hs, hsel, and_self,
     ite_true, Nat.reduceEqDiff, ite_false]
 
@@ -164,10 +166,11 @@ end
 /-! ## The theorems -/
 
 /-- **`ERC20Mock` with any calldata**: every frame fails, changes nothing, or ends as an
-ERC-20 call or a `mint`/`burn` of `ozModel` (for the actors and the accounts it names). -/
+ERC-20 call or a `mint`/`burn` of `ozModel` (exactly, for actors that include every account the
+calldata can name). -/
 theorem oz_malformed :
-    MalformedSpec OzAsset.runtimeCode ozAbs ozModel ozOps ozOpAddrs none := by
-  refine malformedSpec_of fun Act m hS => ?_
+    MalformedSpec OzAsset.runtimeCode ozAbs ozModel ozOps ozOpAddrs none [] := by
+  refine malformedSpec_of fun Act m hS hcd _ => ?_
   by_cases hfb : m.frame.msg.data.size < 4 ∨ Abi.selectorOf m.frame.msg.data ∉ ozSel
   · exact post_fallback oz_fallbackSpec hS hfb
   simp only [not_or, not_lt, not_not] at hfb
@@ -181,29 +184,31 @@ theorem oz_malformed :
   rcases hmem with h | h | h | h | h | h | h | h | h | h | h
   · exact post_getter hS (q := 394) (by simp [getterEntries]) hv h h4
   · exact post_two hS (by simp [writeShapes]) hv h h4 fun hs hc =>
-      post_call (oz_callSpec _) hS (encodes_approve h hs hc) trivial
+      post_approve oz_callSpec hS hcd h hs hc
   · exact post_getter hS (q := 308) (by simp [getterEntries]) hv h h4
   · exact post_two hS (by simp [writeShapes]) hv h h4 fun hs hc =>
-      post_op oz_opSpec hS (by rw [hv0]; exact ozOps_burn h hs hc)
+      post_op oz_opSpec hS (ozOps_burn hv0 h hs hc)
+        (argAddr0_list hcd (by omega))
   · exact post_getter hS (q := 272) (by simp [getterEntries]) hv h h4
   · exact post_two hS (by simp [writeShapes]) hv h h4 fun hs hc =>
-      post_op oz_opSpec hS (by rw [hv0]; exact ozOps_mint h hs hc)
+      post_op oz_opSpec hS (ozOps_mint hv0 h hs hc)
+        (argAddr0_list hcd (by omega))
   · exact post_getter hS (q := 170) (by simp [getterEntries]) hv h h4
   · exact post_getter hS (q := 348) (by simp [getterEntries]) hv h h4
   · exact post_getter hS (q := 235) (by simp [getterEntries]) hv h h4
   · exact post_two hS (by simp [writeShapes]) hv h h4 fun hs hc =>
-      post_call (oz_callSpec _) hS (encodes_transfer h hs hc) trivial
+      post_transfer oz_callSpec hS hcd h hs hc
   · by_cases hs : 100 ≤ m.frame.msg.data.size
     · by_cases hc0 : CleanAddr m.frame.msg.data 0
       · by_cases hc1 : CleanAddr m.frame.msg.data 1
-        · exact post_call (oz_callSpec _) hS (encodes_transferFrom h hs hc0 hc1) trivial
+        · exact post_transferFrom oz_callSpec hS hcd h hs hc0 hc1
         · exact post_dirty1 hS hv h hs hc0 hc1
       · exact post_dirty0 hS (n := 96) (by simp [writeShapes]) hv h hs hc0
     · exact post_short hS (n := 96) (by simp [writeShapes]) hv h h4 (by omega)
 
 /-- **The complete spec of `ERC20Mock`**: `ERC20Spec` and `MalformedSpec` (no `permit`). -/
 theorem oz_complete :
-    ERC20Spec.Complete OzAsset.runtimeCode ozAbs ozModel ozG₀ ozSel ozOps ozOpAddrs none :=
+    ERC20Spec.Complete OzAsset.runtimeCode ozAbs ozModel ozG₀ ozSel ozOps ozOpAddrs none [] :=
   ⟨oz_erc20Spec, fun _ _ h => (by cases h), oz_malformed⟩
 
 end Verified.OpenZeppelin.ERC20.Spec.Malformed

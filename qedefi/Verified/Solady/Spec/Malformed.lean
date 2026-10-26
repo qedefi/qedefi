@@ -41,9 +41,10 @@ abbrev Post (r : Machine → ℕ → Address) (Act : Finset Address) (m : Machin
   MalPost soladyAbs M ops opAddrs (some r) Act m
 
 /-- **The `permit` frames left open**: well-formed calldata (clean `owner` and `spender`, a `v`
-below 256), no value. -/
+below 256) naming only actors, no value. -/
 def PermitResidue (r : Machine → ℕ → Address) : Prop :=
-  ∀ Act m, Start SoladyToken.runtimeCode soladyAbs M Act m → m.frame.msg.value = 0 →
+  ∀ Act m, Start SoladyToken.runtimeCode soladyAbs M Act m →
+    calldataAddrs m.frame.msg.data ⊆ Act → m.frame.msg.value = 0 →
     Abi.selectorOf m.frame.msg.data = 0xd505accf → 228 ≤ m.frame.msg.data.size →
     CleanAddr m.frame.msg.data 0 → CleanAddr m.frame.msg.data 1 →
     CleanU8 m.frame.msg.data →
@@ -60,16 +61,18 @@ theorem clean_lt {d : ByteArray} {j : Nat} (h : CleanAddr d j) :
   rw [Nat.mod_eq_of_lt (by decide : 2 ^ 160 - 1 < 2 ^ 256), Nat.and_two_pow_sub_one_eq_mod] at this
   rw [← this]; exact Nat.mod_lt _ (by decide)
 
-theorem ops_mint {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x40c10f19)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    ops caller d 0 = some (.mint caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+theorem ops_mint {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x40c10f19) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    ops caller d v = some (.mint caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   have hlt : (argWord d 0).toNat < 1461501637330902918203684832716283019655932542976 :=
     clean_lt hc
   simp [ops, addrArg, hsel, hlt, show ¬ d.size < 68 by omega]
 
-theorem ops_burn {d : ByteArray} {caller : Address} (hsel : Abi.selectorOf d = 0x9dc29fac)
-    (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
-    ops caller d 0 = some (.burn caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+theorem ops_burn {d : ByteArray} {caller : Address} {v : ℕ} (hv : v = 0)
+    (hsel : Abi.selectorOf d = 0x9dc29fac) (hs : 68 ≤ d.size) (hc : CleanAddr d 0) :
+    ops caller d v = some (.burn caller (Word.toAddress (argWord d 0)) (argWord d 1).toNat) := by
+  subst hv
   have hlt : (argWord d 0).toNat < 1461501637330902918203684832716283019655932542976 :=
     clean_lt hc
   simp [ops, addrArg, hsel, hlt, show ¬ d.size < 68 by omega]
@@ -88,11 +91,11 @@ theorem post_two {r : Machine → ℕ → Address} (hS : Start SoladyToken.runti
 
 /-- **`SoladyToken` with any calldata**, given the well-formed `permit` frames
 (`PermitResidue r`): every frame fails, changes nothing, or ends as an ERC-20 call (a `permit`
-with the recovery `r`) or a `mint`/`burn` of `soladyModel PERMIT2`, for the actors and the
-accounts it names. -/
+with the recovery `r`) or a `mint`/`burn` of `soladyModel PERMIT2`, exactly for actors that
+include every account the calldata can name. -/
 theorem solady_malformed (r : Machine → ℕ → Address) (hres : PermitResidue r) :
-    MalformedSpec SoladyToken.runtimeCode soladyAbs M ops opAddrs (some r) := by
-  refine malformedSpec_of fun Act m hS => ?_
+    MalformedSpec SoladyToken.runtimeCode soladyAbs M ops opAddrs (some r) [] := by
+  refine malformedSpec_of fun Act m hS hcd _ => ?_
   by_cases hfb : m.frame.msg.data.size < 4 ∨ Abi.selectorOf m.frame.msg.data ∉ sel
   · exact post_fallback fallback_spec hS hfb
   simp only [not_or, not_lt, not_not] at hfb
@@ -116,17 +119,19 @@ theorem solady_malformed (r : Machine → ℕ → Address) (hres : PermitResidue
   · exact getter (q := 550) (by decide) h
   -- approve
   · exact post_two hS (by decide) h h4 fun hs hc =>
-      post_call (calls_spec _) hS (encodes_approve h hs hc) trivial
+      post_approve calls_spec hS hcd h hs hc
   -- balanceOf
   · exact getter (q := 387) (by decide) h
   -- burn
   · exact post_two hS (by decide) h h4 fun hs hc =>
-      post_op ops_spec hS (by rw [hv0]; exact ops_burn h hs hc)
+      post_op ops_spec hS (ops_burn hv0 h hs hc)
+        (argAddr0_list hcd (by omega))
   -- decimals
   · exact getter (q := 343) (by decide) h
   -- mint
   · exact post_two hS (by decide) h h4 fun hs hc =>
-      post_op ops_spec hS (by rw [hv0]; exact ops_mint h hs hc)
+      post_op ops_spec hS (ops_mint hv0 h hs hc)
+        (argAddr0_list hcd (by omega))
   -- name
   · exact getter (q := 233) (by decide) h
   -- nonces
@@ -136,7 +141,7 @@ theorem solady_malformed (r : Machine → ℕ → Address) (hres : PermitResidue
     · by_cases hc0 : CleanAddr m.frame.msg.data 0
       · by_cases hc1 : CleanAddr m.frame.msg.data 1
         · by_cases hu : CleanU8 m.frame.msg.data
-          · exact hres Act m hS hv h hs hc0 hc1 hu
+          · exact hres Act m hS hcd hv h hs hc0 hc1 hu
           · exact post_fails (dirtyV_low m hS.fresh h hs hS.size hc0 hc1 hu)
         · exact post_fails (dirty1_low (n := 224) (by decide) m hS.fresh h hs hS.size hc0 hc1)
       · exact post_fails (dirty0_low (n := 224) (by decide) m hS.fresh h hs hS.size hc0)
@@ -147,12 +152,12 @@ theorem solady_malformed (r : Machine → ℕ → Address) (hres : PermitResidue
   · exact getter (q := 298) (by decide) h
   -- transfer
   · exact post_two hS (by decide) h h4 fun hs hc =>
-      post_call (calls_spec _) hS (encodes_transfer h hs hc) trivial
+      post_transfer calls_spec hS hcd h hs hc
   -- transferFrom
   · by_cases hs : 100 ≤ m.frame.msg.data.size
     · by_cases hc0 : CleanAddr m.frame.msg.data 0
       · by_cases hc1 : CleanAddr m.frame.msg.data 1
-        · exact post_call (calls_spec _) hS (encodes_transferFrom h hs hc0 hc1) trivial
+        · exact post_transferFrom calls_spec hS hcd h hs hc0 hc1
         · exact post_fails (dirty1_low (n := 96) (by decide) m hS.fresh h hs hS.size hc0 hc1)
       · exact post_fails (dirty0_low (n := 96) (by decide) m hS.fresh h hs hS.size hc0)
     · exact post_fails (short_low (n := 96) (by decide) m hS.fresh h h4 (by omega))
