@@ -64,8 +64,13 @@ theorem malformedSpec_of {excl : List Nat}
 theorem argAddr_mem_calldataAddrs {d : ByteArray} {j : Nat} (hj : 4 + 32 * (j + 1) ≤ d.size) :
     Word.toAddress (argWord d j) ∈ calldataAddrs d := by
   unfold calldataAddrs
-  rw [List.mem_toFinset, List.mem_map]
-  exact ⟨j, List.mem_range.2 (by omega), rfl⟩
+  rw [Finset.mem_insert, List.mem_toFinset, List.mem_map]
+  exact .inr ⟨j, List.mem_range.2 (by omega), rfl⟩
+
+/-- **The zero address is one of the calldata's accounts** (what a decoder without length
+checks reads past the end). -/
+theorem zero_mem_calldataAddrs (d : ByteArray) : (0 : Address) ∈ calldataAddrs d :=
+  Finset.mem_insert_self _ _
 
 theorem argAddr_mem {d : ByteArray} (hcd : calldataAddrs d ⊆ Act) {j : Nat}
     (hj : 4 + 32 * (j + 1) ≤ d.size) : Word.toAddress (argWord d j) ∈ Act :=
