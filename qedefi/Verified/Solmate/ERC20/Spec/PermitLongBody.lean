@@ -166,7 +166,7 @@ theorem pl_body_big {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {t
   wp_generalize_mem M1 hM1
   have hM1a := congrArg (Memory.loadWord · 64) hM1
   have hM1b := congrArg Memory.size hM1
-  simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint,
+  simp (disch := decide) only [Memory.loadWord_storeWord_of_disjoint,
     hM64] at hM1a
   simp only [Memory.size_storeWord, hMsz, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMul] at hM1b
   clear hM1 hxm
@@ -180,7 +180,7 @@ theorem pl_body_big {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {t
   wp_generalize_mem M2 hM2
   have hM2a := congrArg (Memory.loadWord · 64) hM2
   have hM2b := congrArg Memory.size hM2
-  simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord] at hM2a
+  simp (disch := decide) only [Memory.loadWord_storeWord] at hM2a
   simp only [Memory.size_storeWord, hMsz, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMul] at hM2b
   clear hM2 hxm
   replace hM2a := hM2a.symm
@@ -192,7 +192,7 @@ theorem pl_body_big {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {t
   wp_generalize_mem M3 hM3
   have hM3a := congrArg (Memory.loadWord · 64) hM3
   have hM3b := congrArg Memory.size hM3
-  simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord] at hM3a
+  simp (disch := decide) only [Memory.loadWord_storeWord] at hM3a
   simp only [Memory.size_storeWord, hMsz, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMul] at hM3b
   clear hM3 hxm
   replace hM3a := hM3a.symm
@@ -204,12 +204,12 @@ theorem pl_body_big {ia : SolmateAsset.Immutables} (m : Machine) {M : Memory} {t
     (dg := digest m_ctx.crypto ds (structHash m_ctx.crypto owner spender value nonce deadline))
     rfl hj rfl rfl rfl ?_ ?_ ?_ ?_ ?_ ?_ rfl
     (by dsimp only; rw [World.code_sstore]; exact hdel1) hdepth hstatic) (fun _ _ h => h) ?_
-  · simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint,
-      Memory.loadWord_storeWord, hxm]
-  · simp (disch := decide) only [Memory.loadWord_expand, Memory.loadWord_storeWord_of_disjoint,
-      Memory.loadWord_storeWord, hxm]
-  · simp (disch := decide) only [Memory.read_128, Memory.read_expand, Memory.read_storeWord,
-      Memory.read_storeWord_of_disjoint, hxm]
+  · simp (disch := decide) only [Memory.loadWord_storeWord_of_disjoint,
+      Memory.loadWord_storeWord]
+  · simp (disch := decide) only [Memory.loadWord_storeWord_of_disjoint,
+      Memory.loadWord_storeWord]
+  · simp (disch := decide) only [Memory.read_128, Memory.read_storeWord,
+      Memory.read_storeWord_of_disjoint]
     rfl
   · simp only [Memory.size_storeWord, hMsz]; omega
   · dsimp only; omega

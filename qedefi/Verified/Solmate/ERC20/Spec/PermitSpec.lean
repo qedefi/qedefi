@@ -8,7 +8,8 @@ import Verified.Solmate.ERC20.Spec.LowCall
 (solmateRec ia)` for every frame whose domain separator is in `Permit.DomainCase`: on the
 deployment chain (`chainid() = INITIAL_CHAIN_ID`, the immutable separator), or off it with a
 short `name` (under 32 bytes). Off the deployment chain with a long `name` (or an inconsistent
-slot word) the domain separator is computed by the copy loop of `0x0a66`, not covered here.
+slot word) the domain separator is computed by the copy loop of `0x0a66`: `PermitLongSpec.lean`
+(`solmate_permit`, every case).
 
 * normal frames: `permit_normal` below the call-depth limit, `permit_halts_limit` at it
   (`solmateRec` is `0` there, so the model reverts too);

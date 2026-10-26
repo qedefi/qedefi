@@ -113,10 +113,8 @@ theorem plCopy_body {ia : SolmateAsset.Immutables} {b : Machine} {d Lw S : Word}
       (Word.lt_eq_one_iff _ _).2 (by rw [hLw, Str.toNat_ofNat_of_lt (by omega)]; omega)
     pwp_run_to 2770 [hptr', hi']
     refine WP.ret (.inl ⟨hk1, rfl, hj, _, _, _, rfl, hM'size, hM'fmp, hM'data, ?_, ?_, ?_, hlog⟩)
-    · try dsimp only
-      rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
-    · try dsimp only
-      rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
+    · rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
+    · dsimp only; rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
     · try dsimp only
       generalize sloadCost _ = sl at *; omega
   · have hge : Word.lt (BitVec.ofNat 256 (32 * (k + 1))) Lw = 0#256 :=
@@ -124,10 +122,8 @@ theorem plCopy_body {ia : SolmateAsset.Immutables} {b : Machine} {d Lw S : Word}
     pwp_run_to 2798 [hptr', hi', hge]
     refine WP.ret (.inr ⟨by omega, rfl, hj, _, _, _, rfl, hM'size, hM'fmp, hM'data, ?_, ?_, ?_,
       hlog⟩)
-    · try dsimp only
-      rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
-    · try dsimp only
-      rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
+    · rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
+    · dsimp only; rw [plSz_succ, hc1]; generalize sloadCost _ = sl at *; omega
     · try dsimp only
       generalize sloadCost _ = sl at *; omega
 
@@ -202,7 +198,7 @@ theorem pl_ds_tail {ia : SolmateAsset.Immutables} {b : Machine} {Lw S r : Word}
   dsimp only
   simp only [Word.add_sub_cancel_left', hLw, BitVec.reduceToNat, hext, hxL, readBytes_bytes,
     hname]
-  simp only [Nat.reducePow, Nat.reduceMod, Gas.keccak256Cost,
+  simp only [Gas.keccak256Cost,
     Gas.keccak256Base, Gas.keccak256PerWord, Gas.words]
   generalize hnh : b_ctx.crypto.keccak256 (Str.longData (b_world.sload b_msg.currentTarget)
     (arrayDataSlot b_ctx.crypto 0#256) L) = nh
@@ -216,7 +212,7 @@ theorem pl_ds_tail {ia : SolmateAsset.Immutables} {b : Machine} {Lw S r : Word}
       fun _ _ h => bg_expand hMsz (by decide) h
     plwp_steps [hfmp, hMsz, hxm]
     simp (disch := decide) only [Memory.read_160, Memory.read_storeWord,
-      Memory.read_storeWord_of_disjoint, dsOfName, version_hash_eq, domain_typehash_eq, hnh]
+      Memory.read_storeWord_of_disjoint]
     apply WP.ret
     simp only [PlDsPost, dsOfName, hnh, version_hash_eq, domain_typehash_eq, Machine.resumeWith]
     refine ⟨_, _, _, rfl, ?_, ?_, ?_, ?_, hlog⟩
@@ -232,7 +228,7 @@ theorem pl_ds_tail {ia : SolmateAsset.Immutables} {b : Machine} {Lw S r : Word}
       simp only [Nat.reduceMul, Nat.reduceAdd] at hsize
       pwp_steps [hfmp, hsize, permit_norm]
       simp (disch := decide) only [Memory.read_160, Memory.read_storeWord, Memory.read_expand,
-        Memory.read_storeWord_of_disjoint, dsOfName, version_hash_eq, domain_typehash_eq, hnh]
+        Memory.read_storeWord_of_disjoint]
       apply WP.ret
       simp only [PlDsPost, dsOfName, hnh, version_hash_eq, domain_typehash_eq, Machine.resumeWith]
       refine ⟨_, _, _, rfl, ?_, ?_, ?_, ?_, hlog⟩

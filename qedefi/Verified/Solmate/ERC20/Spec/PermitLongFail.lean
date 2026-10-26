@@ -128,7 +128,7 @@ theorem plCopy_any {ia : SolmateAsset.Immutables} {H : Machine → Outcome → P
     (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
     (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
     (hpc : m.frame.pc = 2770) (hs : m.frame.stack = plStk d Lw S tl k)
-    (hLw : Lw.toNat = L) (hk : 32 * k < L) (hL2 : L < 2 ^ 255) (htl : tl.length ≤ 1010) :
+    (hLw : Lw.toNat = L) (hk : 32 * k < L) (hL2 : L < 2 ^ 255) :
     WP m (fun m' => m'.frame.code = SolmateAsset.runtimeCodeWith ia ∧
       m'.frame.jumpDests = m.frame.jumpDests ∧ m'.frame.pc = 2770 ∧
       m'.frame.stack = plStk d Lw S tl (k + 1) ∧ m'.frame.gasLeft < m.frame.gasLeft) H := by
@@ -161,14 +161,14 @@ theorem plCopy_fails {ia : SolmateAsset.Immutables} {H : Machine → Outcome →
     (m : Machine) (hc : m.frame.code = SolmateAsset.runtimeCodeWith ia)
     (hj : JumpTable m.frame.jumpDests (SolmateAsset.runtimeCodeWith ia))
     (hpc : m.frame.pc = 2770) (hs : m.frame.stack = plStk d Lw S tl k)
-    (hLw : Lw.toNat = L) (hn : n = (L + 31) / 32) (hL2 : L < 2 ^ 255) (htl : tl.length ≤ 1010)
+    (hLw : Lw.toNat = L) (hn : n = (L + 31) / 32) (hL2 : L < 2 ^ 255)
     (hgas : m.frame.gasLeft + k + 1 < n) : WP m Q H := by
   refine WP.loop_nat (fun j m' => ∃ k, j = n - k ∧ m'.frame.code = SolmateAsset.runtimeCodeWith ia ∧
       JumpTable m'.frame.jumpDests (SolmateAsset.runtimeCodeWith ia) ∧ m'.frame.pc = 2770 ∧
       m'.frame.stack = plStk d Lw S tl k ∧ m'.frame.gasLeft + k + 1 < n)
     ⟨k, rfl, hc, hj, hpc, hs, hgas⟩ ?_
   rintro j m' ⟨k, rfl, hc', hj', hpc', hs', hg'⟩
-  refine (plCopy_any hH m' hc' hj' hpc' hs' hLw (by omega) hL2 htl).mono_left ?_
+  refine (plCopy_any hH m' hc' hj' hpc' hs' hLw (by omega) hL2).mono_left ?_
   rintro m'' ⟨h1, h2, h3, h4, h5⟩
   exact .inl ⟨n - (k + 1), by omega, k + 1, rfl, h1, h2 ▸ hj', h3, h4, by omega⟩
 
@@ -208,8 +208,7 @@ theorem pl_ds_huge {ia : SolmateAsset.Immutables} {H : Machine → Outcome → P
   refine plCopy_fails (k := 0) (d := m_ctx.crypto.keccak256 (Bytes.ofWord 0#256))
     (Lw := Word.shr 1#256 S) (S := S)
     (tl := 1913#256 :: 63076024560530113402979550242307453568063438748328787417531900361828837441551#256
-      :: 0#256 :: 1108#256 :: 0#256 :: r :: rest) hH _ rfl hj rfl ?_ hLdef rfl hL2
-    (by simp; omega) ?_
+      :: 0#256 :: 1108#256 :: 0#256 :: r :: rest) hH _ rfl hj rfl ?_ hLdef rfl hL2 ?_
   · simp only [plStk, Nat.mul_zero, h0, add_zero]
   · dsimp only; omega
 
