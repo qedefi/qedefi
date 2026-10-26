@@ -344,9 +344,12 @@ and all ether is below `2²⁵⁶`.
 **Why actors.** Mapping rows are hashes with more keys than slots: every allowance slot is
 shared by about `2⁶⁴` pairs, and the balance rows of all `2¹⁶⁰` addresses collide about `2⁶³`
 times. "Rows never collide" over all addresses is consistent in Lean but false for Keccak; for a
-finite set of actors it is plausible. The older `weth9_backed*` theorems still assume the
-global form (`hK`, `hinj`), so they say nothing about mainnet WETH9 until they are restated per
-set of rows; `weth9_erc20Spec` does not.
+finite set of actors it is plausible. The older `weth9_backed*` theorems assume the global form
+(`hK`, `hinj`), so they say nothing about mainnet WETH9; `weth9_backed_tx_rows`
+(`qedefi/Verified/WETH9/RowsTx.lean`) restates the ether backing per transaction, assuming only
+that no allowance row its WETH9 frames may write is a `balanceOf` row (`TxFramesOk_rows`) and
+that the holders summed over have distinct `balanceOf` rows. `weth9_erc20Spec` never assumed
+the global form.
 
 ## Open work
 
