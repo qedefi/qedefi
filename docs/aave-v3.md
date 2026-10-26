@@ -313,11 +313,16 @@ bits over the `_userState` slots, equals `_totalSupply`) at the proxy, with the 
 pinned to the AToken code. `Ledger.lean` tracks `ledgerSum` under the token's writes
 (`Good.of_writes`); `Run.lean` drives a function body (`atok_run`; the AToken writes nothing after
 an external call, which is checked on every path); `Proxy.lean` handles the proxy for any caller
-but its admin, with no output-size bound. `Covers.lean`: **`atoken_ledger_any_transaction`**, any
-top-level message call keeps `Good`, from `atoken_covers` under two hypotheses: `FrameOk` (every
-AToken frame ends in a `Good` world) and `GovernanceKeeps` (what the admin does through the
-proxy). `FrameOk` is proved so far for `approve`, `initialize`, `mint` and the views (`Body/`);
-`burn`, the transfers, `permit` and the string views are open.
+but its admin, with no output-size bound. `Covers.lean`: `atoken_covers`, every dangerous frame
+at the proxy or the implementation ends in a `Good` world, under three hypotheses: `FrameOk`
+(every AToken frame ends in a `Good` world), `GovernanceKeeps` (what the admin does through the
+proxy) and `SlotsOk` (hash hypotheses). The top-level theorem, any message call keeps `Good`, is
+**not stated yet**. `FrameOk` is proved so far for `approve`, `initialize`, `mint` and the views
+(`Body/`); `burn`, the transfers, `permit` and the string views are open. Three of `SlotsOk`'s
+fields (`allow`, `allowFixed`, `nonce`) are global over all addresses and almost surely false for
+Keccak (each allowance slot is shared by about `2⁶⁴` pairs); restating them per execution, as
+`weth9_solvent_rows` does for WETH9, needs callback summaries restricted to reached frames, which
+the any-gas prefix calculus does not provide yet.
 
 ## Reproducibility
 

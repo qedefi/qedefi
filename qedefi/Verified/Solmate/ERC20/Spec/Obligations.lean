@@ -61,6 +61,7 @@ theorem hi_start (hS : Start (code ia) solmateAbs M Act m) {G : Nat}
   caller := hS.caller
   sound := hS.sound
   wf := hS.wf
+  hasCode := hS.hasCode
 
 theorem hi_gas {G : Nat} (hG : m.frame.gasLeft ≤ G) : (hi G m).frame.gasLeft = G := by
   simp only [hi, lift, setKind, bump]; omega

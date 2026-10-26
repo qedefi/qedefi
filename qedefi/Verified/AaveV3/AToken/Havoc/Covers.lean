@@ -10,8 +10,10 @@ admin forwards to the AToken code (`proxyOk_of`); a frame at the proxy **called 
 PoolConfigurator: `upgradeTo`, `upgradeToAndCall`, …) is the one explicit hypothesis,
 `GovernanceKeeps`.
 
-**`atoken_ledger_any_transaction`**: any top-level message call keeps `Good`, so after any
-transaction the aEthWETH ledger balances, at the proxy and at the implementation.
+Not yet stated: the top-level theorem (any message call keeps `Good`, so after any transaction
+the aEthWETH ledger balances). It needs `FrameOk`, which is proved only for some functions
+(`Body/`), and `SlotsOk`'s global hash hypotheses restated per execution (see
+`docs/aave-v3.md`).
 -/
 
 namespace Verified.AaveV3.AToken.Havoc
