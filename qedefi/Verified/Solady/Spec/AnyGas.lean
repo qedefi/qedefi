@@ -1104,4 +1104,20 @@ theorem pwp_log2 {x y t0 t1 : Word} {rest : List Word}
     WP m Q H :=
   pwp_log 2 [t0, t1] rfl hsnap hcode hstk hrec
 
+/-- `LOG1`. -/
+theorem pwp_log1 {x y t0 : Word} {rest : List Word}
+    (hsnap : FailH H) (hcode : m.frame.code[m.frame.pc]? = some 0xa1)
+    (hstk : m.frame.stack = x :: y :: ([t0] ++ rest))
+    (hrec : m.frame.msg.isStatic = false → Gas.logCost y.toNat 1 + (Gas.extendMemory
+      m.frame.memory.size [(x.toNat, y.toNat)]).cost ≤ m.frame.gasLeft →
+      WP { m with frame := { m.frame with
+        stack := rest,
+        memory := m.frame.memory.expand x.toNat y.toNat,
+        gasLeft := m.frame.gasLeft - (Gas.logCost y.toNat 1 + (Gas.extendMemory
+          m.frame.memory.size [(x.toNat, y.toNat)]).cost),
+        sub := { m.frame.sub with logs := m.frame.sub.logs.push (logEntry m x y [t0]) },
+        pc := m.frame.pc + 1 } } Q H) :
+    WP m Q H :=
+  pwp_log 1 [t0] rfl hsnap hcode hstk hrec
+
 end Verified.Solady.Spec.AnyGas

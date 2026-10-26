@@ -17,6 +17,7 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split' eq_zero_of_iszero_ne ite_pos' ite_neg')
 open Verified.Solady.Spec.AnyGas QEDefi.ERC4626
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 theorem ampl_gt_zero_one {x : Word} (h : x ≠ 0) : Word.gt x 0#256 = 1 := by
   have : BitVec.ult 0#256 x = true := by

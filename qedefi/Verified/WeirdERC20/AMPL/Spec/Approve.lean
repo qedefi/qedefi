@@ -14,6 +14,7 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split eq_zero_of_iszero_ne)
 open Verified.Solady.Spec.AnyGas QEDefi.ERC4626
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 /-- `approve(sp, v)`'s code-level end. -/
 def ApprovePost (m : Machine) (sp : Address) (v : Word) (mf : Machine) (o : Outcome) : Prop :=
@@ -78,23 +79,26 @@ theorem approve_high (m : Machine) (sp : Address) (v : Word) (hf : Fresh AMPL.ru
 
 /-! ## The obligation -/
 
-theorem ampl_call_approve (s : VState Address) (c sp : Address) (v : ℕ) :
+theorem ampl_call_approve (s : AState Address) (c sp : Address) (v : ℕ) :
     M.call s c (.approve sp v) = .ok (s.setAllowance c sp v) (.word true) := by
-  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.call, Variant.step, Variant.approve,
-    Variant.approveOk, Variant.ampl, Variant.standard, Variant.retData]
+  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, Variant.call, Variant.step, Variant.approve,
+    Variant.approveOk, Variant.ampl, Variant.standard, Variant.retData, AState.setAllowance]
 
 theorem amplRead_sstore_allow {crypto : Crypto} {Act : Finset Address} {w : World}
     {t o sp : Address} (hS : amplSound crypto Act) (ho : o ∈ Act) (hs : sp ∈ Act) (x : Word) :
     amplRead crypto Act
         (w.sstore t (mappingSlot2 crypto (Word.ofAddress o) (Word.ofAddress sp) 159#256) x) t =
       (amplRead crypto Act w t).setAllowance o sp x.toNat := by
-  simp only [amplRead, VState.setAllowance]
+  simp only [amplRead, AState.setAllowance, VState.setAllowance, Live,
+    BNB.Spec.sload_sstore_map2 (k := 0#256) (base2 := 159#256) (x := x) (t := t) (w := w) hS (by simp) (by simp) ho hs,
+    BNB.Spec.sload_sstore_map2 (k := 104#256) (base2 := 159#256) (x := x) (t := t) (w := w) hS (by simp) (by simp) ho hs]
   rw [BNB.Spec.readMap_sstore_map2 (base := 158#256) hS (by simp) (by simp) ho hs,
     BNB.Spec.readMap_sstore_map2 (base := 160#256) hS (by simp) (by simp) ho hs,
     BNB.Spec.readMap2_sstore hS (by simp) ho hs,
     BNB.Spec.readSlot_sstore_map2 (k := 156#256) hS (by simp) (by simp) ho hs,
     BNB.Spec.readSlot_sstore_map2 (k := 157#256) hS (by simp) (by simp) ho hs,
     BNB.Spec.sload_sstore_map2 (k := 155#256) hS (by simp) (by simp) ho hs, World.balance_sstore]
+  congr 1
 
 /-- **`approve(sp, v)`**: the allowance set, `true`, `Approval`. -/
 theorem call_approve (sp : Address) (v : ℕ) :
