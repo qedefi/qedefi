@@ -323,7 +323,7 @@ per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` o
 | Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec`; `permit` ✓ on the deployment chain and short names off it (`permit_spec_case`) | 100000 | `permit` off-chain with `name` ≥ 32 bytes; `MalformedSpec` |
 | Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | 100000 | `PermitSpec`, `MalformedSpec` |
 | WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | 100000 | `withdraw` (calls the caller; `withdraw_halts_refines`) |
-| USDT (mainnet) | `Variant.usdt` | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `pause`/`unpause` (the model's `setPaused` never fails; the code does) |
+| USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks (a repeated `pause`/`unpause` reverts) | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `deprecate`, `transferOwnership` (not in the model) |
 | BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
 | STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
 | AMPL (`UFragments` in the proxy's storage) | `Variant.ampl` | ✓ `ampl_spec` | 100000 | `rebase`, owner functions; the proxy's dispatch |

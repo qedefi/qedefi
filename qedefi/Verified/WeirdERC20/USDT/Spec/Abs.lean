@@ -162,20 +162,21 @@ def argWord (data : ByteArray) (i : Nat) : Word := Bytes.toWord (Interpreter.rea
 def argAddr (data : ByteArray) (i : Nat) : Address := Word.toAddress (argWord data i)
 
 /-- **The admin entry points** the model has, decoded as solc 0.4.18's dispatcher does (no
-length check: missing argument bytes read as zero; addresses masked): `addBlackList(u)`,
-`removeBlackList(u)`, `destroyBlackFunds(u)`, `setParams(bps, max)`, `issue(v)` (a mint to the
-caller, which succeeds only for the owner) and `redeem(v)` (a burn from the caller), without
-value (they are not payable).
+length check: missing argument bytes read as zero; addresses masked): `pause()`, `unpause()`,
+`addBlackList(u)`, `removeBlackList(u)`, `destroyBlackFunds(u)`, `setParams(bps, max)`,
+`issue(v)` (a mint to the caller, which succeeds only for the owner) and `redeem(v)` (a burn
+from the caller), without value (they are not payable). `pause()`/`unpause()` are the model's
+guarded `setPaused` (`usdtOpGuard`: setting the flag to its current value fails, as
+`whenNotPaused`/`whenPaused` do).
 
-Not decoded: `pause()`/`unpause()` (the model's `setPaused` succeeds for the owner whatever the
-current flag, the code reverts on `pause()` when paused and on `unpause()` when not, so they
-are not this model's operation), `deprecate`, `transferOwnership` (not in the model), and the
-getters. -/
+Not decoded: `deprecate`, `transferOwnership` (not in the model), and the getters. -/
 def ops (caller : Address) (data : ByteArray) (value : ℕ) : Option (Variant.Op Address) :=
   if value ≠ 0 ∨ data.size < 4 then none
   else
     let s := Abi.selectorOf data
-    if s = 0x0ecb93c0 then some (.setBlacklisted caller (argAddr data 0) true)
+    if s = 0x8456cb59 then some (.setPaused caller true)
+    else if s = 0x3f4ba83a then some (.setPaused caller false)
+    else if s = 0x0ecb93c0 then some (.setBlacklisted caller (argAddr data 0) true)
     else if s = 0xe4997dc5 then some (.setBlacklisted caller (argAddr data 0) false)
     else if s = 0xf3bdc228 then some (.destroyBlackFunds caller (argAddr data 0))
     else if s = 0xc0324c77 then
