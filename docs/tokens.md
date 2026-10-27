@@ -334,7 +334,7 @@ per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` o
 | USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | ✓ `usdt_complete` | 200000 | `transferOwnership`, `deprecate` |
 | BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | ✓ `bnb_complete` | 100000 | `withdrawEther` (depends on the owner's code) |
 | STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | ✓ `sta_complete` | 200000 | |
-| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership`, `rebase` | ✓ `ampl_spec` (initialized instance) | malformed ✓ `ampl_malformed` except `permit` frames | 100000 | `PermitSpec` (in progress); the proxy's dispatch |
+| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership`, `rebase` | ✓ `ampl_spec` (initialized instance) | `permit` ✓ `ampl_permitSpec`; `ampl_complete` except `permit` frames with an EIP-7702 designator at `0x01` (`PermitDelegResidue`) | 100000 | the proxy's dispatch; for a name over 31 bytes `amplGp` is 2⁶⁴ |
 | ZRX (mainnet) | own model | ✓ `zrx_spec` | | 100000 | malformed calldata |
 | LEND (mainnet) | own model (final sale state) | ✓ `lend_spec` | | 150000 | malformed calldata |
 | YAMv2 (mainnet) | own model | ✓ `yamv2_spec` | | 100000 | malformed calldata |
