@@ -8,10 +8,10 @@ import Verified.WeirdERC20.Common.Post
 **`ampl_malformed r`**: `MalformedSpec` for AMPL's implementation code (solc 0.7.6, ABI coder
 v1), with no entry point excluded and any signature recovery `r` for `permit`, from
 **`PermitResidue r`**: the `permit` frames with no value and all seven argument words end as the
-model's `permit` with the recovery `r` (or fail, or change nothing). AMPL's `permit` has no
-proof yet; for the right `r` (the address `ecrecover` returns for AMPL's EIP-712 digest,
-`address(0)` when the recovery fails, which AMPL's code accepts as an owner,
-`ampl_permit_zero_owner`) the residue is what `MalformedSpec` asks of those frames. Every other
+model's `permit` with the recovery `r` (or fail, or change nothing). For the right `r`
+(`amplRec`: the address `ecrecover` returns for AMPL's EIP-712 digest, `address(0)` when the
+recovery fails, which AMPL's code accepts as an owner, `ampl_permit_zero_owner`) the residue is
+proved in `PermitObl` when `ecrecover` runs the precompile (`permitResidue_plain`). Every other
 frame, with any calldata, value and gas, is proved here. By selector:
 
 * calldata shorter than a selector or an unknown selector: `fallback_spec`;

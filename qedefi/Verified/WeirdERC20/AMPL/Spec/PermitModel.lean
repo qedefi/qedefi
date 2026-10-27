@@ -123,6 +123,6 @@ def PermitDone (m mf : Machine) : Prop :=
 /-- `permit`'s code-level end at any gas: a success is a `PermitOk` frame ending as
 `PermitDone`. -/
 def PermitLow (m : Machine) (mf : Machine) (o : Outcome) : Prop :=
-  (∃ out, o = .success out) ∧ PermitOk m ∧ PermitDone m mf
+  o = .success .empty ∧ PermitOk m ∧ PermitDone m mf
 
 end Verified.WeirdERC20.AMPL.Spec.Malformed
