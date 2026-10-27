@@ -279,6 +279,75 @@ always). `Asset.variant_exactOn`: every variant is exact in a fee-free state (`N
 | `paused_solmate`, `paused_oz` | (c) pausable variant, paused: every `deposit`/`mint`/`withdraw`/`redeem` reverts on both vaults |
 | `paused_views`, `oz_paused_views` | `totalAssets` and all conversions/previews ignore `paused` and the blacklist |
 
+## Laws per token (spec layer)
+
+`QEDefi/ERC20/Spec/VariantLaws.lean` decides every law of `Spec/Laws.lean` for each `Variant`
+instance as a token model (`V.model ev`, any event rule): ✓ proved, ✗ refuted with an explicit
+witness state, well formed (`Variant.WF`) except where noted. Namespace
+`QEDefi.ERC20.Spec.VariantLaws`.
+
+| Instance | `ReturnsTrue` | `NoFalseReturn` | `RevertsOnly` | `ExactMoves` | `SupplyFixed` | `DebitAuth` | `AllowanceAuth` | `WFInvariant` |
+|---|---|---|---|---|---|---|---|---|
+| `standard` (Solmate) | ✓ | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
+| `oz` | ✓ | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
+| `solady p` | ✓ | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
+| `weth9` | ✓ | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
+| `usdt` | ✗ `usdt_approve_empty` | ✓ | ✗ `usdt_invalid_witness` | ✓ on `NoFee` (`bps = 0`); ✗ on `WF`, `usdt_fee_witness` | ✓ | ✓ | ✓ | ✓ |
+| `bnb` | ✗ `bnb_empty_witness` | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
+| `sta` | ✓ | ✓ | ✗ `sta_invalid_witness` | ✗ on `WF`, `sta_fee_witness` (no state is `NoFee`: `sta_not_noFee`) | ✗ `sta_fee_witness` | ✓ | ✓ | ✓ |
+| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`), `ampl_scale_zero_witness` | ✓ | ✓ | ✓ | ✓ |
+
+One theorem per row: `standard_laws`, `oz_laws`, `solady_laws`, `weth9_laws` (`Standard` in all
+states), `usdt_laws`, `bnb_laws`, `sta_laws`, `ampl_laws` (a conjunction; refutations need two
+accounts, `[Nontrivial A]`). The rows rest on generic lemmas over any variant: `law_exactMoves`
+(`ExactMoves (NoFee V)` for every variant, rebasing included), `law_debitAuth` and
+`law_allowanceAuth` (every variant, unconditionally), `law_supplyFixed` (fee absent or paid to
+the owner), `law_revertsOnly`, `law_returnsTrue`, `law_noFalseReturn`, `law_wfInvariant`
+(`Sane`). AMPL's rounding never shows in `transfer`/`transferFrom`: a transfer of `v` moves
+`v · scale` gons, exactly `v` in the `balanceOf` view; only `transferAll` (an operation, not a
+call) moves dust. AMPL's zero-owner `permit` (`ampl_permit_zero_owner`) satisfies
+`AllowanceAuth` as stated, since the failed recovery returns `0`, which is the owner.
+
+## Bytecode spec per token (spec layer)
+
+`ERC20Spec code abs M g₀ sel ops opAddrs` (`QEDefi/ERC20/Spec/Bytecode.lean`): in every fresh
+frame of the code, at any depth, for every finite set of actors whose storage rows are distinct
+(`TokenAbs.Sound`, usually `ActorRows`), each call ends exactly as the model says (return data,
+new state, events, nothing else changed), or, below `g₀` gas, static or with value, fails. The
+per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` of each token),
+`g₀` and the decoder of the other entry points.
+
+| Token | Model | `ERC20Spec` | `g₀` | Not covered |
+|---|---|---|---|---|
+| OpenZeppelin `ERC20Mock` | `Variant.oz` (`Instances/Oz.lean`) | ✓ `oz_erc20Spec` | 100000 | `MalformedSpec` |
+| Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec`; `permit` ✓ on the deployment chain and short names off it (`permit_spec_case`) | 100000 | `permit` off-chain with `name` ≥ 32 bytes; `MalformedSpec` |
+| Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | 100000 | `PermitSpec`, `MalformedSpec` |
+| WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | 100000 | `withdraw` (calls the caller; `withdraw_halts_refines`) |
+| USDT (mainnet) | `Variant.usdt` | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `pause`/`unpause` (the model's `setPaused` never fails; the code does) |
+| BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
+| STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
+| AMPL (`UFragments` in the proxy's storage) | `Variant.ampl` | ✓ `ampl_spec` | 100000 | `rebase`, owner functions; the proxy's dispatch |
+| ZRX (mainnet) | own model (`Instances/ZRX.lean`) | stated (`zrxSpec`); views ✓ at `g₀` without value | 100000 | the rest |
+| YAMv2, LEND (mainnet) | own models | stated (`yamv2Spec`, `lendSpec`) | 100000, 150000 | proofs; LEND only in its final sale state |
+| GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | |
+
+**What every token gets from its spec, proved once** (`Spec/TopLevel.lean`, `Callee.lean`,
+`Asset.lean`, `Invariant.lean`, `QEDefi/ERC4626/AssetModel.lean`): the result of a top-level
+call and of a whole transaction (EIP-7702 included), a `CALL`/`STATICCALL` rule for contracts
+calling the token, `DebitAuth` and `WFInvariant` on bytecode, the vault theorems over any token
+model, and the model invariant after any sequence of transactions with the token called at any
+depth. **Challenges:** `oz_supply_eq_sum` (OzAssetSupplySum) and `solady_supply_eq_sum`
+(SoladySupplySum, transactions without `permit`): the actors' balances sum to `totalSupply`
+after any sequence of transactions whose token frames touch only actors, when they did before
+and all ether is below `2²⁵⁶`.
+
+**Why actors.** Mapping rows are hashes with more keys than slots: every allowance slot is
+shared by about `2⁶⁴` pairs, and the balance rows of all `2¹⁶⁰` addresses collide about `2⁶³`
+times. "Rows never collide" over all addresses is consistent in Lean but false for Keccak; for a
+finite set of actors it is plausible. The older `weth9_backed*` theorems still assume the
+global form (`hK`, `hinj`), so they say nothing about mainnet WETH9 until they are restated per
+set of rows; `weth9_erc20Spec` does not.
+
 ## Open work
 
 - **Bytecode refinement of each target against its instance**: `processMessageCall` equals
