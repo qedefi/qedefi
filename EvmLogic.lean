@@ -1,5 +1,6 @@
 import EvmLogic.AbsInt.Check
 import EvmLogic.AbsInt.Code
+import EvmLogic.AbsInt.CodeDeleg
 import EvmLogic.AbsInt.Domain
 import EvmLogic.AbsInt.Effect
 import EvmLogic.AbsInt.Frame
@@ -8,6 +9,15 @@ import EvmLogic.AbsInt.Guard.Domain
 import EvmLogic.AbsInt.Guard.Effect
 import EvmLogic.AbsInt.Guard.Frame
 import EvmLogic.Bytes
+import EvmLogic.Chain.Body
+import EvmLogic.Chain.CodeKeep
+import EvmLogic.Chain.Isolated
+import EvmLogic.Chain.Lift
+import EvmLogic.Chain.SystemCall
+import EvmLogic.Chain.SystemCode
+import EvmLogic.Chain.SystemCodeHash
+import EvmLogic.Chain.SystemSafe
+import EvmLogic.Chain.World
 import EvmLogic.GasMono.Bump
 import EvmLogic.GasMono.CallStep
 import EvmLogic.GasMono.CodeFails
@@ -19,14 +29,20 @@ import EvmLogic.GasMono.Lockstep
 import EvmLogic.GasMono.Pc
 import EvmLogic.Program.Block
 import EvmLogic.Program.Call
+import EvmLogic.Program.CallCode
 import EvmLogic.Program.CallCodeless
 import EvmLogic.Program.Code
 import EvmLogic.Program.CodeTable
+import EvmLogic.Program.Create
+import EvmLogic.Program.Delegation
 import EvmLogic.Program.GasBound
 import EvmLogic.Program.JumpDest
 import EvmLogic.Program.Logic
+import EvmLogic.Program.Nested.Deleg
 import EvmLogic.Program.Nested.Frame
 import EvmLogic.Program.Nested.Gas
+import EvmLogic.Program.Nested.GuardDeleg
+import EvmLogic.Program.Nested.GuardDelegWorld
 import EvmLogic.Program.Nested.Guard
 import EvmLogic.Program.Nested.GuardTrace
 import EvmLogic.Program.Nested.Idle
@@ -41,6 +57,8 @@ import EvmLogic.Program.Nested.Wp
 import EvmLogic.Program.PrecompileCall
 import EvmLogic.Program.Reentrancy.AnyCaller
 import EvmLogic.Program.Reentrancy.Certified
+import EvmLogic.Program.Reentrancy.Create
+import EvmLogic.Program.Reentrancy.Deleg
 import EvmLogic.Program.Reentrancy.Ether
 import EvmLogic.Program.Reentrancy.Exec
 import EvmLogic.Program.Reentrancy.Halts
@@ -50,11 +68,14 @@ import EvmLogic.Program.Reentrancy.Prefix
 import EvmLogic.Program.Reentrancy.PrefixCall
 import EvmLogic.Program.Reentrancy.PrefixEnv
 import EvmLogic.Program.Reentrancy.PrefixOps
+import EvmLogic.Program.Reentrancy.PrefixTransient
 import EvmLogic.Program.Reentrancy.Tail
 import EvmLogic.Program.Reentrancy.Value
 import EvmLogic.Program.Reentrancy.World
 import EvmLogic.Program.Run
+import EvmLogic.Program.Selfdestruct
 import EvmLogic.Program.Summary
+import EvmLogic.Program.SummaryDeleg
 import EvmLogic.Program.Time
 import EvmLogic.Solidity.Abi
 import EvmLogic.Solidity.Call
@@ -81,6 +102,7 @@ import EvmLogic.Step.Memory
 import EvmLogic.Step.Push
 import EvmLogic.Step.Stack
 import EvmLogic.Step.Storage
+import EvmLogic.Step.Transient
 import EvmLogic.Tactic.Abstract
 import EvmLogic.Tactic.EvmStep
 import EvmLogic.Tactic.FastStep
@@ -93,6 +115,13 @@ import EvmLogic.Tactic.PrefixRun
 import EvmLogic.Tactic.SolStep
 import EvmLogic.Tactic.StepExt
 import EvmLogic.Tactic.WpStep
+import EvmLogic.Tx.Delete
+import EvmLogic.Tx.Exec
+import EvmLogic.Tx.Frame
+import EvmLogic.Tx.Guard
+import EvmLogic.Tx.IdleDel
+import EvmLogic.Tx.Lift
+import EvmLogic.Tx.Process
 import EvmLogic.Word
 
 /-!
@@ -104,6 +133,7 @@ A generic program logic and proof library over the `EvmLean` semantics: step lem
 (`EvmLogic.GasMono`), abstract interpretation (`EvmLogic.AbsInt`, and its path-sensitive
 variant `EvmLogic.AbsInt.Guard`), relays and protected state across whole message calls
 (`EvmLogic.Program.Nested.Relay`, `…Guard`), frames whose every path ends safely
-(`EvmLogic.Program.Nested.Own`, with the `own_explore` symbolic executor) and tactics
-(`EvmLogic.Tactic`).
+(`EvmLogic.Program.Nested.Own`, with the `own_explore` symbolic executor), the transaction
+layer that lifts message-level invariants to `EvmLean.Tx.process` (`EvmLogic.Tx.Lift`) and
+tactics (`EvmLogic.Tactic`).
 -/

@@ -49,6 +49,7 @@ is `step m = .running { m with … }` (or `.done …` / `finishFrame …`) with 
 | `Step.Basic` | `step_of_binOp`/`unOp`/`ternOp`/`pushValue`, `run_succ_of_running`, `run_succ_of_done`, `processMessageCall_eq_run`, `initMachine_call` |
 | `Step.Arith`, `Stack`, `Push`, `Env`, `Log` | arithmetic, `PUSH`/`DUP`/`SWAP`/`POP`, environment opcodes, `LOG0`–`LOG4` |
 | `Step.Memory`, `Storage`, `Flow` | `MLOAD`/`MSTORE`/`KECCAK256`, `SLOAD`/`SSTORE` (+ `sloadCost_le`, `sstoreCost_le`), jumps and halts, `topLevelResult_*` |
+| `Step.Transient` | `TLOAD`/`TSTORE` (EIP-1153, 100 gas; `step_tstore_static`, `_oog`), `getTransient_setTransient*` |
 | `Bytes`, `State`, `Word` | calldata decoding, memory read/write, `World.sload_sstore*`, balances, word facts (`Word.lt_eq_zero_iff`, …) |
 
 A top-level proof has this shape (`Examples/Basic/Token.lean`):
@@ -69,7 +70,12 @@ discharges, and normalize with `evm_norm` (literal code bytes via the `reduceByt
 simproc, numerals, gas constants, memory costs, warm sets, plus the given lemmas). Fuel must
 be `k + n` with `n` at least the number of steps. `evm_gas` closes gas goals with symbolic
 `SLOAD`/`SSTORE` costs; give theorems a generous gas lower bound. Top-level call theorems
-need `ctx.fork < .prague ∨ ctx.tx.authorizations = []` (EIP-7702).
+that equate `processMessageCall` with a run from the given world need
+`ctx.fork < .prague ∨ ctx.tx.authorizations = []` (EIP-7702). Without it, the authorizations
+run first: `EvmLogic.Program.Delegation` bounds what they do (`DelegFrame`: balances kept, only
+accounts holding empty code or a designator change, and only their code and nonce), and the
+`_7702` theorems (`processMessageCall_good_7702`, `processMessageCall_good_v_7702`,
+`processMessageCall_guard_7702`, `processMessageCall_eq_run_7702`, …) drop the hypothesis.
 
 **Tactic families.** All share the step lemmas; pick by goal shape and code:
 
@@ -139,7 +145,20 @@ pushed, output copied, unused gas returned, world or snapshot, logs merged on su
 proxy's forwarding is summarised once for all implementations
 (`Verified/AaveV3/ATokenProxy/Forward.lean`, `forward_halts`). Precompile calls run within one step
 (`Program/PrecompileCall.lean`: `WP.staticcall_precompile`, and `WP.staticcall_ecrecover` for
-solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`.
+solc's `ecrecover`). See `Examples/Basic/TwoContracts.lean`. `CALLCODE` is `step_callcode` /
+`WP.callcode` (`Program/CallCode.lean`); `SELFDESTRUCT` (EIP-6780: the balance moves, the account
+is scheduled for deletion only if created in the same transaction) is `step_selfdestruct`
+(`Program/Selfdestruct.lean`).
+
+**Creation** (`Program/Create.lean`). `step_create`/`step_create2` push the init-code frame
+(`createChild`) with the exact charge (`createCharge`: 32000, EIP-3860 init-code words, hashing for
+`CREATE2`, memory) and the EIP-150 child gas (`createGas`; the creator keeps 1/64,
+`creatorGas_eq`), at `newAddress` (`createAddress` of the nonce or the `CREATE2` address, through
+`ctx.crypto.keccak256`). Every other outcome is a step lemma: `step_create_oog`, `_initcode`
+(EIP-3860), `_static`, `_soft` (balance, nonce, depth: `0` pushed, child gas returned),
+`_collision` (EIP-7610: `0` pushed, child gas consumed, nonce incremented). `WP.create`/`WP.create2`
+are the callee-summary rules; the creator resumes as `resumeAfter_create_success` (code
+deposited, address pushed), `_deposit_fail`, `_revert`, `_halt`.
 
 **Gas across a call** (`Program/GasBound.lean`). A frame never ends with more gas than it
 started with: `Halts.gas_le` adds `returnedGas mf o ≤ m.frame.gasLeft` to any `Halts m H` (refunds
@@ -264,7 +283,8 @@ takes the instruction when gas and stack allow and otherwise absorbs the failure
 (`wp_fail_of_error`, `wp_fail_of_revert`): `pwp_push`, `pwp_dup`, `pwp_swap`, `pwp_pop`, one rule
 per arithmetic/comparison/environment opcode (`pwp_add`, `pwp_eq`, `pwp_caller`, …), `pwp_jump`,
 `pwp_jumpi` (both branches), `pwp_mload_val`, `pwp_mstore`, `pwp_keccak256`, `pwp_codecopy`,
-`pwp_returndatacopy` (memory left unknown), `pwp_calldataload`, `pwp_sload`, `pwp_sstore`; the
+`pwp_returndatacopy` (memory left unknown), `pwp_calldataload`, `pwp_sload`, `pwp_sstore`,
+`pwp_tload`, `pwp_tstore` (`PrefixTransient.lean`; a static `TSTORE` is an absorbed failure); the
 frame ends with `pwp_revert`/`pwp_invalid` (always fine) or `pwp_stop`/`pwp_return` (the world
 must be `Good`). They mirror `GasMono.CodeFails` with a forward goal, so no gas lower bound.
 **`apwp_steps [h₁, …]`** (`Tactic/PrefixStep.lean`) drives them over literal code from a
@@ -312,6 +332,8 @@ less gas than its ancestors.
 | `WP.call_stipend` | `CALL` whose child gets ≤ 2300 gas, any target | the callee's final world equals its initial world |
 | `WP.staticcall_havoc` | any `STATICCALL` | any return whose world is `Good` |
 | `WP.call_frozen` | `CALL` under a held guard: `Covers` for `Frozen P m.world` | protected storage and code exactly as at the call |
+| `WP.create_havoc`, `WP.create2_havoc` (`Reentrancy/Create.lean`) | `CREATE*` of arbitrary init code at a free address, `Good m.world`, `Covers` for `createGas` | any return whose world is `Good`, the address or `0` pushed |
+| `WP.create_havoc_any` | any `CREATE*`, `Good m.world`, `Covers` for the creator's gas; no gas, balance, nonce, depth or freshness condition | the frame halts, or resumes at `pc + 1` with one word pushed in a `Good` world |
 
 Checks-effects-interactions is `WP.call_havoc` with the contract's invariant as `Good`; a
 reentrancy guard is `WP.call_frozen`, whose `Covers` (`covers_frozen`) asks that a frame
@@ -365,8 +387,8 @@ The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots cr
 
 ## 8. Time and multiple blocks
 
-Modules: `EvmLogic/Program/Time.lean` (block environments), `qedefi/QEDefi/Trace/Time.lean`
-(EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
+Modules: `EvmLogic/Program/Time.lean` (block environments), `EvmLogic/Chain/` (the block
+function), `qedefi/QEDefi/Trace/Time.lean` (EVM-independent lifting), `qedefi/QEDefi/Vesting/Model.lean` and
 `qedefi/Verified/OpenZeppelin/VestingWallet/` and `qedefi/Verified/Solmate/ERC4626/Time.lean`
 (Solmate across blocks).
 
@@ -381,6 +403,34 @@ hypotheses on the list:
   `nextBlock_stateTransition` checks them against the semantics: the environments in which
   `Block.stateTransition` runs two consecutive valid blocks are `NextBlock`.
   `BlockChain.timestamp_lt`, `number_eq`, `chainId_eq` are what proofs use.
+
+**The block layer** (`EvmLogic/Chain/`). The real block function, not an assumed step:
+`stateTransition_bodyRun` factors a valid block (`Block.stateTransition`) into its worlds
+(`BodyRun`): the EIP-4788 system call, from Prague the EIP-2935 one, each transaction through
+`Tx.process` with the gas still available (`TxRun`), the withdrawals, and from Prague the
+EIP-7002/7251 checked system calls. Withdrawals are balance credits (`balance_applyWithdrawals`:
+each account gains exactly its credits, mod 2²⁵⁶; nonces and code never change; only an
+account left empty is erased). A system call is the `TopOk` message `systemMessage` from
+`SYSTEM_ADDRESS` (`systemCall_ok`, `topOk_systemMessage`); to a contract without code it changes
+nothing but erasing an empty target (`systemCall_of_code_empty`). A world invariant kept by
+system calls, transactions (the transaction layer's obligation) and credits
+(`BlockPreserves`) holds after every valid block (`stateTransition_preserves`) and along any
+chain of them (`Applies.preserves`), whose environments are a `BlockChain`
+(`Applies.blockChain`); `blockPreserves_good` discharges the system-call and credit obligations
+for the nested simulation's `GoodOk` predicates. Its frame-summary hypothesis is discharged for
+the deployed system contracts: their mainnet code is `systemCode` (`Chain/SystemCode.lean`,
+bytes in `contracts/system/`, code hashes recomputed by the kernel in `SystemCodeHash.lean`),
+and no instruction of it (`PUSH` immediates skipped) is a `CALL`, `CREATE`, `SELFDESTRUCT` or
+`GAS` (`isolated_systemCode`, a `decide +kernel` scan), so a system call to it, or to an empty
+system contract, runs in one frame at the system contract (`reaches_lone`,
+`reaches_systemMessage`) and keeps every `GoodOk` predicate protecting neither
+`SYSTEM_ADDRESS` nor a system contract (`systemCall_good_systemCode`). That the system
+contracts hold their canonical code (`SystemCodeIn`) is itself a block invariant: no
+transaction (EIP-7702 included), system call or credit changes real code
+(`processMessageCall_code`, `process_code`, `Chain/CodeKeep.lean`), so it is assumed only at the
+start of a chain (`blockPreserves_good_systemCode`, `Applies.good_systemCode`). "Canonical code
+or none" is not invariant: nothing in the semantics keeps a transaction from deploying code at
+an empty address.
 
 **Time-indexed models** (`QEDefi.Trace.Time`). The model step is `step now s op`; behaviour
 over time is a closed form in `now` (e.g. `Vesting.Schedule.vested total t`), proved

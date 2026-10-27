@@ -23,3 +23,4 @@ import EvmTest.Bls12381Precompile
 import EvmTest.P256
 import EvmTest.PrecompileCall
 import EvmTest.AbsInt
+import EvmTest.OpcodeRules
