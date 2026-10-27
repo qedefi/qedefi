@@ -382,7 +382,12 @@ entries with **`apwp_steps stop_at [q₁, …]`** and closed by certified world-
 (`view_wp`). solc 0.4's unchecked `+=` is safe because a credit is backed by the ether, which
 fits a word (`solvent_credit_unchecked`); `transferFrom` is `solvent_move` (debit, then credit).
 The only Keccak hypothesis is `Disjoint (allowanceSlots crypto) (balanceSlots crypto 3)`: no
-`allowance[a][b]` slot is a `balanceOf` slot (two finite families, not Keccak injectivity).
+`allowance[a][b]` slot is a `balanceOf` slot. Over all `2³²⁰` pairs it is almost surely false
+for Keccak, so `Rows.lean`/`RowsTx.lean` restate the results per execution
+(**`weth9_solvent_rows`**, **`weth9_backed_tx_rows`**, …): only the allowance rows of the WETH9
+frames a call reaches avoid the `balanceOf` rows (`AllowOk_rows`), and the havoc theorem needs
+frame summaries only for reached frames
+(`QEDefi.ERC20.Spec.Invariant.processMessageCall_good_reach`).
 `weth_covers` needs no induction: the stipend call cannot reach WETH9 again.
 
 ## 8. Time and multiple blocks

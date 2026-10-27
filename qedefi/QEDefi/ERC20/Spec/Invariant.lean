@@ -37,7 +37,7 @@ What this needs beyond `ERC20Spec` and `M.WFInvariant`, as hypotheses:
   it ether without running its code: `SELFDESTRUCT`, the coinbase reward). Immediate when `abs`
   does not read the balance (`etherFree_of_read`).
 * the hash hypotheses `abs.Sound crypto Act`, and the token's code is real code (not empty, no
-  EIP-7702 designator).
+  EIP-7702 designator, shorter than `2²⁵⁶` bytes).
 * all ether below `2²⁵⁶` before the first transaction (`TokGood`; true on any real chain, and
   kept by every transaction: `QEDefi.Solvency.process_keeps_ether_7702`). `Start` needs it: a
   frame with value starts from a snapshot where the token's balance plus the value does not wrap.
@@ -419,6 +419,7 @@ from a world satisfying `TokGood` (the invariant, all ether below `2²⁵⁶`). 
 theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hdel : delegatedAddress? code = none) {fuel : Nat} {ctx : Context} {w : World}
     {tr : TransientStorage} {msg : Message} {r : MessageResult}
     (hw : TokGood code abs M crypto Act a w) (hmsg : TopOk (Prot a) w msg)
@@ -458,7 +459,9 @@ theorem processMessageCall_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddr
       sound := by rw [hd.context]; exact hsound
       wf := by
         show M.wf (abs.read m.ctx.crypto Act m.frame.snapshot.1 m.frame.msg.currentTarget)
-        rw [hd.context, ht]; exact hd.snapshot.1.2 }
+        rw [hd.context, ht]; exact hd.snapshot.1.2
+      hasCode := by rw [ht, hwcode]; exact hreal
+      codeBound := by rw [ht, hwcode]; exact hbound }
   have hsupW : supply m.world < 2 ^ 256 := by
     rw [hd.world_eq]
     unfold transferValue
@@ -497,6 +500,7 @@ frames touch only actors; all ether stays below `2²⁵⁶`. -/
 theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hdel : delegatedAddress? code = none) {i : Input} {w : World} {out : EvmLean.Tx.TxOutput}
     (hw : TokGood code abs M crypto Act a w) (h : i.run w = .ok out)
     (htouch : TxTouch code abs M sel ops opAddrs perm crypto Act a i w out) :
@@ -521,7 +525,7 @@ theorem process_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
   have htop := topOk_prepareMessage hP hc
     (BitVec.ofNat 256 ((w.account c.sender).balance.toNat - upfrontFee i.fork i.env i.tx c))
     (w.account c.sender).nonce (i.tx.gas - intr.regular)
-  have hrw := processMessageCall_inv hspec hpermit hW hE hsound hreal hdel hw₁ htop
+  have hrw := processMessageCall_inv hspec hpermit hW hE hsound hreal hbound hdel hw₁ htop
     (prepareMessage_shouldTransferValue ..) (by rw [txContext_crypto, hcr]) (htouch intr c hv hc)
     (fun hp => by
       rw [prepareMessage_gas]
@@ -541,11 +545,12 @@ of whose token frames touch only actors, from a world with all ether below `2²�
 theorem txSteps_inv (hspec : ERC20Spec code abs M g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs M gp r) (hW : M.WFInvariant)
     (hE : EtherFree abs M) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hdel : delegatedAddress? code = none) {w w' : World}
     (hw : TokGood code abs M crypto Act a w)
     (h : TxSteps (TxTouch code abs M sel ops opAddrs perm crypto Act a) w w') :
     TokGood code abs M crypto Act a w' :=
-  h.keeps (fun _ _ _ hv hr ht => process_inv hspec hpermit hW hE hsound hreal hdel hv hr ht) hw
+  h.keeps (fun _ _ _ hv hr ht => process_inv hspec hpermit hW hE hsound hreal hbound hdel hv hr ht) hw
 
 /-! ## Variants: the supply is the sum of the actors' balances -/
 
@@ -577,12 +582,13 @@ theorem variant_conserved {V : Variant Address} (hV : V.Sane) (hr : V.rebasing =
     (hspec : ERC20Spec code abs (V.model ev) g₀ sel ops opAddrs)
     (hpermit : ∀ gp r, perm = some (gp, r) → PermitSpec code abs (V.model ev) gp r)
     (hE : EtherFree abs (V.model ev)) (hsound : abs.Sound crypto Act) (hreal : code.size ≠ 0)
+    (hbound : code.size < 2 ^ 256)
     (hdel : delegatedAddress? code = none) {w w' : World}
     (hw : TokGood code abs (V.model ev) crypto Act a w)
     (h : TxSteps (TxTouch code abs (V.model ev) sel ops opAddrs perm crypto Act a) w w') :
     total (abs.read crypto Act w' a).bal + total (abs.read crypto Act w' a).frozen =
       (abs.read crypto Act w' a).supply := by
-  have hi := txSteps_inv hspec hpermit (variant_wfInvariant hV ev) hE hsound hreal hdel hw h
+  have hi := txSteps_inv hspec hpermit (variant_wfInvariant hV ev) hE hsound hreal hbound hdel hw h
   have := hi.1.2
   simp only [Variant.model_wf, Variant.WF, hr, hsup, Bool.false_eq_true, ↓reduceIte,
     reduceCtorEq] at this

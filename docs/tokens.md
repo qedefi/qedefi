@@ -295,18 +295,26 @@ witness state, well formed (`Variant.WF`) except where noted. Namespace
 | `usdt` | ✗ `usdt_approve_empty` | ✓ | ✗ `usdt_invalid_witness` | ✓ on `NoFee` (`bps = 0`); ✗ on `WF`, `usdt_fee_witness` | ✓ | ✓ | ✓ | ✓ |
 | `bnb` | ✗ `bnb_empty_witness` | ✓ | ✓ | ✓ all states | ✓ | ✓ | ✓ | ✓ |
 | `sta` | ✓ | ✓ | ✗ `sta_invalid_witness` | ✗ on `WF`, `sta_fee_witness` (no state is `NoFee`: `sta_not_noFee`) | ✗ `sta_fee_witness` | ✓ | ✓ | ✓ |
-| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`), `ampl_scale_zero_witness` | ✓ | ✓ | ✓ | ✓ |
+| `ampl` | ✓ | ✓ | ✓ | ✓ on `0 < scale` ⊇ `WF`; ✗ at scale `0` (not `WF`), `ampl_scale_zero_witness` | ✓ | ✓ | ✗ zero-owner `permit` in every state, `ampl_permit_zero_witness` | ✓ |
 
 One theorem per row: `standard_laws`, `oz_laws`, `solady_laws`, `weth9_laws` (`Standard` in all
 states), `usdt_laws`, `bnb_laws`, `sta_laws`, `ampl_laws` (a conjunction; refutations need two
 accounts, `[Nontrivial A]`). The rows rest on generic lemmas over any variant: `law_exactMoves`
 (`ExactMoves (NoFee V)` for every variant, rebasing included), `law_debitAuth` and
-`law_allowanceAuth` (every variant, unconditionally), `law_supplyFixed` (fee absent or paid to
+`law_allowanceAuth` (every variant whose `permit` rejects the zero owner, `RejectsZeroOwner`: all
+but AMPL), `law_supplyFixed` (fee absent or paid to
 the owner), `law_revertsOnly`, `law_returnsTrue`, `law_noFalseReturn`, `law_wfInvariant`
 (`Sane`). AMPL's rounding never shows in `transfer`/`transferFrom`: a transfer of `v` moves
 `v · scale` gons, exactly `v` in the `balanceOf` view; only `transferAll` (an operation, not a
-call) moves dust. AMPL's zero-owner `permit` (`ampl_permit_zero_owner`) satisfies
-`AllowanceAuth` as stated, since the failed recovery returns `0`, which is the owner.
+call) moves dust. `AllowanceAuth` admits a `permit` only for an owner `o ≠ 0`, since `ecrecover`
+returns `0` when recovery fails: AMPL's `permit` has no zero check, so any caller sets
+`allowance(0, sp)` with a failed signature (`ampl_permit_zero_owner`), and AMPL fails the law
+(`ampl_not_allowanceAuth`).
+
+The tokens with a model of their own decide the laws for it: `bnbModel_laws` (BNB's
+credit-overflow guard), `usdtModel_laws` (USDT's pause guard, `WFInvariant` for the actors'
+supply bound `YAMV2.SubSupply`; not exact on it, as on `WF`), `yamv2_laws`, `zrx_laws`,
+`lend_laws`, `gusd_laws`.
 
 ## Bytecode spec per token (spec layer)
 
@@ -317,19 +325,20 @@ new state, events, nothing else changed), or, below `g₀` gas, static or with v
 per-token data a reviewer reads is the model, the abstraction (`Spec/Abs.lean` of each token),
 `g₀` and the decoder of the other entry points.
 
-| Token | Model | `ERC20Spec` | `g₀` | Not covered |
-|---|---|---|---|---|
-| OpenZeppelin `ERC20Mock` | `Variant.oz` (`Instances/Oz.lean`) | ✓ `oz_erc20Spec` | 100000 | `MalformedSpec` |
-| Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec`; `permit` ✓ on the deployment chain and short names off it (`permit_spec_case`) | 100000 | `permit` off-chain with `name` ≥ 32 bytes; `MalformedSpec` |
-| Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | 100000 | `PermitSpec`, `MalformedSpec` |
-| WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | 100000 | `withdraw` (calls the caller; `withdraw_halts_refines`) |
-| USDT (mainnet) | `Variant.usdt` | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | 200000 | `pause`/`unpause` (the model's `setPaused` never fails; the code does) |
-| BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | 100000 | `withdrawEther` (depends on the owner's code) |
-| STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | 200000 | |
-| AMPL (`UFragments` in the proxy's storage) | `Variant.ampl` | ✓ `ampl_spec` | 100000 | `rebase`, owner functions; the proxy's dispatch |
-| ZRX (mainnet) | own model (`Instances/ZRX.lean`) | stated (`zrxSpec`); views ✓ at `g₀` without value | 100000 | the rest |
-| YAMv2, LEND (mainnet) | own models | stated (`yamv2Spec`, `lendSpec`) | 100000, 150000 | proofs; LEND only in its final sale state |
-| GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | |
+| Token | Model | `ERC20Spec` | Complete (`permit`, malformed calldata) | `g₀` | Not covered (`excl`, or open) |
+|---|---|---|---|---|---|
+| OpenZeppelin `ERC20Mock` | `Variant.oz` | ✓ `oz_erc20Spec` | ✓ `oz_complete` | 100000 | |
+| Solmate `MockERC20`, any immutables | `Variant.standard` | ✓ `solmate_erc20Spec` | `permit` ✓ `solmate_permit` (every name and chain); malformed ✓ except two `permit` cases (`PermitResidue`: `0x01` delegated, gas ≥ 2⁶⁴) | 100000 | |
+| Solady `SoladyToken` | `Variant.solady PERMIT2` | ✓ `solady_spec` | malformed ✓ except `permit` frames | 100000 | `permit`: the code accepts owner `0` and bumps the nonce by the `ecrecover` call's success flag, which the model cannot state under an arbitrary `Crypto` (about 2¹⁶⁰ work with real Keccak) |
+| WETH9 (mainnet) | `Variant.weth9`, `Deposit` event | ✓ `weth9_erc20Spec` | ✓ `weth9_complete` | 100000 | `withdraw` (sends ether to and runs the caller; `withdraw_halts_refines`) |
+| USDT (mainnet) | `usdtModel`: `Variant.usdt` plus the pause guard it lacks | ✓ `usdt_erc20Spec` (live: not deprecated, 6 decimals, owner an actor) | ✓ `usdt_complete` | 200000 | `transferOwnership`, `deprecate` |
+| BNB (mainnet) | `bnbModel`: `Variant.bnb` plus the credit-overflow guard it lacks | ✓ `bnb_spec` | ✓ `bnb_complete` | 100000 | `withdrawEther` (depends on the owner's code) |
+| STA (mainnet) | `Variant.sta` (`basePercent = 100`) | ✓ `sta_spec` | ✓ `sta_complete` | 200000 | |
+| AMPL (`UFragments` in the proxy's storage) | `amplModel`: `Variant.ampl` plus the owner, `setMonetaryPolicy`, `transferOwnership`, `renounceOwnership`, `rebase` | ✓ `ampl_spec` (initialized instance) | `permit` ✓ `ampl_permitSpec`; `ampl_complete` except `permit` frames with an EIP-7702 designator at `0x01` (`PermitDelegResidue`) | 100000 | the proxy's dispatch; for a name over 31 bytes `amplGp` is 2⁶⁴ |
+| ZRX (mainnet) | own model | ✓ `zrx_spec` | | 100000 | malformed calldata |
+| LEND (mainnet) | own model (final sale state) | ✓ `lend_spec` | | 150000 | malformed calldata |
+| YAMv2 (mainnet) | own model | ✓ `yamv2_spec` | | 100000 | malformed calldata |
+| GUSD (mainnet, three contracts) | own model over the three accounts | no single-code spec: the docstring of `GUSD/Spec/Abs.lean` says what a system spec needs | | | |
 
 **What every token gets from its spec, proved once** (`Spec/TopLevel.lean`, `Callee.lean`,
 `Asset.lean`, `Invariant.lean`, `QEDefi/ERC4626/AssetModel.lean`): the result of a top-level
@@ -344,9 +353,12 @@ and all ether is below `2²⁵⁶`.
 **Why actors.** Mapping rows are hashes with more keys than slots: every allowance slot is
 shared by about `2⁶⁴` pairs, and the balance rows of all `2¹⁶⁰` addresses collide about `2⁶³`
 times. "Rows never collide" over all addresses is consistent in Lean but false for Keccak; for a
-finite set of actors it is plausible. The older `weth9_backed*` theorems still assume the
-global form (`hK`, `hinj`), so they say nothing about mainnet WETH9 until they are restated per
-set of rows; `weth9_erc20Spec` does not.
+finite set of actors it is plausible. The older `weth9_backed*` theorems assume the global form
+(`hK`, `hinj`), so they say nothing about mainnet WETH9; `weth9_backed_tx_rows`
+(`qedefi/Verified/WETH9/RowsTx.lean`) restates the ether backing per transaction, assuming only
+that no allowance row its WETH9 frames may write is a `balanceOf` row (`TxFramesOk_rows`) and
+that the holders summed over have distinct `balanceOf` rows. `weth9_erc20Spec` never assumed
+the global form.
 
 ## Open work
 

@@ -20,7 +20,8 @@ variable {σ E : Type} {code : ByteArray} {abs : TokenAbs σ} {M : TokenModel σ
 
 theorem start_high {m : Machine} (h : Start code abs M Act m) {G : Nat}
     (hG : m.frame.gasLeft ≤ G) : Start code abs M Act (high G m) :=
-  ⟨fresh_high h.fresh hG, h.launched, h.value, h.precompiles, h.size, h.caller, h.sound, h.wf⟩
+  ⟨fresh_high h.fresh hG, h.launched, h.value, h.precompiles, h.size, h.caller, h.sound, h.wf,
+    h.hasCode, h.codeBound⟩
 
 theorem fails_of_failed {o : Outcome} (h : Failed o) : Fails o := by
   cases o with

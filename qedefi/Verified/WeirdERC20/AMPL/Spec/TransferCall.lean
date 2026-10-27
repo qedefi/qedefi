@@ -15,15 +15,16 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split' eq_zero_of_iszero_ne ite_pos' ite_neg')
 open Verified.Solady.Spec.AnyGas QEDefi.ERC4626
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 set_option linter.unusedSimpArgs false in
-theorem ampl_call_transfer (s : VState Address) (c d : Address) (v : ℕ) :
+theorem ampl_call_transfer (s : AState Address) (c d : Address) (v : ℕ) :
     M.call s c (.transfer d v) =
       if d = 0 ∨ d = s.self ∨ s.bal c < s.scale * v then .halt .revert
       else .ok { s with
         bal := (s.bal - Finsupp.single c (s.scale * v) + Finsupp.single d (s.scale * v)) }
         (.word true) := by
-  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.model_call]
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.model_call]
   by_cases h1 : d = 0
   · subst h1
     simp [Variant.call, Variant.step, Variant.transfer, Variant.moveOk, Variant.ampl,
@@ -49,17 +50,21 @@ theorem amplRead_sstore_bal {crypto : Crypto} {Act : Finset Address} {w : World}
   rw [BNB.Spec.readMap_sstore hS (by simp) ha,
     BNB.Spec.readMap_sstore_other (base' := 160#256) hS (by simp) (by simp) (by decide) ha,
     BNB.Spec.readMap2_sstore_map hS (by simp) (by simp) ha]
-  simp only [readSlot, BNB.Spec.sload_sstore_map (k := 156#256) (base := 158#256) (x := x) (t := t)
-    (w := w) hS (by simp) (by simp) ha, BNB.Spec.sload_sstore_map (k := 157#256) (base := 158#256)
-    (x := x) (t := t) (w := w) hS (by simp) (by simp) ha, BNB.Spec.sload_sstore_map (k := 155#256)
+  simp only [readSlot, Live, BNB.Spec.sload_sstore_map (k := 156#256) (base := 158#256) (x := x)
+    (t := t) (w := w) hS (by simp) (by simp) ha, BNB.Spec.sload_sstore_map (k := 157#256)
+    (base := 158#256) (x := x) (t := t) (w := w) hS (by simp) (by simp) ha,
+    BNB.Spec.sload_sstore_map (k := 155#256) (base := 158#256) (x := x) (t := t) (w := w) hS
+    (by simp) (by simp) ha, BNB.Spec.sload_sstore_map (k := 0#256) (base := 158#256) (x := x)
+    (t := t) (w := w) hS (by simp) (by simp) ha, BNB.Spec.sload_sstore_map (k := 104#256)
     (base := 158#256) (x := x) (t := t) (w := w) hS (by simp) (by simp) ha, World.balance_sstore]
+  congr 1
 
 theorem ampl_total_lt {Act : Finset Address} {m : Machine}
     (hs : Start AMPL.runtimeCode amplAbs M Act m) (hv : m.frame.msg.value = 0) :
     total (amplRead m.ctx.crypto Act m.world m.frame.msg.currentTarget).bal < 2 ^ 256 := by
   have h := hs.wf
   rw [pre_eq hs hv] at h
-  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.model_wf, Variant.WF, Variant.ampl,
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, Variant.WF, Variant.ampl,
     Variant.standard, ite_true] at h
   rw [h.1]
   unfold Variant.amplTotalGons QEDefi.Math.MAX
@@ -134,7 +139,7 @@ theorem call_transfer (dst : Address) (v : ℕ) :
     rw [hw, moveWorld, amplRead_sstore_bal hs.sound hdA, debitWorld,
       amplRead_sstore_bal hs.sound hcA, hpre]
     dsimp only
-    congr 1
+    congr 2
     ext a
     simp only [Finsupp.update_apply, Finsupp.coe_add, Finsupp.coe_tsub, Pi.add_apply,
       Pi.sub_apply, Finsupp.single_apply]
@@ -182,6 +187,6 @@ theorem call_transfer (dst : Address) (v : ℕ) :
       (BNB.Spec.FrameKeeps.sstore' (.inr (.inr (.inr (.inl ⟨_, hcA, rfl⟩))))
         BNB.Spec.frameKeeps_refl')
   · rw [hl]
-    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, QEDefi.ERC20.Spec.AMPL.amplEvents, Spec.eventLog]
+    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, QEDefi.ERC20.Spec.AMPL.amplEvents, Spec.eventLog]
 
 end Verified.WeirdERC20.AMPL.Spec

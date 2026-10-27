@@ -14,61 +14,62 @@ namespace Verified.WeirdERC20.AMPL.Spec
 open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter EvmLogic.Tactic
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts halts_split' eq_zero_of_iszero_ne ite_pos' ite_neg')
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 set_option linter.unusedSimpArgs false in
-theorem ampl_op_transferAll (s : VState Address) (c d : Address) :
-    M.op s (.transferAll c d) = if d = 0 ∨ d = s.self then none
+theorem ampl_op_transferAll (s : AState Address) (c d : Address) :
+    M.op s (.base (.transferAll c d)) = if d = 0 ∨ d = s.self then none
       else some { s with
         bal := (s.bal - Finsupp.single c (s.bal c) + Finsupp.single d (s.bal c)) } := by
   by_cases h1 : d = 0
   · subst h1
-    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAll,
+    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAll,
       Variant.moveOk, Variant.ampl, Variant.standard]
   · have h1' : ¬ d = 0#160 := h1
     by_cases h2 : d = s.self
-    · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAll,
+    · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAll,
         Variant.moveOk, Variant.ampl, Variant.standard, h1', h2]
-    · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAll,
+    · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAll,
         Variant.moveOk, Variant.ampl, Variant.standard, h1', h2]
 
 set_option linter.unusedSimpArgs false in
-theorem ampl_op_transferAllFrom (s : VState Address) (c a d : Address) :
-    M.op s (.transferAllFrom c a d) =
+theorem ampl_op_transferAllFrom (s : AState Address) (c a d : Address) :
+    M.op s (.base (.transferAllFrom c a d)) =
       if d = 0 ∨ d = s.self ∨ s.allowance a c < s.bal a / s.scale then none
       else some { s.setAllowance a c (s.allowance a c - s.bal a / s.scale) with
         bal := (s.bal - Finsupp.single a (s.bal a) + Finsupp.single d (s.bal a)) } := by
   by_cases h1 : d = 0
   · subst h1
-    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAllFrom,
+    simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAllFrom,
       Variant.moveOk, Variant.ampl, Variant.standard]
   have h1' : ¬ d = 0#160 := h1
   by_cases h2 : d = s.self
-  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAllFrom,
+  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAllFrom,
       Variant.moveOk, Variant.ampl, Variant.standard, h1', h2]
   by_cases h3 : s.allowance a c < s.bal a / s.scale
-  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAllFrom,
+  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAllFrom,
       Variant.moveOk, Variant.spend, Variant.balanceOf, Variant.ampl, Variant.standard,
       Infinite.test, h1', h2, h3]
-  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.transferAllFrom,
+  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.transferAllFrom,
       Variant.moveOk, Variant.spend, Variant.balanceOf, Variant.ampl, Variant.standard,
-      Infinite.test, VState.setAllowance, h1', h2, h3]
+      Infinite.test, VState.setAllowance, AState.setAllowance, h1', h2, h3]
 
 set_option linter.unusedSimpArgs false in
-theorem ampl_op_inc (s : VState Address) (c sp : Address) (x : ℕ) :
-    M.op s (.adjustAllowance c sp true x) =
+theorem ampl_op_inc (s : AState Address) (c sp : Address) (x : ℕ) :
+    M.op s (.base (.adjustAllowance c sp true x)) =
       if QEDefi.Math.MAX < s.allowance c sp + x then none
       else some (s.setAllowance c sp (s.allowance c sp + x)) := by
   by_cases h : QEDefi.Math.MAX < s.allowance c sp + x
-  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.adjustAllowance,
-      Variant.ampl, Variant.standard, h]
-  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.adjustAllowance,
-      Variant.ampl, Variant.standard, h]
+  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.adjustAllowance,
+      Variant.ampl, Variant.standard, AState.setAllowance, h]
+  · simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.adjustAllowance,
+      Variant.ampl, Variant.standard, AState.setAllowance, h]
 
-theorem ampl_op_dec (s : VState Address) (c sp : Address) (x : ℕ) :
-    M.op s (.adjustAllowance c sp false x) =
+theorem ampl_op_dec (s : AState Address) (c sp : Address) (x : ℕ) :
+    M.op s (.base (.adjustAllowance c sp false x)) =
       some (s.setAllowance c sp (s.allowance c sp - x)) := by
-  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.stepOp, Variant.adjustAllowance,
-    Variant.ampl, Variant.standard]
+  simp [M, QEDefi.ERC20.Spec.AMPL.amplModel, liftR, amplOp, Variant.stepOp, Option.map, Variant.adjustAllowance,
+    Variant.ampl, Variant.standard, AState.setAllowance]
 
 /-- Under the model's invariant `gonsPerFragment` is positive. -/
 theorem ampl_scale_ne {Act : Finset Address} {m : Machine}
@@ -76,7 +77,7 @@ theorem ampl_scale_ne {Act : Finset Address} {m : Machine}
     m.world.sload m.frame.msg.currentTarget 157#256 ≠ 0 := by
   have h := hs.wf
   rw [pre_eq hs hv] at h
-  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.model_wf, Variant.WF, Variant.ampl,
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.WF, Variant.ampl,
     Variant.standard, ite_true] at h
   obtain ⟨-, hpos, hmax, hsc⟩ := h
   intro h0
@@ -103,7 +104,7 @@ theorem amplRead_allWorld {crypto : Crypto} {Act : Finset Address} {w : World}
   have hbalc := readMap_of_mem (crypto := crypto) hc w t 158#256
   rw [allWorld, amplRead_sstore_bal hS hd, amplRead_sstore_bal hS hc]
   dsimp only
-  congr 1
+  congr 2
   ext b
   simp only [Finsupp.update_apply, Finsupp.coe_add, Finsupp.coe_tsub, Pi.add_apply,
     Pi.sub_apply, Finsupp.single_apply]
@@ -166,7 +167,7 @@ theorem op_transferAll (Act : Finset Address) (m : Machine)
     (hs : Start AMPL.runtimeCode amplAbs M Act m) (d : Address) (hdA : d ∈ Act)
     (hval : m.frame.msg.value = 0) (hd : Args m.frame.msg.data 0xa3a7e7f3 [Word.ofAddress d]) :
     Halts m fun mf o =>
-      OpMatches amplAbs M Act (.transferAll m.frame.msg.caller d) m mf o ∨
+      OpMatches amplAbs M Act (.base (.transferAll m.frame.msg.caller d)) m mf o ∨
       (Fails o ∧ ¬ (g₀ ≤ m.frame.gasLeft ∧ m.frame.msg.isStatic = false)) := by
   have hS := hs.sound
   have hcA := hs.caller
@@ -218,7 +219,7 @@ theorem op_transferAllFrom (Act : Finset Address) (m : Machine)
     (hval : m.frame.msg.value = 0)
     (hd : Args m.frame.msg.data 0x84d4b410 [Word.ofAddress a, Word.ofAddress d]) :
     Halts m fun mf o =>
-      OpMatches amplAbs M Act (.transferAllFrom m.frame.msg.caller a d) m mf o ∨
+      OpMatches amplAbs M Act (.base (.transferAllFrom m.frame.msg.caller a d)) m mf o ∨
       (Fails o ∧ ¬ (g₀ ≤ m.frame.gasLeft ∧ m.frame.msg.isStatic = false)) := by
   have hS := hs.sound
   have hcA := hs.caller
@@ -291,8 +292,8 @@ theorem op_inc (Act : Finset Address) (m : Machine)
     (hval : m.frame.msg.value = 0)
     (hd : Args m.frame.msg.data 0x39509351 [Word.ofAddress sp, argWord m.frame.msg.data 1]) :
     Halts m fun mf o =>
-      OpMatches amplAbs M Act (.adjustAllowance m.frame.msg.caller sp true
-        (argWord m.frame.msg.data 1).toNat) m mf o ∨
+      OpMatches amplAbs M Act (.base (.adjustAllowance m.frame.msg.caller sp true
+        (argWord m.frame.msg.data 1).toNat)) m mf o ∨
       (Fails o ∧ ¬ (g₀ ≤ m.frame.gasLeft ∧ m.frame.msg.isStatic = false)) := by
   set x := argWord m.frame.msg.data 1
   have hS := hs.sound
@@ -328,8 +329,8 @@ theorem op_dec (Act : Finset Address) (m : Machine)
     (hval : m.frame.msg.value = 0)
     (hd : Args m.frame.msg.data 0xa457c2d7 [Word.ofAddress sp, argWord m.frame.msg.data 1]) :
     Halts m fun mf o =>
-      OpMatches amplAbs M Act (.adjustAllowance m.frame.msg.caller sp false
-        (argWord m.frame.msg.data 1).toNat) m mf o ∨
+      OpMatches amplAbs M Act (.base (.adjustAllowance m.frame.msg.caller sp false
+        (argWord m.frame.msg.data 1).toNat)) m mf o ∨
       (Fails o ∧ ¬ (g₀ ≤ m.frame.gasLeft ∧ m.frame.msg.isStatic = false)) := by
   set x := argWord m.frame.msg.data 1
   have hS := hs.sound
@@ -406,58 +407,5 @@ theorem args_aa {data : ByteArray} {sel : Nat} {a b : Address} (hsel : Abi.selec
   rcases (by omega : i = 0 ∨ i = 1) with rfl | rfl
   · simp only [List.getElem_cons_zero]; rw [addrArg_word ha]; rfl
   · simp only [List.getElem_cons_succ, List.getElem_cons_zero]; rw [addrArg_word hb]; rfl
-
-/-- **The other entry points**: `transferAll`, `transferAllFrom`, `increaseAllowance`,
-`decreaseAllowance`. -/
-theorem ops_spec : OpSpec AMPL.runtimeCode amplAbs M g₀ amplOps amplOpAddrs := by
-  intro Act m e hs hops haddr
-  simp only [amplOps] at hops
-  split at hops
-  · cases hops
-  rename_i hvs
-  have hval : m.frame.msg.value = 0 := by
-    have : m.frame.msg.value.toNat = 0 := by simp only [not_or] at hvs; omega
-    exact BitVec.eq_of_toNat_eq this
-  have hsz : ¬ m.frame.msg.data.size < 36 := fun h => hvs (.inr h)
-  split at hops
-  · rename_i hsel
-    cases ha : addrArg (argWord m.frame.msg.data 0) with
-    | none => simp [ha] at hops
-    | some a =>
-      simp only [ha, Option.map_some, Option.some.injEq] at hops
-      subst hops
-      exact op_transferAll Act m hs a (haddr a (by simp [amplOpAddrs])) hval (args_a hsel hsz ha)
-  split at hops
-  · cases hops
-  rename_i hsz2
-  split at hops
-  · rename_i _ hsel
-    cases ha : addrArg (argWord m.frame.msg.data 0) with
-    | none => simp [ha] at hops
-    | some a =>
-      cases hb : addrArg (argWord m.frame.msg.data 1) with
-      | none => simp [ha, hb] at hops
-      | some b =>
-        simp only [ha, hb, Option.bind_some, Option.map_some, Option.some.injEq] at hops
-        subst hops
-        exact op_transferAllFrom Act m hs a b (haddr a (by simp [amplOpAddrs]))
-          (haddr b (by simp [amplOpAddrs])) hval (args_aa hsel hsz2 ha hb)
-  split at hops
-  · rename_i _ _ hsel
-    cases ha : addrArg (argWord m.frame.msg.data 0) with
-    | none => simp [ha] at hops
-    | some a =>
-      simp only [ha, Option.map_some, Option.some.injEq] at hops
-      subst hops
-      exact op_inc Act m hs a (haddr a (by simp [amplOpAddrs])) hval (args_aw hsel hsz2 ha)
-  split at hops
-  · rename_i _ _ _ hsel
-    cases ha : addrArg (argWord m.frame.msg.data 0) with
-    | none => simp [ha] at hops
-    | some a =>
-      simp only [ha, Option.map_some, Option.some.injEq] at hops
-      subst hops
-      exact op_dec Act m hs a (haddr a (by simp [amplOpAddrs])) hval (args_aw hsel hsz2 ha)
-  · cases hops
 
 end Verified.WeirdERC20.AMPL.Spec

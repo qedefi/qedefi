@@ -15,6 +15,7 @@ open EvmLean EvmLogic EvmLogic.Program EvmLogic.Solidity EvmLean.Interpreter Evm
 open QEDefi.ERC20 QEDefi.ERC20.Spec Verified.WeirdERC20.AMPL.Contracts
 open Verified.Solady.Spec (LowHalts ViewPost halts_split eq_zero_of_iszero_ne)
 open Verified.Solady.Spec.AnyGas
+open QEDefi.ERC20.Spec.AMPL (AState AState.setAllowance liftR AmplOp amplOp rebaseOp rebaseSupply)
 
 code_table AMPL.runtimeCode
 
@@ -168,7 +169,7 @@ theorem pre_eq {Act : Finset Address} {m : Machine}
 /-- Under the model's invariant `_gonsPerFragment` is positive. -/
 theorem scale_ne {crypto : Crypto} {Act : Finset Address} {w : World} {t : Address}
     (hwf : M.wf (amplRead crypto Act w t)) : (w.sload t 157#256).toNat ≠ 0 := by
-  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.model_wf, Variant.WF, Variant.ampl,
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.WF, Variant.ampl,
     Variant.standard, ↓reduceIte] at hwf
   obtain ⟨-, h0, hle, hsc⟩ := hwf
   simp only [amplRead, readSlot] at h0 hle hsc
@@ -178,6 +179,15 @@ theorem scale_ne {crypto : Crypto} {Act : Finset Address} {w : World} {t : Addre
   calc _ ≤ 2 ^ 128 - 1 := hle
     _ ≤ Variant.amplTotalGons := by simp only [Variant.amplTotalGons, QEDefi.Math.MAX]; omega
 
+/-- Under the model's invariant the instance is initialized (supply `0` is not well formed). -/
+theorem live_of_wf {crypto : Crypto} {Act : Finset Address} {w : World} {t : Address}
+    (hwf : M.wf (amplRead crypto Act w t)) : Live w t := by
+  simp only [M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.WF, Variant.ampl,
+    Variant.standard, ↓reduceIte] at hwf
+  obtain ⟨-, h0, -⟩ := hwf
+  by_contra hL
+  simp [amplRead, hL] at h0
+
 /-- **`totalSupply()`** returns slot 156. -/
 theorem view_totalSupply : ViewSpec AMPL.runtimeCode amplAbs M g₀ .totalSupply := by
   intro Act m hs hd _
@@ -185,8 +195,10 @@ theorem view_totalSupply : ViewSpec AMPL.runtimeCode amplAbs M g₀ .totalSupply
     (totalSupply_low m hs.fresh hd hs.size) ?_
   rintro mf o ⟨hv, ho, hw, ht, hc, hl⟩
   refine ⟨_, ho, ?_, hw, ht, hc, hl⟩
+  have hL := live_of_wf (by have := hs.wf; rwa [pre_eq hs hv] at this)
   rw [pre_eq hs hv]
-  rfl
+  simp [View.value, M, QEDefi.ERC20.Spec.AMPL.amplModel, Variant.totalSupply, Variant.ampl,
+    Variant.standard, amplRead, hL, readSlot]
 
 /-- **`balanceOf(a)`** returns the actor's gons divided by `_gonsPerFragment`. -/
 theorem view_balanceOf (a : Address) : ViewSpec AMPL.runtimeCode amplAbs M g₀ (.balanceOf a) := by
